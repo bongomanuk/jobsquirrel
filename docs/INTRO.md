@@ -39,6 +39,12 @@ replies. You give it your CV and a few rules; it does the repetitive work.
 never sends a document that fails the gate. If a job wants something your CV
 can't evidence, it leaves it out.
 
+**Be clear about the boundaries:** this is **not** a fully-automatic bot. It
+follows a written set of instructions (and works best with a capable model), and
+it needs you for the calls only you can make — your rules, approving any email
+before it goes, and solving a CAPTCHA/2FA when a site demands it. Think "a
+tireless assistant working under your instructions", not "press go and forget it".
+
 **Ways you can run it** (I'll explain and you choose):
 
 - **Discover** — just find new roles and add them to the queue.

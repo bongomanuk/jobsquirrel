@@ -10,6 +10,14 @@ review and make the few calls only a human should.
 by opencode and similar tools. This document is the human's guide to handing the
 project over.
 
+> **New here?** See **[docs/AGENT-SETUP.md](AGENT-SETUP.md)** for the exact
+> commands per agent (opencode, Claude Code, Cursor, …), how to keep the running
+> cost low with opencode + DeepSeek Flash, and what it typically costs.
+>
+> **This is not push-button autonomy.** The agent does the mechanical work and
+> relies on the instructions in `AGENTS.md`; you make the judgement calls
+> (your rules, approving emails, solving CAPTCHA/2FA).
+
 ## 1. One-time setup (human)
 
 ```bash

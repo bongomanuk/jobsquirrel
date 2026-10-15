@@ -4,6 +4,8 @@
 > agent: it runs the first-run interview in [BOOTSTRAP.md](../BOOTSTRAP.md),
 > writes your `config/`, builds your archetypes and the knowledge base, and
 > explains each step. The manual steps below are the same thing, for reference.
+> For how to launch an agent (opencode, Claude Code, …) and what it costs, see
+> [AGENT-SETUP.md](AGENT-SETUP.md).
 
 ## 1. Prerequisites
 

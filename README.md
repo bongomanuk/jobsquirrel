@@ -18,8 +18,23 @@ particular person, employer, language or country. You configure everything in
 will walk you through setup itself: it interviews you about your identity,
 eligibility, languages, availability and the claims you must never overstate,
 writes your config, builds your CV archetypes, and builds a private knowledge
-graph from your documents — explaining each step. See
-[BOOTSTRAP.md](BOOTSTRAP.md) and [docs/AGENT-GUIDE.md](docs/AGENT-GUIDE.md).
+graph from your documents — explaining each step. Quick version:
+
+```bash
+cd jobsquirrel && opencode        # /connect + /models, then:
+# "Read AGENTS.md and docs/INTRO.md, then run the bootstrap in BOOTSTRAP.md."
+```
+
+Works the same with Claude Code, Cursor or any file-and-shell agent (the contract
+is [AGENTS.md](AGENTS.md)). See
+**[docs/AGENT-SETUP.md](docs/AGENT-SETUP.md)** for per-agent instructions, how to
+keep it cheap with opencode + DeepSeek Flash, and **what it costs to run**.
+
+> ⚠️ **Not push-button autonomy.** The agent does the mechanical work, but it
+> relies on the instructions in `AGENTS.md` and on **you** for the judgement
+> calls (your rules, approving emails, solving CAPTCHA/2FA). A weak model or a
+> sloppy `config/` gives weak results. Treat the first applications as a
+> supervised trial.
 
 > ⚠️ **You are responsible for what it sends.** The pipeline is built to be
 > truthful and to never fabricate, but you own your applications. Review the
@@ -89,6 +104,9 @@ email, and so on.
 - **[AGENTS.md](AGENTS.md)** — the agent's operating manual (auto-loaded by
   opencode and similar tools): the golden rules, the per-role commands, the gates,
   and what the agent must escalate to you.
+- **[docs/AGENT-SETUP.md](docs/AGENT-SETUP.md)** — bootstrap it with opencode,
+  Claude Code or any agent; keep it cheap with opencode + DeepSeek Flash; and what
+  it typically costs to run.
 - **[docs/AGENT-GUIDE.md](docs/AGENT-GUIDE.md)** — the human's guide to handing
   the project over, with an example brief and a worked exchange.
 - **[docs/INTRO.md](docs/INTRO.md)** — the plain-language introduction the agent
@@ -180,6 +198,7 @@ CLOSED`.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — components, data model, files.
 - [docs/ATS-RECIPES.md](docs/ATS-RECIPES.md) — how each ATS is driven.
 - [docs/ELIGIBILITY.md](docs/ELIGIBILITY.md) — writing your eligibility + accuracy rules.
+- [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md) — bootstrap with opencode / Claude Code / any agent, plus cost and cheap-model tips.
 - [docs/AGENT-GUIDE.md](docs/AGENT-GUIDE.md) — how to hand it to and drive it with an AI agent.
 - [docs/INTRO.md](docs/INTRO.md) — the startup introduction the agent delivers to you.
 - [BOOTSTRAP.md](BOOTSTRAP.md) — the first-run interview the agent runs to set everything up.
