@@ -1,0 +1,48 @@
+[
+  {
+    "_comment": "Role-family CV templates. Copy to config/archetypes.json and edit. Each entry renders one 2-page archetype CV + a base motivation letter (build_archetypes.py), and is what the alignment gate matches a job to. Keep 'tags' small and reuse them across entries and in your experience 'extras'.",
+    "key": "Engineering_Leadership",
+    "title": "Engineering Leadership",
+    "headline": "Engineering Manager  ·  Head of Engineering  ·  People & Delivery",
+    "tagline": "People leadership  ·  Delivery  ·  Architecture",
+    "opening": "I would like to apply for this role. I build and run engineering teams and stay close to the work.",
+    "profile": "An engineering leader summary for this family: scope, team sizes, delivery outcomes.",
+    "fit": "Why you fit leadership roles: coaching, roadmap, delivery, technical credibility.",
+    "skills": [
+      ["Leadership", "team sizes, hiring, coaching, performance, budget, roadmap."],
+      ["Delivery", "agile ways of working, reliability, incident response."],
+      ["Technical direction", "architecture and platform decisions."]
+    ],
+    "tags": ["leadership", "arch", "infra"]
+  },
+  {
+    "key": "Senior_Software_Engineer",
+    "title": "Senior Software Engineer",
+    "headline": "Senior Software Engineer  ·  Backend & Distributed Systems",
+    "tagline": "Backend  ·  Distributed systems  ·  Cloud",
+    "opening": "I would like to apply for this role. I design and ship production systems and stay hands-on.",
+    "profile": "A senior engineer summary: scale, systems, languages, reliability.",
+    "fit": "Why you fit senior engineering roles: system design, code quality, ownership.",
+    "skills": [
+      ["Languages", "your production languages."],
+      ["Systems", "APIs, data stores, messaging, cloud."],
+      ["Reliability", "observability, performance, on-call."]
+    ],
+    "tags": ["backend", "systems", "infra"]
+  },
+  {
+    "key": "AI_ML_Engineer",
+    "title": "AI / ML Engineer",
+    "headline": "AI / ML Engineer  ·  LLM, RAG & Production ML",
+    "tagline": "LLM  ·  RAG  ·  Evaluation",
+    "opening": "I would like to apply for this role. I build AI systems that reach production and stay reliable.",
+    "profile": "An AI/ML summary for this family: models, pipelines, evaluation, production.",
+    "fit": "Why you fit AI roles: hands-on AI engineering plus delivery ownership.",
+    "skills": [
+      ["AI engineering", "LLMs, RAG, agents, evaluation and guardrails."],
+      ["Engineering", "Python, APIs, cloud, containers."],
+      ["Data & governance", "data platforms, privacy, auditability."]
+    ],
+    "tags": ["ai", "ml", "arch"]
+  }
+]

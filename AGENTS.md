@@ -1,0 +1,270 @@
+# AGENTS.md — how an AI agent drives this pipeline
+
+You are an **agent** operating this repository on behalf of its owner (the
+"candidate"). Your job is to run a real job search for them: discover roles,
+tailor a CV and cover letter per role, gate them, submit applications through a
+real browser, record everything, and track replies. This file is your operating
+manual. Read it before acting.
+
+The pipeline is designed to be **agent-driven**, not clicked through by hand.
+Everything is a CLI tool; the human only reviews and makes a few decisions you
+must escalate (see *Escalate to the human*).
+
+---
+
+## 0a. Bootstrap (first run — if `config/` is empty or placeholder)
+
+```bash
+python3 tools/init_config.py --check
+```
+
+If it reports anything MISSING/PLACEHOLDER, the pipeline is not set up yet. **Do
+not invent the user's details.** Follow **`BOOTSTRAP.md`**:
+
+0. Install the software (Python deps, Camoufox browser, GraphRAG, LibreOffice
+   check) into a local venv: `bash tools/install.sh`.
+1. **Introduce the pipeline.** Read `docs/INTRO.md` and deliver it to the user in
+   your own words — what it is, how it works end to end, the safety guarantees,
+   the run modes, what you need from them, and their privacy/control. Answer their
+   questions before moving on.
+2. Interview the user: identity, eligibility (where they can work / what they'll
+   accept), languages, work authorisation, availability & pay, accuracy rules,
+   EEO answers, and their CV + any "brag"/project documents.
+3. Write `config/profile.md`, `config/cv.json`, `config/archetypes.json`
+   (`python3 tools/init_config.py` scaffolds them first; then fill them in).
+4. `python3 tools/build_archetypes.py` and verify.
+5. Build the knowledge graph (**required** — it is how the targeted documents are
+   generated): explain what GraphRAG is (BOOTSTRAP.md Step 4), stage the user's
+   documents in `kb/sources/`, then `bash tools/setup_kb.sh`. Verify with
+   `python3 tools/kb_graphrag.py --check`. Do not start applying without a built
+   index.
+6. Set up accounts: run `bash tools/setup_accounts.sh --check` and walk the user
+   through **`docs/ACCOUNT-SETUP.md`** — the Camoufox browser (required), Gmail
+   read-only (recommended), Google Calendar, LinkedIn, and per-site credentials.
+   Re-check until the accounts the user wants show OK.
+7. Hand back a short summary and how to use it ("discover roles and run the queue").
+
+Only proceed to applying (:golden rules:) once `python3 tools/init_config.py --check`
+reports a clean config.
+
+---
+
+## 0. Golden rules (never break these)
+
+1. **Never fabricate.** Only claim what the knowledge base
+   (`state/kb-context/<key>.md`), `config/cv.json` and `config/profile.md`
+   support. If a JD wants something the CV doesn't evidence, leave it out.
+2. **Never submit a document that fails the gate.** `check_documents.py` and
+   `check_alignment.py` must both print `RESULT: PASS` before any upload.
+3. **Eligibility first.** Only apply to roles compatible with the candidate's
+   rules in `config/profile.md` (location/work-model, languages, stack). If
+   unclear or excluded, record `CLOSED`/`BLOCKED` with the reason and stop.
+4. **Never send email without explicit human approval** of recipient, subject and
+   content (`gmail_send.py`). Reply drafts are fine; sending needs a "yes".
+5. **Stop on CAPTCHA / 2FA / bot checks.** Do not evade. Record `BLOCKED` (or
+   `MANUAL`) with what you tried and move on.
+6. **Record only with real evidence.** `record_submission.py --evidence` must
+   carry the actual thank-you text or confirmation email — never "confirmed"/"ok".
+7. **Keep the register current.** It is the single source of truth for resuming.
+
+---
+
+## 1. Orient (do this once per session)
+
+```bash
+cat config/profile.md      # identity, eligibility, accuracy rules, EEO answers, pay
+cat config/cv.json         # the candidate's ground-truth CV
+cat config/archetypes.json # role-family CV templates
+python3 tools/register.py --stats          # current outcomes
+python3 tools/register.py --list --status INTERVIEW
+```
+
+If `config/profile.md` / `config/cv.json` / `config/archetypes.json` are missing,
+they have not been set up — tell the human and stop (do not invent their details).
+
+---
+
+## 2. Run modes — explain these to the user and let them choose
+
+Do **not** send the user to the documentation. Briefly present the modes below and
+ask how they want to run, then do it. Full detail: `docs/RUN-MODES.md`.
+
+**A. Discover** (find roles; apply to nothing)
+```bash
+python3 tools/discover.py --queue              # LinkedIn job alerts -> queue
+python3 tools/email_opportunities.py --apply    # recruiter/contract leads
+python3 tools/prioritise_queue.py               # order most-senior-first
+```
+
+**B. Review / Prepare** (generate documents, do NOT send — let the user review)
+```bash
+REVIEW=1 PARALLEL=3 bash tools/run_queue.sh
+```
+Builds the grounded, targeted CV + cover letter per role, runs the gates, saves
+them under `documents/applications/`, and records `PREPARED`. **Nothing is sent.**
+
+**C. Apply — generated, role-targeted CVs (the default)**
+```bash
+PARALLEL=3 bash tools/run_queue.sh
+```
+Per-role generated CV + letter, gate, submit through the employer ATS, record.
+
+**D. Apply with one fixed CV** (fast/cheap; no per-role generation)
+```bash
+LIGHT=1 FIXED_CV=documents/archetypes/<Prefix>_CV_<Archetype>.docx PARALLEL=3 bash tools/run_queue.sh
+```
+
+**E. One role, manually** — follow §4 (for a single URL or a retry).
+
+Common to batch modes:
+- Queue file `state/queue.tsv`: `company  role  url  cv-archetype  ats  key`.
+- **Most-senior-first** by default (`PRIORITISE=1`); `prioritise_queue.py` sorts the file.
+- Reads `config/profile.md`; writes the register + `state/queue.done`; logs to `state/logs/`.
+- Watch with `bash tools/watch_queue.sh`; it stops itself on model budget/rate limits.
+- **Applying requires a built knowledge base (GraphRAG)** — see §4 step (2) and §5.
+
+So the agent's usual job: fill the queue (§3) → optionally **Review** first →
+**Apply** → reconcile (§6).
+
+---
+
+## 3. Find and queue roles
+
+- From the candidate's inbox: `python3 tools/discover.py` (reads LinkedIn Job
+  Alert emails, dedupes vs the register/queue). Add to the queue with
+  `--queue` and record with `--apply`.
+- From recruiter/contract mail: `python3 tools/email_opportunities.py [--apply]`.
+- From a list of URLs (or a web search you performed): append rows to
+  `state/queue.tsv` yourself using the tab format above, choosing the CV
+  archetype whose family matches each role (see `config/archetypes.json`).
+- Web sources: `tools/discover.py` only sees alert emails; you may also search
+  job boards directly and queue the results.
+
+After adding rows, `python3 tools/prioritise_queue.py` and then run.
+
+---
+
+## 4. Per-role procedure (this is what each queued job runs)
+
+Given a role (company, role, apply URL, chosen archetype):
+
+```bash
+key=<slug-for-this-role>                 # e.g. company-role
+
+# (1) Save the ad text to state/job-descriptions/<key>.md, then extract keywords
+python3 tools/ats_keywords.py --jd state/job-descriptions/<key>.md --out state/ats/<key>.txt
+
+# (2) Grounding (GraphRAG; required): build the cited context pack
+python3 tools/kb_graphrag.py --jd state/job-descriptions/<key>.md --out state/kb-context/<key>.md
+
+# (3) Choose the aligned archetype and VERIFY it
+python3 tools/check_alignment.py --cv documents/archetypes/<Prefix>_CV_<Archetype>.docx \
+    --jd state/job-descriptions/<key>.md            # must print RESULT: PASS - alignment
+
+# (4) Write a targeted CV content pack (grounded, truthful), then render both formats
+#     state/cv-content/<key>.json  ->  documents/applications/<Prefix>_CV_<key>.docx + .pdf
+python3 tools/cv_target.py --key <key> --content state/cv-content/<key>.json
+
+# (5) Write the cover letter (in the candidate's voice; ground every claim)
+#     via tools/cv_builder.render_motivation({...}) -> documents/applications/<Prefix>_Motivation_<key>.docx
+#     (see tools/make_letter.py for the minimal example)
+
+# (6) PRE-SUBMIT GATE — nothing is uploaded until this prints RESULT: PASS
+python3 tools/check_documents.py --letter documents/applications/<Prefix>_Motivation_<key>.docx \
+    --cv documents/archetypes/<Prefix>_CV_<Archetype>.docx --company "<Company>" \
+    --ats-keywords state/ats/<key>.txt [--engagement contract]
+
+# (7) Apply via the stealth browser through the employer's own ATS
+python3 tools/camoufox_server.py --port 9872 &                       # once per session
+python3 tools/camoufox_browser.py --server http://127.0.0.1:9872 nav "<apply-url>"
+#   ... snap / fill / pick / upload / submit ... (recipes: docs/ATS-RECIPES.md)
+
+# (8) Record the exact files sent (snapshots + hashes) and upsert the register
+python3 tools/record_submission.py --company "<Company>" --role "<Role>" --ats <ATS> \
+    --url "<apply-url>" --cv documents/applications/<Prefix>_CV_<key>.docx \
+    --letter documents/applications/<Prefix>_Motivation_<key>.docx --status SUBMITTED \
+    --evidence "<exact thank-you text / confirmation email>"
+```
+
+On any failure at (6): fix and re-run — never upload. On a wall at (7): record
+`BLOCKED`/`MANUAL` with what you tried and stop.
+
+---
+
+## 5. Writing the documents (what "good" means)
+
+- **CV**: mirror the ad's language; include every role, the strongest
+  role-relevant bullets with their metrics and technologies; ATS-safe (single
+  column for the .docx); fill the **two pages** without exceeding them.
+- **Letter**: name the company and role; in the candidate's voice; no shared or
+  AI-slop sentences; no duplicated logistics; only claims the CV supports.
+- **Grounding**: draw facts from `state/kb-context/<key>.md` (GraphRAG) +
+  `config/cv.json` + `config/profile.md`. When the KB says a requirement isn't
+  evidenced, do not claim it.
+- Follow the **accuracy rules** in `config/profile.md` (e.g. certifications on
+  the list only; the exact management scope).
+
+---
+
+## 6. Track replies and interviews
+
+```bash
+python3 tools/gmail_reconcile.py            # propose status changes (dry run)
+python3 tools/gmail_reconcile.py --apply    # write them; surfaces verification links
+bash tools/reconcile_loop.sh                # continuous reconcile + counts
+```
+
+- Reconciliation matches mail to register rows and sets `INTERVIEW`/`REJECTED`,
+  upgrades `PREPARED`→`SUBMITTED` on confirmation, and prints verification
+  links/codes for the **human** to act on (never click/enter them yourself).
+- For interviews: `tools/gmail_calendar_auth.py --check --days N` lists upcoming
+  events; with the `calendar.events` scope you may add/update interview events.
+  Self-schedule links (e.g. Ashby `you.ashbyhq.com/meeting/<id>`) are booked by
+  driving the browser like an ATS form.
+- **Email**: draft replies; send only with the human's explicit approval.
+
+---
+
+## 7. Escalate to the human
+
+Stop and ask (or record `MANUAL`/`BLOCKED`) when:
+
+- A CAPTCHA / 2FA / "suspicious activity" / bot check appears.
+- An email must be sent (get approval of recipient + subject + content).
+- A verification link or code must be clicked/entered (surface it; don't act).
+- The eligibility or accuracy rules are ambiguous for a role.
+- `config/` is missing or clearly placeholder.
+- The register/queue look corrupted (`tools/register.py --check` fails).
+
+---
+
+## 8. Example things the human will ask you to do
+
+- "Find new senior roles and feed the queue." → `discover.py`, optional web
+  search, append to `state/queue.tsv`, `prioritise_queue.py`.
+- "Run the pipeline." → `PARALLEL=3 bash tools/run_queue.sh`; then `gmail_reconcile.py`.
+- "Apply to the most senior roles first." → already default (most-senior-first).
+- "Reconcile with email." → `python3 tools/gmail_reconcile.py --apply`.
+- "Show me the CV you'd send for X." → build it (steps 1–5) and show the text;
+  don't submit until told / until eligible.
+- "Prepare documents for me to review before sending." → `REVIEW=1 PARALLEL=3 bash
+  tools/run_queue.sh`, then show the file paths.
+- "Use one fixed CV for these." → `LIGHT=1 FIXED_CV=<path> PARALLEL=3 bash tools/run_queue.sh`.
+- "Check what's outstanding." → `register.py --stats`, list `INTERVIEW` rows,
+  surface verification links and blocked items.
+
+---
+
+## 9. Files that matter
+
+- `config/profile.md`, `config/cv.json`, `config/archetypes.json` — the truth.
+- `state/applications.csv` — canonical register (one row per company+role).
+- `state/submissions.csv` — provenance: exact files + hashes + snapshots.
+- `state/queue.tsv` / `queue.done` — the work queue.
+- `state/job-descriptions/`, `state/ats/`, `state/kb-context/`, `state/cv-content/`
+  — per-role artifacts.
+- `documents/archetypes/`, `documents/applications/`, `documents/submitted/`
+  — CVs, letters, snapshots.
+- See `BOOTSTRAP.md` (first-run interview), `docs/ACCOUNT-SETUP.md` (Gmail,
+  Calendar, LinkedIn, browser, credentials), `docs/WORKFLOW.md`,
+  `docs/ATS-RECIPES.md`, `docs/ELIGIBILITY.md`, `docs/KNOWLEDGE-BASE.md`.
