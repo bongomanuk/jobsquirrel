@@ -222,6 +222,7 @@ tools/                      # the pipeline (language/library-free CLI tools)
   register.py               #   canonical outcome register (state/applications.csv)
   record_submission.py      #   provenance ledger (state/submissions.csv) + snapshots
   gate_receipt.py           #   hash-stamped gate receipts; enforces the pre-submit gate
+  outcomes.py               #   conversion by source/CV — what's actually working
   gmail_readonly.py         #   read-only inbox sync + classification
   gmail_reconcile.py        #   reconcile the register with your inbox
   gmail_calendar_auth.py    #   (optional) Google Calendar read/write for interviews

@@ -31,6 +31,7 @@ Use the project venv: `.venv/bin/python tools/<tool>.py`.
 
 - Python: `.venv/bin/python -m py_compile tools/*.py`.
 - Shell: `bash -n tools/*.sh install.sh`.
+- Tests: `python3 -m pytest -q` (see `tests/`). CI runs these on every PR.
 - **No personal or country-specific references** anywhere (your name, your city/
   country, or real employers/clients you used while testing). Check with your own
   terms:
