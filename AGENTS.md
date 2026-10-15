@@ -73,6 +73,11 @@ reports a clean config.
 6. **Record only with real evidence.** `record_submission.py --evidence` must
    carry the actual thank-you text or confirmation email — never "confirmed"/"ok".
 7. **Keep the register current.** It is the single source of truth for resuming.
+8. **Respect each site's terms.** Prefer the employer's own ATS over portals.
+   LinkedIn Easy Apply is **opt-in and may breach LinkedIn's User Agreement** — do
+   not mass-apply, and if the user hasn't explicitly enabled it, don't use it.
+   Never post, message or interact on social sites unless the user asked in that
+   session (and it complies with the site's terms).
 
 ---
 
