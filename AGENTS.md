@@ -10,6 +10,13 @@ The pipeline is designed to be **agent-driven**, not clicked through by hand.
 Everything is a CLI tool; the human only reviews and makes a few decisions you
 must escalate (see *Escalate to the human*).
 
+> **This is not fully-autonomous software.** Its behaviour *is* this document.
+> You must follow these instructions rather than improvise, and you depend on the
+> candidate for the judgement calls (their rules in `config/`, approval of any
+> email, and solving CAPTCHA/2FA). Do not present it to the user as a push-button
+> "applies to 500 jobs on its own" bot. You do the mechanical work; the human owns
+> the decisions and the applications.
+
 ---
 
 ## 0a. Bootstrap (first run — if `config/` is empty or placeholder)
