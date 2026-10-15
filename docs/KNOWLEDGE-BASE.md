@@ -23,18 +23,35 @@ kb/sources/*.txt  --graphrag index-->  kb/graphrag/output/ (graph + vectors)
 local search (`--method local|global|drift`) and writes the pack. `--check`
 verifies the index and the embeddings backend are up.
 
-## 1. Curate sources
+## 1. Curate sources — the more, the better
 
-Put plain-text documents in `kb/sources/` — the more specific and quantified, the
-better:
+The knowledge base is only as rich as the corpus you feed it. **Do not stop at
+your CV.** Dump everything truthful and specific you have into `kb/sources/` — a
+larger corpus directly produces sharper, more targeted, more honest documents,
+because retrieval can find the *exact right* fact for each ad, **with a citation**.
 
-- A master CV and any role-specific CVs.
-- A "brag document": every project with *numbers* (scale, users, revenue, latency,
-  team sizes, budget, outcomes).
-- Product/architecture notes, design docs, talks, README excerpts.
-- Your LinkedIn profile export.
+Put plain text/markdown (`.txt` / `.md`) there:
 
-Keep each fact traceable to a real experience. Then stage them for indexing:
+- **Every version of your CV** — a master plus each old/role-specific one.
+  Different versions hold different bullets; the graph merges them.
+- **A "brag document"** — every project with *numbers*: scale, users, revenue,
+  latency, uptime, team sizes, budgets, outcomes.
+- **Project / design / architecture notes**, RFCs, postmortems, talks, blog and
+  README excerpts.
+- **Performance reviews / feedback**, awards, publications.
+- **Your LinkedIn export** (positions, skills, recommendations, certifications).
+- **Anything else truthful** that evidences what you've done.
+
+Rules:
+
+- Keep **every fact traceable to a real experience** — this corpus is the ground
+  truth the gate checks against.
+- Prefer **specifics** (numbers, technologies, scope) over adjectives.
+- **Not plain text?** Convert first — PDFs/DOCX/emails → `.txt`/`.md` (ask the
+  agent to do it). GraphRAG reads text, and the staging step below only picks up
+  `.txt` and `.md`.
+
+Then stage them for indexing:
 
 ```bash
 mkdir -p kb/graphrag/input

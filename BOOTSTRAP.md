@@ -86,6 +86,12 @@ disability, veteran status (used to fill application forms truthfully).
 - Extract this into `config/cv.json` (experience with quantified bullets,
   projects, skills, education, certifications, languages, sidebar). Mark clearly
   anything uncertain and confirm with the user.
+- **Then ask for everything else (this powers the knowledge graph — see Step 4).**
+  Prompt them for, and collect into `kb/sources/` (as `.txt`/`.md`): **every**
+  version of their CV, a brag/achievements doc, project/design notes, RFCs,
+  postmortems, talks, blog/README excerpts, performance reviews, awards, and a
+  LinkedIn export. The more truthful, specific material you gather, the better
+  every application will be. Convert any PDFs/DOCX to text first.
 
 **I. Target role families**
 - Which role families should the CVs target (e.g. Engineering Leadership, Senior
@@ -120,12 +126,15 @@ This writes one 2-page CV (+ styled PDF) and one base letter per archetype into
 
 Explain to the user:
 
-> I'm going to build a private **knowledge base** from your own documents (old CVs,
-> project notes, a brag doc). It uses GraphRAG to extract the people, projects,
-> skills, metrics and certifications from them into a graph, then for each job it
-> retrieves the most relevant, *cited* facts. The targeted CVs and letters are
-> written only from those facts, so they stay accurate — this is how the system
-> tailors a document to each role. It runs locally and is never shared.
+> I'm going to build a private **knowledge base** from your own documents — every
+> version of your CV, project and design notes, a brag doc with numbers, talks,
+> reviews, awards, a LinkedIn export, anything truthful you have. It uses GraphRAG
+> to extract the people, projects, skills, metrics and certifications from them
+> into a graph, then for each job it retrieves the most relevant, *cited* facts.
+> The targeted CVs and letters are written only from those facts, so they stay
+> accurate — this is how the system tailors a document to each role. **The more
+> you feed it, the better every application gets.** It runs locally and is never
+> shared.
 
 Then:
 

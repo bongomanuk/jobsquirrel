@@ -101,6 +101,41 @@ to **waste the fewest** — yours and the recruiter's. Fewer, better, honest
 applications you can stand behind, and a system that won't do something you'd
 regret.
 
+## The knowledge graph: feed it everything you've got
+
+The single most powerful thing you can do is give the pipeline **a lot** about
+yourself. Drop your master CV, **every** old and role-specific CV, a "brag
+document", project and design notes, talks, performance-reviews, a LinkedIn
+export, README excerpts — as many documents as you have — into `kb/sources/`.
+**GraphRAG** turns that corpus into a private graph of your people, projects,
+skills, metrics and certifications, and for each role it retrieves the most
+relevant, **cited** facts.
+
+That is not a footnote — it is the engine of the whole thing:
+
+- **Specificity.** A thin CV yields generic bullets. A rich corpus lets each
+  application surface the *exact* achievement, metric and technology a given ad
+  asks for — the ones you'd never recall at 11pm, from a project you'd forgotten.
+- **Truthfulness by construction.** Every generated line is traceable to a source
+  in your corpus. **No source evidence, no claim.** This is what makes "never
+  fabricate" real instead of aspirational.
+- **It compounds.** The more you add, the better *every* application gets — and
+  fixing or removing one overstatement in a source fixes it *everywhere* on
+  re-index.
+- **Private and local.** The index is built on your machine. Nothing is uploaded.
+
+So: gather far more than "just a CV". The more truthful, specific material you
+feed it, the sharper and more honest every application becomes.
+
+```bash
+# put .txt / .md documents in kb/sources/ (the agent can convert PDFs/DOCX to text)
+bash tools/setup_kb.sh            # configure, stage sources, start embeddings, index
+python3 tools/kb_graphrag.py --check
+```
+
+Add sources any time and re-index (`python3 -m graphrag index --root kb/graphrag`).
+See [docs/KNOWLEDGE-BASE.md](docs/KNOWLEDGE-BASE.md).
+
 ---
 
 ## Quick start
