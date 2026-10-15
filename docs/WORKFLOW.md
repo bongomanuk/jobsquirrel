@@ -27,10 +27,12 @@ python3 tools/check_alignment.py --cv documents/archetypes/<Prefix>_CV_<Archetyp
 python3 tools/cv_target.py --key <key> --content state/cv-content/<key>.json
 #    ...then render the letter (see tools/make_letter.py / cv_builder.render_motivation)
 
-# 5. PRE-SUBMIT GATE — nothing is uploaded until this prints RESULT: PASS
+# 5. PRE-SUBMIT GATE — nothing is uploaded until this prints RESULT: PASS.
+#    --record writes a hash-stamped receipt; record_submission.py (step 7)
+#    REFUSES to record SUBMITTED without it. Gate the files you will upload.
 python3 tools/check_documents.py --letter documents/applications/<letter>.docx \
-    --cv documents/archetypes/<cv>.docx --company "<Company>" \
-    --ats-keywords state/ats/<key>.txt
+    --cv documents/applications/<cv>.docx --company "<Company>" \
+    --ats-keywords state/ats/<key>.txt --record
 #    (add --engagement contract only for genuine contract/consulting roles)
 
 # 6. Apply through the employer's own ATS with the stealth browser

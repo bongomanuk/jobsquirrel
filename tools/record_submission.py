@@ -173,6 +173,27 @@ def main():
     cv_hash = sha256(cv) if cv and os.path.isfile(cv) else ""
     letter_hash = sha256(letter) if letter and os.path.isfile(letter) else ""
 
+    # Enforce the pre-submit gate in code: a SUBMITTED row must be backed by a
+    # fresh PASS receipt covering the exact CV/letter being recorded, so an agent
+    # cannot silently skip the gate. See tools/gate_receipt.py.
+    if (args.status.upper() == "SUBMITTED" and not args.force
+            and os.environ.get("GATE_ENFORCE", "1") != "0"):
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        try:
+            import gate_receipt as GR
+            gate_ok, gate_why = GR.find_pass({"cv": cv, "letter": letter})
+        except Exception as exc:
+            gate_ok, gate_why = False, f"gate check errored: {exc}"
+        if not gate_ok:
+            print("ERROR: refusing to record SUBMITTED without a passing pre-submit gate.", file=sys.stderr)
+            print(f"       {gate_why}", file=sys.stderr)
+            print("       Run the gate first, e.g.:", file=sys.stderr)
+            print("         python3 tools/check_documents.py --letter <letter.docx> --cv <cv.docx> \\", file=sys.stderr)
+            print("             --company \"<Company>\" --ats-keywords state/ats/<key>.txt --record", file=sys.stderr)
+            print("       (override only for a genuine human-assisted submission: --force, "
+                  "or set GATE_ENFORCE=0)", file=sys.stderr)
+            sys.exit(3)
+
     snapshot = ""
     confidence = "inferred" if args.inferred else "verified"
     if not args.inferred and (cv or letter):

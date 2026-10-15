@@ -139,9 +139,9 @@ Explain to the user:
 Then:
 
 ```bash
-# user drops their documents into kb/sources/ (txt/md) and confirms
+# user drops their documents into kb/sources/ (any format) and confirms
 bash tools/setup_kb.sh --check      # explain + verify prerequisites
-bash tools/setup_kb.sh              # configure, stage sources, start embeddings, index
+bash tools/setup_kb.sh              # configure, ingest sources, start embeddings, index
 ```
 
 `setup_kb.sh` prints what it's doing at each step. Document generation depends on

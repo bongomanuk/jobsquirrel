@@ -24,6 +24,7 @@ state/queue.claimed
 state/queue.retry
 state/queue.stop
 state/queue.tokenfail*
+state/gates/
 state/active_*
 state/logs/
 state/job-descriptions/

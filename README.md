@@ -67,7 +67,9 @@ matter — **truthfulness** and **targeting** — as hard gates.
 4. **Eligibility first.** Only apply to roles you can actually take — on-site in
    your city, or remote where you're allowed to work — and never to roles that
    need a language or authorisation you don't have.
-5. **Gate before submit.** Nothing is uploaded until the pre-submit gate passes.
+5. **Gate before submit — enforced.** Nothing is uploaded until the pre-submit
+   gate passes, and the tooling **refuses to record a submission without a
+   hash-stamped gate receipt** for the exact files sent.
 6. **Everything is recorded.** One row per (company, role); the exact bytes sent
    are snapshotted and hashed.
 7. **Be a considerate client, not a sneaky one.** A real browser profile, paced
@@ -219,6 +221,7 @@ tools/                      # the pipeline (language/library-free CLI tools)
   facts.py                  #   authoritative facts from cv.json; tense/scope checks
   register.py               #   canonical outcome register (state/applications.csv)
   record_submission.py      #   provenance ledger (state/submissions.csv) + snapshots
+  gate_receipt.py           #   hash-stamped gate receipts; enforces the pre-submit gate
   gmail_readonly.py         #   read-only inbox sync + classification
   gmail_reconcile.py        #   reconcile the register with your inbox
   gmail_calendar_auth.py    #   (optional) Google Calendar read/write for interviews
@@ -239,6 +242,7 @@ tools/                      # the pipeline (language/library-free CLI tools)
   init_config.py            #   scaffold/validate config/ (used by the bootstrap)
   setup_kb.sh               #   explain + build the GraphRAG knowledge base
   kb_graphrag.py            #   build the cited grounding pack per role (required)
+  kb_ingest.py              #   ingest kb/sources/ any-format -> GraphRAG text input
   embeddings_vulkan.sh      #   local embeddings backend for GraphRAG
 state/                      # generated: register, queues, logs, saved ads, keyword files
 documents/                  # generated: archetype CVs, per-role letters, submitted snapshots
@@ -261,7 +265,9 @@ docs/                       # documentation (this folder)
 5. **Tailor** — a targeted CV (`cv_target.py`) and a per-role letter are produced.
 6. **Pre-submit gate** — `check_documents.py` must print `RESULT: PASS`: real
    identity, no placeholders, no AI-slop, supported claims, correct engagement
-   (a contract rate only in contract applications), ATS coverage.
+   (a contract rate only in contract applications), ATS coverage. It writes a
+   **hash-stamped gate receipt**, and `record_submission.py` won't record a
+   submission without it — so the gate can't be skipped.
 7. **Apply** — a `/config/profile.md`-aware agent drives Camoufox through the
    employer's own ATS (recipes for Teamtailor, Greenhouse, Lever, Ashby, Workday,
    Jobylon and more in [docs/ATS-RECIPES.md](docs/ATS-RECIPES.md)).

@@ -30,7 +30,8 @@ your CV.** Dump everything truthful and specific you have into `kb/sources/` —
 larger corpus directly produces sharper, more targeted, more honest documents,
 because retrieval can find the *exact right* fact for each ad, **with a citation**.
 
-Put plain text/markdown (`.txt` / `.md`) there:
+Put your documents there — **any format** (PDF, DOCX, DOC/ODT, HTML, Markdown,
+email, CSV/JSON):
 
 - **Every version of your CV** — a master plus each old/role-specific one.
   Different versions hold different bullets; the graph merges them.
@@ -47,15 +48,14 @@ Rules:
 - Keep **every fact traceable to a real experience** — this corpus is the ground
   truth the gate checks against.
 - Prefer **specifics** (numbers, technologies, scope) over adjectives.
-- **Not plain text?** Convert first — PDFs/DOCX/emails → `.txt`/`.md` (ask the
-  agent to do it). GraphRAG reads text, and the staging step below only picks up
-  `.txt` and `.md`.
+- **Any format works.** The ingest step below converts PDF/DOCX/DOC/ODT/HTML/
+  email/Markdown to text (and passes `.txt`/`.csv`/`.json` straight through), so
+  there is nothing to convert by hand.
 
-Then stage them for indexing:
+Then ingest them (any format → GraphRAG text input):
 
 ```bash
-mkdir -p kb/graphrag/input
-cp kb/sources/*.txt kb/sources/*.md kb/graphrag/input/ 2>/dev/null || true
+python3 tools/kb_ingest.py --sources kb/sources --out kb/graphrag/input
 ```
 
 ## 2. Configure models
