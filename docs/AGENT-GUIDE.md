@@ -93,6 +93,10 @@ Agent: [gmail_reconcile.py --apply] set 1 INTERVIEW, 2 REJECTED; verification
 
 ## 6. Notes
 
+- **Monitoring:** watch a run live with `bash tools/watch_queue.sh`; the raw log is
+  `state/logs/run_queue.out`; progress/status via `python3 tools/register.py --stats`
+  and `bash tools/reconcile_loop.sh`. See **[USING-IT.md](USING-IT.md)** for typical
+  prompts and what to watch.
 - **Model budget:** `run_queue.sh` stops itself on model rate/budget limits and
   tells you; top up and re-run.
 - **Rate limits / anti-bot:** the pipeline is deliberately polite (one submission
