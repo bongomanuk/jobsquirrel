@@ -73,6 +73,34 @@ matter — **truthfulness** and **targeting** — as hard gates.
 7. **Don't look like a bot.** A stealth browser, paced submissions, and named
    contacts where possible.
 
+## Why Jobsquirrel?
+
+There are plenty of "auto-apply" projects. Most optimise for **volume**: scrape
+a board, blast one CV everywhere, evade the CAPTCHA, repeat. That gets accounts
+banned, reads as spam to recruiters, and can quietly misrepresent you. Jobsquirrel
+optimises for **getting the job** — and makes truthfulness and targeting *enforced
+gates* rather than good intentions.
+
+| | Typical auto-apply bot | **Jobsquirrel** |
+| --- | --- | --- |
+| **Documents** | One CV for all, or a blind LLM rewrite | Per-role CV + letter, **grounded in a private knowledge graph with citations** |
+| **Truthfulness** | Claims "never fabricates" (unchecked) | **Enforced** — no claim without a source; unsupported lines are blocked |
+| **Quality gate** | none | **Pre-submit gate**: real identity, no placeholders, no AI-slop, ATS coverage, correct engagement |
+| **Targeting** | keyword match | **Alignment gate** maps the role family to the right CV archetype; a mismatched CV cannot be submitted |
+| **CAPTCHA / anti-bot** | solved / bypassed (stealth hacks) | **stops and hands to you** — no evasion, so no tool-driven ToS or ban risk |
+| **Who runs it** | locked to one vendor or cloud | **any agent** (opencode, Claude Code, Cursor, …) via `AGENTS.md` |
+| **Cost** | metered API per run | runs on cheap **DeepSeek Flash** (~cents/application); everything else is local |
+| **Record** | a log line, if any | **audit trail**: one row per company+role, exact files hashed & snapshotted, inbox reconciled |
+| **Setup** | hard-coded personal defaults | **person- and country-agnostic** — everything lives in `config/` |
+| **Licence** | MIT / AGPL / non-commercial | **Apache-2.0** — permissive, open-core friendly |
+
+Same idea as [ApplyPilot](https://github.com/pickle-pixel/applypilot),
+[JobPilot](https://github.com/suxrobGM/jobpilot), the [AIHawk](https://github.com/feder-cr/Auto_Jobs_Applier_AI_Agent)
+lineage and others — but where they race to apply to the most jobs, this one tries
+to **waste the fewest** — yours and the recruiter's. Fewer, better, honest
+applications you can stand behind, and a system that won't do something you'd
+regret.
+
 ---
 
 ## Quick start
