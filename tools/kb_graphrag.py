@@ -77,7 +77,7 @@ def ensure_embeddings() -> None:
         return
     except Exception:
         pass
-    script = os.path.join(ROOT, "tools", "embeddings_vulkan.sh")
+    script = os.path.join(ROOT, "tools", "embeddings.sh")
     if os.path.exists(script):
         subprocess.run(["bash", script], capture_output=True, text=True)
 

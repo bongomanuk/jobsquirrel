@@ -6,12 +6,12 @@ letters and answers truthful: the agent grounds every claim in this corpus.
 
 It is **required** for document generation: the targeted CVs and letters are written from the cited context pack this produces. (Grounding can fall back to `config/cv.json` only if you truly cannot run GraphRAG.)
 
-**Feed it everything — the more, the better.** The richer the corpus, the sharper
+**Feed it everything, the more, the better.** The richer the corpus, the sharper
 and more honest every application: retrieval can surface the exact achievement,
-metric and technology a given ad asks for, with a citation. Do not stop at a CV —
+metric and technology a given ad asks for, with a citation. Do not stop at a CV,
 add a master CV, every old/role-specific CV, a brag document with numbers,
 project/design notes, talks, reviews, awards, and a LinkedIn export. Keep every
-fact traceable to a real experience. **Any format works** — PDF, DOCX, DOC/ODT,
+fact traceable to a real experience. **Any format works**: PDF, DOCX, DOC/ODT,
 HTML, Markdown, email, CSV/JSON; the ingest step converts it to text for you.
 No corpus evidence, no claim.
 
@@ -41,7 +41,7 @@ cp kb/graphrag/settings.example.yaml kb/graphrag/settings.yaml
 cp kb/graphrag/.env.example          kb/graphrag/.env      # then edit .env
 
 # 3. Ensure the embeddings backend is up (local llama.cpp by default)
-bash tools/embeddings_vulkan.sh
+bash tools/embeddings.sh
 
 # 4. Install GraphRAG and build the index (one-off; can take a while)
 pip install graphrag          # or use an existing .venv-graphrag

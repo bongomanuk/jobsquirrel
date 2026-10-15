@@ -45,7 +45,7 @@ check() {
   if [ -f "$GR/.env" ]; then echo "  OK   .env present"; else echo "  TODO .env (copy from .env.example)"; ok=0; fi
   local gr; gr="$(find_graphrag)"
   [ -n "$gr" ] && echo "  OK   graphrag CLI: $gr" || { echo "  MISS graphrag CLI (pip install graphrag, or set GRAPHRAG_BIN)"; ok=0; }
-  bash "$ROOT/tools/embeddings_vulkan.sh" >/dev/null 2>&1 && echo "  OK   embeddings backend" || echo "  TODO embeddings backend (bash tools/embeddings_vulkan.sh)"
+  bash "$ROOT/tools/embeddings.sh" >/dev/null 2>&1 && echo "  OK   embeddings backend" || echo "  TODO embeddings backend (bash tools/embeddings.sh)"
   echo
   echo "sources: $(ls "$KB/sources" 2>/dev/null | grep -v '^\.' | wc -l | tr -d ' ') file(s) in kb/sources/"
   [ -f "$GR/output/entities.parquet" ] && echo "index:   built" || echo "index:   not built yet (run: bash tools/setup_kb.sh)"
@@ -82,8 +82,8 @@ if [ "$n" -eq 0 ]; then
   echo "NOTE: no documents ingested. Add your CVs/notes (any format) to kb/sources/ and re-run."
 fi
 
-# 3. embeddings backend
-bash "$ROOT/tools/embeddings_vulkan.sh" || true
+# 3. embeddings backend (auto-selects CUDA / Metal / Vulkan / CPU)
+bash "$ROOT/tools/embeddings.sh" || true
 
 # 4. index
 gr="$(find_graphrag)"

@@ -12,6 +12,7 @@ def _env(tmp):
     e["SUBMISSIONS_CSV"] = str(tmp / "submissions.csv")
     e["SUBMISSIONS_DIR"] = str(tmp / "snapshot")
     e["APPLICATIONS_CSV"] = str(tmp / "applications.csv")
+    e["APPLICATIONS_MD"] = str(tmp / "applications-register.md")
     return e
 
 

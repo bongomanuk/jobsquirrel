@@ -1,8 +1,8 @@
-# Profile — fill this in
+# Profile: fill this in
 
 This is the single source of truth for your identity, eligibility and standard
 answers. Every tool reads it. Copy this file to `profile.md` (same directory) and
-edit it. Keep the `- key: value` format — the tools parse it by key.
+edit it. Keep the `- key: value` format, the tools parse it by key.
 
 ## Identity
 - full name: Your Name

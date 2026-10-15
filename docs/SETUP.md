@@ -10,7 +10,7 @@
 ## 1. Prerequisites
 
 - **Python 3.10+**
-- **LibreOffice** (`soffice`) — renders the styled PDF CV/letter.
+- **LibreOffice** (`soffice`), renders the styled PDF CV/letter.
   `sudo apt-get install libreoffice` (Debian/Ubuntu) or your distro's equivalent.
 - **A stealth browser** for the submission step: Camoufox (patched Firefox).
   `pip install camoufox[geoip]` then `python3 -m camoufox fetch`.
@@ -49,13 +49,13 @@ cp config/cv.example.json        config/cv.json
 cp config/archetypes.example.json config/archetypes.json
 ```
 
-- **`config/profile.md`** — your identity, work authorisation, languages,
+- **`config/profile.md`**: your identity, work authorisation, languages,
   availability, pay, **eligibility rules** and **accuracy rules**. The parsers
   read it as `- key: value` lines. See [ELIGIBILITY.md](ELIGIBILITY.md).
-- **`config/cv.json`** — your CV as structured data (experience, projects,
+- **`config/cv.json`**: your CV as structured data (experience, projects,
   skills, education, certifications, languages, sidebar). Every bullet must be
   true; this is the ground truth the gate checks against.
-- **`config/archetypes.json`** — reusable role-family templates (a headline, a
+- **`config/archetypes.json`**: reusable role-family templates (a headline, a
   summary, skills, and tags). One 2-page CV + a base letter is generated per
   archetype, and the alignment gate maps each job to one of these families.
 
@@ -89,7 +89,7 @@ python3 tools/camoufox_browser.py --server http://127.0.0.1:9872 nav https://exa
 Commands: `status | nav | snap | click | fill | type | select | pick | fillmap |
 press | check | value | eval | wait | upload | download | headers`.
 
-## 6. Gmail (read-only) — optional but recommended
+## 6. Gmail (read-only), optional but recommended
 
 The pipeline can read application email with the single `gmail.readonly` scope to
 classify confirmations/interviews/rejections and surface verification links. It
@@ -125,7 +125,7 @@ pipeline can add interview events. `--check --days N` lists upcoming events.
 ## 6b. Knowledge base / GraphRAG (required for targeted documents)
 
 To ground generated documents in **your own documents** (with citations), set up
-the knowledge base — see [KNOWLEDGE-BASE.md](KNOWLEDGE-BASE.md) and `kb/README.md`:
+the knowledge base, see [KNOWLEDGE-BASE.md](KNOWLEDGE-BASE.md) and `kb/README.md`:
 put your docs in `kb/sources/`, configure `kb/graphrag/settings.yaml` +
 `kb/graphrag/.env`, then build the index with
 `python3 -m graphrag index --root kb/graphrag`. `tools/kb_graphrag.py` then builds

@@ -1,7 +1,7 @@
 # Run modes
 
 The pipeline can be run several ways. **The agent should explain these to the
-user and let them choose** — the user should never have to read this file.
+user and let them choose**, the user should never have to read this file.
 
 ## 1. Discover (find roles, no applications)
 
@@ -29,7 +29,7 @@ Outputs per role: `state/kb-context/<key>.md`, `state/cv-content/<key>.json`,
 `documents/applications/<Prefix>_Motivation_<key>.docx`. Review them, then move the
 roles you're happy with to an apply run (or send them yourself).
 
-## 3. Apply (generated, role-targeted CVs) — the default
+## 3. Apply (generated, role-targeted CVs), the default
 
 Full end-to-end: build the targeted documents, gate them, submit through the
 employer's ATS, and record provenance.
@@ -43,7 +43,7 @@ grounded in the knowledge base). This is the highest-quality mode.
 
 ## 4. Apply with a fixed CV (no per-role generation)
 
-Use **one** CV for every role in the run — no grounding, no per-role CV/letter.
+Use **one** CV for every role in the run, no grounding, no per-role CV/letter.
 Fast and cheap (e.g. a "general" CV), lower targeting.
 
 ```bash

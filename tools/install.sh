@@ -89,7 +89,7 @@ fi
 # ---- embeddings backend for GraphRAG (required for targeted documents) ----
 say "  note  GraphRAG embeddings (required for the knowledge base): point"
 say "        kb/graphrag/.env at a hosted embeddings API, or run the local server"
-say "        (bash tools/embeddings_vulkan.sh, needs llama.cpp)."
+say "        (bash tools/embeddings.sh, needs llama.cpp; auto-selects CUDA/Metal/Vulkan/CPU)."
 
 say ""
 say "done. Next steps:"

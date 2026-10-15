@@ -40,7 +40,7 @@ Use the project venv: `.venv/bin/python tools/<tool>.py`.
   ```
   which must return nothing.
 - Don't commit anything under `config/` (your data), `state/`, `documents/` or
-  `kb/` (generated/private) — they're git-ignored on purpose.
+  `kb/` (generated/private), they're git-ignored on purpose.
 
 ## What's most useful
 

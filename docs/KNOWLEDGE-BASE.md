@@ -23,19 +23,19 @@ kb/sources/*.txt  --graphrag index-->  kb/graphrag/output/ (graph + vectors)
 local search (`--method local|global|drift`) and writes the pack. `--check`
 verifies the index and the embeddings backend are up.
 
-## 1. Curate sources — the more, the better
+## 1. Curate sources: the more, the better
 
 The knowledge base is only as rich as the corpus you feed it. **Do not stop at
-your CV.** Dump everything truthful and specific you have into `kb/sources/` — a
+your CV.** Dump everything truthful and specific you have into `kb/sources/`, a
 larger corpus directly produces sharper, more targeted, more honest documents,
 because retrieval can find the *exact right* fact for each ad, **with a citation**.
 
-Put your documents there — **any format** (PDF, DOCX, DOC/ODT, HTML, Markdown,
+Put your documents there, **any format** (PDF, DOCX, DOC/ODT, HTML, Markdown,
 email, CSV/JSON):
 
-- **Every version of your CV** — a master plus each old/role-specific one.
+- **Every version of your CV**: a master plus each old/role-specific one.
   Different versions hold different bullets; the graph merges them.
-- **A "brag document"** — every project with *numbers*: scale, users, revenue,
+- **A "brag document"**: every project with *numbers*: scale, users, revenue,
   latency, uptime, team sizes, budgets, outcomes.
 - **Project / design / architecture notes**, RFCs, postmortems, talks, blog and
   README excerpts.
@@ -45,7 +45,7 @@ email, CSV/JSON):
 
 Rules:
 
-- Keep **every fact traceable to a real experience** — this corpus is the ground
+- Keep **every fact traceable to a real experience**: this corpus is the ground
   truth the gate checks against.
 - Prefer **specifics** (numbers, technologies, scope) over adjectives.
 - **Any format works.** The ingest step below converts PDF/DOCX/DOC/ODT/HTML/
@@ -67,18 +67,41 @@ cp kb/graphrag/settings.example.yaml kb/graphrag/settings.yaml
 cp kb/graphrag/.env.example          kb/graphrag/.env
 ```
 
-- **Completion model** — any OpenAI-compatible endpoint
+- **Completion model**: any OpenAI-compatible endpoint
   (`GRAPHRAG_API_BASE`, `GRAPHRAG_API_KEY`, `GRAPHRAG_LLM_MODEL`).
-- **Embeddings** — any OpenAI-compatible embeddings endpoint
+- **Embeddings**: any OpenAI-compatible embeddings endpoint
   (`GRAPHRAG_EMBED_BASE`, `GRAPHRAG_EMBED_MODEL`, `GRAPHRAG_EMBED_KEY`).
 
-### Local embeddings (default)
+### Embeddings backend and acceleration
 
-`tools/embeddings_vulkan.sh` starts a local `llama.cpp` server running
-`nomic-embed-text` behind an OpenAI-compatible `/v1/embeddings` on
-`127.0.0.1:11435`. Adjust `LLAMA_SERVER`, `EMBED_MODEL`, `EMBED_PORT` via env.
-Any other OpenAI-compatible embeddings server works too — just point
-`GRAPHRAG_EMBED_BASE` at it.
+Embeddings run locally, so this is the one part worth accelerating.
+`tools/embeddings.sh` starts a `llama.cpp` (`llama-server`) with the embedding
+model (`nomic-embed-text` by default) behind an OpenAI-compatible
+`/v1/embeddings` on `127.0.0.1:11435`, and **auto-selects the best backend**:
+
+| Your machine | Backend (auto) | llama.cpp build to install |
+| --- | --- | --- |
+| Apple Silicon (macOS) | `metal` | `brew install llama.cpp` (Metal is built in) |
+| NVIDIA GPU (Linux/Windows) | `cuda` | a CUDA build (`-DGGML_CUDA=ON`) or a prebuilt CUDA release |
+| AMD / Intel GPU | `vulkan` | a Vulkan build (`-DGGML_VULKAN=ON`) or a prebuilt Vulkan release |
+| No GPU | `cpu` | any build |
+
+```bash
+bash tools/embeddings.sh --check                 # report server, model, backend, endpoint
+bash tools/embeddings.sh                          # start it (idempotent)
+EMBED_BACKEND=cuda bash tools/embeddings.sh       # force a backend: metal|cuda|vulkan|cpu
+```
+
+Notes:
+
+- `EMBED_NGL` (default `99`) is how many layers to offload to the GPU; `99` means
+  all of them. `LLAMA_SERVER` is the path to `llama-server` (or the directory
+  holding it), `EMBED_MODEL` the `.gguf`, `EMBED_PORT` the port.
+- If your `llama-server` binary was not built with the selected backend, it will
+  fall back to CPU. Check the log (`EMBED_LOG`, default `/tmp/llama-server.log`)
+  for the `offloaded N/N layers to GPU` line to confirm acceleration is active.
+- Any other OpenAI-compatible embeddings server works too. Point
+  `GRAPHRAG_EMBED_BASE` at it and ignore `embeddings.sh`.
 
 > **Small-context embeddings:** if your embedding model has a small context (e.g.
 > 2048 tokens), keep `community_reports.max_length` modest (the template uses
@@ -87,7 +110,7 @@ Any other OpenAI-compatible embeddings server works too — just point
 ## 3. Build the index
 
 ```bash
-bash tools/embeddings_vulkan.sh                    # ensure the backend is up
+bash tools/embeddings.sh                          # ensure the backend is up (auto backend)
 pip install graphrag                               # or use .venv-graphrag
 python3 -m graphrag index --root kb/graphrag       # one-off; can take many minutes
 python3 tools/kb_graphrag.py --check               # index + backend + CLI
@@ -120,7 +143,7 @@ The runner does this automatically (step "grounding") for each queued role.
 
 | Symptom | Fix |
 |---|---|
-| `embeddings backend DOWN` | `bash tools/embeddings_vulkan.sh`; check `EMBED_PORT`. |
+| `embeddings backend DOWN` | `bash tools/embeddings.sh`; check `EMBED_PORT` and the log. |
 | `input (...) is larger than the max context size` | Lower `community_reports.max_length`; re-index. |
 | GraphRAG CLI missing | `pip install graphrag` (or set `GRAPHRAG_BIN`). |
 | Every run re-computes | Ensure `cache.type: json` persists between runs. |
