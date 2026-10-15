@@ -1,0 +1,54 @@
+# Local config (contains your personal data — never commit)
+config/profile.md
+config/cv.json
+config/archetypes.json
+
+# Secrets / tokens (kept OUTSIDE the repo by default, but ignore any accidents)
+credentials.json
+token.json
+*.token
+.env
+
+# Python
+.venv/
+.venv-*/
+__pycache__/
+*.pyc
+
+# Generated state (your applications, queues, logs)
+state/*.csv
+state/*.csv.lock
+state/queue*.tsv
+state/queue.done
+state/queue.claimed
+state/queue.retry
+state/queue.stop
+state/queue.tokenfail*
+state/active_*
+state/logs/
+state/job-descriptions/
+state/ats/
+state/kb-context/
+state/cv-content/
+state/letters-content/
+state/human/
+state/gmail_reconcile_ack.txt
+state/counts.md
+state/interviews.md
+
+# Generated documents (your CVs, letters, snapshots)
+documents/applications/*
+!documents/applications/.gitkeep
+documents/submitted/
+documents/archetypes/*
+!documents/archetypes/.gitkeep
+documents/assets/headshot.png
+
+# Knowledge base (personal sources + index)
+kb/sources/
+kb/graphrag/
+
+# Office temp / outputs
+*.docx
+*.pdf
+~$*

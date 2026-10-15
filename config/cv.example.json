@@ -1,0 +1,56 @@
+{
+  "_comment": "Your CV content, as structured data. Copy to config/cv.json and edit. Every bullet must be true and traceable. cv_builder.py renders this into ATS-safe .docx and styled .pdf.",
+  "name": "Your Name",
+  "headline_default": "Senior Engineer  ·  Area A  ·  Area B",
+  "tagline_default": "Area A  ·  Area B  ·  Area C",
+  "profile_default": "A short, honest professional summary used when a role has no bespoke profile. Lead with scope, seniority and outcomes, not tool names.",
+  "skills": [
+    "Category A: specific skills, technologies, and outcomes.",
+    "Category B: ..."
+  ],
+  "experience": [
+    {
+      "employer": "Most Recent Employer",
+      "dates": "2023 - Present",
+      "title": "Your Title",
+      "location": "City, Country",
+      "bullets": [
+        "A concrete, quantified achievement (what, how big, what changed).",
+        "Another achievement. Past roles stay past tense."
+      ],
+      "extras": {
+        "ai": "Optional role-tag bullet, shown only when an archetype has the 'ai' tag.",
+        "arch": "Optional 'arch'-tag bullet.",
+        "security": "Optional 'security'-tag bullet.",
+        "infra": "Optional 'infra'-tag bullet.",
+        "leadership": "Optional 'leadership'-tag bullet."
+      }
+    },
+    {
+      "employer": "Earlier Employer",
+      "dates": "2015 - 2023",
+      "title": "Earlier Title",
+      "location": "City, Country",
+      "bullets": ["..."]
+    }
+  ],
+  "projects": [
+    "Selected work / project, with the outcome and the technologies."
+  ],
+  "education": [
+    "Degree, University, Year."
+  ],
+  "certifications": [
+    "Certification (Body, Year)"
+  ],
+  "languages": [
+    "Language - level"
+  ],
+  "sidebar": {
+    "education": ["Degree, University, Year", "Second line if needed"],
+    "certificates": ["Certification (Body, Year)"],
+    "leadership": ["Leadership claim (team sizes, scope, budget)"],
+    "strengths": ["A short strength statement"],
+    "ai_ml": ["AI/ML highlights (shown only for AI/ML archetypes)"]
+  }
+}

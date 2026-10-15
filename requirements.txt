@@ -1,0 +1,16 @@
+# Core (required for CV/letter building)
+python-docx>=1.0
+
+# Gmail + Google Calendar integration (optional, for read/reconcile)
+google-auth
+google-auth-oauthlib
+google-api-python-client
+
+# Browser automation for the application step (optional)
+# Install, then fetch the patched Firefox build:
+#   pip install camoufox[geoip]
+#   python3 -m camoufox fetch
+camoufox
+
+# LibreOffice (system package, not pip) is needed to render the styled PDF:
+#   sudo apt-get install libreoffice   # or your distro's equivalent
