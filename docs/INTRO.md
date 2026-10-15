@@ -18,9 +18,10 @@ replies. You give it your CV and a few rules; it does the repetitive work.
    you can work, work authorisation, languages, and the tech you actually use).
    Anything else is recorded as closed, not applied to.
 3. **Ground every claim** — it builds a private **knowledge base** from your own
-   documents (old CVs, project notes, a "brag" doc) and, for each role, pulls out
-   the most relevant, *cited* facts. The documents are written only from those
-   facts, so nothing is invented.
+   documents — every version of your CV, project notes, a "brag" doc, talks,
+   reviews, a LinkedIn export; **the more you feed it, the better every
+   application gets** — and, for each role, pulls out the most relevant, *cited*
+   facts. The documents are written only from those facts, so nothing is invented.
 4. **Tailor** — it picks the CV family that matches the role, then writes a CV and
    a cover letter targeted at that specific job, in your voice.
 5. **Gate** — before anything is sent, it checks the documents: real identity, no
@@ -59,7 +60,9 @@ tireless assistant working under your instructions", not "press go and forget it
 
 - Some details about you, your rules, and the claims you must never overstate
   (I'll interview you — you won't fill in forms).
-- Your CV and any documents you want the knowledge base to learn from.
+- Your CV and **as much other material as you can share** — every old CV, a
+  project/brag doc, design notes, talks, reviews (this is what makes the
+  knowledge base — and therefore every application — sharp and specific).
 - Optional: access so I can track replies — read-only Gmail, and (for LinkedIn
   Easy Apply) a one-time login. I'll walk you through both.
 - A few human-only moments as they come up: solving a CAPTCHA/2FA, and approving

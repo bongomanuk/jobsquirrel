@@ -6,6 +6,14 @@ letters and answers truthful: the agent grounds every claim in this corpus.
 
 It is **required** for document generation: the targeted CVs and letters are written from the cited context pack this produces. (Grounding can fall back to `config/cv.json` only if you truly cannot run GraphRAG.)
 
+**Feed it everything — the more, the better.** The richer the corpus, the sharper
+and more honest every application: retrieval can surface the exact achievement,
+metric and technology a given ad asks for, with a citation. Do not stop at a CV —
+add a master CV, every old/role-specific CV, a brag document with numbers,
+project/design notes, talks, reviews, awards, and a LinkedIn export. Keep every
+fact traceable to a real experience. Documents must be `.txt`/`.md` (convert
+PDFs/DOCX first). No corpus evidence, no claim.
+
 ## Layout
 
 ```
