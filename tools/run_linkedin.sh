@@ -7,6 +7,10 @@
 #
 # Browser: Camoufox (tools/camoufox_server.py + tools/camoufox_browser.py).
 #
+# NOTE: LinkedIn's User Agreement prohibits automated activity. This mode is
+# opt-in; automating Easy Apply may breach those terms and can get your account
+# restricted. Use at your own risk; prefer the employer's own ATS. See DISCLAIMER.md.
+#
 # Usage:  bash tools/run_linkedin.sh
 # Queue format (TAB-separated): company  role  url  cv  ats  key
 set -u

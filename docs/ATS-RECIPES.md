@@ -78,7 +78,8 @@ Interview invites often use Google Calendar / Teams / Zoom / Ashby scheduling.
 (e.g. Ashby `you.ashbyhq.com/meeting/<id>`) are driven the same way as an ATS form.
 
 ## Rules of thumb
-- Prefer the employer ATS over LinkedIn Easy Apply.
+- Prefer the employer ATS over LinkedIn Easy Apply (automating LinkedIn may
+  breach its User Agreement — see [DISCLAIMER.md](../DISCLAIMER.md)).
 - One submission, then back off — never hammer a rate-limited endpoint.
 - On any CAPTCHA/2FA/checkpoint, stop; do not evade; record `BLOCKED`/`MANUAL`.
 - Record only with real evidence (the exact thank-you text or confirmation email).

@@ -83,10 +83,17 @@ python3 tools/gmail_calendar_auth.py --check --days 14
 
 ## 4. LinkedIn (optional — Easy Apply only)
 
+> ⚠️ **Terms-of-service risk.** LinkedIn's User Agreement prohibits automated
+> access and activity. Driving Easy Apply with a browser bot — however human-paced
+> — **may breach those terms and can get your account restricted or banned.**
+> This is **opt-in** and does nothing unless you set it up; if you use it, you
+> accept that risk. Prefer the employer's own ATS wherever one exists. (Not legal
+> advice.)
+
 Many roles are best applied via the employer's own ATS. LinkedIn Easy Apply is
 supported but deliberately **serialised and paced** (one at a time, human-like
 delays, a daily cap) via `tools/run_linkedin.sh`, using a **dedicated persistent
-browser profile** so it doesn't re-trigger device/2FA checks.
+browser profile** so you stay logged in and a device/2FA prompt isn't re-triggered.
 
 1. Start the browser with that profile, headful, and log in once:
    ```bash
@@ -97,7 +104,9 @@ browser profile** so it doesn't re-trigger device/2FA checks.
    ```
 2. Prefer the employer's own ATS where one exists; put LinkedIn-only roles in
    `state/queue-linkedin.tsv` and run `bash tools/run_linkedin.sh`.
-3. **Never mass-apply and stop on any CAPTCHA/checkpoint** — do not evade.
+3. **Never mass-apply, and stop on any CAPTCHA/checkpoint** — do not evade. If a
+   checkpoint appears (or you're unsure whether it's allowed), stop and don't use
+   this mode.
 
 ## 5. Per-site ATS accounts (Workday, SuccessFactors, Ashby, own sites…)
 

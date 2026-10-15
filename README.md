@@ -70,8 +70,9 @@ matter — **truthfulness** and **targeting** — as hard gates.
 5. **Gate before submit.** Nothing is uploaded until the pre-submit gate passes.
 6. **Everything is recorded.** One row per (company, role); the exact bytes sent
    are snapshotted and hashed.
-7. **Don't look like a bot.** A stealth browser, paced submissions, and named
-   contacts where possible.
+7. **Be a considerate client, not a sneaky one.** A real browser profile, paced
+   submissions, named contacts, and a hard stop on any CAPTCHA/2FA. The goal is to
+   be polite, not to evade — and to prefer the employer's own ATS over portals.
 
 ## Why Jobsquirrel?
 
@@ -230,7 +231,7 @@ tools/                      # the pipeline (language/library-free CLI tools)
   camoufox_server.py        #   one stealth browser behind a small HTTP API
   camoufox_browser.py       #   the agent-facing browser CLI (nav/snap/click/fill/...)
   run_queue.sh              #   the queue runner: applies to each queued role end-to-end
-  run_linkedin.sh           #   serialized, paced LinkedIn Easy Apply (anti-detection)
+  run_linkedin.sh           #   serialized, paced LinkedIn Easy Apply (opt-in; see ToS note)
   build_human_queue.py      #   route CAPTCHA/2FA-blocked roles to a human queue
   reconcile_loop.sh         #   periodically reconcile + refresh counts
   watch_queue.sh            #   live queue progress
@@ -313,6 +314,10 @@ CLOSED`.
 - **Keep the human-in-the-loop safeguards** — the email approval, the
   document/alignment gates, and the stop-on-CAPTCHA/2FA behaviour. Don't use this
   to evade bot protections, spam, or misrepresent yourself.
+- **LinkedIn is opt-in and ToS-risky.** LinkedIn's User Agreement prohibits
+  automated access and activity; driving Easy Apply with a browser bot may breach
+  those terms and can get your account restricted. It's off unless you set it up,
+  and the risk is yours. Prefer the employer's own ATS where one exists.
 - See **[DISCLAIMER.md](DISCLAIMER.md)** for the full acceptable-use and
   liability statement. It is **not legal advice**.
 

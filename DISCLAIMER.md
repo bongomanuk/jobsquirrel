@@ -54,6 +54,13 @@ you can do, tailoring truthful documents, and applying where you are eligible.
 The authors and contributors are **not responsible for misuse** and do not
 endorse uses outside the intended one.
 
+**Some sites forbid automation outright.** LinkedIn, in particular, prohibits
+automated access and activity in its User Agreement. Driving Easy Apply with a
+browser bot — however paced — **may breach those terms and can get your account
+restricted or banned**. That capability is **opt-in and off unless you enable
+it**, and the decision and the risk are yours. Wherever an employer runs its own
+ATS, apply there instead.
+
 ## 4. Third-party services
 
 Job boards, ATS platforms, email and calendar providers, and model providers are
