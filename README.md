@@ -14,16 +14,22 @@ It is **person-agnostic and country-agnostic**: nothing here is tied to a
 particular person, employer, language or country. You configure everything in
 `config/`.
 
-**First run — just hand it to an AI agent.** Point your agent at this repo and it
-will walk you through setup itself: it interviews you about your identity,
-eligibility, languages, availability and the claims you must never overstate,
-writes your config, builds your CV archetypes, and builds a private knowledge
-graph from your documents — explaining each step. Quick version:
+**First run — one prompt. No cloning, no setup.** Start your agent and paste this:
 
-```bash
-cd jobsquirrel && opencode        # /connect + /models, then:
-# "Read AGENTS.md and docs/INTRO.md, then run the bootstrap in BOOTSTRAP.md."
+```text
+Clone https://github.com/bongomanuk/jobsquirrel.git into ./jobsquirrel and set it
+up with me: read AGENTS.md, then read docs/INTRO.md to me and run the first-run
+bootstrap in BOOTSTRAP.md.
 ```
+
+That's the whole installation. The agent clones the repo, installs the
+dependencies, interviews you about your identity, eligibility, languages,
+availability and the claims you must never overstate, writes your config, builds
+your CV archetypes and a private knowledge graph from your documents, and sets up
+your accounts — explaining each step in plain language.
+
+Already have it cloned? Just `cd jobsquirrel`, run `opencode`, and say:
+*"Read AGENTS.md, introduce the project, and run the bootstrap."*
 
 Works the same with Claude Code, Cursor or any file-and-shell agent (the contract
 is [AGENTS.md](AGENTS.md)). See
@@ -70,6 +76,10 @@ matter — **truthfulness** and **targeting** — as hard gates.
 ---
 
 ## Quick start
+
+**Easiest: let an agent do it** (see the one-prompt bootstrap at the top). The
+manual steps below are what the agent runs for you — handy for reference or if
+you'd rather drive it yourself.
 
 ```bash
 # 1. Install everything (Python deps + Camoufox browser + GraphRAG + LibreOffice check)

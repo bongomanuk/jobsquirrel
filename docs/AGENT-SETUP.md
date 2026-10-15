@@ -38,10 +38,10 @@ that, and you should be wary of anything that claims to be.
 ## 1. Run it with opencode (recommended — and the cheapest to run)
 
 [opencode](https://opencode.ai) auto-loads `AGENTS.md`, so it already knows the
-procedures before you say anything.
+procedures before you say anything. **You don't even need to clone the repo** —
+the agent can do that too.
 
 ```bash
-cd jobsquirrel
 opencode
 ```
 
@@ -52,16 +52,21 @@ First time only, connect a model provider:
 /models      # pick a DeepSeek model (see §3)
 ```
 
-Then, as your first message:
+Then paste this single prompt — that is the entire installation:
 
 ```text
-Read AGENTS.md, then read docs/INTRO.md to me and run the bootstrap in
-BOOTSTRAP.md. Explain each step and set everything up with me.
+Clone https://github.com/bongomanuk/jobsquirrel.git into ./jobsquirrel and set it
+up with me: read AGENTS.md, read docs/INTRO.md to me, then run the first-run
+bootstrap in BOOTSTRAP.md.
 ```
 
-The agent will install dependencies, walk you through the interview, build your
-config + archetypes + knowledge base, and set up accounts. Only when
-`python3 tools/init_config.py --check` is clean does it start applying.
+The agent clones the repo, installs the dependencies, walks you through the
+interview, builds your config + archetypes + knowledge base, and sets up your
+accounts. Only when `python3 tools/init_config.py --check` is clean does it start
+applying.
+
+If you already cloned it, just `cd jobsquirrel`, run `opencode`, and say:
+*"Read AGENTS.md, introduce the project, and run the bootstrap."*
 
 You can also pin the model in `opencode.json` (or `opencode.jsonc`) at the repo
 root so the agent always starts on a cheap model:
