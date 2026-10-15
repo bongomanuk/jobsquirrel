@@ -1,6 +1,9 @@
-# Jobsquirrel
+# 🐿️ Jobsquirrel
 
 **An open, self-hosted job-application agent: hand it your CV and it finds, tailors, gates and applies to jobs for you.**
+
+*A diligent squirrel for your job hunt. It gathers the roles, tailors each one,
+and never stashes a nut it can't actually crack.* 🐿️
 
 An agentic pipeline that takes **your CV** and applies to jobs for you — end to
 end — in a way that is honest, targeted, and auditable. You give it your CV and a
@@ -56,6 +59,8 @@ hand does not scale; doing it carelessly looks like spam and can misrepresent yo
 This project automates the repetitive parts while keeping the two things that
 matter — **truthfulness** and **targeting** — as hard gates.
 
+🐿️ It gathers tirelessly, targets precisely, and never embellishes. That's the whole idea.
+
 ## Design principles
 
 1. **Never fabricate.** Every claim must be supported by `config/cv.json` and
@@ -76,7 +81,7 @@ matter — **truthfulness** and **targeting** — as hard gates.
    submissions, named contacts, and a hard stop on any CAPTCHA/2FA. The goal is to
    be polite, not to evade — and to prefer the employer's own ATS over portals.
 
-## Why Jobsquirrel?
+## Why Jobsquirrel? 🐿️
 
 There are plenty of "auto-apply" projects. Most optimise for **volume**: scrape
 a board, blast one CV everywhere, evade the CAPTCHA, repeat. That gets accounts
@@ -104,7 +109,7 @@ to **waste the fewest** — yours and the recruiter's. Fewer, better, honest
 applications you can stand behind, and a system that won't do something you'd
 regret.
 
-## The knowledge graph: feed it everything you've got
+## The knowledge graph: feed it everything you've got 🥜
 
 The single most powerful thing you can do is give the pipeline **a lot** about
 yourself. Drop your master CV, **every** old and role-specific CV, a "brag
