@@ -11,4 +11,4 @@ Documents sent are recorded in `state/submissions.csv`.
 
 | Date | Company | Role | ATS | Notes |
 |---|---|---|---|---|
-| 2026-10-15 | Acme | Eng |  | Thank you for applying, your application was received letter: `/tmp/opencode/gatetest/letter.txt` |
+| 2026-10-15 | Acme | Eng |  | Thank you for applying, your application was received letter: `/tmp/pytest-of-pete/pytest-1/test_gate_enforce_off_bypasses0/letter.txt` |

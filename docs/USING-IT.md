@@ -54,6 +54,8 @@ Everything is observable. Useful things to ask for, or run yourself:
 - **Register** — `python3 tools/register.py --stats`;
   `python3 tools/register.py --list --status INTERVIEW`;
   `python3 tools/register.py --show "<Company>"`.
+- **Conversion** — `python3 tools/outcomes.py` — response rate by source (ATS/site)
+  and by CV, so you invest where it actually converts.
 - **Queue state** — `state/queue.tsv` (pending), `state/queue.done` (finished,
   keyed `company|role`).
 - **Replies / counts** — `bash tools/reconcile_loop.sh` keeps reconciliation and
