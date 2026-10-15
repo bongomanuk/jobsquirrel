@@ -180,15 +180,25 @@ email, and so on.
 - **[docs/AGENT-SETUP.md](docs/AGENT-SETUP.md)** — bootstrap it with opencode,
   Claude Code or any agent; keep it cheap with opencode + DeepSeek Flash; and what
   it typically costs to run.
+- **[docs/USING-IT.md](docs/USING-IT.md)** — how you actually use it day to day:
+  **typical prompts** and how to **monitor** a run.
 - **[docs/AGENT-GUIDE.md](docs/AGENT-GUIDE.md)** — the human's guide to handing
   the project over, with an example brief and a worked exchange.
 - **[docs/INTRO.md](docs/INTRO.md)** — the plain-language introduction the agent
   reads to you on first run (what it is, how it works, the modes, and your privacy).
 
+You steer it with plain English. Typical prompts:
+
 ```text
-"Read AGENTS.md. Find new senior roles, queue them, run the pipeline,
- then reconcile with my email and tell me what needs me."
+"Find new senior roles and queue them."
+"Prepare documents for the top 5 — don't send yet."      # REVIEW: build + gate only
+"Run the pipeline."                                       # apply, most senior first
+"How's it going? What's running, done, and what needs me?"
+"Reconcile with my email and tell me what needs me."
 ```
+
+Watch a run live with `bash tools/watch_queue.sh`; ask for *"status + what it's
+cost so far"* any time. Full prompt/monitoring guide: [docs/USING-IT.md](docs/USING-IT.md).
 
 ## Layout
 
@@ -273,6 +283,7 @@ CLOSED`.
 - [docs/ELIGIBILITY.md](docs/ELIGIBILITY.md) — writing your eligibility + accuracy rules.
 - [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md) — bootstrap with opencode / Claude Code / any agent, plus cost and cheap-model tips.
 - [docs/AGENT-GUIDE.md](docs/AGENT-GUIDE.md) — how to hand it to and drive it with an AI agent.
+- [docs/USING-IT.md](docs/USING-IT.md) — typical prompts and how to monitor a run.
 - [docs/INTRO.md](docs/INTRO.md) — the startup introduction the agent delivers to you.
 - [BOOTSTRAP.md](BOOTSTRAP.md) — the first-run interview the agent runs to set everything up.
 - [docs/ACCOUNT-SETUP.md](docs/ACCOUNT-SETUP.md) — Gmail, Calendar, LinkedIn, browser and credentials.

@@ -5,6 +5,10 @@ There are two ways to work a role: **manually** (fine-grained control) or via th
 automatically. Both rely on the same gates, so the automation never sends
 anything a human run wouldn't.
 
+> Day-to-day, you drive this by prompting an agent in plain English and watching
+> it work — see **[USING-IT.md](USING-IT.md)** for typical prompts and how to
+> monitor a run.
+
 ## Per-role procedure
 
 ```
