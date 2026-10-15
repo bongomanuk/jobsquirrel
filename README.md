@@ -215,6 +215,7 @@ CLOSED`.
 - [docs/ACCOUNT-SETUP.md](docs/ACCOUNT-SETUP.md) — Gmail, Calendar, LinkedIn, browser and credentials.
 - [docs/KNOWLEDGE-BASE.md](docs/KNOWLEDGE-BASE.md) — set up the GraphRAG knowledge base (required for targeted documents).
 - [docs/RUN-MODES.md](docs/RUN-MODES.md) — discover / review / apply / fixed-CV run modes.
+- [DISCLAIMER.md](DISCLAIMER.md) — acceptable use, no-warranty and liability statement.
 
 ## Safety and privacy
 
@@ -226,6 +227,20 @@ CLOSED`.
   generated content are git-ignored.
 - Do not commit `config/profile.md`, `config/cv.json` or `config/archetypes.json`
   — they contain your personal data.
+
+## Legal and acceptable use
+
+- Provided **"AS IS"** under Apache-2.0, **without warranty** and with liability
+  limited (see [LICENSE](LICENSE), §§7–8). You run it on your own accounts and
+  **you own the outcome**.
+- **You are responsible for complying with each site's terms of service and
+  applicable law** (automated access, anti-bot rules, data protection) and for
+  the accuracy of your `config/` and applications.
+- **Keep the human-in-the-loop safeguards** — the email approval, the
+  document/alignment gates, and the stop-on-CAPTCHA/2FA behaviour. Don't use this
+  to evade bot protections, spam, or misrepresent yourself.
+- See **[DISCLAIMER.md](DISCLAIMER.md)** for the full acceptable-use and
+  liability statement. It is **not legal advice**.
 
 ## License
 
