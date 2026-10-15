@@ -263,6 +263,9 @@ def main():
     ap.add_argument("--answer", action="append", default=[],
                     help="free-text form answer file to validate against the authoritative CV")
     ap.add_argument("--warnings-as-errors", action="store_true")
+    ap.add_argument("--record", action="store_true",
+                    help="on PASS, write a gate receipt for the CV+letter (hash-stamped); "
+                         "record_submission.py requires a matching receipt to record SUBMITTED")
     args = ap.parse_args()
 
     if not os.path.isfile(args.letter):
@@ -317,6 +320,15 @@ def main():
     if errors or (args.warnings_as_errors and warnings):
         print("RESULT: FAIL")
         sys.exit(1)
+    if args.record:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import gate_receipt as GR
+        rec = GR.emit("documents", {"cv": args.cv, "letter": args.letter},
+                      meta={"company": args.company, "engagement": args.engagement})
+        if rec:
+            print(f"gate receipt: {os.path.relpath(rec, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))}")
+        else:
+            print("gate receipt: not written (no --cv/--letter files found)")
     print("RESULT: PASS")
 
 

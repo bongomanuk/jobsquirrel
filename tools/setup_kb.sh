@@ -19,11 +19,13 @@ explain() {
   cat <<'EOF'
 The knowledge base (GraphRAG)
 -----------------------------
+This is how targeted documents are generated, so it is required — not optional.
 We build a graph of the people, projects, skills, metrics and certifications in
-YOUR documents (old CVs, project notes, a brag doc). For each job, the pipeline
-retrieves the most relevant, cited facts from that graph and writes the CVs and
-letters only from them — so they stay accurate and well-grounded. Everything runs
-locally and is never shared. It's optional; without it we ground on config/cv.json.
+YOUR documents (every CV, project notes, a brag doc, talks, reviews) and, for
+each job, retrieve the most relevant, cited facts from it. The CVs and letters are
+written only from those facts, so they stay accurate. Feed it as much as you can:
+the more you add, the better every application. Any format works — this converts
+PDF/DOCX/DOC/ODT/HTML/email/Markdown to text for you. Everything runs locally.
 EOF
 }
 
@@ -66,15 +68,18 @@ if [ ! -f "$GR/.env" ] && [ -f "$GR/.env.example" ]; then
   cp "$GR/.env.example" "$GR/.env"; echo "wrote kb/graphrag/.env (edit GRAPHRAG_* values)"
 fi
 
-# 2. stage sources
-n=0
-for f in "$KB"/sources/*.txt "$KB"/sources/*.md; do
-  [ -e "$f" ] || continue
-  cp "$f" "$GR/input/" && n=$((n+1))
-done
-echo "staged $n source file(s) into kb/graphrag/input/"
+# 2. stage + ingest sources (any format -> text/GraphRAG-native)
+if [ -f "$ROOT/tools/kb_ingest.py" ]; then
+  python3 "$ROOT/tools/kb_ingest.py" --sources "$KB/sources" --out "$GR/input" || {
+    echo "ingest failed; falling back to copying .txt/.md only"
+    for f in "$KB"/sources/*.txt "$KB"/sources/*.md; do [ -e "$f" ] && cp "$f" "$GR/input/"; done
+  }
+else
+  for f in "$KB"/sources/*.txt "$KB"/sources/*.md; do [ -e "$f" ] || continue; cp "$f" "$GR/input/"; done
+fi
+n=$(ls "$GR/input" 2>/dev/null | grep -v '^\.' | wc -l | tr -d ' ')
 if [ "$n" -eq 0 ]; then
-  echo "NOTE: no documents in kb/sources/. Add your CVs/notes as .txt/.md, then re-run."
+  echo "NOTE: no documents ingested. Add your CVs/notes (any format) to kb/sources/ and re-run."
 fi
 
 # 3. embeddings backend

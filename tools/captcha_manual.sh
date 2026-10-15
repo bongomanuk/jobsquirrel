@@ -39,7 +39,12 @@ while IFS=$'\t' read -r company role url cv letter reason; do
     s|S) continue ;;
     *)
       echo "$company|$role" >> "$DONE"
-      python3 "$ROOT/tools/record_submission.py" \
+      # Gate the documents (best effort) so the ledger carries a receipt. A
+      # genuine human submission in the user's own browser is allowed to bypass
+      # enforcement via GATE_ENFORCE=0.
+      python3 "$ROOT/tools/check_documents.py" --letter "$letter" ${cv:+--cv "$cv"} \
+        --company "$company" --record >/dev/null 2>&1 || true
+      GATE_ENFORCE=0 python3 "$ROOT/tools/record_submission.py" \
         --company "$company" --role "$role" --ats "manual" --url "$url" \
         --cv "$cv" --letter "$letter" --status SUBMITTED \
         --evidence "submitted manually in the user's own browser (captcha solved there)" 2>/dev/null \

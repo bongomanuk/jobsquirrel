@@ -62,7 +62,10 @@ reports a clean config.
    (`state/kb-context/<key>.md`), `config/cv.json` and `config/profile.md`
    support. If a JD wants something the CV doesn't evidence, leave it out.
 2. **Never submit a document that fails the gate.** `check_documents.py` and
-   `check_alignment.py` must both print `RESULT: PASS` before any upload.
+   `check_alignment.py` must both print `RESULT: PASS` before any upload. This is
+   **enforced in code**: run the pre-submit gate with `--record`, and
+   `record_submission.py` refuses to record a `SUBMITTED` row without a fresh,
+   hash-matching gate receipt for the exact CV and letter you uploaded.
 3. **Eligibility first.** Only apply to roles compatible with the candidate's
    rules in `config/profile.md` (location/work-model, languages, stack). If
    unclear or excluded, record `CLOSED`/`BLOCKED` with the reason and stop.
@@ -181,10 +184,12 @@ python3 tools/cv_target.py --key <key> --content state/cv-content/<key>.json
 #     via tools/cv_builder.render_motivation({...}) -> documents/applications/<Prefix>_Motivation_<key>.docx
 #     (see tools/make_letter.py for the minimal example)
 
-# (6) PRE-SUBMIT GATE — nothing is uploaded until this prints RESULT: PASS
+# (6) PRE-SUBMIT GATE — nothing is uploaded until this prints RESULT: PASS.
+#     --record writes a hash-stamped gate receipt; record_submission.py REFUSES
+#     to record SUBMITTED without it. Gate the EXACT CV+letter you will upload.
 python3 tools/check_documents.py --letter documents/applications/<Prefix>_Motivation_<key>.docx \
-    --cv documents/archetypes/<Prefix>_CV_<Archetype>.docx --company "<Company>" \
-    --ats-keywords state/ats/<key>.txt [--engagement contract]
+    --cv documents/applications/<Prefix>_CV_<key>.docx --company "<Company>" \
+    --ats-keywords state/ats/<key>.txt [--engagement contract] --record
 
 # (7) Apply via the stealth browser through the employer's own ATS
 python3 tools/camoufox_server.py --port 9872 &                       # once per session

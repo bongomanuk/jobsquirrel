@@ -11,8 +11,9 @@ and more honest every application: retrieval can surface the exact achievement,
 metric and technology a given ad asks for, with a citation. Do not stop at a CV —
 add a master CV, every old/role-specific CV, a brag document with numbers,
 project/design notes, talks, reviews, awards, and a LinkedIn export. Keep every
-fact traceable to a real experience. Documents must be `.txt`/`.md` (convert
-PDFs/DOCX first). No corpus evidence, no claim.
+fact traceable to a real experience. **Any format works** — PDF, DOCX, DOC/ODT,
+HTML, Markdown, email, CSV/JSON; the ingest step converts it to text for you.
+No corpus evidence, no claim.
 
 ## Layout
 
@@ -32,9 +33,8 @@ kb/
 ## Build it
 
 ```bash
-# 1. Put your documents in kb/sources/ as .txt / .md, then stage them for indexing
-mkdir -p kb/graphrag/input
-cp kb/sources/*.{txt,md} kb/graphrag/input/ 2>/dev/null || true
+# 1. Put your documents in kb/sources/ (any format), then ingest them to text
+python3 tools/kb_ingest.py --sources kb/sources --out kb/graphrag/input
 
 # 2. Configure
 cp kb/graphrag/settings.example.yaml kb/graphrag/settings.yaml
