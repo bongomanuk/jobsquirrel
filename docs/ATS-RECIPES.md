@@ -5,7 +5,7 @@ click | fill | type | select | pick | fillmap | press | check | value | eval |
 wait | upload | download | headers`. Refs renumber after every `snap`, so prefer
 CSS selectors with `fill '<sel>' '<text>'`. Custom widgets that render options in
 a listbox (Workday, Greenhouse react-select, Ashby) are **not** clickable via
-dispatched events — use `pick '<option text>' ['<opener selector>']` (it scrolls
+dispatched events, use `pick '<option text>' ['<opener selector>']` (it scrolls
 virtualised lists and clicks with real input).
 
 > These recipes are starting points. Employers change their forms; when a step
@@ -30,7 +30,7 @@ Open `<job-url>/applications/new`.
   and verify the label renders.
 - If the careers host blocks the embed, apply via `job-boards.greenhouse.io/<co>/jobs/<id>`
   (or `.../job_app?for=<co>&token=<gh_jid>`).
-- **Email security-code gate**: on submit Greenhouse emails an 8-char code — read
+- **Email security-code gate**: on submit Greenhouse emails an 8-char code, read
   it (`tools/email_verify.py --query 'from:us.greenhouse-mail.io OR from:greenhouse.io newer_than:1d'`)
   and enter it into the code inputs, then resubmit.
 
@@ -40,22 +40,22 @@ Open `<job-url>/applications/new`.
 
 ## Ashby
 - Fills and submits fine **if** custom yes/no buttons are set explicitly: click
-  `button[data-option="no"]` (or `yes`) — otherwise "Missing entry for required
+  `button[data-option="no"]` (or `yes`), otherwise "Missing entry for required
   field".
 - **Location autocomplete** (e.g. "current location"): type the city, wait for the
   dropdown, then pick the suggestion (the country entry if the city won't commit).
 - **Application limits**: some companies cap applications per N days ("we can see
   you've applied to another role within the last 30 days"). This is server-side;
-  it cannot be circumvented — record `CLOSED` with the reason.
+  it cannot be circumvented, record `CLOSED` with the reason.
 
 ## Workday (common at large enterprises)
 - **Multiselect "How did you hear about us?"** is a virtualised list that renders
   collapsed: click to expand, type-to-filter + Enter, or drill in and real-click
   the leaf. Verify the chip renders, then Save & Continue.
-- **Sign-in issues**: prefer the anonymous path — on the job page choose **"Apply
+- **Sign-in issues**: prefer the anonymous path, on the job page choose **"Apply
   Manually"** (not "Autofill with resume"). If only an account works, create one
   (`tools/accounts.py --for <url>`) or trigger password reset and read the code
-  from the inbox. Repeat sub-steps ("Save and Continue") can silently no-op —
+  from the inbox. Repeat sub-steps ("Save and Continue") can silently no-op,
   re-snap and re-click until the section saves.
 
 ## Jobylon / Novare Executive Search
@@ -79,7 +79,7 @@ Interview invites often use Google Calendar / Teams / Zoom / Ashby scheduling.
 
 ## Rules of thumb
 - Prefer the employer ATS over LinkedIn Easy Apply (automating LinkedIn may
-  breach its User Agreement — see [DISCLAIMER.md](../DISCLAIMER.md)).
-- One submission, then back off — never hammer a rate-limited endpoint.
+  breach its User Agreement, see [DISCLAIMER.md](../DISCLAIMER.md)).
+- One submission, then back off, never hammer a rate-limited endpoint.
 - On any CAPTCHA/2FA/checkpoint, stop; do not evade; record `BLOCKED`/`MANUAL`.
 - Record only with real evidence (the exact thank-you text or confirmation email).

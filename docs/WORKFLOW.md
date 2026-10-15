@@ -6,7 +6,7 @@ automatically. Both rely on the same gates, so the automation never sends
 anything a human run wouldn't.
 
 > Day-to-day, you drive this by prompting an agent in plain English and watching
-> it work — see **[USING-IT.md](USING-IT.md)** for typical prompts and how to
+> it work, see **[USING-IT.md](USING-IT.md)** for typical prompts and how to
 > monitor a run.
 
 ## Per-role procedure
@@ -27,7 +27,7 @@ python3 tools/check_alignment.py --cv documents/archetypes/<Prefix>_CV_<Archetyp
 python3 tools/cv_target.py --key <key> --content state/cv-content/<key>.json
 #    ...then render the letter (see tools/make_letter.py / cv_builder.render_motivation)
 
-# 5. PRE-SUBMIT GATE — nothing is uploaded until this prints RESULT: PASS.
+# 5. PRE-SUBMIT GATE: nothing is uploaded until this prints RESULT: PASS.
 #    --record writes a hash-stamped receipt; record_submission.py (step 7)
 #    REFUSES to record SUBMITTED without it. Gate the files you will upload.
 python3 tools/check_documents.py --letter documents/applications/<letter>.docx \
@@ -60,7 +60,7 @@ appended to `state/queue.done` (keyed `company|role`). `LIGHT=1 FIXED_CV=<path>`
 runs a cheaper mode with one fixed CV.
 
 **Seniority first.** When several roles are pending, the runner applies to the
-most senior first — e.g. a company's *Director of Engineering* before its
+most senior first, e.g. a company's *Director of Engineering* before its
 *Platform Engineer*. Rank (high→low): Chief/CTO/VP · Director/Head of ·
 Principal/Staff · Lead/Manager · Senior · other. Set `PRIORITISE=0` to use file
 order instead, or sort the queue file itself with
@@ -70,7 +70,7 @@ LinkedIn Easy Apply is handled **separately and serially** by
 `tools/run_linkedin.sh` (one at a time, human-like delays, a daily cap) using a
 persistent logged-in profile so you stay logged in and at a human pace.
 **Note:** automating LinkedIn may breach its terms of service and can get your
-account restricted — it is **opt-in**; prefer the employer's own ATS
+account restricted, it is **opt-in**; prefer the employer's own ATS
 (see [DISCLAIMER.md](../DISCLAIMER.md)).
 
 ## Tracking replies
@@ -99,5 +99,5 @@ a reason; `build_human_queue.py` routes the human-only ones to
 - Never send a letter that fails the gate.
 - Never fabricate: only claim what `config/cv.json` / `config/profile.md` support.
 - Only roles you can actually take (see [ELIGIBILITY.md](ELIGIBILITY.md)).
-- Keep the register current — it is the source of truth for resuming.
+- Keep the register current, it is the source of truth for resuming.
 - Pace it: a few submissions per sitting, long gaps, prefer named contacts.

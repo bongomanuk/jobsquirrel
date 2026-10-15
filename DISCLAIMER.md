@@ -27,19 +27,19 @@ The pipeline does mechanical work for you, but **you own the outcome**:
   `config/` (your experience, rules and eligibility).
 - **Each site's terms.** You are responsible for complying with the **terms of
   service, robots/automation policies and applicable law** of every employer,
-  job board and ATS you point it at — including rules on automated access,
+  job board and ATS you point it at, including rules on automated access,
   scraping, rate limits and account use.
 - **Your accounts and data.** You are responsible for the accounts you connect
   (e.g. email, calendar, LinkedIn) and for the personal data you process.
 
 ## 3. Acceptable use
 
-**Intended use:** running your *own* genuine job search — discovering real roles
+**Intended use:** running your *own* genuine job search, discovering real roles
 you can do, tailoring truthful documents, and applying where you are eligible.
 
 **Do not use it to:**
 
-- **Remove or bypass the human-in-the-loop safeguards** — the email-approval
+- **Remove or bypass the human-in-the-loop safeguards**: the email-approval
   step, the document/alignment gates, or the stop-on-CAPTCHA/2FA behaviour.
   Those exist for a reason; disabling them is misuse.
 - **Evade anti-bot, CAPTCHA or rate-limit protections**, or access a site in
@@ -56,7 +56,7 @@ endorse uses outside the intended one.
 
 **Some sites forbid automation outright.** LinkedIn, in particular, prohibits
 automated access and activity in its User Agreement. Driving Easy Apply with a
-browser bot — however paced — **may breach those terms and can get your account
+browser bot, however paced, **may breach those terms and can get your account
 restricted or banned**. That capability is **opt-in and off unless you enable
 it**, and the decision and the risk are yours. Wherever an employer runs its own
 ATS, apply there instead.
@@ -73,7 +73,7 @@ application will produce an interview or an offer. You assume those risks.
 
 By default your data stays on your machine: your CV, rules, applications, logs
 and knowledge base are git-ignored and stored locally. The exception is the
-**model provider** you run the agent with — the content the agent sends to it is
+**model provider** you run the agent with, the content the agent sends to it is
 governed by that provider's terms. If you deploy the tool for other people, you
 become the data controller for their data and take on the related obligations
 (e.g. under the GDPR).

@@ -1,9 +1,9 @@
-# Bootstrap it with your AI agent — and what it costs
+# Bootstrap it with your AI agent: and what it costs
 
 This project has no installer wizard and no GUI. You hand the repository to an
 AI coding agent, and **the agent sets the whole thing up with you**: it reads you
 the introduction, interviews you, writes your `config/`, builds your CV
-archetypes, builds your knowledge base, and sets up your accounts — explaining
+archetypes, builds your knowledge base, and sets up your accounts, explaining
 each step in plain language.
 
 You do **not** need to read the other docs to get started. The agent reads them
@@ -20,25 +20,25 @@ Be realistic about what this is:
   `BOOTSTRAP.md`. The agent is only as good as (a) the model driving it and (b)
   how accurately you filled in `config/`. A weak model or a sloppy config gives
   weak results.
-- **It is not fully autonomous.** The agent does the mechanical work — find,
-  tailor, gate, submit, record, reconcile — but **you** make the judgement calls
+- **It is not fully autonomous.** The agent does the mechanical work, find,
+  tailor, gate, submit, record, reconcile, but **you** make the judgement calls
   and handle the human-only moments: your eligibility/accuracy rules, approving
   any email before it is sent, and solving CAPTCHA/2FA when an employer demands
   it. Some employers genuinely require a person.
 - **You supervise the first run.** Treat the first role or two as a supervised
   trial: review the generated CV and letter, and confirm the gates behaved.
 - **You are responsible for what it sends.** It is built never to fabricate and
-  never to send a document that fails the gate — but you own your applications.
+  never to send a document that fails the gate, but you own your applications.
 
 If you want a one-click, unattended "AI applies to 500 jobs" bot: this is not
 that, and you should be wary of anything that claims to be.
 
 ---
 
-## 1. Run it with opencode (recommended — and the cheapest to run)
+## 1. Run it with opencode (recommended, and the cheapest to run)
 
 [opencode](https://opencode.ai) auto-loads `AGENTS.md`, so it already knows the
-procedures before you say anything. **You don't even need to clone the repo** —
+procedures before you say anything. **You don't even need to clone the repo**,
 the agent can do that too.
 
 ```bash
@@ -52,7 +52,7 @@ First time only, connect a model provider:
 /models      # pick a DeepSeek model (see §3)
 ```
 
-Then paste this single prompt — that is the entire installation:
+Then paste this single prompt, that is the entire installation:
 
 ```text
 Clone https://github.com/bongomanuk/jobsquirrel.git into ./jobsquirrel and set it
@@ -85,23 +85,23 @@ root so the agent always starts on a cheap model:
 The contract is `AGENTS.md`. Any agent that can read files and run shell
 commands can drive the pipeline.
 
-- **Claude Code** — reads `CLAUDE.md` by convention. Either add a one-liner
+- **Claude Code**: reads `CLAUDE.md` by convention. Either add a one-liner
   (`ln -s AGENTS.md CLAUDE.md`) or just tell it to read `AGENTS.md`:
   ```bash
   cd jobsquirrel && claude
   # "Read AGENTS.md and BOOTSTRAP.md, then bootstrap this project with me."
   ```
-- **Cursor / Windsurf / Zed** — open the repo, then in chat:
+- **Cursor / Windsurf / Zed**: open the repo, then in chat:
   *"Read AGENTS.md, then run the first-run bootstrap in BOOTSTRAP.md."*
-- **Aider / Goose / other CLI agents** — start it in the repo directory and give
+- **Aider / Goose / other CLI agents**: start it in the repo directory and give
   the same instruction.
-- **Any other model/agent** — the same brief works. What matters is that the
+- **Any other model/agent**: the same brief works. What matters is that the
   agent (1) reads `AGENTS.md`, (2) follows `BOOTSTRAP.md` on first run, and
   (3) runs the tools in `tools/` rather than improvising.
 
 > The bootstrap is **agent-driven on purpose**: there is no separate setup
 > script to keep in sync. If you read a step in this doc that the agent cannot do
-> for you, that is a bug — open an issue.
+> for you, that is a bug, open an issue.
 
 ---
 
@@ -110,7 +110,7 @@ commands can drive the pipeline.
 The only thing that costs money is the **language model tokens**. Everything else
 runs locally and free: the browser (Camoufox), the CV/letter rendering
 (LibreOffice), and the knowledge base / GraphRAG indexing (local embeddings via
-`embeddings_vulkan.sh`) — no API calls for those.
+`embeddings.sh`), no API calls for those.
 
 On [opencode](https://opencode.ai) you can run the DeepSeek "Flash" models, which
 are among the cheapest capable coding models. DeepSeek **V4.1 Flash** is the
@@ -148,7 +148,7 @@ period. Check the console for current prices.)*
 
 ## 4. How much it typically costs to run
 
-Rough, order-of-magnitude figures — **not a quote.** Your real spend depends on
+Rough, order-of-magnitude figures, **not a quote.** Your real spend depends on
 the model, how many turns the browser driving takes, and how many retries happen.
 
 Assumptions for one full **apply** run (one role, end to end):
@@ -169,11 +169,11 @@ With those assumptions:
 | A month of active use + chatting  | ~$5–15 total             |
 
 - **DeepSeek V4 Flash** cuts those roughly in half.
-- **DeepSeek V4 Pro** is ~4–6× the price of V4.1 Flash — reserve it for hard
+- **DeepSeek V4 Pro** is ~4–6× the price of V4.1 Flash, reserve it for hard
   cases.
 - **Review/Prepare mode** (no browser, no submit) is the cheapest useful run.
 - If you run a lot, a flat monthly subscription (OpenCode **Go**, $10/month)
-  can be cheaper than pay-as-you-go — see the OpenCode console.
+  can be cheaper than pay-as-you-go, see the OpenCode console.
 
 The honest summary: for a normal job search this costs **single-digit dollars a
 month** on a Flash model. The expensive failure modes are a bad model looping on

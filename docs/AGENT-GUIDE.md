@@ -3,7 +3,7 @@
 This project is built to be **run by an AI coding agent**, not clicked through by
 hand. The intended workflow is: a human fills in `config/`, then points an agent
 (opencode, Claude Code, Cursor, …) at the repository and tells it what to do. The
-agent then discovers roles, tailors documents, gates them, and applies — you just
+agent then discovers roles, tailors documents, gates them, and applies, you just
 review and make the few calls only a human should.
 
 `AGENTS.md` (repo root) is the agent's operating manual and is read automatically
@@ -26,7 +26,7 @@ cp config/profile.example.md      config/profile.md          # your identity + r
 cp config/cv.example.json         config/cv.json             # your CV as data
 cp config/archetypes.example.json config/archetypes.json     # your CV templates
 python3 tools/build_archetypes.py                            # build the archetypes
-# Gmail (read-only) is optional; the knowledge base (GraphRAG) is required — docs/KNOWLEDGE-BASE.md
+# Gmail (read-only) is optional; the knowledge base (GraphRAG) is required, docs/KNOWLEDGE-BASE.md
 ```
 
 That is the only manual work. Everything after this is the agent.
@@ -46,9 +46,9 @@ Give the agent the repository path and a brief like:
 Because `AGENTS.md` is auto-loaded, most agents will already know the procedures;
 the brief above just sets the goal.
 
-On first run the agent opens by reading **`docs/INTRO.md`** to the user — a plain
+On first run the agent opens by reading **`docs/INTRO.md`** to the user, a plain
 language overview of what the pipeline is, how it works, the run modes, and their
-privacy — before it starts the interview.
+privacy, before it starts the interview.
 
 ## 3. What the agent does autonomously vs escalates
 
@@ -68,9 +68,9 @@ privacy — before it starts the interview.
 
 ## 4. The two ways it works
 
-- **Batch** — fill `state/queue.tsv`, then `bash tools/run_queue.sh`. One
+- **Batch**: fill `state/queue.tsv`, then `bash tools/run_queue.sh`. One
   sub-agent per role does the full procedure. Processes **most senior first**.
-- **Per role** — the agent runs the same steps for a single job (useful for a
+- **Per role**: the agent runs the same steps for a single job (useful for a
   retry, a specific URL, or showing you a CV before applying).
 
 Both are described step-by-step with exact commands in `AGENTS.md` §3–§6 and
@@ -82,7 +82,7 @@ Both are described step-by-step with exact commands in `AGENTS.md` §3–§6 and
 You:  Find and queue new senior roles, then run the pipeline.
 Agent: [discover.py + web search] queued 6 roles (Director, 3× EM, 2× Staff).
        [run_queue.sh] Betsson Head of AI SUBMITTED · LimeFlight CLOSED (dead
-       posting) · Aon BLOCKED (hCaptcha — needs you) ... 
+       posting) · Aon BLOCKED (hCaptcha, needs you) ... 
        Register: 512 SUBMITTED · 22 INTERVIEW · 47 REJECTED · 64 BLOCKED.
        Needs you: solve the Aon hCaptcha; approve a reply to ATG.
 

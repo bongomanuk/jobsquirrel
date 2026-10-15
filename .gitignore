@@ -36,6 +36,7 @@ state/human/
 state/gmail_reconcile_ack.txt
 state/counts.md
 state/interviews.md
+state/applications-register.md
 
 # Generated documents (your CVs, letters, snapshots)
 documents/applications/*

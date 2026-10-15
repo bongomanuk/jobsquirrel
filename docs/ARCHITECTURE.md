@@ -6,7 +6,7 @@ A set of small, single-purpose CLI tools (Python + a few shell scripts) that sha
 three things: the **config** (`config/`), the **register** (`state/applications.csv`)
 and the **provenance ledger** (`state/submissions.csv`). The runner
 (`tools/run_queue.sh`) orchestrates them per job by spawning an AI coding agent
-whose instructions are generated from the config — so all the "knowledge" lives
+whose instructions are generated from the config, so all the "knowledge" lives
 in config + data, not in the scripts.
 
 ```
@@ -31,17 +31,17 @@ placeholder data.
 
 ## Data model
 
-**`state/applications.csv`** — the canonical outcome register, one row per
+**`state/applications.csv`**: the canonical outcome register, one row per
 `(company, role)`:
 `day, company, role, ats, status, cv, letter, notes`.
 Statuses: `PREPARED, IN_PROGRESS, SUBMITTED, INTERVIEW, OFFER, REJECTED, BLOCKED,
 MANUAL, CLOSED`. Managed by `tools/register.py` (`--stats/--list/--show/--check/--render/--set`).
 
-**`state/submissions.csv`** — the provenance ledger: the exact files sent per
+**`state/submissions.csv`**: the provenance ledger: the exact files sent per
 application, with `sha256` and a snapshot directory under `documents/submitted/`.
 Written by `tools/record_submission.py` (which also upserts the register).
 
-**Queues** — `state/queue.tsv` tab-separated:
+**Queues**: `state/queue.tsv` tab-separated:
 `company  role  url  cv-archetype  ats  key`. `run_queue.sh` processes rows whose
 `company|role` key is not in `state/queue.done`, **most-senior-first** by default
 (`PRIORITISE=1`; set `PRIORITISE=0` for file order). `tools/prioritise_queue.py`
@@ -59,7 +59,7 @@ sorts the queue file itself by seniority.
 - **Browser**: `camoufox_server.py`, `camoufox_browser.py`, `camoufox_test.py`.
 - **Run**: `run_queue.sh` (parallel queue), `run_linkedin.sh` (serialized LinkedIn),
   `reconcile_loop.sh`, `watch_queue.sh`, `build_human_queue.py`, `human_assist.sh`.
-- **Grounding (required)**: `kb_graphrag.py` (+ `kb/`), `embeddings_vulkan.sh`.
+- **Grounding (required)**: `kb_graphrag.py` (+ `kb/`), `embeddings.sh`.
 
 ## Runner model
 
