@@ -267,8 +267,20 @@ def register_counts():
         lines = open(os.path.join(STATE, "counts.md")).read().splitlines()
     except OSError:
         return ""
-    return "   ".join(s.strip() for s in lines
-                      if s.strip() and not s.startswith(("#", "_", "```")))
+    parts = []
+    for s in lines:
+        s = s.strip()
+        if not s or s.startswith(("#", "_", "```")):
+            continue
+        if set(s) <= {"-"}:                      # the "-----" separator row
+            continue
+        s = re.sub(r"\s*\([^)]*\)\s*$", "", s)   # drop "(SUBMITTED 486 + ...)" breakdown
+        parts.append(re.sub(r"\s+", " ", s))     # collapse the fixed-width padding
+    # surface the live-process summary right after the total so a narrow
+    # terminal truncates the per-status tail, not the number that matters most
+    head = [p for p in parts if p.lower().startswith("total") or "IN PROCESS" in p]
+    rest = [p for p in parts if p not in head]
+    return "   ".join(head + rest)
 
 
 def bar(n, done, width=32):
