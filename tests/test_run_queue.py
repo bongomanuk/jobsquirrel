@@ -151,3 +151,22 @@ def test_agent_run_claude_overrides(tmp_path):
 def test_agent_run_opencode(tmp_path):
     assert _argv_of(tmp_path, "opencode", MODEL="m") == ["run", "--model", "m", "do the thing"]
     assert _argv_of(tmp_path, "opencode") == ["run", "do the thing"]
+
+
+def test_queue_order_is_most_senior_first_by_whole_words(tmp_path):
+    import sys
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import prioritise_queue as P
+    from test_prioritise_queue import TITLES
+
+    rows = [(f"Co{i}", title, f"u{i}", "cv", "ats", f"k{i}") for i, (title, _) in enumerate(TITLES)]
+    root, env = _sandbox(tmp_path, rows)
+    env.update(PARALLEL="1")
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+                       env=env, capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    calls = [c.split("|", 1)[1] for c in (tmp_path / "calls").read_text().splitlines()]
+    # Most senior first, file order within a rank: the same order prioritise_queue.py gives.
+    assert calls == sorted((t for t, _ in TITLES), key=lambda t: -P.seniority(t))
+    assert calls[:2] == ["VP Engineering", "Co-founder & CTO"]
