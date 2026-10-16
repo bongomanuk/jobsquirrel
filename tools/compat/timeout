@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""Portable stand-in for GNU `timeout` (macOS ships without it).
+
+    timeout [-s SIGNAL] [-k DURATION] [--preserve-status] [--foreground] DURATION COMMAND [ARG]...
+
+Runs COMMAND in its own process group and, after DURATION, signals the whole
+group (default TERM), so child processes die with it. Exit status matches GNU:
+124 on timeout, otherwise the command's own status (128+N if killed by signal N).
+DURATION is a number with an optional s/m/h/d suffix; 0 disables the timeout.
+
+The runners only put tools/compat on PATH after the system directories, so a
+real `timeout` always wins where one exists.
+"""
+import os
+import signal
+import subprocess
+import sys
+
+USAGE = "usage: timeout [-s SIGNAL] [-k DURATION] [--preserve-status] [--foreground] DURATION COMMAND [ARG]..."
+
+
+def die(msg):
+    print(f"timeout: {msg}\n{USAGE}", file=sys.stderr)
+    sys.exit(125)
+
+
+def duration(text):
+    units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+    num, mult = (text[:-1], units[text[-1]]) if text and text[-1] in units else (text, 1)
+    try:
+        value = float(num) * mult
+    except ValueError:
+        die(f"invalid time interval {text!r}")
+    if value < 0:
+        die(f"invalid time interval {text!r}")
+    return value
+
+
+def signum(name):
+    if name.isdigit():
+        return int(name)
+    name = name.upper()
+    try:
+        return int(getattr(signal, name if name.startswith("SIG") else "SIG" + name))
+    except AttributeError:
+        die(f"{name}: invalid signal")
+
+
+def main(argv):
+    sig, kill_after, preserve, foreground = signal.SIGTERM, 0.0, False, False
+    i = 0
+    while i < len(argv) and argv[i].startswith("-") and argv[i] != "-":
+        opt = argv[i]
+        if opt == "--":
+            i += 1
+            break
+        if opt in ("-s", "--signal", "-k", "--kill-after"):
+            if i + 1 >= len(argv):
+                die(f"option {opt} requires an argument")
+            if opt in ("-s", "--signal"):
+                sig = signum(argv[i + 1])
+            else:
+                kill_after = duration(argv[i + 1])
+            i += 2
+        elif opt.startswith(("--signal=", "--kill-after=")):
+            name, _, value = opt.partition("=")
+            if name == "--signal":
+                sig = signum(value)
+            else:
+                kill_after = duration(value)
+            i += 1
+        elif opt == "--preserve-status":
+            preserve, i = True, i + 1
+        elif opt == "--foreground":
+            foreground, i = True, i + 1
+        elif opt in ("-v", "--verbose"):
+            i += 1
+        else:
+            die(f"unrecognized option {opt!r}")
+    if len(argv) - i < 2:
+        die("missing operand")
+    limit, cmd = duration(argv[i]), argv[i + 1:]
+
+    try:
+        child = subprocess.Popen(cmd, start_new_session=not foreground)
+    except FileNotFoundError:
+        print(f"timeout: failed to run command {cmd[0]!r}: No such file or directory", file=sys.stderr)
+        return 127
+    except PermissionError:
+        print(f"timeout: failed to run command {cmd[0]!r}: Permission denied", file=sys.stderr)
+        return 126
+
+    def send(s):
+        try:
+            if foreground:
+                child.send_signal(s)
+            else:
+                os.killpg(child.pid, s)
+        except ProcessLookupError:
+            pass
+
+    # Pass a TERM/INT/HUP aimed at us on to the command's group, like GNU timeout.
+    for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(s, lambda n, _f: send(n))
+
+    timed_out = False
+    try:
+        rc = child.wait(timeout=limit or None)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        send(sig)
+        try:
+            rc = child.wait(timeout=kill_after or None)
+        except subprocess.TimeoutExpired:
+            send(signal.SIGKILL)
+            rc = child.wait()
+
+    if rc < 0:
+        rc = 128 - rc
+    if timed_out and not preserve:
+        return 124
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

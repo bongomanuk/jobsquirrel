@@ -4,11 +4,27 @@
 # finishes, the pool launches the next task. Finished tasks go to state/queue.done.
 #
 # Browser: Camoufox (tools/camoufox_server.py + tools/camoufox_browser.py).
+# Agent: opencode, Claude Code or any CLI (tools/agent_run.sh; AGENT=claude to pick).
 #
 # Usage:  PARALLEL=5 bash tools/run_queue.sh
+#         AGENT=claude PARALLEL=3 bash tools/run_queue.sh
 # Queue format (TAB-separated): company  role  url  cv  ats  key
 set -u
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+cd "$ROOT" || exit 1   # the prompts, the duplicate guard and the agent all use repo-relative paths
+
+# Use the project venv (tools/install.sh) when there is one and none is active,
+# so python3 has python-docx, camoufox etc. for the runner and the agent alike.
+if [ -z "${VIRTUAL_ENV:-}" ] && [ -x "$ROOT/.venv/bin/python3" ]; then
+  VIRTUAL_ENV="$ROOT/.venv"; PATH="$VIRTUAL_ENV/bin:$PATH"; export VIRTUAL_ENV
+fi
+# macOS has no flock/setsid/timeout, so tools/compat provides portable stand-ins.
+# They go LAST on PATH: the real commands win wherever they exist. The agent is
+# told the full path to the stand-in, because its shell may rebuild PATH.
+TIMEOUT_CMD=timeout
+command -v timeout >/dev/null 2>&1 || TIMEOUT_CMD="$ROOT/tools/compat/timeout"
+PATH="$PATH:$ROOT/tools/compat"; export PATH
+
 QUEUE="${QUEUE:-$ROOT/state/queue.tsv}"
 DONE="${DONE:-$ROOT/state/queue.done}"
 LOGS="$ROOT/state/logs"
@@ -20,10 +36,17 @@ FIXED_CV="${FIXED_CV:-}"            # CV file to upload when LIGHT=1
 REVIEW="${REVIEW:-0}"               # 1 = prepare documents only (gate PASS, record PREPARED, do NOT submit)
 ELIGIBILITY_OVERRIDE="${ELIGIBILITY_OVERRIDE:-}"
 PROFILE="${PROFILE:-$ROOT/config/profile.md}"   # identity / eligibility config
-# Default to a paid, working model. Free/contributor models rate-limit
+# The coding agent that applies to each role: opencode | claude | any command.
+AGENT="$(bash "$ROOT/tools/agent_run.sh" --which)" || exit 1
+# opencode: default to a paid, working model. Free/contributor models rate-limit
 # ("Rate limit exceeded") and are silently dropped from the run, so never let
-# the queue fall back to them. Override with MODEL=... if a different one is needed.
-MODEL="${MODEL:-opencode-go/deepseek-v4.1-flash}"
+# the queue fall back to them. Other agents use their own default model.
+# Override with MODEL=... if a different one is needed.
+if [ "$AGENT" = "opencode" ]; then
+  MODEL="${MODEL:-opencode-go/deepseek-v4.1-flash}"
+else
+  MODEL="${MODEL:-}"
+fi
 ENGAGEMENT="${ENGAGEMENT:-fulltime}"   # fulltime | contract (uses the contract CV/letter rules)
 CAMOUFOX_SERVER="${CAMOUFOX_SERVER:-http://127.0.0.1:9872}"
 CAMOUFOX_PORT="${CAMOUFOX_PORT:-9872}"
@@ -70,9 +93,12 @@ ensure_server() {
   return 1
 }
 
-for _u in "${SERVERS[@]}"; do
-  ensure_server "$_u" "${_u##*:}" || echo "WARN: camoufox server $_u did not come up" >> "$LOGS/run_queue.out"
-done
+# A review run never opens the browser, so it does not need (or wait for) one.
+if [ "$REVIEW" != "1" ]; then
+  for _u in "${SERVERS[@]}"; do
+    ensure_server "$_u" "${_u##*:}" || echo "WARN: camoufox server $_u did not come up" >> "$LOGS/run_queue.out"
+  done
+fi
 
 build_prompt() {
   local company="$1"; role="$2"; url="$3"; cv="$4"; ats="$5"; key="$6"; server="$7"
@@ -87,7 +113,7 @@ Company: $company
 Role: $role
 Apply URL: $url
 CV to upload (FIXED - do NOT generate or edit any CV or cover letter): $FIXED_CV
-Browser: run every command as \`python3 tools/camoufox_browser.py --server $server <cmd>\` (nav/snap/click/fill/type/select/pick/fillmap/press/check/upload/value/eval/wait). Prefix \`timeout 30\`. Re-snap before using refs; prefer CSS selectors with \`fill '<sel>' '<text>'\`. To cut tokens, BATCH form fields with \`fillmap '<json steps>'\` (steps: [{"selector":"#x","value":"...","op":"fill|check|select|upload|press"}]) instead of one call per field.
+Browser: run every command as \`python3 tools/camoufox_browser.py --server $server <cmd>\` (nav/snap/click/fill/type/select/pick/fillmap/press/check/upload/value/eval/wait). Prefix \`$TIMEOUT_CMD 30\`. Re-snap before using refs; prefer CSS selectors with \`fill '<sel>' '<text>'\`. To cut tokens, BATCH form fields with \`fillmap '<json steps>'\` (steps: [{"selector":"#x","value":"...","op":"fill|check|select|upload|press"}]) instead of one call per field.
 
 FIRST, before anything else: read config/profile.md and apply it - identity (name, email, phone, location, links), work authorisation, languages, availability, pay/rate, eligibility/exclusions, accuracy rules and the standard diversity/EEO answers. Use those exact values wherever a form asks; never invent or substitute personal data. Treat config/cv.json as the source of truth for the candidate's experience.
 This is a LIGHT run: be fast and cheap. Do NOT run GraphRAG, do NOT write a CV or letter, do NOT run alignment/document gates.
@@ -114,7 +140,7 @@ Role: $role
 ATS: $ats
 Apply URL: $url
 CV to upload: $cv
-  Browser: run every command as \`python3 tools/camoufox_browser.py --server $server <cmd>\` (nav/snap/click/fill/type/select/pick/fillmap/press/check/upload/value/eval/wait). Prefix \`timeout 30\`. Refs renumber after every snap - re-snap before using refs; prefer CSS selectors with \`fill '<sel>' '<text>'\`. To cut tokens, BATCH form fields with \`fillmap '<json steps>'\` (steps: [{"selector":"#x","value":"...","op":"fill|check|select|upload|press"}]) instead of one call per field.
+  Browser: run every command as \`python3 tools/camoufox_browser.py --server $server <cmd>\` (nav/snap/click/fill/type/select/pick/fillmap/press/check/upload/value/eval/wait). Prefix \`$TIMEOUT_CMD 30\`. Refs renumber after every snap - re-snap before using refs; prefer CSS selectors with \`fill '<sel>' '<text>'\`. To cut tokens, BATCH form fields with \`fillmap '<json steps>'\` (steps: [{"selector":"#x","value":"...","op":"fill|check|select|upload|press"}]) instead of one call per field.
   Custom ATS widgets (Workday, Greenhouse/react-select, Ashby): options in a listbox/dropdown are NOT clickable via eval-dispatched events - use \`pick '<option text>' ['<opener selector>']\` (it scrolls virtualised lists and clicks with real input). Use \`press Enter '<sel>'\` to commit type-aheads, \`press Escape\` to close a popup. \`click\` retries with a forced click automatically when an overlay blocks it; add \`--force\` yourself if you already know something is in the way. CSS ids starting with a digit need \`[id="53683"]\`, not \`#53683\`.
 
 FIRST, before anything else: read config/profile.md and apply it - identity (name, email, phone, location, links), work authorisation, languages, availability, pay/rate, eligibility/exclusions, accuracy rules and the standard diversity/EEO answers. Use those exact values wherever a form asks; never invent or substitute personal data. Use config/cv.json as the source of truth for the candidate's experience, and config/archetypes.json for the CV archetypes described below. Use the real company name you resolve in the gate/record calls.
@@ -202,20 +228,21 @@ run_task() {
   fi
   log="$LOGS/$(echo "$company-$role" | tr ' /|' '___').log"
   echo "START $(date +%H:%M:%S) $company | $role" >> "$LOGS/run_queue.out"
-  if [ -n "$MODEL" ]; then
-    timeout "$TASK_TIMEOUT" opencode run --model "$MODEL" "$(build_prompt "$company" "$role" "$url" "$cv" "$ats" "$key" "$server")" >"$log" 2>&1
-  else
-    timeout "$TASK_TIMEOUT" opencode run "$(build_prompt "$company" "$role" "$url" "$cv" "$ats" "$key" "$server")" >"$log" 2>&1
-  fi
+  "$TIMEOUT_CMD" "$TASK_TIMEOUT" bash "$ROOT/tools/agent_run.sh" \
+    "$(build_prompt "$company" "$role" "$url" "$cv" "$ats" "$key" "$server")" >"$log" 2>&1 </dev/null
   rc=$?
   outcome="$(grep -aoE 'STATUS .*' "$log" 2>/dev/null | tail -1 | grep -oE '[A-Z]+' | tail -1)"
   # Distinguish an APPLICATION failure from an INFRASTRUCTURE failure (the model
   # never really ran). Infra failures must NOT be committed to $DONE or they are
   # lost: the task stays pending for a later run and is re-queued for the retry pass.
   reason=""; hard=0; size=$(wc -c < "$log" 2>/dev/null || echo 0)
-  if grep -qiE 'rate limit exceeded|budget exceeded|quota exceeded|too many requests' "$log" 2>/dev/null; then
+  if grep -qiE 'rate limit exceeded|budget exceeded|quota exceeded|too many requests|usage limit reached|hit your (usage )?limit|credit balance is too low|rate_limit_error' "$log" 2>/dev/null; then
     reason="model budget/rate limit"; hard=1
+  elif grep -qiE 'invalid api key|please run /login|failed to authenticate|oauth (token|session) (has )?expired' "$log" 2>/dev/null; then
+    reason="agent not signed in"; hard=1
   elif grep -qiE 'UnknownError|Unexpected server error|AI_APICallError|AI_RetryError|invalid or expired agent session' "$log" 2>/dev/null; then
+    reason="model/API error"
+  elif ! grep -q 'STATUS' "$log" 2>/dev/null && grep -qE 'API Error: |overloaded_error' "$log" 2>/dev/null; then
     reason="model/API error"
   elif [ "$rc" -eq 124 ] && ! grep -q 'STATUS' "$log" 2>/dev/null; then
     reason="timeout with no model output"
@@ -234,7 +261,7 @@ run_task() {
       echo "TOKEN-LIMIT $(date +%H:%M:%S) $company | $role (hard failure $n)" >> "$LOGS/run_queue.out"
       if [ "$n" -ge "${TOKEN_FAIL_MAX:-3}" ]; then
         : > "$STOP_FILE"
-        echo "ABORT $(date +%H:%M:%S): model budget/rate limit hit ${n}x - stopping run; top up the model and re-run" >> "$LOGS/run_queue.out"
+        echo "ABORT $(date +%H:%M:%S): $reason hit ${n}x - stopping run; top up / sign in to the agent and re-run" >> "$LOGS/run_queue.out"
       fi
     fi
   elif [ "$rc" -eq 124 ] || [ "$outcome" = "BLOCKED" ]; then
@@ -249,7 +276,7 @@ run_task() {
   echo "DONE  $(date +%H:%M:%S) $company | $role (rc=$rc)" >> "$LOGS/run_queue.out"
 }
 
-export ROOT QUEUE DONE LOGS PARALLEL TASK_TIMEOUT RETRY_LIMIT LIGHT FIXED_CV ELIGIBILITY_OVERRIDE CAMOUFOX_SERVER MODEL ENGAGEMENT PROFILE CV_PREFIX
+export ROOT QUEUE DONE LOGS PARALLEL TASK_TIMEOUT RETRY_LIMIT LIGHT FIXED_CV ELIGIBILITY_OVERRIDE CAMOUFOX_SERVER AGENT MODEL ENGAGEMENT PROFILE CV_PREFIX TIMEOUT_CMD
 
 # Worker pool: $PARALLEL long-lived workers, each atomically claiming the next
 # pending role (flock-guarded) and running it to completion.
@@ -354,7 +381,7 @@ while [ ! -e "$STOP_FILE" ] && [ "$passes" -lt "${RETRY_LIMIT:-0}" ] && [ -s "$R
 done
 
 if [ -e "$STOP_FILE" ]; then
-  echo "queue stopped early (model rate limit/budget) $(date +%H:%M:%S)" >> "$LOGS/run_queue.out"
+  echo "queue stopped early (agent budget/rate limit/sign-in) $(date +%H:%M:%S)" >> "$LOGS/run_queue.out"
 else
   echo "queue complete $(date +%H:%M:%S)" >> "$LOGS/run_queue.out"
 fi

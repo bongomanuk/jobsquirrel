@@ -23,6 +23,7 @@ import glob
 import os
 import re
 import select
+import subprocess
 import sys
 import termios
 import time
@@ -220,37 +221,55 @@ def describe(path):
     return out
 
 
-def runner_active():
+HAVE_PROC = os.path.isdir("/proc")
+
+
+def cmdlines():
+    """Command line of every other process, arguments joined by spaces.
+
+    Linux: /proc/<pid>/cmdline. macOS has no /proc, so there it is `ps`, which
+    prints a newline inside an argument as \\012 and a tab as \\011; those are
+    decoded back so a multi-line prompt reads the same as on Linux.
+    """
     me = os.getpid()
-    for p in glob.glob("/proc/[0-9]*/cmdline"):
-        try:
-            if int(p.split("/")[2]) == me:
+    if HAVE_PROC:
+        for p in glob.glob("/proc/[0-9]*/cmdline"):
+            try:
+                if int(p.split("/")[2]) == me:
+                    continue
+                yield open(p, "rb").read().replace(b"\x00", b" ").decode("utf-8", "ignore")
+            except (OSError, ValueError):
                 continue
-            c = open(p, "rb").read().replace(b"\x00", b" ").decode("utf-8", "ignore")
-        except (OSError, ValueError):
+        return
+    try:
+        out = subprocess.run(["ps", "-axww", "-o", "pid=,command="],
+                             capture_output=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return
+    for line in out.decode("utf-8", "ignore").splitlines():
+        pid, _, c = line.strip().partition(" ")
+        if not pid.isdigit() or int(pid) == me:
             continue
+        yield c.replace("\\012", "\n").replace("\\011", "\t")
+
+
+def runner_active():
+    for c in cmdlines():
         if "run_queue.sh" in c and "watch_queue" not in c:
             return True
     return False
 
 
 def live_tasks():
-    """(company|role) keys with a LIVE `opencode run` worker in this repo.
+    """(company|role) keys with a LIVE agent worker (opencode, claude, agent_run.sh) in this repo.
 
     The dashboard marks RUN only for these. A mere log file is not enough:
     tasks from dead runs (model errors, kills) leave logs behind, and those
     must read WAIT, not RUN.
     """
-    me = os.getpid()
     live = set()
-    for p in glob.glob("/proc/[0-9]*/cmdline"):
-        try:
-            if int(p.split("/")[2]) == me:
-                continue
-            c = open(p, "rb").read().replace(b"\x00", b" ").decode("utf-8", "ignore")
-        except (OSError, ValueError):
-            continue
-        if "opencode" not in c or ROOT not in c:
+    for c in cmdlines():
+        if ROOT not in c or not any(a in c for a in ("opencode", "claude", "agent_run.sh")):
             continue
         # Company/Role are the first two labelled lines in every prompt. Parse
         # them independently so intervening lines (e.g. the human-assist prompt's

@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Portable stand-in for util-linux `flock` (macOS ships without it).
+
+    flock [-s|-x|-u] [-n] [-w SECONDS] FD
+    flock [-s|-x] [-n] [-w SECONDS] FILE COMMAND [ARG]...
+
+The FD form is the one the runners use:
+
+    { flock -x 9; ...critical section...; } 9>>state/queue.lock
+
+It locks the open file the shell passed in as FD. The lock belongs to that open
+file, not to this process, so it stays held after we exit and is released when
+the shell closes the descriptor (or dies), exactly like the real flock.
+Exit status: 0 locked, 1 lock not obtained (-n / -w), otherwise the command's.
+"""
+import fcntl
+import os
+import subprocess
+import sys
+import time
+
+USAGE = ("usage: flock [-s|-x|-u] [-n] [-w SECONDS] FD\n"
+         "       flock [-s|-x] [-n] [-w SECONDS] FILE COMMAND [ARG]...")
+
+
+def die(msg, code=64):
+    print(f"flock: {msg}\n{USAGE}", file=sys.stderr)
+    sys.exit(code)
+
+
+def acquire(fd, mode, nonblock, wait):
+    if mode == fcntl.LOCK_UN:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return True
+    deadline = None if wait is None else time.monotonic() + wait
+    while True:
+        try:
+            fcntl.flock(fd, mode | (fcntl.LOCK_NB if (nonblock or deadline is not None) else 0))
+            return True
+        except BlockingIOError:
+            if nonblock or time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
+
+
+def main(argv):
+    mode, nonblock, wait = fcntl.LOCK_EX, False, None
+    i = 0
+    while i < len(argv) and argv[i].startswith("-") and argv[i] != "-":
+        opt = argv[i]
+        if opt == "--":
+            i += 1
+            break
+        if opt in ("-x", "-e", "--exclusive"):
+            mode = fcntl.LOCK_EX
+        elif opt in ("-s", "--shared"):
+            mode = fcntl.LOCK_SH
+        elif opt in ("-u", "--unlock"):
+            mode = fcntl.LOCK_UN
+        elif opt in ("-n", "--nb", "--nonblock"):
+            nonblock = True
+        elif opt in ("-w", "--wait", "--timeout"):
+            if i + 1 >= len(argv):
+                die(f"option {opt} requires an argument")
+            try:
+                wait = float(argv[i + 1])
+            except ValueError:
+                die(f"invalid timeout {argv[i + 1]!r}")
+            i += 1
+        elif opt in ("-o", "--close"):
+            pass  # we never hold the lock across the command's own fds anyway
+        else:
+            die(f"unrecognized option {opt!r}")
+        i += 1
+    rest = argv[i:]
+    if not rest:
+        die("missing FD or FILE")
+
+    if len(rest) == 1:
+        if not rest[0].isdigit():
+            die(f"{rest[0]!r} is not a file descriptor (give a FILE and a COMMAND)")
+        try:
+            ok = acquire(int(rest[0]), mode, nonblock, wait)
+        except OSError as exc:
+            die(f"{rest[0]}: {exc.strerror}")
+        return 0 if ok else 1
+
+    path, cmd = rest[0], rest[1:]
+    fd = os.open(path, os.O_RDONLY | os.O_CREAT, 0o644)
+    if not acquire(fd, mode, nonblock, wait):
+        return 1
+    try:
+        return subprocess.call(cmd, close_fds=True)
+    except FileNotFoundError:
+        print(f"flock: failed to execute {cmd[0]}: No such file or directory", file=sys.stderr)
+        return 127
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

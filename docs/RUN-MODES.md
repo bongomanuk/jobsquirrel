@@ -83,5 +83,13 @@ bash tools/reconcile_loop.sh               # continuous, refreshes counts
 | `PRIORITISE=0` | keep file order instead of most-senior-first |
 | `ELIGIBILITY_OVERRIDE=...` | one-run override of the eligibility rules |
 | `ENGAGEMENT=contract` | use contract/consulting CV+letter rules (rate allowed) |
-| `MODEL=...` | the agent model the runner launches |
+| `AGENT=claude` | the coding agent each task runs with: `opencode`, `claude` or any CLI that takes the prompt as its last argument (default: opencode if installed, else claude) |
+| `MODEL=...` | the agent model the runner launches (opencode defaults to DeepSeek Flash; other agents use their own default) |
+| `CLAUDE_PERMISSION_MODE`, `CLAUDE_ALLOWED_TOOLS`, `CLAUDE_ARGS` | Claude Code permissions and extra flags (see [AGENT-SETUP.md](AGENT-SETUP.md#running-the-queue-with-claude-code)) |
 | `CAMOUFOX_SERVER=...` | target a specific browser instance/ports |
+
+The runner works on Linux and macOS. macOS lacks `flock`, `setsid` and
+`timeout`, so `tools/compat/` provides portable stand-ins that are used only
+where the real commands are missing. If the project venv (`.venv`, from
+`tools/install.sh`) exists, the runner uses it automatically. The same goes for
+`run_linkedin.sh` and `human_assist.sh`, which also take `AGENT`.

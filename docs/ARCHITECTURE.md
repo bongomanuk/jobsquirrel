@@ -64,7 +64,9 @@ sorts the queue file itself by seniority.
 ## Runner model
 
 `run_queue.sh` spawns `PARALLEL` workers; each pops the next pending queue row and
-runs `opencode run` with a generated prompt. The prompt (built from `config/`)
+runs the configured agent (`agent_run.sh`: opencode, Claude Code or any CLI) with
+a generated prompt. On macOS the runner falls back to the portable `flock`,
+`setsid` and `timeout` stand-ins in `tools/compat/`. The prompt (built from `config/`)
 tells the agent to: read `config/profile.md`; apply the eligibility gate; choose
 and verify the aligned archetype; build a targeted CV + letter; pass the
 pre-submit gate; submit through the employer ATS via `camoufox_browser.py`; and

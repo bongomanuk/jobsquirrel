@@ -6,15 +6,31 @@
 #   - a daily submission cap (LINKEDIN_CAP), counted from state/submissions.csv
 #
 # Browser: Camoufox (tools/camoufox_server.py + tools/camoufox_browser.py).
+# Agent: opencode, Claude Code or any CLI (tools/agent_run.sh; AGENT=claude to pick).
 #
 # NOTE: LinkedIn's User Agreement prohibits automated activity. This mode is
 # opt-in; automating Easy Apply may breach those terms and can get your account
 # restricted. Use at your own risk; prefer the employer's own ATS. See DISCLAIMER.md.
 #
 # Usage:  bash tools/run_linkedin.sh
+#         AGENT=claude bash tools/run_linkedin.sh
 # Queue format (TAB-separated): company  role  url  cv  ats  key
 set -u
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+cd "$ROOT" || exit 1   # the prompts and the agent use repo-relative paths
+
+# Use the project venv (tools/install.sh) when there is one and none is active,
+# so python3 has python-docx, camoufox etc. for the runner and the agent alike.
+if [ -z "${VIRTUAL_ENV:-}" ] && [ -x "$ROOT/.venv/bin/python3" ]; then
+  VIRTUAL_ENV="$ROOT/.venv"; PATH="$VIRTUAL_ENV/bin:$PATH"; export VIRTUAL_ENV
+fi
+# macOS has no flock/setsid/timeout, so tools/compat provides portable stand-ins.
+# They go LAST on PATH: the real commands win wherever they exist. The agent is
+# told the full path to the stand-in, because its shell may rebuild PATH.
+TIMEOUT_CMD=timeout
+command -v timeout >/dev/null 2>&1 || TIMEOUT_CMD="$ROOT/tools/compat/timeout"
+PATH="$PATH:$ROOT/tools/compat"; export PATH
+
 QUEUE="${QUEUE:-$ROOT/state/queue-linkedin.tsv}"
 DONE="${DONE:-$ROOT/state/queue-linkedin.done}"
 LOGS="$ROOT/state/logs"
@@ -22,6 +38,15 @@ CAP="${LINKEDIN_CAP:-8}"
 DMIN="${LINKEDIN_DELAY_MIN:-60}"
 DMAX="${LINKEDIN_DELAY_MAX:-240}"
 PROFILE="${PROFILE:-$ROOT/config/profile.md}"   # identity / eligibility config
+# The coding agent that applies to each role: opencode | claude | any command.
+AGENT="$(bash "$ROOT/tools/agent_run.sh" --which)" || exit 1
+# opencode: default to a paid, working model (free models rate-limit, see
+# run_queue.sh). Other agents use their own default. Override with MODEL=...
+if [ "$AGENT" = "opencode" ]; then
+  MODEL="${MODEL:-opencode-go/deepseek-v4.1-flash}"
+else
+  MODEL="${MODEL:-}"
+fi
 CAMOUFOX_SERVER="${CAMOUFOX_SERVER:-http://127.0.0.1:9873}"
 CAMOUFOX_PORT="${CAMOUFOX_PORT:-9873}"
 
@@ -57,7 +82,7 @@ Company: $company
 Role: $role
 Apply URL: $url
 CV to upload: $cv
-  Browser: run every command as \`python3 tools/camoufox_browser.py --server $CAMOUFOX_SERVER <cmd>\` (nav/snap/click/fill/select/check/upload/value/eval/wait). Prefix \`timeout 30\`. Refs renumber after every snap; prefer CSS selectors with \`fill '<sel>' '<text>'\`.
+  Browser: run every command as \`python3 tools/camoufox_browser.py --server $CAMOUFOX_SERVER <cmd>\` (nav/snap/click/fill/select/check/upload/value/eval/wait). Prefix \`$TIMEOUT_CMD 30\`. Refs renumber after every snap; prefer CSS selectors with \`fill '<sel>' '<text>'\`.
 BEHAVE LIKE A CAREFUL HUMAN: one action at a time, normal navigation, short natural pauses - do not click in rapid bursts.
 
 FIRST, before anything else: read config/profile.md and apply it - identity (name, email, phone, location, links), work authorisation, languages, availability, pay/rate, eligibility/exclusions, accuracy rules and the standard diversity/EEO answers. Use those exact values wherever a form asks; never invent or substitute personal data. Use config/cv.json as the source of truth for the candidate's experience, and config/archetypes.json for the CV archetypes below.
@@ -87,7 +112,8 @@ run_task() {
   grep -qxF "$company|$role" "$DONE" 2>/dev/null && return 0
   log="$LOGS/$(echo "$company-$role" | tr ' /|' '___').log"
   echo "START $(date +%H:%M:%S) $company | $role" >> "$LOGS/linkedin_run.out"
-  timeout 1200 opencode run "$(build_prompt "$company" "$role" "$url" "$cv" "$ats" "$key")" >"$log" 2>&1
+  "$TIMEOUT_CMD" 1200 bash "$ROOT/tools/agent_run.sh" \
+    "$(build_prompt "$company" "$role" "$url" "$cv" "$ats" "$key")" >"$log" 2>&1 </dev/null
   rc=$?
   echo "$company|$role" >> "$DONE"
   tail -1 "$log" >> "$LOGS/linkedin_run.out" 2>/dev/null
@@ -108,9 +134,9 @@ next_pending() {
   return 1
 }
 
-export ROOT QUEUE DONE LOGS CAMOUFOX_SERVER PROFILE CV_PREFIX
+export ROOT QUEUE DONE LOGS CAMOUFOX_SERVER PROFILE CV_PREFIX AGENT MODEL TIMEOUT_CMD
 
-echo "paced runner: serialized, delay ${DMIN}-${DMAX}s, daily cap $CAP, browser $CAMOUFOX_SERVER" | tee -a "$LOGS/linkedin_run.out"
+echo "paced runner: serialized, delay ${DMIN}-${DMAX}s, daily cap $CAP, browser $CAMOUFOX_SERVER, agent $AGENT" | tee -a "$LOGS/linkedin_run.out"
 while line="$(next_pending)"; do
   [ -z "$line" ] && break
   s=$(sent_today)
