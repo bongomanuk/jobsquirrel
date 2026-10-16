@@ -52,6 +52,11 @@ LIGHT=1 FIXED_CV=documents/archetypes/<Prefix>_CV_<Archetype>.docx \
 ```
 
 The runner still does the eligibility/duplicate gates and records the outcome.
+Before any task starts it runs the pre-submit gate once on the fixed CV
+(`check_documents.py --cv <CV> --record`: your name, no template leftovers, no
+present-tense claims about past employers, no contract rate in a full-time run).
+If the CV fails, the run stops with the reasons and nothing is sent; if it
+passes, the receipt lets every submission be recorded without `--force`.
 
 ## 5. One role at a time (manual, for control or a retry)
 
