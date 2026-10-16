@@ -74,3 +74,42 @@ def test_gate_enforce_off_bypasses(tmp_path):
            "--status", "SUBMITTED", "--evidence", EVIDENCE]
     r = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True)
     assert r.returncode == 0
+
+
+def _confidence(tmp):
+    import csv
+    with open(tmp / "submissions.csv", newline="") as fh:
+        return [r["confidence"] for r in csv.DictReader(fh)]
+
+
+def test_gated_submission_is_verified(tmp_path):
+    cv = tmp_path / "cv.txt"
+    cv.write_text("cv")
+    letter = tmp_path / "letter.txt"
+    letter.write_text("letter")
+    _emit(tmp_path, cv, letter)
+    assert _record(tmp_path, cv, letter).returncode == 0
+    assert _confidence(tmp_path) == ["verified"]
+
+
+def test_forced_submissions_are_marked_forced(tmp_path):
+    cv = tmp_path / "cv.txt"
+    cv.write_text("cv")
+    letter = tmp_path / "letter.txt"
+    letter.write_text("letter")
+    # --force without a gate receipt
+    r = _record(tmp_path, cv, letter, ["--force"])
+    assert r.returncode == 0 and "forced" in r.stderr
+    # GATE_ENFORCE=0 without a gate receipt
+    env = _env(tmp_path)
+    env["GATE_ENFORCE"] = "0"
+    subprocess.run([sys.executable, "tools/record_submission.py", "--company", "Acme",
+                    "--role", "Eng2", "--cv", str(cv), "--letter", str(letter),
+                    "--status", "SUBMITTED", "--evidence", EVIDENCE],
+                   cwd=ROOT, env=env, check=True, capture_output=True)
+    # a gate receipt, but --force over placeholder evidence
+    _emit(tmp_path, cv, letter)
+    r = _record(tmp_path, cv, letter, ["--force", "--evidence", "ok"])
+    assert r.returncode == 0
+    assert _confidence(tmp_path) == ["forced", "forced", "forced"]
+    assert "[forced]" in (tmp_path / "applications.csv").read_text()
