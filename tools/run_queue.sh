@@ -60,6 +60,22 @@ fi
 CV_PREFIX="${CV_PREFIX:-CV}"
 
 mkdir -p "$LOGS"; touch "$DONE"
+
+# LIGHT runs upload one fixed CV and no letter, so gate that CV once, up front.
+# The PASS writes the receipt record_submission.py needs before it will record a
+# SUBMITTED row; a CV that fails stops the run before anything is sent.
+if [ "$LIGHT" = "1" ]; then
+  if [ -z "$FIXED_CV" ] || [ ! -f "$FIXED_CV" ]; then
+    echo "LIGHT=1 needs FIXED_CV=<path to the CV to upload>; got '${FIXED_CV}'" >&2
+    exit 1
+  fi
+  if ! python3 "$ROOT/tools/check_documents.py" --cv "$FIXED_CV" --engagement "$ENGAGEMENT" \
+       --record > "$LOGS/fixed_cv_gate.out" 2>&1; then
+    cat "$LOGS/fixed_cv_gate.out" >&2
+    echo "FIXED_CV $FIXED_CV failed the pre-submit gate: fix it or choose another CV, then re-run" >&2
+    exit 1
+  fi
+fi
 printf '%s\n' "$QUEUE" > "$ROOT/state/active_queue"
 printf '%s\n' "$DONE" > "$ROOT/state/active_done"
 printf '%s\n' "$PARALLEL" > "$ROOT/state/active_parallel"
@@ -117,7 +133,7 @@ CV to upload (FIXED - do NOT generate or edit any CV or cover letter): $FIXED_CV
 Browser: run every command as \`python3 tools/camoufox_browser.py --server $server <cmd>\` (nav/snap/click/fill/type/select/pick/fillmap/press/check/upload/value/eval/wait). Prefix \`$TIMEOUT_CMD 30\`. Re-snap before using refs; prefer CSS selectors with \`fill '<sel>' '<text>'\`. To cut tokens, BATCH form fields with \`fillmap '<json steps>'\` (steps: [{"selector":"#x","value":"...","op":"fill|check|select|upload|press"}]) instead of one call per field.
 
 FIRST, before anything else: read config/profile.md and apply it - identity (name, email, phone, location, links), work authorisation, languages, availability, pay/rate, eligibility/exclusions, accuracy rules and the standard diversity/EEO answers. Use those exact values wherever a form asks; never invent or substitute personal data. Treat config/cv.json as the source of truth for the candidate's experience.
-This is a LIGHT run: be fast and cheap. Do NOT run GraphRAG, do NOT write a CV or letter, do NOT run alignment/document gates.
+This is a LIGHT run: be fast and cheap. Do NOT run GraphRAG, do NOT write a CV or letter, do NOT run alignment/document gates (the runner already gated $FIXED_CV, so recording it as SUBMITTED needs no --force).
 
 Steps:
 0. DUPLICATE GUARD (mandatory, do this FIRST): run \`python3 tools/register.py --show "$company"\` and read state/applications.csv. If this company already has a row with status SUBMITTED, INTERVIEW or IN_PROGRESS for the SAME role - or a near-identical/renamed variant of it (e.g. "X - Platform Team" vs "X, Platform") - this is a DUPLICATE: record \`python3 tools/register.py --set --company "$company" --role "$role" --status CLOSED --notes "duplicate of existing <status> role: <existing role>"\` and STOP; do NOT open the form or submit. If two titles could plausibly be the same role, treat them as the same and skip.

@@ -13,7 +13,11 @@ Usage:
   # loose keyword list instead of a file
   python3 tools/check_documents.py --letter L.docx --keywords "Python,Kubernetes,RAG,MCP"
 
-Exit codes: 0 pass, 1 fail.
+  # a CV on its own (fixed-CV runs upload no letter): identity, template
+  # leftovers, claims about past work and the contract rate
+  python3 tools/check_documents.py --cv documents/archetypes/YOUR_CV.docx --record
+
+Exit codes: 0 pass, 1 fail, 2 a document was not found.
 """
 import argparse
 import os
@@ -68,6 +72,22 @@ def docx_text(path):
     return [p.text for p in doc.paragraphs], doc
 
 
+def docx_all_paragraphs(path):
+    """Every paragraph, including those inside tables: the styled CV is a
+    two-column table, so its top-level paragraphs alone are nearly empty."""
+    doc = Document(path)
+    out = [p.text for p in doc.paragraphs]
+
+    def walk(tables):
+        for table in tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    out.extend(p.text for p in cell.paragraphs)
+                    walk(cell.tables)
+    walk(doc.tables)
+    return [t for t in out if t.strip()]
+
+
 def check_identity(paras, name, errors):
     if not paras:
         errors.append("empty document")
@@ -89,6 +109,31 @@ def check_identity(paras, name, errors):
         errors.append(f"contact line missing email/phone: {contact!r}")
     if not links.strip():
         errors.append("links line is empty")
+
+
+def check_cv(cv_paras, name, facts, corpus, errors, warnings):
+    """Gate a CV on its own: whose it is, template leftovers, and present-tense
+    claims about past work. The letter's prose rules (salutation, slop words,
+    repetition, naturalness) are not applied to a CV."""
+    low = " ".join(cv_paras).lower()
+    if not low.strip():
+        errors.append("CV has no text")
+        return
+    if not name or name.strip().lower() in PLACEHOLDER_IDENTITIES:
+        errors.append("profile identity is a placeholder - set 'full name' in "
+                      "config/profile.md (or profile.example.md)")
+    elif name.lower() not in low:
+        errors.append(f"CV does not carry the candidate's name ({name!r})")
+    # Whole-word matching: a CV is long enough for "todo" to sit inside "Todoist".
+    for tok in PLACEHOLDERS:
+        if re.search(r"(?<![a-z0-9])" + re.escape(tok) + r"(?![a-z0-9])", low):
+            errors.append(f"placeholder token present: {tok!r}")
+    # One paragraph at a time: CV bullets have no full stops, so a joined CV
+    # would read as one long sentence mixing current and past employers.
+    for para in cv_paras:
+        f_err, f_warn = F.check_text(para, facts, corpus)
+        errors += f_err
+        warnings += f_warn
 
 
 def check_salutation(paras, expected, company, errors, warnings):
@@ -250,7 +295,7 @@ def check_naturalness(letter_paras, errors, warnings):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--letter", required=True)
+    ap.add_argument("--letter", default="", help="cover letter .docx (omit to gate a CV on its own)")
     ap.add_argument("--cv", default="")
     ap.add_argument("--jd", default="", help="job description text file (for reference)")
     ap.add_argument("--ats-keywords", default="", help="file with one keyword per line")
@@ -268,31 +313,37 @@ def main():
                          "record_submission.py requires a matching receipt to record SUBMITTED")
     args = ap.parse_args()
 
-    if not os.path.isfile(args.letter):
-        print(f"letter not found: {args.letter}")
-        sys.exit(2)
+    if not args.letter and not args.cv:
+        ap.error("give --letter (with --cv), or --cv alone to gate a CV on its own")
+    # A CV that is named but missing must not quietly drop out of the gate.
+    for kind, path in (("letter", args.letter), ("CV", args.cv)):
+        if path and not os.path.isfile(path):
+            print(f"{kind} not found: {path}")
+            sys.exit(2)
 
     errors, warnings = [], []
-    letter_paras, _ = docx_text(args.letter)
-    check_identity(letter_paras, NAME, errors)
-    check_salutation(letter_paras, args.expected_salutation, args.company, errors, warnings)
-    check_slop(letter_paras, errors, warnings)
-
-    cv_text = ""
-    if args.cv and os.path.isfile(args.cv):
-        cv_text = " ".join(docx_text(args.cv)[0])
+    cv_paras = docx_all_paragraphs(args.cv) if args.cv else []
+    cv_text = " ".join(cv_paras)
 
     # Authoritative facts: config/cv.json, plus the identity profile as answers.
     facts, corpus = F.load()
     corpus = (corpus + " " + " ".join(ID.parse().values())).lower()
 
-    check_claims(letter_paras, facts, corpus, errors, warnings)
+    letter_paras = []
+    if args.letter:
+        letter_paras, _ = docx_text(args.letter)
+        check_identity(letter_paras, NAME, errors)
+        check_salutation(letter_paras, args.expected_salutation, args.company, errors, warnings)
+        check_slop(letter_paras, errors, warnings)
+        check_claims(letter_paras, facts, corpus, errors, warnings)
+        check_duplication(letter_paras, errors, warnings)
+        check_naturalness(letter_paras, errors, warnings)
+        if args.jd and os.path.isfile(args.jd):
+            with open(args.jd, encoding="utf-8", errors="ignore") as fh:
+                check_jd_echo(letter_paras, fh.read(), errors)
+    else:
+        check_cv(cv_paras, NAME, facts, corpus, errors, warnings)
     check_rate(letter_paras, cv_text, args.engagement, CONTRACT_RATE, errors)
-    check_duplication(letter_paras, errors, warnings)
-    check_naturalness(letter_paras, errors, warnings)
-    if args.jd and os.path.isfile(args.jd):
-        with open(args.jd, encoding="utf-8", errors="ignore") as fh:
-            check_jd_echo(letter_paras, fh.read(), errors)
 
     if args.answer:
         for path in args.answer:
@@ -312,7 +363,7 @@ def main():
             keywords += [l.strip() for l in fh if l.strip() and not l.startswith("#")]
     check_keywords(letter_paras, cv_text, keywords, args.min_coverage, errors, warnings)
 
-    print(f"checked {os.path.basename(args.letter)}")
+    print(f"checked {os.path.basename(args.letter or args.cv)}")
     for w in warnings:
         print(f"  WARN  {w}")
     for e in errors:
