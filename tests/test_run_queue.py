@@ -14,7 +14,11 @@ company=$(printf '%s\\n' "$1" | sed -n 's/^Company[^:]*: //p' | head -n1)
 role=$(printf '%s\\n' "$1" | sed -n 's/^Role: //p' | head -n1)
 printf '%s|%s\\n' "$company" "$role" >> "$CALLS"
 printf '%s\\n' "$1" > "$PROMPTS/$company.txt"
-case "$role" in Slow*) sleep 30 ;; esac
+case "$role" in
+  Slow*) sleep 30 ;;
+  Blocked*) echo "STATUS $company | $role | BLOCKED | hCaptcha on Workday | CV: documents/applications/Jane_Doe_CV_k.docx | letter: documents/applications/Jane_Doe_Motivation_k.docx"
+            exit 0 ;;
+esac
 echo "STATUS $company | $role | PREPARED | stub"
 """
 
@@ -65,6 +69,23 @@ def test_queue_runs_each_role_once_in_parallel(tmp_path):
     prompt = (tmp_path / "prompts" / "Co0.txt").read_text()
     assert "REVIEW MODE (do NOT submit)" in prompt
     assert "timeout 30" in prompt
+    # Review runs end on the same STATUS line the runner parses, not a PREPARED line.
+    assert "STATUS <Company> | Engineer 0 | PREPARED|BLOCKED|CLOSED |" in prompt
+    assert "Return exactly one line: PREPARED" not in prompt
+
+
+def test_blocked_roles_get_one_retry(tmp_path):
+    rows = [("CoB", "Blocked Role", "u1", "cv", "ats", "kb"),
+            ("CoOk", "Engineer", "u2", "cv", "ats", "kok")]
+    root, env = _sandbox(tmp_path, rows)
+    env.update(PARALLEL="1", RETRY_LIMIT="1")
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+                       env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    calls = (tmp_path / "calls").read_text().splitlines()
+    assert calls.count("CoB|Blocked Role") == 2, calls
+    assert calls.count("CoOk|Engineer") == 1, calls
+    assert "retry pass 1" in (root / "state" / "logs" / "run_queue.out").read_text()
 
 
 def test_queue_aborts_when_the_agent_is_not_signed_in(tmp_path):

@@ -102,9 +102,10 @@ fi
 
 build_prompt() {
   local company="$1"; role="$2"; url="$3"; cv="$4"; ats="$5"; key="$6"; server="$7"
-  local REVIEW_MSG=""
+  local REVIEW_MSG="" OUTCOMES="SUBMITTED|BLOCKED|CLOSED"
   if [ "${REVIEW:-0}" = "1" ]; then
-    REVIEW_MSG="REVIEW MODE (do NOT submit): produce the aligned, grounded, targeted CV and cover letter (steps 0c-2), run the alignment gate and the pre-submit gate (with --record, so a gate receipt is written) until both print RESULT: PASS, and save every artifact (state/job-descriptions/$key.md, state/ats/$key.txt, state/kb-context/$key.md, state/cv-content/$key.json, documents/applications/${CV_PREFIX}_CV_$key.docx, documents/applications/${CV_PREFIX}_Motivation_$key.docx). Then record the row as PREPARED (NOT SUBMITTED) with the file paths: \`python3 tools/register.py --set --company \"$company\" --role \"$role\" --status PREPARED --notes \"review: <cv path> | <letter path>\"\`. Do NOT open the browser, do NOT upload, do NOT submit anything. Return exactly one line: PREPARED <Company> | $role | <cv> | <letter>"
+    OUTCOMES="PREPARED|BLOCKED|CLOSED"
+    REVIEW_MSG="REVIEW MODE (do NOT submit): produce the aligned, grounded, targeted CV and cover letter (steps 0c-2), run the alignment gate and the pre-submit gate (with --record, so a gate receipt is written) until both print RESULT: PASS, and save every artifact (state/job-descriptions/$key.md, state/ats/$key.txt, state/kb-context/$key.md, state/cv-content/$key.json, documents/applications/${CV_PREFIX}_CV_$key.docx, documents/applications/${CV_PREFIX}_Motivation_$key.docx). Then record the row as PREPARED (NOT SUBMITTED) with the file paths: \`python3 tools/register.py --set --company \"$company\" --role \"$role\" --status PREPARED --notes \"review: <cv path> | <letter path>\"\`. Do NOT open the browser, do NOT upload, do NOT submit anything. Finish with the STATUS line described at the end, with PREPARED as the outcome."
   fi
   if [ "${LIGHT:-0}" = "1" ]; then
     cat <<EOF
@@ -179,7 +180,7 @@ Steps:
 5. On success: \`python3 tools/record_submission.py --company "<Company>" --role "$role" --ats "$ats" --url "$url" --cv documents/applications/${CV_PREFIX}_CV_$key.docx --letter documents/applications/${CV_PREFIX}_Motivation_$key.docx --status SUBMITTED --evidence "<confirmation>"\`.
 If, after step 4c, a genuine blocker remains (an unsolvable CAPTCHA/anti-bot challenge, or a login wall with no stored credentials), record it with the workarounds you tried: \`python3 tools/register.py --set --company "<Company>" --role "$role" --status BLOCKED --notes "blocker: <exact>; tried: <workarounds>"\` and stop. Never fabricate a submission.
 
-Return exactly one line: STATUS <Company> | $role | SUBMITTED|BLOCKED|CLOSED | <reason> | CV: documents/applications/${CV_PREFIX}_CV_$key.docx | letter: documents/applications/${CV_PREFIX}_Motivation_$key.docx
+Return exactly one line: STATUS <Company> | $role | $OUTCOMES | <reason> | CV: documents/applications/${CV_PREFIX}_CV_$key.docx | letter: documents/applications/${CV_PREFIX}_Motivation_$key.docx
 EOF
 }
 
@@ -231,7 +232,10 @@ run_task() {
   "$TIMEOUT_CMD" "$TASK_TIMEOUT" bash "$ROOT/tools/agent_run.sh" \
     "$(build_prompt "$company" "$role" "$url" "$cv" "$ats" "$key" "$server")" >"$log" 2>&1 </dev/null
   rc=$?
-  outcome="$(grep -aoE 'STATUS .*' "$log" 2>/dev/null | tail -1 | grep -oE '[A-Z]+' | tail -1)"
+  # The outcome is the third |-separated field of the agent's last STATUS line:
+  # "STATUS <Company> | <role> | BLOCKED | <reason> | CV: ...". (Taking the last
+  # capitalised word instead picked up letters from the reason or the CV path.)
+  outcome="$(grep -aoE 'STATUS .*' "$log" 2>/dev/null | tail -1 | awk -F'|' '{print $3}' | tr -cd 'A-Z_')"
   # Distinguish an APPLICATION failure from an INFRASTRUCTURE failure (the model
   # never really ran). Infra failures must NOT be committed to $DONE or they are
   # lost: the task stays pending for a later run and is re-queued for the retry pass.
