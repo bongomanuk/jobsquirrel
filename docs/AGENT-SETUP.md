@@ -103,6 +103,38 @@ commands can drive the pipeline.
 > script to keep in sync. If you read a step in this doc that the agent cannot do
 > for you, that is a bug, open an issue.
 
+### Running the queue with Claude Code
+
+The queue runner starts one headless agent per role through
+`tools/agent_run.sh`. It uses opencode if that is installed, otherwise Claude
+Code; `AGENT=claude` picks Claude Code explicitly:
+
+```bash
+AGENT=claude REVIEW=1 PARALLEL=3 bash tools/run_queue.sh    # prepare only
+AGENT=claude PARALLEL=3 bash tools/run_queue.sh             # apply
+AGENT=claude MODEL=sonnet PARALLEL=3 bash tools/run_queue.sh
+```
+
+Sign in to the `claude` CLI first (run `claude` once in a terminal). If it is
+signed out, the runner records "agent not signed in" and stops after three
+failed tasks; nothing is lost and the roles stay pending.
+
+A headless run cannot stop and ask you to approve a tool, so each task may use
+only what the role needs: reading and writing files in the repo, web search and
+fetch (to find the employer's own apply page), and the pipeline's Python tools.
+Anything else is refused. No MCP servers are loaded, so mail and social tools
+you have connected elsewhere are out of reach. This is a guardrail, not a
+sandbox: `python3` can still do anything. To change it:
+
+| Env | Effect |
+|---|---|
+| `CLAUDE_ALLOWED_TOOLS="..."` | replace the allowlist (space-separated rules, e.g. `Read Edit Bash(python3 *)`) |
+| `CLAUDE_PERMISSION_MODE=bypassPermissions` | allow every tool (not recommended) |
+| `CLAUDE_ARGS="--max-turns 80"` | extra flags for every task, e.g. `--no-session-persistence` to keep the runs out of your session history |
+
+The same mechanism runs any other CLI agent: `AGENT="mycli run"` runs
+`mycli run "<prompt>"` for each role.
+
 ---
 
 ## 3. Keeping it cheap: opencode + DeepSeek

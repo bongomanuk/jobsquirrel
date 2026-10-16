@@ -240,6 +240,8 @@ tools/                      # the pipeline (language/library-free CLI tools)
   camoufox_server.py        #   one stealth browser behind a small HTTP API
   camoufox_browser.py       #   the agent-facing browser CLI (nav/snap/click/fill/...)
   run_queue.sh              #   the queue runner: applies to each queued role end-to-end
+  agent_run.sh              #   runs one headless task with opencode, Claude Code or any CLI agent
+  compat/                   #   portable flock/setsid/timeout for macOS
   run_linkedin.sh           #   serialized, paced LinkedIn Easy Apply (opt-in; see ToS note)
   build_human_queue.py      #   route CAPTCHA/2FA-blocked roles to a human queue
   reconcile_loop.sh         #   periodically reconcile + refresh counts

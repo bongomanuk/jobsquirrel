@@ -7,16 +7,35 @@
 # time. It never solves/evades a CAPTCHA.
 #
 # Browser: Camoufox (tools/camoufox_server.py --headful + tools/camoufox_browser.py).
-# The --manual path opens the URL in YOUR real Firefox (xdg-open); no pipeline
-# browser is involved there.
+# Agent: opencode, Claude Code or any CLI (tools/agent_run.sh; AGENT=claude to pick).
+# The --manual path opens the URL in YOUR real browser (xdg-open, or open on
+# macOS); no pipeline browser or agent is involved there.
 #
 # Usage:
 #   bash tools/human_assist.sh                 # pre-fill via headful Camoufox
 #   HUMAN_SERVER=http://127.0.0.1:9871 bash tools/human_assist.sh
+#   AGENT=claude bash tools/human_assist.sh
 #   bash tools/human_assist.sh --build         # refresh state/queue-human.tsv first
 #   bash tools/human_assist.sh --manual        # open each role in your real browser
 set -u
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+cd "$ROOT" || exit 1   # the prompts and the agent use repo-relative paths
+
+# Use the project venv (tools/install.sh) when there is one and none is active,
+# so python3 has python-docx, camoufox etc. for the runner and the agent alike.
+if [ -z "${VIRTUAL_ENV:-}" ] && [ -x "$ROOT/.venv/bin/python3" ]; then
+  VIRTUAL_ENV="$ROOT/.venv"; PATH="$VIRTUAL_ENV/bin:$PATH"; export VIRTUAL_ENV
+fi
+# macOS has no flock/setsid/timeout, so tools/compat provides portable stand-ins.
+# They go LAST on PATH: the real commands win wherever they exist. The agent is
+# told the full path to the stand-in, because its shell may rebuild PATH.
+TIMEOUT_CMD=timeout
+command -v timeout >/dev/null 2>&1 || TIMEOUT_CMD="$ROOT/tools/compat/timeout"
+PATH="$PATH:$ROOT/tools/compat"; export PATH
+# The user's own browser: `open` on macOS, xdg-open elsewhere.
+OPEN_CMD=xdg-open
+[ "$(uname)" = "Darwin" ] && OPEN_CMD=open
+
 QUEUE="${QUEUE:-$ROOT/state/queue-human.tsv}"
 DONE="${DONE:-$ROOT/state/queue-human.done}"
 LOGS="$ROOT/state/logs"
@@ -50,7 +69,7 @@ fi
 # MANUAL mode: open each role in the user's REAL browser (no automation at all, so
 # nothing gets flagged). The pipeline browser is not used in this mode.
 if [ "$MANUAL" = "1" ]; then
-  echo "MANUAL mode: opening each role in your real browser (Firefox via xdg-open). No automation."
+  echo "MANUAL mode: opening each role in your real browser (via $OPEN_CMD). No automation."
   while IFS=$'\t' read -r company role url cv letter reason; do
     [ -z "${company:-}" ] && continue
     case "$company" in \#*) continue ;; esac
@@ -64,7 +83,7 @@ if [ "$MANUAL" = "1" ]; then
     echo " cv      : $cv"
     echo " letter  : $letter"
     echo "================================================================"
-    [ -n "$url" ] && xdg-open "$url" >/dev/null 2>&1 &
+    [ -n "$url" ] && "$OPEN_CMD" "$url" >/dev/null 2>&1 &
     echo "-- Apply in your own browser, then come back here."
     printf "    press Enter when done (or 's'+Enter to skip): "
     read -r ans || ans=""
@@ -76,6 +95,11 @@ if [ "$MANUAL" = "1" ]; then
   echo "manual human-assist complete $(date +%H:%M:%S)"
   exit 0
 fi
+
+# The coding agent that pre-fills each form: opencode | claude | any command.
+# No default MODEL here: each agent uses its own unless MODEL=... is set.
+AGENT="$(bash "$ROOT/tools/agent_run.sh" --which)" || exit 1
+export AGENT TIMEOUT_CMD
 
 # --- ensure a HEADFUL Camoufox instance for human work ------------------------
 if [ -z "${HUMAN_SERVER:-}" ]; then
@@ -108,7 +132,7 @@ CV: $cv
 Cover letter: $letter
 EEO/diversity questions: read config/profile.md first and use its identity, work-authorisation, pay and standard diversity/EEO answers exactly - never decline these or choose "prefer not to say" unless profile.md says so.
 
-Browser: run every command as \`python3 tools/camoufox_browser.py --server $HUMAN_SERVER <cmd>\` (nav/snap/click/fill/select/check/upload/value/eval/wait). Prefix \`timeout 30\`. This browser is VISIBLE to the human.
+Browser: run every command as \`python3 tools/camoufox_browser.py --server $HUMAN_SERVER <cmd>\` (nav/snap/click/fill/select/check/upload/value/eval/wait). Prefix \`$TIMEOUT_CMD 30\`. This browser is VISIBLE to the human.
 
 Steps:
 1. Open the Apply URL. Pre-fill EVERYTHING so the human only has to solve the challenge: identity (name/email/phone, location, work authorisation, pay) from config/profile.md, upload the CV and cover letter, and answer any questions truthfully. Identify the Submit button now (e.g. \`python3 tools/camoufox_browser.py --server $HUMAN_SERVER eval "(()=>JSON.stringify([...document.querySelectorAll('button,input[type=submit]')].map((b,i)=>({i,t:(b.innerText||b.value||'').trim().slice(0,40)})).filter(x=>/apply|submit/i.test(x.t)))())"\`). At the very start run: \`python3 tools/human_status.py set --company "$company" --role "$role" --state filling --note "pre-filling the form"\`
@@ -140,7 +164,8 @@ while IFS=$'\t' read -r company role url cv letter reason; do
   echo " cv      : $cv"
   echo " letter  : $letter"
   echo "================================================================"
-  timeout 1500 opencode run "$(build_prompt "$company" "$role" "$url" "$cv" "$letter" "$reason" "$key")" 2>&1 | tee -a "$log"
+  "$TIMEOUT_CMD" 1500 bash "$ROOT/tools/agent_run.sh" \
+    "$(build_prompt "$company" "$role" "$url" "$cv" "$letter" "$reason" "$key")" 2>&1 </dev/null | tee -a "$log"
   echo "$company|$role" >> "$DONE"
   echo "-- done. next role in a moment (Ctrl-C to stop) --"
   if [ -t 0 ]; then read -r _ < /dev/tty || true; else sleep 2; fi

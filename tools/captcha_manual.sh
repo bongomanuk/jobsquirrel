@@ -8,8 +8,8 @@
 # touches the site, so the captcha is trusted.
 #
 # This walks state/queue-captcha.tsv one role at a time, opening each in your
-# real browser (xdg-open). Press Enter once you've submitted it (records
-# SUBMITTED), 's' to skip, 'q' to quit.
+# real browser (xdg-open, or open on macOS). Press Enter once you've submitted
+# it (records SUBMITTED), 's' to skip, 'q' to quit.
 #
 # Usage:  bash tools/captcha_manual.sh
 set -u
@@ -17,6 +17,9 @@ ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 QUEUE="${QUEUE:-$ROOT/state/queue-captcha.tsv}"
 DONE="${DONE:-$ROOT/state/queue-captcha.done}"
 touch "$QUEUE" "$DONE"
+# The user's own browser: `open` on macOS, xdg-open elsewhere.
+OPEN_CMD=xdg-open
+[ "$(uname)" = "Darwin" ] && OPEN_CMD=open
 
 echo "Manual CAPTCHA queue — each role opens in YOUR real browser. Ctrl-C to stop."
 while IFS=$'\t' read -r company role url cv letter reason; do
@@ -31,7 +34,7 @@ while IFS=$'\t' read -r company role url cv letter reason; do
   echo " cv      : $cv"
   echo " letter  : $letter"
   echo "================================================================"
-  [ -n "$url" ] && xdg-open "$url" >/dev/null 2>&1 &
+  [ -n "$url" ] && "$OPEN_CMD" "$url" >/dev/null 2>&1 &
   printf "  [Enter]=submitted   [s]=skip   [q]=quit : "
   read -r ans || ans="q"
   case "$ans" in
