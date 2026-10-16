@@ -31,6 +31,9 @@ LOCK_PATH = CSV_PATH + ".lock"
 FIELDS = ["date", "company", "role", "ats", "status", "letter", "notes"]
 STATUSES = ["SUBMITTED", "INTERVIEW", "OFFER", "REJECTED", "BLOCKED", "MANUAL",
             "PREPARED", "IN_PROGRESS", "CLOSED"]
+# Statuses that count as a live process - an application we have sent and are
+# still awaiting an outcome on (not yet rejected/closed, not merely prepared).
+PROCESS_STATUSES = ["SUBMITTED", "IN_PROGRESS", "INTERVIEW", "OFFER"]
 GROUP_TITLES = {
     "SUBMITTED": "Submitted - confirmed",
     "INTERVIEW": "Interview in progress",
@@ -168,6 +171,10 @@ def stats():
     for s in STATUSES:
         if counts[s]:
             print(f"  {s:<12} {counts[s]}")
+    in_process = sum(counts[s] for s in PROCESS_STATUSES)
+    breakdown = " + ".join(f"{s} {counts[s]}" for s in PROCESS_STATUSES)
+    print(f"  {'-' * 17}")
+    print(f"  IN PROCESS   {in_process}  ({breakdown})")
     return rows
 
 

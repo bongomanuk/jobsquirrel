@@ -34,6 +34,7 @@ state/cv-content/
 state/letters-content/
 state/human/
 state/gmail_reconcile_ack.txt
+state/gmail_cache.json
 state/counts.md
 state/interviews.md
 state/applications-register.md

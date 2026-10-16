@@ -18,6 +18,7 @@ Run with the venv python:
   .venv/bin/python tools/gmail_reconcile.py --apply
 """
 import argparse
+import json
 import os
 import re
 import sys
@@ -29,6 +30,11 @@ import gmail_readonly as G
 
 STATE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "state")
 ACK_FILE = os.path.join(STATE, "gmail_reconcile_ack.txt")
+# Message bodies are immutable, so cache the decoded mail keyed by id. Only new
+# ids are fetched from Gmail on later runs, which avoids re-downloading the whole
+# window every time (quota-safe, fast, no repeated token spend). Derived, so it
+# lives outside the register and can be deleted at any time.
+CACHE_FILE = os.path.join(STATE, "gmail_cache.json")
 
 
 def fetch_full(service, mid, attempts=5):
@@ -186,9 +192,21 @@ def match_company(text, rows, body="", sender=""):
     return ""
 
 
+def _word_match(term, text):
+    """Whole-word (not substring) presence of term in text. Stops a term like
+    'consultant' matching the body word 'consultants' and stealing a role."""
+    return re.search(r"(?<![a-z0-9])" + re.escape(term) + r"(?![a-z0-9])", text) is not None
+
+
 def match_row(company, subject, rows):
     """The register row for a company. If the company has several roles and the
-    subject names none of them, return None (ambiguous - do not guess)."""
+    subject names none of them, return None (ambiguous - do not guess).
+
+    Roles are scored by (full-name match length, longest whole-word term match)
+    so the most specific role wins: an email naming 'Senior Analytics Engineer
+    (Multiple Domains)' picks that row rather than its 'Senior Analytics
+    Engineer' prefix, and 'Tech Lead' is not stolen by a role whose word
+    'consultant' happens to appear as 'consultants' in the prose."""
     if not company:
         return None
     cand = [r for r in rows if r["company"] == company]
@@ -196,13 +214,21 @@ def match_row(company, subject, rows):
         return None
     if len(cand) == 1:
         return cand[0]
-    low = subject.lower()
-    best = (None, 0)
+    low = re.sub(r"\s+", " ", subject.lower())
+    best, best_key = None, None
     for r in cand:
+        name = re.sub(r"\s+", " ", r["role"].lower()).strip()
+        full = len(name) if name and name in low else 0
+        word = 0
         for t in terms(r["role"]):
-            if t in low and len(t) > best[1]:
-                best = (r, len(t))
-    return best[0]
+            if _word_match(t, low):
+                word = max(word, len(t))
+        key = (full, word)
+        if best is None or key > best_key:
+            best, best_key = r, key
+    if best_key and (best_key[0] or best_key[1]):
+        return best
+    return None
 
 
 def propose(current, category):
@@ -229,11 +255,44 @@ def add_ack(pattern):
         f.write(pattern + "\n")
 
 
+def load_cache():
+    if not os.path.exists(CACHE_FILE):
+        return {}
+    try:
+        with open(CACHE_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (ValueError, OSError):
+        return {}
+
+
+def save_cache(cache):
+    tmp = CACHE_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(cache, f)
+    os.replace(tmp, CACHE_FILE)
+
+
+def cached_message(service, mid, cache):
+    """Return (decoded message dict, was_fetched). Message bodies are immutable,
+    so they are fetched once and reused; only new ids hit the Gmail API."""
+    hit = cache.get(mid)
+    if hit is None:
+        msg = fetch_full(service, mid)
+        headers = {h["name"].lower(): h["value"] for h in msg["payload"].get("headers", [])}
+        hit = {"date": headers.get("date", ""), "from": headers.get("from", ""),
+               "subject": headers.get("subject", ""), "body": G._decode(msg["payload"])}
+        cache[mid] = hit
+        time.sleep(0.2)
+        return hit, True
+    return hit, False
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="write changes (default: dry run)")
     ap.add_argument("--query", default=DEFAULT_QUERY)
     ap.add_argument("--ack", help="substring of a verification link to mark as already handled")
+    ap.add_argument("--no-cache", action="store_true", help="ignore the message cache and re-fetch everything")
     args = ap.parse_args()
 
     if args.ack:
@@ -245,16 +304,14 @@ def main():
     messages = list_ids(service, args.query)
     print(f"{len(messages)} application messages over the query\n")
     acks = load_acks()
+    cache = {} if args.no_cache else load_cache()
 
     changes, unmatched, verifications, ambiguous = [], [], [], []
+    fetched = 0
     for m in messages:
-        msg = fetch_full(service, m["id"])
-        time.sleep(0.2)
-        headers = {h["name"].lower(): h["value"] for h in msg["payload"].get("headers", [])}
-        subject = headers.get("subject", "")
-        sender = headers.get("from", "")
-        date = headers.get("date", "")
-        body = G._decode(msg["payload"])
+        hit, was_fetched = cached_message(service, m["id"], cache)
+        fetched += was_fetched
+        subject, sender, date, body = hit["subject"], hit["from"], hit["date"], hit["body"]
         category = G.classify(subject, body)
         # plain, truncated body text so generic ATS senders still resolve to a
         # company - drop <style>/<script> first so inline CSS (fonts.googleapis.com
@@ -268,14 +325,9 @@ def main():
             verifications.append((date, company or sender_display(sender), subject, links, codes))
         amb = False
         # An invite/rejection for a company with several applications whose
-        # subject names none of the roles must still be captured: fall back to
-        # the most recent live row for that company, flagged as a best guess.
-        if not row and company and category in ("INTERVIEW", "REJECTION"):
-            cand = [r for r in rows if r["company"] == company and
-                    r["status"] in ("SUBMITTED", "IN_PROGRESS", "MANUAL", "PREPARED")]
-            if cand:
-                row = max(cand, key=lambda r: r["date"] or "")
-                amb = True
+        # subject names none of the roles is NOT guessed: it is reported under
+        # "role ambiguous" for manual review. Guessing the most recent row made
+        # past runs reject the wrong role.
         if not row:
             if category != "OTHER":
                 (ambiguous if company else unmatched).append((date, category, company or sender, subject))
@@ -283,6 +335,12 @@ def main():
         proposed = propose(row["status"], category)
         if proposed and proposed != row["status"]:
             changes.append((row, proposed, category, date, subject, amb))
+
+    # keep the cache bounded to the current window and persist it
+    live = {m["id"] for m in messages}
+    cache = {k: v for k, v in cache.items() if k in live}
+    save_cache(cache)
+    print(f"({fetched} fetched, {len(messages) - fetched} from cache)\n")
 
     # de-duplicate (the same mail can match twice) keeping the first
     seen_keys, uniq = set(), []
