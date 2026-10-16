@@ -273,6 +273,12 @@ def main():
     ap.add_argument("--notes", default="")
     args = ap.parse_args()
 
+    # --company/--role/--notes only mean something with --set or --delete. Without
+    # them, `--company X --status BLOCKED` used to fall through to the listing
+    # and record nothing, silently, so refuse instead.
+    if (args.company or args.role or args.notes) and not (args.set or args.delete):
+        ap.error("--company/--role/--notes need --set (to record a row) or --delete")
+
     if args.delete:
         if not args.company or not args.role:
             ap.error("--delete requires --company and --role")
