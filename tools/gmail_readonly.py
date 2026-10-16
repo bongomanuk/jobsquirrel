@@ -105,6 +105,11 @@ def classify(subject, body):
        "verify your email" in b or "verification code" in b:
         return "VERIFICATION"
 
+    # A cancelled meeting/interview is informational, not an invite: do not let
+    # "Meeting cancelled: your first interview ..." register as an INTERVIEW.
+    if re.search(r"cancel", s) and re.search(r"interview|meeting|call|chat|screening", s):
+        return "OTHER"
+
     i_subj = re.search(r"interview|next steps?|intro(ductory)? call|first chat|invitation for|"
                        r"phone screen|meet the team|book a time|would you be open|jump on a call|"
                        r"schedule[^.\n]{0,40}(call|chat|meeting|time)", s)
@@ -122,16 +127,39 @@ def classify(subject, body):
         r"would .{0,50}?work for you|are you (?:free|available)|"
         r"(?:book|schedule|set up|arrange) (?:a |some )?(?:call|chat|meeting|interview|slot)|"
         r"(?:invite|inviting) you (?:for|to) (?:an? )?(?:interview|chat|call|intro)", b)
-    body_rej = re.search(r"not (?:be )?moving forward|not to move forward|"
-                         r"move forward with (?:the )?other|moving forward with (?:the )?other|"
-                         r"will not be (?:moving|proceeding|progressing)|won'?t be (?:moving|proceeding|progressing)|"
-                         r"not (?:be )?proceeding|unable to (?:move|proceed|offer)|decided not to|"
+    body_rej = re.search(r"not (?:be )?moving forward|not to move forward|not move forward|"
+                         r"move forward with (?:the )?other|move forward with another|"
+                         r"moving forward with (?:the )?other|progress with other candidates|"
+                         r"decided to progress|will not be (?:moving|proceeding|progressing)|"
+                         r"won'?t be (?:moving|proceeding|progressing)|"
+                         r"not (?:be )?proceeding|unable to (?:move|proceed|offer you|extend an offer)|"
+                         r"decided not to|"
+                         r"decided to not (?:move|proceed|progress)|"
                          r"proceed with other|will not be proceeding|"
                          r"decided to (move on|proceed|go with|continue with)|"
-                         r"continue with (other|candidates)|have not been selected|"
-                         r"not selected for (the|this) (role|position)|"
+                         r"continue with (other|candidates)|have not been selected|was not selected|"
+                         r"not selected for (the|this) (role|position)|not selected for further consideration|"
                          r"we regret to inform|unfortunately,? we (have )?(decided|chosen)|"
-                         r"role (has been|is) filled|pursuing other candidates|not a (?:good )?(?:fit|match)", b)
+                         r"role (has been|is) filled|pursuing other candidates|not a (?:good )?(?:fit|match)|"
+                         r"not an? ideal fit|we (?:don'?t|do not) see an ideal fit|"
+                         r"doesn'?t align with our current openings|profile doesn'?t align with", b)
+    # A stricter subset for the conf_subj branch: unambiguous "we chose someone
+    # else" wording. Deliberately excludes loose phrases like "not a good fit"
+    # or "unable to offer", which appear in benign acknowledgments too.
+    strong_rej = re.search(r"not (?:be )?moving forward|not to move forward|not move forward|"
+                           r"move forward with (?:the )?other|move forward with another|"
+                           r"moving forward with (?:the )?other|progress with other candidates|"
+                           r"decided to progress|will not be (?:moving|proceeding|progressing)|"
+                           r"won'?t be (?:moving|proceeding|progressing)|"
+                           r"not (?:be )?proceeding|will not be proceeding|"
+                           r"decided not to|decided to not (?:move|proceed|progress)|"
+                           r"decided to (move on|proceed|go with|continue with)|"
+                           r"continue with (other|candidates)|proceed with other|"
+                           r"have not been selected|was not selected|not selected for|"
+                           r"we regret to inform|unfortunately,? we (have )?(decided|chosen)|"
+                           r"role (has been|is) filled|pursuing other candidates|"
+                           r"not an? ideal fit|we (?:don'?t|do not) see an ideal fit|"
+                           r"doesn'?t align with our current openings|profile doesn'?t align with", b)
     body_conf = re.search(r"thank you for applying|thanks for applying|received your application|"
                           r"we got your application|application (?:has been )?received|"
                           r"thank you for submitting your application|thanks for your application", b)
@@ -139,7 +167,15 @@ def classify(subject, body):
     if i_subj:
         return "INTERVIEW"
     if conf_subj:
-        return "INTERVIEW" if body_interview else "CONFIRMATION"
+        if body_interview:
+            return "INTERVIEW"
+        # A clear rejection in the body outranks a generic "thank you for
+        # applying" subject: ATS often reuse the acknowledgment subject for the
+        # final no. Only a strong signal flips it, so benign acknowledgments
+        # that merely mention sponsorship or relocation are left as CONFIRMATION.
+        if strong_rej:
+            return "REJECTION"
+        return "CONFIRMATION"
     if rej_subj:
         return "REJECTION"
     if body_interview:
