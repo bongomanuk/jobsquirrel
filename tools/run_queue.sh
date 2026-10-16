@@ -320,14 +320,18 @@ _role_key() { local rest="$1"; rest="${rest#*$'\t'}"; printf '%s|%s' "${1%%$'\t'
 # Seniority rank of a queue line's role (field 2); higher = more senior. Used so
 # the most senior pending role is applied to first (e.g. a Director role before
 # an Engineer role at the same company). Set PRIORITISE=0 to keep file order.
+# Whole words only, as tools/prioritise_queue.py: punctuation becomes single
+# spaces and the title is padded, so "cto" cannot match inside "director",
+# "vector" or "contractor".
 _seniority() {
-  local role; role="$(printf '%s' "$1" | awk -F'\t' '{print $2}' | tr '[:upper:]' '[:lower:]')"
+  local role
+  role=" $(printf '%s' "$1" | awk -F'\t' '{print $2}' | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' ' ') "
   case "$role" in
-    *chief*|*cto*|*cio*|*ciso*|*cdo*|*cpo*|*svp*|*"vice president"*|*vp*) echo 6 ;;
-    *director*|*"head of"*) echo 5 ;;
-    *principal*|*staff*) echo 4 ;;
-    *lead*|*manager*) echo 3 ;;
-    *senior*|*sr\ *) echo 2 ;;
+    *" chief "*|*" cto "*|*" cio "*|*" ciso "*|*" cdo "*|*" cpo "*|*" svp "*|*" vice president "*|*" vp "*) echo 6 ;;
+    *" director "*|*" head of "*) echo 5 ;;
+    *" principal "*|*" staff "*) echo 4 ;;
+    *" lead "*|*" manager "*) echo 3 ;;
+    *" senior "*|*" sr "*) echo 2 ;;
     *) echo 1 ;;
   esac
 }

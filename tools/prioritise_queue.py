@@ -22,6 +22,7 @@ Usage:
 """
 import argparse
 import os
+import re
 import sys
 
 RANKS = [
@@ -34,9 +35,11 @@ RANKS = [
 
 
 def seniority(role: str) -> int:
-    r = (role or "").lower()
+    # Whole words only, so "cto" does not match inside "director", "vector" or
+    # "contractor". run_queue.sh's _seniority matches the same way.
+    words = " " + re.sub(r"[^a-z0-9]+", " ", (role or "").lower()) + " "
     for rank, keys in RANKS:
-        if any(k in r for k in keys):
+        if any(f" {k.strip()} " in words for k in keys):
             return rank
     return 1
 
