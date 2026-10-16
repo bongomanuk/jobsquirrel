@@ -156,9 +156,10 @@ def main():
     PLACEHOLDERS = {"", "confirmed", "confirm", "ok", "okay", "yes", "y", "done",
                     "submitted", "n/a", "na", "none", "true", "success", "successful",
                     "application submitted", "thank you", "thanks"}
+    ev = (args.evidence or "").strip().lower()
+    weak_evidence = ev in PLACEHOLDERS or len(ev) < 8
     if args.status.upper() == "SUBMITTED" and not args.force:
-        ev = (args.evidence or "").strip().lower()
-        if ev in PLACEHOLDERS or len(ev) < 8:
+        if weak_evidence:
             print("ERROR: refusing to record SUBMITTED without real confirmation evidence.", file=sys.stderr)
             print("       --evidence must be the exact thank-you text/URL or the confirmation email.", file=sys.stderr)
             print("       For 'submitted but awaiting email verification' use --status BLOCKED instead.", file=sys.stderr)
@@ -175,16 +176,17 @@ def main():
 
     # Enforce the pre-submit gate in code: a SUBMITTED row must be backed by a
     # fresh PASS receipt covering the exact CV/letter being recorded, so an agent
-    # cannot silently skip the gate. See tools/gate_receipt.py.
-    if (args.status.upper() == "SUBMITTED" and not args.force
-            and os.environ.get("GATE_ENFORCE", "1") != "0"):
+    # cannot silently skip the gate. See tools/gate_receipt.py. The receipt is
+    # looked up even when the check is overridden, so the row can say so.
+    gate_ok = False
+    if args.status.upper() == "SUBMITTED":
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         try:
             import gate_receipt as GR
             gate_ok, gate_why = GR.find_pass({"cv": cv, "letter": letter})
         except Exception as exc:
             gate_ok, gate_why = False, f"gate check errored: {exc}"
-        if not gate_ok:
+        if not gate_ok and not args.force and os.environ.get("GATE_ENFORCE", "1") != "0":
             print("ERROR: refusing to record SUBMITTED without a passing pre-submit gate.", file=sys.stderr)
             print(f"       {gate_why}", file=sys.stderr)
             print("       Run the gate first, e.g.:", file=sys.stderr)
@@ -195,7 +197,14 @@ def main():
             sys.exit(3)
 
     snapshot = ""
-    confidence = "inferred" if args.inferred else "verified"
+    # "forced": SUBMITTED although the gate receipt or the confirmation evidence
+    # was missing (--force / GATE_ENFORCE=0), so it never passes as verified.
+    forced = (args.status.upper() == "SUBMITTED" and not args.inferred
+              and (not gate_ok or weak_evidence))
+    confidence = "inferred" if args.inferred else ("forced" if forced else "verified")
+    if forced:
+        why = "no matching gate receipt" if not gate_ok else "placeholder evidence"
+        print(f"warning: recording SUBMITTED as forced ({why})", file=sys.stderr)
     if not args.inferred and (cv or letter):
         name = f"{date}_{slugify(args.company)}_{slugify(args.role)}"
         dest = os.path.join(SNAPSHOT_DIR, name)
@@ -238,7 +247,8 @@ def main():
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import register as REG
         REG.upsert(args.company, args.role or "-", args.status.upper(), date,
-                   args.ats, row["letter_file"], args.evidence)
+                   args.ats, row["letter_file"],
+                   ("[forced] " if forced else "") + args.evidence)
     except Exception as exc:  # never fail the record because of the register
         print(f"warning: could not update register: {exc}", file=sys.stderr)
 
