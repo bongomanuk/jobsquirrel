@@ -8,53 +8,85 @@
 </head>
 <body data-session-token="{{TOKEN}}">
 <header class="top">
-  <div class="brand"><span class="mascot">🐿️</span><h1>Jobsquirrel</h1><span id="health" class="pill unknown">health…</span><span class="pill" title="UI build marker">WebUI v4</span></div>
-  <nav class="tabs" id="tabs">
-    <a href="#overview" data-t="overview">Overview</a>
-    <a href="#register" data-t="register">Register</a>
-    <a href="#queue" data-t="queue">Queue &amp; Assist</a>
-    <a href="#roles" data-t="roles">Roles</a>
-    <a href="#config" data-t="config">Config &amp; CV</a>
-    <a href="#outcomes" data-t="outcomes">Outcomes</a>
-  </nav>
+  <div class="brand"><span class="mascot">🐿️</span><h1>Jobsquirrel</h1>
+    <span id="health" class="pill unknown">health…</span><span class="pill" title="UI build marker">WebUI v5</span></div>
   <div class="actions">
     <button id="a-prepare" title="Safe: build tailored documents + run gates (REVIEW=1). Never submits.">⚡ Prepare</button>
     <button id="a-submit" class="risky" title="Applies to queued roles (submits). Requires approval.">🚀 Run Submissions</button>
     <button id="a-reconcile" title="Reconcile the register with Gmail (read-only).">📥 Reconcile</button>
-    <button id="a-drawer" title="Agent console + live run">💬 Agent <span id="drawer-badge" class="muted"></span></button>
+    <button id="a-config" title="Edit profile / CV / archetypes">⚙ Config</button>
+    <button id="a-drawer" title="Agent console + live run">💬 Agent</button>
   </div>
 </header>
-<main id="view"><div class="muted">loading…</div></main>
+
+<div class="strip">
+  <div class="metrics" id="metrics"></div>
+  <div class="livestrip" id="live"><span class="muted">idle — no run active</span></div>
+</div>
+
+<main>
+  <div class="toolbar">
+    <input id="q" placeholder="search company / role / ATS / notes…" style="flex:1;max-width:420px">
+    <select id="fstatus"><option value="">all statuses</option>
+      <option>SUBMITTED</option><option>IN_PROGRESS</option><option>INTERVIEW</option><option>OFFER</option>
+      <option>REJECTED</option><option>BLOCKED</option><option>MANUAL</option><option>PREPARED</option><option>CLOSED</option></select>
+    <select id="fqueue"><option value="">any queue</option><option value="pending">pending</option>
+      <option value="human">human-assist</option><option value="retry">retry</option><option value="done">done</option></select>
+    <button id="export">Export CSV</button>
+    <span id="count" class="muted"></span>
+  </div>
+  <div class="gridwrap">
+    <table id="grid">
+      <thead><tr>
+        <th data-s="date">Date</th><th data-s="company">Company</th><th data-s="role">Role</th>
+        <th data-s="ats">ATS</th><th data-s="status">Status</th><th>Match</th><th>Queue</th>
+        <th>Prov.</th><th>Spec</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</main>
+
+<aside id="detail" class="right">
+  <div class="drawer-head"><b id="d-title">detail</b><button id="d-close" class="small">✕</button></div>
+  <div class="tabs2" id="dtabs"></div>
+  <div id="d-body" class="d-body muted">select a row…</div>
+</aside>
+
+<div id="cfg" class="modal hide"><div class="modal-box" style="width:min(920px,94vw)">
+  <div class="row"><div class="tabs2" id="cf-tabs" style="margin:0;border:0">
+    <a data-t="cv.json" onclick="App.cf('cv.json')">cv.json</a>
+    <a data-t="archetypes.json" onclick="App.cf('archetypes.json')">archetypes.json</a>
+    <a data-t="profile.md" onclick="App.cf('profile.md')">profile.md</a></div>
+    <span style="flex:1"></span>
+    <button onclick="App.cfSave()">Save</button>
+    <button onclick="App.run('build_archetypes')">Regenerate archetype CVs</button>
+    <button onclick="window.cfgClose()">✕</button></div>
+  <textarea id="cf-text" spellcheck="false" style="margin-top:12px"></textarea>
+  <div class="muted" style="margin-top:6px">JSON is validated before saving; a <code>.bak</code> is kept.</div>
+  <div id="cf-msg" class="muted"></div>
+</div></div>
 
 <aside id="drawer" class="drawer">
-  <div class="drawer-head"><span>Agent Console</span><button id="d-close" class="small">✕ close</button></div>
+  <div class="drawer-head"><span>Agent Console</span><button id="dr-close" class="small">✕ close</button></div>
   <div class="panes">
-    <div class="pane">
-      <div class="pane-h">Chat — <span id="agent-name" class="muted">…</span></div>
-      <div id="chat" class="term grow">ask the agent anything about your pipeline…</div>
+    <div class="pane"><div class="pane-h">Chat — <span id="agent-name" class="muted">…</span></div>
+      <div id="chat" class="term grow">ask the agent anything…</div>
       <div class="row"><input id="chatmsg" placeholder="e.g. apply to the top 5 prepared roles" style="flex:1"
-        onkeydown="if(event.key==='Enter')window.App.chat()"><button id="chat-send">Send</button></div>
-    </div>
-    <div class="pane">
-      <div class="pane-h">Live run <button id="abort" class="risky small" title="Send SIGINT to the active runner">Abort</button></div>
-      <div id="liveterm" class="term grow">idle.</div>
-    </div>
+        onkeydown="if(event.key==='Enter')App.chat()"><button id="chat-send">Send</button></div></div>
+    <div class="pane"><div class="pane-h">Live run</div><div id="liveterm" class="term grow">idle.</div></div>
   </div>
 </aside>
 
-<div id="approve" class="modal hide">
-  <div class="modal-box">
-    <h2>Confirm irreversible action</h2>
-    <p id="ap-text" class="muted"></p>
-    <div id="ap-cmd" class="term" style="max-height:14vh"></div>
-    <label class="row" style="margin-top:12px"><input type="checkbox" id="ap-check">
-      <span>I have reviewed this and authorise it to proceed.</span></label>
-    <div class="row" style="justify-content:flex-end;margin-top:14px">
-      <button id="ap-cancel">Cancel</button>
-      <button id="ap-confirm" class="risky" disabled>Confirm &amp; Authorize</button>
-    </div>
-  </div>
-</div>
+<div id="approve" class="modal hide"><div class="modal-box">
+  <h2 style="text-transform:none;letter-spacing:0;color:var(--fg)">Confirm irreversible action</h2>
+  <p id="ap-text" class="muted"></p>
+  <div id="ap-cmd" class="term" style="max-height:14vh"></div>
+  <label class="row" style="margin-top:12px"><input type="checkbox" id="ap-check">
+    <span>I have reviewed this and authorise it to proceed.</span></label>
+  <div class="row" style="justify-content:flex-end;margin-top:14px">
+    <button id="ap-cancel">Cancel</button><button id="ap-confirm" class="risky" disabled>Confirm &amp; Authorize</button></div>
+</div></div>
 
 <script src="/app.js"></script>
 </body>
