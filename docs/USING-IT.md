@@ -68,11 +68,12 @@ Everything is observable. Useful things to ask for, or run yourself:
   resolves — opencode, Claude Code, `hermes`, `pi`, or any CLI you point `AGENT=` at
   — streaming the reply into the page (agent-agnostic, same token gate). The chat
   agent inherits the approval gates: it cannot send email or delete mail without them.
-  **Tabs:** *Overview* (counts, queue, live, runs, chat), *Register* (search / filter /
-  edit status+notes), *Roles* (job spec + ATS keywords + GraphRAG context + a **match
-  score** = CV-alignment gate + keyword coverage), *CV & Config* (edit `profile.md` /
-  `cv.json` / `archetypes.json` and regenerate the archetype CVs), *Outcomes*
-  (conversion by source/ATS).
+  **Single master grid** (no tabbed pages): one row per application with columns
+  Date · Company · Role · ATS · Status · **Match** (alignment + keyword coverage) · Queue ·
+  Prov · Spec, plus search/status/queue filters, sort, and CSV export. Click a row to open the
+  right-hand **detail drawer** (Summary · Provenance · Job spec · ATS · KB context · Tailored).
+  Metrics + a live-tail line sit in the strip under the header; **Config** (edit `profile.md` /
+  `cv.json` / `archetypes.json` + regenerate the CVs) is a modal; **Agent** is the bottom drawer.
 - **Register**: `python3 tools/register.py --stats`;
   `python3 tools/register.py --list --status INTERVIEW`;
   `python3 tools/register.py --show "<Company>"`.

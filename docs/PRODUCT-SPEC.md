@@ -141,76 +141,70 @@ Components:
   (header `X-Session`) for every write — anti-CSRF.
 - Read-only until you act; the curated log view reuses `watch_queue` phase/noise knowledge.
 
-### 9.2 Shell
-- **Header:** squirrel mascot 🐿️, title, live "updated" line; toolbar with **Prepare (review)**,
-  **Apply queue** (risky), and a **?** Help button.
-- **Tabs:** Overview · Register · Roles · CV & Config · Outcomes.
-- **Tooltip/help:** every control, KPI and section header has a hover tooltip; **?** opens a
-  Help overlay explaining terms, statuses, Prepare vs Apply, chat, live, logs, approvals.
+### 9.2 Shell (single-grid IA)
+The whole app is **one master data grid** — one canonical row per application, so the
+same record is never duplicated across separate pages.
+- **Header:** mascot 🐿️ · health pill (`/api/health`) · build marker · action bar
+  (**⚡ Prepare**, **🚀 Run Submissions** (gated), **📥 Reconcile**, **⚙ Config**, **💬 Agent**).
+- **Strip:** metric pills (in process · interviews · blocked · human · offers · total · submissions)
+  and a live-tail line (`/api/live`).
+- **Toolbar:** search (company/role/ATS), status filter, queue filter, **Export CSV**, row count.
 
-### 9.3 Overview tab
-- **KPI cards:** In process (hero), Interviews, Rejected, Blocked, Human queue, Total — each explained on hover.
-- **Queue progress** bar (`queue.done ÷ queue.tsv`).
-- **Chat** — talk to the agent (see §9.7).
-- **Live** — runner state, running tasks, curated tail of the newest task log (polled).
-- **Recent runs** — one row per `runs.jsonl` entry; click → curated log.
-- **Interviews** — roles at INTERVIEW.
-- **Task log** — curated view of a selected task.
+### 9.3 Master grid (the one table)
+Columns: **Date · Company · Role · ATS · Status · Match · Queue · Prov · Spec**.
+- Search / filter / sort (click a header); **Export CSV**.
+- **Match** = alignment badge (PASS/FAIL) + keyword-coverage % (computed & cached as roles are opened).
+- **Queue** = `pending | human | retry | done`; **Prov** = provenance recorded; **Spec** = a saved job spec exists.
 
-### 9.4 Register tab
-- Search box (company/role) + status filter; a scrollable list; select a row to open a detail
-  panel with its fields and **editable status + notes** (writes back via `register.set_row`).
+### 9.4 Detail drawer (right-hand)
+Clicking a row opens a drawer with tabs:
+- **Summary** — status (editable, writes back), ATS, queue, key, match, notes; actions (Prepare).
+- **Provenance** — CV/letter paths + sha256 (click to copy), confidence, evidence, snapshot, screenshots.
+- **Job spec · ATS · KB context · Tailored** — the ad text, keywords, GraphRAG pack, generated CV/letter.
 
-### 9.5 Roles tab
-- List of saved job specs (`state/job-descriptions/*`). Selecting one shows:
-  - **Match score**: alignment badge (`PASS`/`FAIL` from `check_alignment`) + **keyword coverage %**
-    (ATS keywords vs the generated CV/letter content) + the **missing keywords**.
-  - the **job spec** text, the **ATS keywords**, and the **GraphRAG context** pack.
+### 9.5 Config (modal)
+- Edit `config/cv.json`, `config/archetypes.json`, `config/profile.md`; JSON validated, `.bak` kept;
+  **Regenerate archetype CVs** runs `build_archetypes.py`.
 
-### 9.6 CV & Config tab
-- Select and edit `config/cv.json`, `config/archetypes.json`, `config/profile.md`.
-- **Save** validates JSON and keeps a `.bak`; **Regenerate archetype CVs** runs `build_archetypes.py`.
-
-### 9.7 Chat (agent-agnostic)
-- Drives whatever `tools/agent_run.sh --which` resolves — `opencode`, `claude`, `hermes`, `pi`,
-  or any CLI set via `AGENT=`.
-- `POST /api/chat` starts the agent with a system preamble + your message; the reply streams into
-  the panel by polling `GET /api/chat/tail?since=`. The chat agent inherits the approval gates.
+### 9.6 Chat (agent-agnostic, bottom drawer)
+- Drives whatever `tools/agent_run.sh --which` resolves — `opencode`, `claude`, `hermes`, `pi`, or `AGENT=`.
+- `POST /api/chat` + `GET /api/chat/stream?since=` stream the reply; the chat agent inherits the
+  approval gates; the drawer's second pane shows the live run tail (`/api/live`).
 
 ### 9.8 HTTP API
 
 | Method | Path | Params | Returns |
 |---|---|---|---|
 | GET | `/` | — | the single-page UI (token injected) |
-| GET | `/api/state` | — | counts, in-process, queue, submissions, interviews, blocked, human |
-| GET | `/api/runs` | — | recent `runs.jsonl` entries |
-| GET | `/api/tasks` | — | task-log names |
-| GET | `/api/log` | `task` | curated log lines for a task |
-| GET | `/api/live` | — | {active, running, tail_name, tail} |
-| GET | `/api/agent` | — | the resolved agent CLI |
-| GET | `/api/chat/tail` | `since` | {text, offset, running} |
+| GET | `/api/state` | — | {kpis, counts, queue_counts, interviews} |
+| GET | `/api/health` | — | doctor.py result (cached 60s) |
+| GET | `/api/grid` | — | the unified grid rows (register ⋈ queue ⋈ spec ⋈ provenance) |
 | GET | `/api/register` | `q,status,limit,offset` | {total, rows} |
-| GET | `/api/jobs` | — | list of job-spec keys |
-| GET | `/api/job` | `key` | {jd, ats, kb, content, letter, match} |
-| GET | `/api/match` | `key` | {alignment, coverage, missing, archetype} |
-| GET | `/api/config` | `name` | {name, content} |
+| GET | `/api/provenance` | `company,role` | provenance row (sha256, evidence, snapshot) |
+| GET | `/api/queue` | — | {pending, human, retry, done} |
+| GET | `/api/roles` · `/api/roles/<key>` | — | spec list · {jd, ats, kb, tailored_cv, letter, match} |
+| GET | `/api/config` | `target` | {target, content, format} |
 | GET | `/api/outcomes` | — | {by_ats, interview_rate} |
-| POST | `/api/action` | `{action}` | start a run: `review` (safe), `queue` (gated), `regen` (safe) |
+| GET | `/api/runs` · `/api/log` · `/api/live` · `/api/tasks` · `/api/logs/tail` · `/api/agent` · `/api/chat/stream` | — | as named |
+| POST | `/api/register/row` | `{company,role,status,notes}` | update a register row |
+| POST | `/api/queue/action` | `{action,company,role}` | `delete` / `retry` / `unblock` |
+| POST | `/api/roles/discover` | `{url}` | save a job spec from a URL |
+| POST | `/api/config` | `{target,content}` | save config (JSON validated, `.bak`) |
+| POST | `/api/action/run` | `{command, approval_token}` | `prepare` / `submit_queue` / `reconcile` / `build_archetypes` |
 | POST | `/api/chat` | `{message}` | start a chat turn |
-| POST | `/api/row` | `{company,role,status,note}` | update a register row |
-| POST | `/api/config` | `{name,content}` | save a config file (validated, `.bak`) |
 
-All POSTs require header `X-Session: <token>` (else 403).
+All POSTs require header `X-Session: <token>` (else 403); the token is injected into the page.
 
 ### 9.9 Actions & gating
-- **Prepare (review):** `REVIEW=1 run_queue.sh` — builds docs + gates, records PREPARED; never submits/emails. Safe.
-- **Apply queue:** `run_queue.sh` — submits. Refused unless the dashboard was started with
-  `APPROVE_RUN_QUEUE=1`, and confirmed in a dialog.
-- **Regenerate archetype CVs:** runs `build_archetypes.py`. Safe.
+- **Prepare:** `REVIEW=1 run_queue.sh` — builds docs + gates, records PREPARED; never submits/emails. Safe.
+- **Run Submissions:** `run_queue.sh` — **submits**. Requires the `APPROVE_RUN_QUEUE` approval token
+  (the two-step modal: acknowledge + Confirm); refused otherwise. Every decision is logged to `state/approvals.log`.
+- **Reconcile:** `gmail_reconcile.py` (read-only).
+- **Regenerate archetype CVs:** `build_archetypes.py`. Safe.
 - Runs are detached and logged to `state/logs/dashboard-action.log`.
 
 ### 9.10 Theming & UX
-- Dark, high-contrast; accent amber; status chips colour-coded; squirrel mascot animates.
+- Dark, high-contrast; amber accent; colour-coded status chips; squirrel mascot animates; empty-state-safe.
 - Degrades to empty state with no local data (safe on the public base).
 
 ## 10. Configuration schemas
