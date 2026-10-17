@@ -136,13 +136,20 @@ const spec = () => sec(D.jd), ats = () => sec(D.ats), kb = () => sec(D.kb), tail
 /* ---------- live strip + drawer ---------- */
 async function liveTick() {
   const d = await api('/api/live');
-  let s = d.active ? '● running' : '○ idle';
+  const a = d.action || {};
+  let s = a.running ? '● ' + a.name + ' …' : (d.active ? '● running' : '○ idle');
   (d.running || []).forEach(r => s += '  ▶ ' + r);
   const t = (d.tail || []).slice(-1)[0];
   if (t) s += '   ' + t.t;
   $('#live').textContent = s;
   if ($('#drawer').classList.contains('open')) {
-    let h = d.active ? '● runner active' : '○ runner idle';
+    const a = d.action || {};
+    let h = '';
+    if (a.name && (a.running || (a.log || []).length)) {
+      h += (a.running ? '● ' : '✓ ') + a.name + (a.running ? '  (running…)' : '  (finished)') + '\n' +
+        (a.log || []).join('\n') + '\n\n';
+    }
+    h += d.active ? '● runner active' : '○ runner idle';
     (d.running || []).forEach(r => h += `\n▶ ${r}`);
     (d.tail || []).forEach(x => h += x.k === 'phase' ? `\n[p] ${x.t}` : `\n    ${x.t}`);
     $('#liveterm').textContent = h;
