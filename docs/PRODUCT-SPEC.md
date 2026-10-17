@@ -163,7 +163,8 @@ Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files �
 
 ### 9.4 Detail drawer (right-hand)
 Clicking a row opens a drawer with tabs:
-- **Summary** — status (editable, writes back), ATS, queue, key, match, notes; actions (Prepare).
+- **Summary** — a **Why / history** block first (the register's reason/notes, status, last-updated),
+  then status (editable, writes back), ATS, queue, key, match, notes, and actions (Prepare).
 - **Provenance** — CV/letter paths + sha256 (click to copy), confidence, evidence, snapshot, screenshots.
 - **Job spec · ATS · Grounding · Tailored** — the ad text, keywords, the GraphRAG context pack
   **plus the entities and source documents it cited** (resolved from the index), generated CV/letter.

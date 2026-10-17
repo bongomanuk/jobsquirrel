@@ -524,7 +524,8 @@ def grid():
                     "status": (r.get("status") or "").upper(), "key": key,
                     "queue": qstate.get(ck, "done" if f"{co}|{role}" in done else ""),
                     "spec": key in specs, "applied": ck in subm,
-                    "match": cov, "alignment": align, "running": ck in running})
+                    "match": cov, "alignment": align, "running": ck in running,
+                    "notes": r.get("notes", ""), "letter": r.get("letter", "")})
     # queued but not yet in the register — show the work that's waiting / in flight
     for ck, r in qrow.items():
         if ck in seen:
@@ -538,7 +539,8 @@ def grid():
         out.append({"date": "", "company": co, "role": role, "ats": r.get("ats", ""),
                     "status": "QUEUED", "key": key, "queue": qstate.get(ck, "pending"),
                     "spec": key in specs, "applied": ck in subm,
-                    "match": cov, "alignment": m.get("alignment", ""), "running": ck in running})
+                    "match": cov, "alignment": m.get("alignment", ""), "running": ck in running,
+                    "notes": "", "letter": ""})
     _save_cov()
     out.sort(key=lambda x: (x["date"] or ""), reverse=True)
     out.sort(key=lambda x: 0 if x["running"] else (1 if x["status"] == "QUEUED" else 2))

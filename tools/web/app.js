@@ -218,14 +218,23 @@ const sec = (s, raw) => s ? (raw ? `<pre class="doc">${esc(s)}</pre>` : `<div cl
 const vbtn = (f, t) => f ? ` <button class="mini" onclick='viewDoc(${JSON.stringify(f)},"${t}")'>view</button>` : '';
 function summary(r) {
   const m = (D.match) || {};
-  return `<div class="row" style="margin-bottom:10px"><span class="muted">status</span><select id="dt-status">` +
-    ['SUBMITTED', 'INTERVIEW', 'OFFER', 'REJECTED', 'BLOCKED', 'MANUAL', 'PREPARED', 'IN_PROGRESS', 'CLOSED'].map(x => `<option ${x === r.status ? 'selected' : ''}>${x}</option>`).join('') + '</select>' +
+  const notes = (r.notes || '').trim();
+  const hist = notes ? notes.split(/\s*\|\s*/).filter(Boolean).map(x => `<li>${md(x)}</li>`).join('') : '';
+  const when = r.date ? ` · updated ${esc(r.date)}` : '';
+  return `<div class="why">
+      <div class="why-h"><span class="muted mini">WHY / HISTORY</span>${chip(r.status)}<span class="muted mini">${when}</span></div>
+      ${hist ? `<ul class="hist">${hist}</ul>` : '<div class="muted">no notes recorded for this row</div>'}
+      ${r.running ? '<div class="working"><span class="spin">🥜</span> being worked on right now</div>' : ''}
+      ${P.evidence ? `<div class="muted mini" style="margin-top:6px">submission evidence: ${esc(String(P.evidence).slice(0, 240))}</div>` : ''}
+    </div>` +
+    `<div class="row" style="margin:10px 0"><span class="muted">status</span><select id="dt-status">` +
+    ['QUEUED', 'SUBMITTED', 'INTERVIEW', 'OFFER', 'REJECTED', 'BLOCKED', 'MANUAL', 'PREPARED', 'IN_PROGRESS', 'CLOSED'].map(x => `<option ${x === r.status ? 'selected' : ''}>${x}</option>`).join('') + '</select>' +
     `<span class="muted">ATS</span><b>${esc(r.ats || '—')}</b><span class="muted">queue</span><b>${esc(r.queue || '—')}</b>` +
     `<span class="muted">key</span><span class="mini mono">${esc(r.key)}</span></div>` +
     `<div class="row">${m.alignment ? `<span class="badge ${m.alignment === 'PASS' ? 'good' : 'bad'}">alignment ${m.alignment}</span>` : ''}` +
     `${m.coverage != null ? `<span class="badge ${m.coverage >= 70 ? 'good' : 'mid'}">coverage ${m.coverage}%</span>` : ''}</div>` +
     (m.missing && m.missing.length ? `<div class="muted mini" style="margin-top:6px">missing: ${m.missing.map(esc).join(', ')}</div>` : '') +
-    `<div class="muted" style="margin:12px 0 4px">notes</div><textarea id="dt-notes" style="min-height:16vh">${esc(r.notes || (D.match ? '' : ''))}</textarea>` +
+    `<div class="muted" style="margin:12px 0 4px">notes (editable)</div><textarea id="dt-notes" style="min-height:14vh">${esc(r.notes || '')}</textarea>` +
     `<div class="row" style="margin-top:10px"><button onclick="App.saveRow()">Save</button>` +
     `<button onclick="App.run('prepare')">Prepare (review)</button></div>`;
 }
