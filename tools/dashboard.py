@@ -437,7 +437,10 @@ def live():
             tail_name = max(cand)[1]
             tail = read_task_log(tail_name)["curated"][-150:]
     return {"active": active, "running": [k.replace("|", " — ") for k in running],
-            "tail_name": tail_name, "tail": tail}
+            "tail_name": tail_name, "tail": tail,
+            "action": {"name": _ACT.get("name", ""),
+                       "running": bool(_ACT.get("proc") and _ACT["proc"].poll() is None),
+                       "log": action_log(120)}}
 
 
 def logs_tail(lines=100):
@@ -507,6 +510,21 @@ ACTIONS = {
 }
 
 
+_ACT = {"name": "", "proc": None, "offset": 0}
+
+
+def action_log(n=100):
+    p = os.path.join(LOGS, "dashboard-action.log")
+    start = _ACT.get("offset", 0)
+    try:
+        with open(p, encoding="utf-8", errors="ignore") as fh:
+            fh.seek(min(start, os.path.getsize(p)))
+            txt = ANSI.sub("", fh.read())
+    except OSError:
+        txt = ""
+    return txt.splitlines()[-int(n or 100):]
+
+
 def start_action(command, approval_token=""):
     spec = ACTIONS.get(command)
     if not spec:
@@ -522,10 +540,11 @@ def start_action(command, approval_token=""):
         approval._record(spec["purpose"], f"ui-token:{spec['token']}")
     os.makedirs(LOGS, exist_ok=True)
     logf = open(os.path.join(LOGS, "dashboard-action.log"), "a", encoding="utf-8")
-    logf.write(f"\n=== {time.strftime('%Y-%m-%dT%H:%M:%S')} action={command} ===\n")
+    logf.write(f"\n=== {time.strftime('%Y-%m-%dT%H:%M:%S')} action={command} ({spec['purpose']}) ===\n")
     logf.flush()
-    subprocess.Popen(spec["argv"], cwd=ROOT, env=dict(os.environ, ROOT=ROOT, **spec["env"]),
-                     stdout=logf, stderr=subprocess.STDOUT, start_new_session=True)
+    proc = subprocess.Popen(spec["argv"], cwd=ROOT, env=dict(os.environ, ROOT=ROOT, **spec["env"]),
+                            stdout=logf, stderr=subprocess.STDOUT, start_new_session=True)
+    _ACT.update(name=spec["purpose"], proc=proc, offset=logf.tell())
     return {"ok": f"started: {spec['purpose']}"}
 
 
