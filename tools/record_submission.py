@@ -174,6 +174,24 @@ def main():
     cv_hash = sha256(cv) if cv and os.path.isfile(cv) else ""
     letter_hash = sha256(letter) if letter and os.path.isfile(letter) else ""
 
+    # Idempotent: a re-run of the same application must not append a second row.
+    # Two records are "the same submission" when the company, role, status and the
+    # exact CV+letter bytes all match; anything else is a genuine new record.
+    def _key(r):
+        return (r.get("company", "").strip().lower(), r.get("role", "").strip().lower(),
+                r.get("status", "").strip().upper(), r.get("cv_sha256", ""), r.get("letter_sha256", ""))
+    if os.path.isfile(LEDGER) and not args.force:
+        with open(LEDGER, newline="") as fh:
+            existing = list(csv.DictReader(fh))
+        this = (args.company.strip().lower(), (args.role or "").strip().lower(),
+                args.status.strip().upper(), cv_hash, letter_hash)
+        dup = next((r for r in existing if _key(r) == this), None)
+        if dup:
+            print(f"already recorded {args.company} / {args.role or '-'} [{args.status}] with these "
+                  f"exact files (recorded {dup.get('recorded_at') or '?'}); nothing to do "
+                  f"(--force to record again)")
+            return
+
     # Enforce the pre-submit gate in code: a SUBMITTED row must be backed by a
     # fresh PASS receipt covering the exact CV/letter being recorded, so an agent
     # cannot silently skip the gate. See tools/gate_receipt.py. The receipt is

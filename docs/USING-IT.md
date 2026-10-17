@@ -51,6 +51,11 @@ Everything is observable. Useful things to ask for, or run yourself:
   run's tasks only (keys: `q` quit, `r` refresh).
 - **Raw log**: `state/logs/run_queue.out`, `STATUS …` / `DONE` / `ABORT` lines
   and any model budget/rate-limit stop.
+- **Structured run log**: `state/logs/runs.jsonl`, one JSON line per task
+  (`company`, `role`, `outcome`, `rc`, `reason`) — the machine-readable
+  counterpart to `run_queue.out` for scripts and dashboards.
+- **Health**: `python3 tools/doctor.py` (`--json` for scripts) checks config, the
+  knowledge base, the browser, the register and git before you start a run.
 - **Register**: `python3 tools/register.py --stats`;
   `python3 tools/register.py --list --status INTERVIEW`;
   `python3 tools/register.py --show "<Company>"`.

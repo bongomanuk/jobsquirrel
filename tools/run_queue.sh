@@ -231,6 +231,23 @@ sys.exit(1)
 PYDUP
 }
 
+# One structured line per task (state/logs/runs.jsonl), so a run is machine-readable
+# instead of scraped from the free-text run_queue.out. Never fatal.
+emit_run_json() {  # company role outcome rc reason
+  python3 - "$LOGS" "$1" "$2" "$3" "$4" "$5" <<'PYJSON' 2>/dev/null || true
+import json, os, sys, time
+logs, company, role, outcome, rc, reason = (sys.argv[1:7] + [""] * 6)[:6]
+try:
+    rc = int(rc)
+except (TypeError, ValueError):
+    pass
+rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "company": company,
+       "role": role, "outcome": outcome or "UNKNOWN", "rc": rc, "reason": reason}
+with open(os.path.join(logs, "runs.jsonl"), "a", encoding="utf-8") as fh:
+    fh.write(json.dumps(rec) + "\n")
+PYJSON
+}
+
 run_task() {
   local line="$1" server="$2" company role url cv ats key log rc
   IFS=$'\t' read -r company role url cv ats key <<<"$line"
@@ -294,6 +311,13 @@ run_task() {
   fi
   tail -1 "$log" >> "$LOGS/run_queue.out" 2>/dev/null
   echo "DONE  $(date +%H:%M:%S) $company | $role (rc=$rc)" >> "$LOGS/run_queue.out"
+  if [ -n "$reason" ]; then
+    emit_run_json "$company" "$role" "INFRA_FAIL" "$rc" "$reason"
+  elif [ "$rc" -eq 124 ]; then
+    emit_run_json "$company" "$role" "TIMEOUT" "$rc" ""
+  else
+    emit_run_json "$company" "$role" "$outcome" "$rc" ""
+  fi
 }
 
 export ROOT QUEUE DONE LOGS PARALLEL TASK_TIMEOUT RETRY_LIMIT LIGHT FIXED_CV ELIGIBILITY_OVERRIDE CAMOUFOX_SERVER AGENT MODEL ENGAGEMENT PROFILE CV_PREFIX TIMEOUT_CMD
