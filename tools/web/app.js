@@ -3,6 +3,7 @@ const TOKEN = document.body.dataset.sessionToken;
 const $ = (s) => document.querySelector(s);
 const esc = (s) => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const STATUS_HELP = {
+  QUEUED: 'In the apply queue — not submitted yet (waiting or being worked on)',
   SUBMITTED: 'Application sent — awaiting a reply',
   IN_PROGRESS: 'Application in progress (multi-step form being completed)',
   INTERVIEW: 'Interview stage — an interview is scheduled or requested',
@@ -143,7 +144,9 @@ function approve(purpose, token, command) {
 }
 
 /* ---------- grid ---------- */
+let GRID_TIMER = null, LIVE_RUNNING = false;
 async function loadGrid() {
+  const sc = document.querySelector('.scroll'), y = sc ? sc.scrollTop : 0;
   const [g, s] = await Promise.all([api('/api/grid'), api('/api/state')]);
   GRID = Array.isArray(g) ? g : [];
   $('#metrics').innerHTML =
@@ -155,12 +158,24 @@ async function loadGrid() {
     `<span class="metric"${T('All rows in the register (state/applications.csv)')}><b>${s.kpis.total}</b>total</span>` +
     `<span class="metric"${T('Submissions with recorded provenance — exact CV + letter + hashes (state/submissions.csv)')}><b>${s.kpis.submissions}</b>submissions</span>`;
   renderRows();
+  if (sc) sc.scrollTop = y;
+}
+async function gridTick() {                 // keep the grid live (faster while a run is active)
+  await loadGrid();
+  setTimeout(gridTick, LIVE_RUNNING ? 3000 : 8000);
 }
 function renderRows() {
   const q = $('#q').value.toLowerCase(), st = $('#fstatus').value, qq = $('#fqueue').value;
   let rows = GRID.filter(r => (!st || r.status === st) && (!qq || r.queue === qq) &&
     (!q || (r.company + ' ' + r.role + ' ' + (r.ats || '')).toLowerCase().includes(q)));
-  const k = SORT.k; rows = rows.slice().sort((a, b) => (a[k] || '') < (b[k] || '') ? -SORT.dir : (a[k] || '') > (b[k] || '') ? SORT.dir : 0);
+  const k = SORT.k;
+  const rank = (r) => r.running ? 0 : (r.status === 'QUEUED' ? 1 : 2);   // in-flight + queued float to the top
+  rows = rows.slice().sort((a, b) => {
+    const ra = rank(a), rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    const av = a[k] || '', bv = b[k] || '';
+    return av < bv ? -SORT.dir : av > bv ? SORT.dir : 0;
+  });
   $('#count').textContent = `${rows.length} / ${GRID.length} rows`;
   const mbadge = (r) => r.match == null ? '<span class="muted"' + T('No score — this role has no saved job ad (ATS keywords) and/or no CV to compare') + '>—</span>'
     : `<span class="badge ${r.match >= 70 ? 'good' : r.match >= 40 ? 'mid' : 'bad'}"${T("CV-to-job fit: this % of the ad's ATS keywords are covered by the tailored CV")}>${r.match}%</span>`
@@ -169,7 +184,7 @@ function renderRows() {
     const i = GRID.indexOf(r);
     return `<tr class="click" onclick="App.open(${i})">` +
       `<td class="muted"${T('Register row last updated ' + r.date)}>${esc(r.date)}</td>` +
-      `<td${T('Employer / recruiter')}>${esc(r.company)}</td>` +
+      `<td${T('Employer / recruiter')}>${r.running ? '<span class="spin" title="Being worked on now">🥜</span> ' : ''}${esc(r.company)}</td>` +
       `<td${T('Job title')}>${esc(r.role)}</td>` +
       `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
       `<td>${chip(r.status)}</td><td>${mbadge(r)}</td>` +
@@ -271,6 +286,7 @@ async function liveTick() {
   $('#live').textContent = s;
   const busy = !!a.running || d.active;                       // don't allow piling up duplicate runs
   document.querySelectorAll('#a-prepare,#a-submit,#a-reconcile').forEach(b => { b.disabled = busy; });
+  LIVE_RUNNING = !!(d.active || (d.running || []).length);
   const sm = a.summary || {};
   $('#act-sum').textContent = a.name ? ((a.running ? '● ' : '✓ ') + a.name) : (d.active ? 'runner active' : 'idle');
   if (document.body.dataset.act === 'open') {
@@ -573,4 +589,4 @@ $('#export').onclick = () => {
 window.App = App;
 async function healthPill() { const s = await api('/api/health'); const h = $('#health');
   h.textContent = 'health: ' + (s.v || '?'); h.className = 'pill ' + (s.v || 'unknown'); h.title = s.detail || ''; setTimeout(healthPill, 60000); }
-initPanels(); loadGrid(); liveTick(); healthPill(); chatPoll();
+initPanels(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll();

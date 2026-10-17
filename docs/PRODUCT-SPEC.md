@@ -158,6 +158,8 @@ Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files �
   shown with an `align✗` badge when the alignment gate failed).
 - **Queue** = `pending | human | retry | done`; **Files** = provenance recorded (✓/—);
   **Job ad** = a saved job description exists (✓/—).
+- The grid **auto-refreshes** (every ~8s, ~3s while a run is active) without losing scroll/sort/filter,
+  and floats **in-flight** rows (🥜) and **QUEUED** rows (queued but not yet in the register) to the top.
 
 ### 9.4 Detail drawer (right-hand)
 Clicking a row opens a drawer with tabs:

@@ -481,14 +481,16 @@ def _key_maps():
 
 
 def grid():
-    """One canonical row per application, joined with queue state, spec, provenance."""
+    """One row per application: register ⋈ queue ⋈ in-flight running tasks ⋈ provenance."""
     apps = _rows(os.path.join(STATE, "applications.csv"))
     _load_cov()
     km, cvmap = _key_maps()
-    qstate = {}
+    qstate, qrow = {}, {}
     for st, path in (("pending", "queue.tsv"), ("human", "queue-human.tsv"), ("retry", "queue.retry")):
         for r in _queue_rows(os.path.join(STATE, path)):
-            qstate[(r["company"].lower(), r["role"].lower())] = st
+            ck = (r["company"].lower(), r["role"].lower())
+            qstate[ck] = st
+            qrow.setdefault(ck, r)
     done = set(l.strip() for l in _lines(os.path.join(STATE, "queue.done")))
     subm = {(r["company"].lower(), r["role"].lower())
             for r in _rows(os.path.join(STATE, "submissions.csv"))}
@@ -498,10 +500,20 @@ def grid():
         specs = {f[:-3] for f in os.listdir(os.path.join(STATE, "job-descriptions")) if f.endswith(".md")}
     except OSError:
         specs = set()
+    running = set()
+    if WQ:
+        try:
+            for k in WQ.live_tasks():
+                co, _, role = k.partition("|")
+                running.add((co.strip().lower(), role.strip().lower()))
+        except Exception:
+            running = set()
     out = []
+    seen = set()
     for r in apps:
         co, role = r["company"], r["role"]
         ck = (co.lower(), role.lower())
+        seen.add(ck)
         key = km.get(ck) or _slug(f"{co}-{role}")
         m = _MATCH_CACHE.get(key, {})
         cov = m.get("coverage")
@@ -512,9 +524,24 @@ def grid():
                     "status": (r.get("status") or "").upper(), "key": key,
                     "queue": qstate.get(ck, "done" if f"{co}|{role}" in done else ""),
                     "spec": key in specs, "applied": ck in subm,
-                    "match": cov, "alignment": align})
+                    "match": cov, "alignment": align, "running": ck in running})
+    # queued but not yet in the register — show the work that's waiting / in flight
+    for ck, r in qrow.items():
+        if ck in seen:
+            continue
+        co, role = r["company"], r["role"]
+        key = r["key"] or _slug(f"{co}-{role}")
+        m = _MATCH_CACHE.get(key, {})
+        cov = m.get("coverage")
+        if cov is None:
+            cov = coverage_for(key, r.get("cv", ""))
+        out.append({"date": "", "company": co, "role": role, "ats": r.get("ats", ""),
+                    "status": "QUEUED", "key": key, "queue": qstate.get(ck, "pending"),
+                    "spec": key in specs, "applied": ck in subm,
+                    "match": cov, "alignment": m.get("alignment", ""), "running": ck in running})
     _save_cov()
     out.sort(key=lambda x: (x["date"] or ""), reverse=True)
+    out.sort(key=lambda x: 0 if x["running"] else (1 if x["status"] == "QUEUED" else 2))
     return out
 
 
