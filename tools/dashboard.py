@@ -644,13 +644,71 @@ def chat_parse_json(text):
     return segs
 
 
-def _looks_json(text):
+def chat_parse_claude(text):
+    """Parse Claude Code `--output-format stream-json` events into typed segments."""
+    segs, tokens, cost = [], None, None
     for ln in text.splitlines():
-        ln = ln.strip()
-        if not ln or ln.startswith(">") or ln.startswith("build "):
+        s = ln.strip()
+        if s.startswith(">") and not CHAT_STATUS.match(s):
+            segs.append({"t": "user", "body": s[1:].strip()})
             continue
-        return ln.startswith("{") and '"type"' in ln
-    return False
+        if not s.startswith("{"):
+            continue
+        try:
+            e = json.loads(s)
+        except ValueError:
+            continue
+        t = e.get("type")
+        blocks = ((e.get("message") or {}).get("content") or [])
+        if t == "assistant":
+            for blk in blocks:
+                if blk.get("type") == "text" and blk.get("text"):
+                    segs.append({"t": "text", "body": blk["text"]})
+                elif blk.get("type") == "tool_use":
+                    inp = blk.get("input") or {}
+                    cmd = inp.get("command") or inp.get("file_path") or inp.get("pattern") or blk.get("name", "")
+                    segs.append({"t": "tool", "tool": blk.get("name", ""), "cmd": str(cmd), "body": ""})
+        elif t == "user":
+            for blk in blocks:
+                if blk.get("type") == "tool_result":
+                    c = blk.get("content")
+                    if isinstance(c, list):
+                        c = "\n".join(x.get("text", "") for x in c if isinstance(x, dict))
+                    if segs and segs[-1]["t"] == "tool" and not segs[-1]["body"]:
+                        segs[-1]["body"] = str(c or "")
+        elif t == "result":
+            u = e.get("usage") or {}
+            if u.get("input_tokens") is not None or u.get("output_tokens") is not None:
+                tokens = (u.get("input_tokens") or 0) + (u.get("output_tokens") or 0)
+            if e.get("total_cost_usd") is not None:
+                cost = e.get("total_cost_usd")
+    if tokens is not None or cost is not None:
+        parts = ([f"{tokens} tokens"] if tokens else []) + ([f"${cost:.4f}"] if isinstance(cost, (int, float)) else [])
+        if parts:
+            segs.append({"t": "status", "body": " · ".join(parts)})
+    for s in segs:
+        if s["t"] == "tool" and len(s.get("body", "")) > 6000:
+            s["body"] = s["body"][:6000] + "\n… (truncated)"
+    return segs
+
+
+def _json_kind(text):
+    for ln in text.splitlines():
+        s = ln.strip()
+        if not s or s.startswith(">") or s.startswith("build "):
+            continue
+        if not s.startswith("{"):
+            return None
+        try:
+            e = json.loads(s)
+        except ValueError:
+            return None
+        if "part" in e:
+            return "opencode"
+        if "message" in e or e.get("type") in ("system", "assistant", "user", "result"):
+            return "claude"
+        return None
+    return None
 
 
 def chat_stream(run_id, since):
@@ -661,7 +719,13 @@ def chat_stream(run_id, since):
     with open(CHAT_LOG, encoding="utf-8", errors="ignore") as fh:
         text = ANSI.sub("", fh.read())
     running = bool(_CHAT["proc"] and _CHAT["proc"].poll() is None)
-    segs = chat_parse_json(text) if _looks_json(text) else chat_parse(text)
+    kind = _json_kind(text)
+    if kind == "opencode":
+        segs = chat_parse_json(text)
+    elif kind == "claude":
+        segs = chat_parse_claude(text)
+    else:
+        segs = chat_parse(text)
     return {"segments": segs, "offset": size, "running": running, "done": not running}
 
 
