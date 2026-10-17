@@ -56,6 +56,10 @@ Everything is observable. Useful things to ask for, or run yourself:
   counterpart to `run_queue.out` for scripts and dashboards.
 - **Health**: `python3 tools/doctor.py` (`--json` for scripts) checks config, the
   knowledge base, the browser, the register and git before you start a run.
+- **Web UI**: `python3 tools/dashboard.py` (then open http://127.0.0.1:8765, or
+  `--open`). A read-only, dependency-free dashboard: counts, queue progress, recent
+  runs, interviews, and a **curated** view of any task log (only the meaningful
+  lines — gate results, commands, submissions, errors — never the tool spam). 🐿️
 - **Register**: `python3 tools/register.py --stats`;
   `python3 tools/register.py --list --status INTERVIEW`;
   `python3 tools/register.py --show "<Company>"`.
