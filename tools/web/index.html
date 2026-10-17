@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jobsquirrel</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body data-session-token="{{TOKEN}}">
+<header class="top">
+  <div class="brand"><span class="mascot">🐿️</span><h1>Jobsquirrel</h1><span id="health" class="pill unknown">health…</span></div>
+  <nav class="tabs" id="tabs">
+    <a href="#overview" data-t="overview">Overview</a>
+    <a href="#register" data-t="register">Register</a>
+    <a href="#queue" data-t="queue">Queue &amp; Assist</a>
+    <a href="#roles" data-t="roles">Roles</a>
+    <a href="#config" data-t="config">Config &amp; CV</a>
+    <a href="#outcomes" data-t="outcomes">Outcomes</a>
+  </nav>
+  <div class="actions">
+    <button id="a-prepare" title="Safe: build tailored documents + run gates (REVIEW=1). Never submits.">⚡ Prepare</button>
+    <button id="a-submit" class="risky" title="Applies to queued roles (submits). Requires approval.">🚀 Run Submissions</button>
+    <button id="a-reconcile" title="Reconcile the register with Gmail (read-only).">📥 Reconcile</button>
+    <button id="a-drawer" title="Agent console + live run">💬 Agent <span id="drawer-badge" class="muted"></span></button>
+  </div>
+</header>
+<main id="view"><div class="muted">loading…</div></main>
+
+<aside id="drawer" class="drawer">
+  <div class="drawer-head"><span>Agent Console</span><button id="d-close" class="small">✕ close</button></div>
+  <div class="panes">
+    <div class="pane">
+      <div class="pane-h">Chat — <span id="agent-name" class="muted">…</span></div>
+      <div id="chat" class="term grow">ask the agent anything about your pipeline…</div>
+      <div class="row"><input id="chatmsg" placeholder="e.g. apply to the top 5 prepared roles" style="flex:1"
+        onkeydown="if(event.key==='Enter')window.App.chat()"><button id="chat-send">Send</button></div>
+    </div>
+    <div class="pane">
+      <div class="pane-h">Live run <button id="abort" class="risky small" title="Send SIGINT to the active runner">Abort</button></div>
+      <div id="liveterm" class="term grow">idle.</div>
+    </div>
+  </div>
+</aside>
+
+<div id="approve" class="modal hide">
+  <div class="modal-box">
+    <h2>Confirm irreversible action</h2>
+    <p id="ap-text" class="muted"></p>
+    <div id="ap-cmd" class="term" style="max-height:14vh"></div>
+    <label class="row" style="margin-top:12px"><input type="checkbox" id="ap-check">
+      <span>I have reviewed this and authorise it to proceed.</span></label>
+    <div class="row" style="justify-content:flex-end;margin-top:14px">
+      <button id="ap-cancel">Cancel</button>
+      <button id="ap-confirm" class="risky" disabled>Confirm &amp; Authorize</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
