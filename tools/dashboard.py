@@ -129,12 +129,11 @@ def state():
     inproc = sum(counts.get(k, 0) for k in ("SUBMITTED", "IN_PROGRESS", "INTERVIEW", "OFFER"))
     interviews = [r for r in apps if (r.get("status") or "").upper() == "INTERVIEW"]
     q_total, q_done = _count(os.path.join(STATE, "queue.tsv")), _count(os.path.join(STATE, "queue.done"))
-    h = health()
     return {"kpis": {"in_process": inproc, "interviews": counts.get("INTERVIEW", 0),
                      "blocked": counts.get("BLOCKED", 0), "offers": counts.get("OFFER", 0),
                      "human": _count(os.path.join(STATE, "queue-human.tsv")),
                      "total": len(apps), "submissions": _count(os.path.join(STATE, "submissions.csv"))},
-            "counts": counts, "doctor": h["v"], "doctor_detail": h["detail"],
+            "counts": counts,
             "queue_counts": {"pending": q_total, "done": q_done},
             "interviews": [{"company": r["company"], "role": r["role"]} for r in interviews][:40]}
 
@@ -524,6 +523,8 @@ class H(BaseHTTPRequestHandler):
             return self._file(os.path.join(WEB, static[p][0]), static[p][1])
         if p == "/api/state":
             return self._json(state())
+        if p == "/api/health":
+            return self._json(health())
         if p == "/api/register":
             return self._json(register_api(qs.get("q", [""])[0], qs.get("status", [""])[0],
                                            qs.get("limit", ["200"])[0], qs.get("offset", ["0"])[0]))

@@ -86,7 +86,8 @@ const App = {
   cf: async (target) => {
     document.querySelectorAll('#cf-tabs a').forEach(a => a.classList.toggle('on', a.dataset.t === target));
     const d = await api('/api/config?target=' + target);
-    CF = target; $('#cf-text').value = d.content || ''; $('#cf-msg').textContent = '';
+    const el = $('#cf-text'); if (!el) return;
+    CF = target; el.value = d.content || ''; $('#cf-msg').textContent = '';
   },
   cfSave: async () => {
     const d = await api('/api/config', { target: CF, content: $('#cf-text').value });
@@ -104,7 +105,7 @@ const App = {
     chatOffset = 0; clearInterval(CHAT_TIMER); CHAT_TIMER = setInterval(chatPoll, 1200);
   },
 };
-let CF = 'cv.json', ROLESEL = null, chatOffset = 0, CHAT_TIMER = null, LIVE_TIMER = null;
+let CF = 'cv.json', ROLESEL = null, chatOffset = 0, CHAT_TIMER = null, LIVE_TIMER = null, GEN = 0;
 
 function provHtml(d) {
   const sha = (s) => s ? `<span class="sha" title="click to copy" onclick="navigator.clipboard.writeText('${esc(s)}')">${esc(s.slice(0, 16))}…</span>` : '—';
@@ -119,8 +120,10 @@ function provHtml(d) {
 
 /* ---------- views ---------- */
 async function overview() {
+  const g = GEN;
   view.innerHTML = '<div class="muted">loading…</div>';
   const s = await api('/api/state');
+  if (g !== GEN) return;
   view.innerHTML =
     `<div class="kpis">${kpi('hero', 'In process', s.kpis.in_process)}${kpi('', 'Interviews', s.kpis.interviews)}` +
     `${kpi('', 'Blocked / human', s.kpis.blocked + s.kpis.human)}${kpi('', 'Offers', s.kpis.offers)}` +
@@ -131,6 +134,7 @@ async function overview() {
     `<h2>Recent runs</h2><table><thead><tr><th>When</th><th>Company</th><th>Role</th><th>Outcome</th><th>Detail</th></tr></thead><tbody id="ov-runs"></tbody></table>`;
   $('#ov-int').innerHTML = (s.interviews || []).map(x => `· ${esc(x.company)} — ${esc(x.role)}`).join('<br>') || '<span class="muted">none yet</span>';
   const runs = await api('/api/runs');
+  if (g !== GEN) return;
   $('#ov-runs').innerHTML = runs.map(r => `<tr><td class="muted">${esc((r.ts || '').slice(11, 19))}</td><td>${esc(r.company)}</td><td>${esc(r.role)}</td><td>${chip(r.outcome || '?')}</td><td class="muted">${esc(r.reason || '')}</td></tr>`).join('') || '<tr><td colspan=5 class="muted">no runs yet</td></tr>';
   clearInterval(LIVE_TIMER); LIVE_TIMER = setInterval(liveFill, 2500); liveFill();
 }
@@ -143,8 +147,10 @@ async function liveFill() {
 }
 
 async function register() {
+  const g = GEN;
   view.innerHTML = '<div class="muted">loading…</div>';
   const d = await api('/api/register'); REG = d.rows;
+  if (g !== GEN) return;
   view.innerHTML =
     `<div class="row" style="margin-bottom:12px"><input id="rg-q" placeholder="search company / role…" style="flex:1;max-width:340px">` +
     `<select id="rg-s"><option value="">all statuses</option>${['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER', 'REJECTED', 'BLOCKED', 'MANUAL', 'PREPARED', 'CLOSED'].map(x => `<option>${x}</option>`).join('')}</select>` +
@@ -171,8 +177,10 @@ App.openRow = (el) => {
 };
 
 async function queue() {
+  const g = GEN;
   view.innerHTML = '<div class="muted">loading…</div>';
   const d = await api('/api/queue');
+  if (g !== GEN) return;
   const grp = (title, arr, acts) => `<h2>${title} (${arr.length})</h2>` +
     (arr.length ? arr.map(it => `<div class="card"><b>${esc(it.company || it)}</b> — ${esc(it.role || '')}` +
       `<div class="muted">${esc(it.url || '')}</div><div class="row" style="margin-top:8px">` +
@@ -188,8 +196,10 @@ async function queue() {
 }
 
 async function roles() {
+  const g = GEN;
   view.innerHTML = '<div class="muted">loading…</div>';
   const d = await api('/api/roles'); ROLES = d;
+  if (g !== GEN) return;
   view.innerHTML = `<div class="row" style="margin-bottom:10px"><input id="rq" placeholder="filter roles…" style="flex:1;max-width:340px">` +
     `<input id="rdis" placeholder="add role by URL…" style="flex:1"><button onclick="App.discover()">Add role</button>` +
     `<span class="muted">${d.length} saved</span></div>` +
@@ -220,8 +230,10 @@ async function config() {
 }
 
 async function outcomes() {
+  const g = GEN;
   view.innerHTML = '<div class="muted">loading…</div>';
   const d = await api('/api/outcomes');
+  if (g !== GEN) return;
   const rows = Object.entries(d.by_ats).sort((a, b) => b[1].total - a[1].total);
   view.innerHTML = `<h2>Conversion by source / ATS <span class="muted" style="text-transform:none">· overall interview rate ${d.interview_rate}%</span></h2>` +
     `<table><thead><tr><th>Source / ATS</th><th>Applications</th><th>Interviews</th><th>Offers</th><th>Interview rate</th></tr></thead><tbody>` +
@@ -251,6 +263,7 @@ async function liveDrawer() {
 const views = { overview, register, queue, roles, config, outcomes };
 function route() {
   if (LIVE_TIMER) { clearInterval(LIVE_TIMER); LIVE_TIMER = null; }
+  GEN++;                       // invalidates any in-flight view render
   const t = (location.hash || '#overview').slice(1);
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.t === t));
   (views[t] || overview)();
@@ -264,6 +277,7 @@ $('#d-close').onclick = () => drawer(false);
 $('#chat-send').onclick = () => App.chat();
 $('#abort').onclick = async () => { toast('Abort is advisory: stop the runner with Ctrl-C in its terminal.'); };
 window.App = App;
-async function healthPill() { const s = await api('/api/state'); const h = $('#health');
-  h.textContent = 'health: ' + s.doctor; h.className = 'pill ' + s.doctor; h.title = s.doctor_detail || ''; }
-route(); healthPill(); setInterval(healthPill, 30000);
+async function healthPill() { const s = await api('/api/health'); const h = $('#health');
+  h.textContent = 'health: ' + (s.v || '?'); h.className = 'pill ' + (s.v || 'unknown'); h.title = s.detail || '';
+  setTimeout(healthPill, 60000); }
+route(); healthPill();
