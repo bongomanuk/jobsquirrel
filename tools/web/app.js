@@ -20,7 +20,7 @@ const md = (s) => {
   t = t.replace(/^(?!<h\d|<ul|<li|<\/?ul|<pre|<\/?pre|<blockquote|<hr|\s*$)(.+)$/gm, '<p>$1</p>');
   return t;
 };
-let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null;
+let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHATRAW = '';
 
 async function api(path, body) {
   const o = { headers: {} };
@@ -49,7 +49,7 @@ const App = {
   cfSave: async () => { const d = await api('/api/config', { target: CF, content: $('#cf-text').value }); $('#cf-msg').textContent = d.ok || d.error; toast(d.ok || d.error, !!d.error); },
   chat: async () => {
     const inp = $('#chatmsg'), m = inp.value.trim(); if (!m) return; inp.value = '';
-    $('#chat').textContent += `\n\n> ${m}\n`;
+    CHATRAW = ''; renderChat(true);
     const d = await api('/api/chat', { message: m }); if (d.error) { toast(d.error, true); return; }
     chatOffset = 0; clearInterval(CHAT_TIMER); CHAT_TIMER = setInterval(chatPoll, 1200);
   },
@@ -177,21 +177,38 @@ async function liveTick() {
   if (t) s += '   ' + t.t;
   $('#live').textContent = s;
   if ($('#drawer').classList.contains('open')) {
-    const a = d.action || {};
     let h = '';
+    const a = d.action || {};
     if (a.name && (a.running || (a.log || []).length)) {
-      h += (a.running ? '● ' : '✓ ') + a.name + (a.running ? '  (running…)' : '  (finished)') + '\n' +
-        (a.log || []).join('\n') + '\n\n';
+      const sm = a.summary || {};
+      h += `<div class="act-h">${a.running ? '●' : '✓'} ${esc(a.name)} <span class="muted">${a.running ? 'running…' : 'done'}</span></div>`;
+      if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
+      if ((sm.notable || []).length) h += '<ul class="act-list">' + sm.notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
+      const shown = (sm.notable || []).length;
+      const total = (a.log || []).length;
+      if (total > shown) h += `<details class="act-raw"><summary>full output · ${total} lines</summary><pre>${esc((a.log || []).join('\n'))}</pre></details>`;
+      h += '<div class="act-sep"></div>';
     }
     h += d.active ? '● runner active' : '○ runner idle';
-    (d.running || []).forEach(r => h += `\n▶ ${r}`);
-    (d.tail || []).forEach(x => h += x.k === 'phase' ? `\n[p] ${x.t}` : `\n    ${x.t}`);
-    $('#liveterm').textContent = h;
+    (d.running || []).forEach(r => h += `\n▶ ${esc(r)}`);
+    (d.tail || []).forEach(x => h += x.k === 'phase' ? `\n[p] ${esc(x.t)}` : `\n    ${esc(x.t)}`);
+    $('#liveterm').innerHTML = h;
   }
   setTimeout(liveTick, 2500);
 }
 function drawer(open) { $('#drawer').classList.toggle('open', open); if (open) { api('/api/agent').then(d => $('#agent-name').textContent = d.agent || '?'); liveTick(); } }
-async function chatPoll() { const d = await api('/api/chat/stream?since=' + chatOffset); if (d.chunk) { const el = $('#chat'); el.textContent += d.chunk; el.scrollTop = el.scrollHeight; } chatOffset = d.offset; if (d.done) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; } }
+async function chatPoll() { const d = await api('/api/chat/stream?since=' + chatOffset); if (d.chunk) { CHATRAW += d.chunk; renderChat(); } chatOffset = d.offset; if (d.done) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; renderChat(); } }
+function compressChat(t) {
+  t = t.replace(/\r/g, '').replace(/\n{3,}/g, '\n\n');
+  t = t.split('\n').filter(l => !/^\s*[─═\-_•·]{4,}\s*$/.test(l)).join('\n');
+  return t.trim();
+}
+function renderChat(placeholder) {
+  const el = $('#chat');
+  if (placeholder && !CHATRAW.trim()) { el.innerHTML = '<span class="muted">◌ thinking…</span>'; return; }
+  el.innerHTML = `<div class="md">${md(compressChat(CHATRAW))}</div>` + (CHAT_TIMER ? ' <span class="muted">▮</span>' : '');
+  el.scrollTop = el.scrollHeight;
+}
 
 /* ---------- wiring ---------- */
 $('#d-close').onclick = () => $('#detail').classList.remove('open');
