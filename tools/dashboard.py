@@ -10,7 +10,9 @@ require an explicit approval token. See docs/PRODUCT-SPEC.md.
 """
 import argparse
 import csv
+import html as _html
 import json
+import mimetypes
 import os
 import re
 import secrets
@@ -20,7 +22,7 @@ import threading
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE = os.environ.get("DASHBOARD_STATE", os.path.join(ROOT, "state"))
@@ -448,6 +450,63 @@ def logs_tail(lines=100):
     return {"logs": ANSI.sub("", _read(p, cap=200_000)).splitlines()[-int(lines or 100):]}
 
 
+# ---------------------------------------------------------------- file viewer
+SAFE_DIRS = ("documents", "state", "config", "kb", "answers")
+
+
+def _safe_path(rel):
+    rel = (rel or "").lstrip("/")
+    root = os.path.realpath(ROOT)
+    p = os.path.realpath(os.path.join(ROOT, rel))
+    if not p.startswith(root + os.sep):
+        return None
+    top = p[len(root) + 1:].split(os.sep)[0]
+    if top not in SAFE_DIRS:
+        return None
+    if any(x in p.lower() for x in ("token", "credential", ".env", "accounts.json", ".ssh")):
+        return None
+    return p
+
+
+def file_view(rel):
+    p = _safe_path(rel)
+    if not p or not os.path.isfile(p):
+        return {"error": "not found or not allowed"}
+    ext = os.path.splitext(p)[1].lower()
+    if ext == ".docx":
+        try:
+            import docx
+            doc = docx.Document(p)
+            out = []
+            for para in doc.paragraphs:
+                if para.text.strip():
+                    out.append(f"<p>{_html.escape(para.text)}</p>")
+            for t in doc.tables:
+                for row in t.rows:
+                    out.append("<p>" + " | ".join(_html.escape(c.text) for c in row.cells) + "</p>")
+            return {"kind": "docx", "html": "".join(out), "name": os.path.basename(p)}
+        except Exception as e:
+            return {"error": f"could not read docx: {e}"}
+    if ext in (".md", ".txt", ".csv", ".json", ".log"):
+        return {"kind": "text", "text": _read(p), "name": os.path.basename(p)}
+    if ext == ".pdf":
+        return {"kind": "pdf", "url": "/raw?path=" + quote(rel), "name": os.path.basename(p)}
+    if ext in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+        return {"kind": "image", "url": "/raw?path=" + quote(rel), "name": os.path.basename(p)}
+    return {"kind": "other", "url": "/raw?path=" + quote(rel), "name": os.path.basename(p)}
+
+
+def raw_file(rel):
+    p = _safe_path(rel)
+    if not p or not os.path.isfile(p):
+        return None, None, None
+    try:
+        with open(p, "rb") as fh:
+            return fh.read(), (mimetypes.guess_type(p)[0] or "application/octet-stream"), os.path.basename(p)
+    except OSError:
+        return None, None, None
+
+
 # ---------------------------------------------------------------- chat
 CHAT_LOG = os.path.join(LOGS, "dashboard-chat.log")
 _CHAT = {"proc": None}
@@ -618,6 +677,18 @@ class H(BaseHTTPRequestHandler):
             return self._json({"agent": chat_agent()})
         if p == "/api/chat/stream":
             return self._json(chat_stream(qs.get("run_id", ["chat"])[0], qs.get("since", ["0"])[0]))
+        if p == "/api/file":
+            return self._json(file_view(qs.get("path", [""])[0]))
+        if p == "/raw":
+            data, ctype, name = raw_file(qs.get("path", [""])[0])
+            if data is None:
+                return self._json({"error": "not found or not allowed"}, 404)
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Disposition", f'inline; filename="{name}"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            return self.wfile.write(data)
         self._json({"error": "not found"}, 404)
 
     def _body(self):
