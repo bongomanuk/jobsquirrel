@@ -201,7 +201,7 @@ async function openDetail(r) {
   CUR = r; D = {}; P = {};
   setPanel('detail', { open: true });
   $('#d-title').textContent = `${r.company} — ${r.role}`;
-  const tabs = ['Summary', 'Provenance', 'Job spec', 'ATS', 'Grounding', 'Tailored'];
+  const tabs = ['Summary', 'Provenance', 'Job spec', 'ATS', 'Grounding', 'Documents'];
   $('#dtabs').innerHTML = tabs.map((t, i) => `<a class="${i === 0 ? 'on' : ''}" onclick="dt(${i})">${t}</a>`).join('');
   $('#d-body').innerHTML = '<span class="muted">loading…</span>';
   const jobs = [api(`/api/provenance?company=${encodeURIComponent(r.company)}&role=${encodeURIComponent(r.role)}`)];
@@ -249,7 +249,25 @@ function prov() {
     `<tr><td class="muted">snapshot</td><td class="mini mono">${esc(P.snapshot_dir || '—')}</td></tr>` +
     `<tr><td class="muted">screenshots</td><td class="mini mono">${(P.screenshots || []).map(esc).join('<br>') || '—'}</td></tr></tbody></table>`;
 }
-const spec = () => sec(D.jd), ats = () => sec(D.ats, true), kb = () => sec(D.kb), tailored = () => sec(D.tailored_cv || D.letter);
+const spec = () => sec(D.jd), ats = () => sec(D.ats, true), kb = () => sec(D.kb);
+function tailored() {
+  const d = D.docs || {};
+  setTimeout(async () => {
+    const el = $('#tpre'); if (!el) return;
+    if (!d.cv) { el.innerHTML = '<span class="muted">No rendered documents for this role yet — run Prepare.</span>'; return; }
+    const f = await api('/api/file?path=' + encodeURIComponent(d.cv));
+    el.innerHTML = (f && f.kind === 'docx') ? `<div class="md">${f.html}</div>`
+      : `<span class="muted">${esc((f && f.error) || 'could not render')}</span>`;
+  }, 0);
+  if (!d.cv && !d.letter) return '<span class="muted">No rendered documents yet — run Prepare (review).</span>';
+  return `<div class="row" style="margin-bottom:8px">
+      ${d.cv ? `<button onclick='viewDoc(${JSON.stringify(d.cv)},"CV (rendered)")'>Open CV</button>` : ''}
+      ${d.cv_pdf ? `<a class="mini" style="align-self:center" href="/raw?path=${encodeURIComponent(d.cv_pdf)}" target="_blank">CV PDF ↗</a>` : ''}
+      ${d.letter ? `<button onclick='viewDoc(${JSON.stringify(d.letter)},"Cover letter (rendered)")'>Open cover letter</button>` : ''}</div>` +
+    `<div class="muted mini" style="margin-bottom:4px">RENDERED CV</div><div id="tpre">loading…</div>` +
+    `<details style="margin-top:12px"><summary class="muted mini">content pack (JSON)</summary>` +
+    `<pre class="doc">${esc((D.tailored_cv || '') + (D.letter ? '\n\n---\n' + D.letter : ''))}</pre></details>`;
+}
 function grounding(r) {
   setTimeout(async () => {
     const el = $('#grd'); if (!el) return;

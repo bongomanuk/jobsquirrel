@@ -166,8 +166,10 @@ Clicking a row opens a drawer with tabs:
 - **Summary** — a **Why / history** block first (the register's reason/notes, status, last-updated),
   then status (editable, writes back), ATS, queue, key, match, notes, and actions (Prepare).
 - **Provenance** — CV/letter paths + sha256 (click to copy), confidence, evidence, snapshot, screenshots.
-- **Job spec · ATS · Grounding · Tailored** — the ad text, keywords, the GraphRAG context pack
-  **plus the entities and source documents it cited** (resolved from the index), generated CV/letter.
+- **Job spec · ATS · Grounding** — the ad text, keywords, and the GraphRAG context pack
+  **plus the entities and source documents it cited** (resolved from the index).
+- **Documents** — the **rendered** tailored CV (inline preview) and cover letter, with buttons to
+  open either in the viewer and to open the CV PDF; the raw content pack is behind a toggle.
 
 ### 9.5 Settings panel (⚙ Config)
 - Sections: **Accounts** (status + Gmail/Calendar authorisation), **Knowledge base** (list / upload /

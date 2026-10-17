@@ -10,6 +10,7 @@ require an explicit approval token. See docs/PRODUCT-SPEC.md.
 """
 import argparse
 import csv
+import glob
 import html as _html
 import json
 import mimetypes
@@ -401,6 +402,21 @@ def match_score(key, cache=True):
     return res
 
 
+def role_docs(key):
+    """The rendered documents for a role: the tailored CV (.docx/.pdf) and cover letter."""
+    app = os.path.join(ROOT, "documents", "applications")
+    out = {"cv": "", "cv_pdf": "", "letter": ""}
+
+    def pick(pattern):
+        hits = sorted(glob.glob(os.path.join(app, pattern.replace("{k}", glob.escape(key)))))
+        return os.path.relpath(hits[0], ROOT) if hits else ""
+
+    out["cv"] = pick("*_CV_{k}.docx")
+    out["cv_pdf"] = pick("*_CV_{k}.pdf")
+    out["letter"] = pick("*_Motivation_{k}.docx") or pick("*_Letter_{k}.docx")
+    return out
+
+
 def role_detail(key):
     key = os.path.basename(key)[:120]
     return {"key": key,
@@ -409,6 +425,7 @@ def role_detail(key):
             "kb": _read(os.path.join(STATE, "kb-context", key + ".md"))[:12000],
             "tailored_cv": _read(os.path.join(STATE, "cv-content", key + ".json"))[:12000],
             "letter": _read(os.path.join(STATE, "letters-content", key + ".json"))[:12000],
+            "docs": role_docs(key),
             "match": match_score(key)}
 
 
