@@ -47,6 +47,7 @@ case "$agent" in
   opencode)
     fmt=()
     [ "${AGENT_JSON:-}" = "1" ] && fmt+=(--format json)
+    [ -n "${AGENT_SESSION:-}" ] && fmt+=(-s "$AGENT_SESSION")
     if [ -n "${MODEL:-}" ]; then
       exec opencode run --model "$MODEL" "${fmt[@]}" "$prompt"
     fi
@@ -69,6 +70,8 @@ case "$agent" in
     [ -n "${MODEL:-}" ] && args+=(--model "$MODEL")
     # Structured event stream for the dashboard chat (opencode --format json equivalent).
     [ "${AGENT_JSON:-}" = "1" ] && args+=(--output-format stream-json --verbose)
+    # Continue a pinned dashboard-chat session when one is supplied.
+    [ -n "${AGENT_SESSION:-}" ] && args+=(--resume "$AGENT_SESSION")
     # The prompt goes straight after -p: --allowedTools takes a variable number
     # of values and would otherwise swallow it.
     # shellcheck disable=SC2086  # CLAUDE_ARGS is a list of flags

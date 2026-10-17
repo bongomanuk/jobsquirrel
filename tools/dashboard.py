@@ -530,6 +530,7 @@ def raw_file(rel):
 
 # ---------------------------------------------------------------- chat
 CHAT_LOG = os.path.join(LOGS, "dashboard-chat.log")
+CHAT_SESSION = os.path.join(LOGS, "dashboard-chat.session")
 _CHAT = {"proc": None}
 
 
@@ -540,6 +541,43 @@ def chat_agent():
         return (r.stdout or "").strip() or "?"
     except (OSError, subprocess.SubprocessError):
         return "?"
+
+
+def _chat_session():
+    try:
+        with open(CHAT_SESSION, encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
+def _record_chat_session(text):
+    """Remember the agent's session id so the next message continues the same conversation."""
+    sid = ""
+    for ln in text.splitlines():
+        i = ln.find('"sessionID"')
+        if i != -1:
+            j = ln.find(':"', i + 11)
+            if j != -1:
+                sid = ln[j + 2:].split('"', 1)[0]
+    if sid and sid != _chat_session():
+        try:
+            with open(CHAT_SESSION, "w", encoding="utf-8") as fh:
+                fh.write(sid)
+        except OSError:
+            pass
+
+
+def chat_new():
+    """Start a fresh conversation (clears the transcript + session)."""
+    if _CHAT["proc"] and _CHAT["proc"].poll() is None:
+        return {"error": "a message is still running"}
+    for p in (CHAT_LOG, CHAT_SESSION):
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+    return {"ok": "new conversation"}
 
 
 def chat_start(message):
@@ -560,14 +598,20 @@ def chat_start(message):
         "operator explicitly asks about the code. Be concise; use the repo's tools; never take an "
         "irreversible action (submitting applications, sending email, deleting mail) without explicit approval.")
     os.makedirs(LOGS, exist_ok=True)
-    with open(CHAT_LOG, "w", encoding="utf-8") as fh:
-        fh.write(f"> {message}\n\n")
+    sid = _chat_session()
+    if not os.path.exists(CHAT_LOG):
+        sid = ""                                    # transcript gone -> start fresh
+    prompt = message if sid else (preamble + "\n\n---\n" + message)
+    with open(CHAT_LOG, "a", encoding="utf-8") as fh:
+        fh.write(f"\n> {message}\n")
     f = open(CHAT_LOG, "a", encoding="utf-8")
-    _CHAT["proc"] = subprocess.Popen(["bash", os.path.join(ROOT, "tools", "agent_run.sh"),
-                                      preamble + "\n\n---\n" + message], cwd=ROOT,
-                                     env=dict(os.environ, AGENT_JSON="1"),
-                                     stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
-    return {"status": "queued", "run_id": "chat", "agent": chat_agent()}
+    env = dict(os.environ, AGENT_JSON="1")
+    if sid:
+        env["AGENT_SESSION"] = sid                  # continue the same agent session
+    _CHAT["proc"] = subprocess.Popen(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), prompt],
+                                     cwd=ROOT, env=env, stdout=f, stderr=subprocess.STDOUT,
+                                     start_new_session=True)
+    return {"status": "queued", "run_id": "chat", "agent": chat_agent(), "continued": bool(sid)}
 
 
 CHAT_USER = re.compile(r"^>\s?(.*)$")
@@ -726,6 +770,7 @@ def chat_stream(run_id, since):
         size = 0
     with open(CHAT_LOG, encoding="utf-8", errors="ignore") as fh:
         text = ANSI.sub("", fh.read())
+    _record_chat_session(text)
     running = bool(_CHAT["proc"] and _CHAT["proc"].poll() is None)
     kind = _json_kind(text)
     if kind == "opencode":
@@ -902,6 +947,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(start_action(data.get("command", ""), data.get("approval_token", "")))
         if p == "/api/chat":
             return self._json(chat_start(data.get("message", "")))
+        if p == "/api/chat/new":
+            return self._json(chat_new())
         self._json({"error": "not found"}, 404)
 
 

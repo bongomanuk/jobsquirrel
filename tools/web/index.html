@@ -29,7 +29,11 @@
     </div>
     <div class="panes" id="panes">
       <section class="pane pane-chat">
-        <div class="pane-h">Chat <span id="agent-name" class="muted">…</span></div>
+        <div class="pane-h">Chat <span id="agent-name" class="muted">…</span>
+          <span style="flex:1"></span>
+          <span id="chat-spin" class="spin hide" title="The agent is working…">🥜</span>
+          <button id="chat-new" class="small" title="Start a new conversation (clears this chat)">＋ New</button>
+        </div>
         <div id="chat" class="term grow">ask the agent anything…</div>
         <div class="row chat-in">
           <input id="chatmsg" placeholder="e.g. apply to the top 5 prepared roles" style="flex:1"
@@ -60,15 +64,22 @@
           <select id="fqueue"><option value="">any queue</option><option value="pending">pending</option>
             <option value="human">human-assist</option><option value="retry">retry</option><option value="done">done</option></select>
           <button id="export">Export CSV</button>
+          <button id="legend" title="What the columns, marks and statuses mean">ⓘ Legend</button>
           <span id="count" class="muted"></span>
         </div>
         <div class="gridwrap">
           <table id="grid">
-            <thead><tr>
-              <th data-s="date">Date</th><th data-s="company">Company</th><th data-s="role">Role</th>
-              <th data-s="ats">ATS</th><th data-s="status">Status</th><th>Match</th><th>Queue</th>
-              <th>Prov.</th><th>Spec</th>
-            </tr></thead>
+        <thead><tr>
+          <th data-s="date" title="When this register row was last updated (YYYY-MM-DD)">Date</th>
+          <th data-s="company" title="Employer / recruiter name">Company</th>
+          <th data-s="role" title="Job title">Role</th>
+          <th data-s="ats" title="Applicant-tracking system the application was submitted through (Ashby, Teamtailor, LinkedIn, …)">ATS</th>
+          <th data-s="status" title="Current application status — see ⓘ Legend for each value">Status</th>
+          <th title="CV-to-job fit: how much of the ad's ATS keyword list the tailored CV covers. “align✗” means the pre-submit alignment gate FAILED">Match</th>
+          <th title="Where the role sits in the apply queue — see ⓘ Legend">Queue</th>
+          <th title="Provenance on file: the exact CV + cover letter (and SHA-256 hashes) recorded for the submission">Files</th>
+          <th title="A saved job description exists for this role — open the row for the ad, ATS keywords and grounded context">Job ad</th>
+        </tr></thead>
             <tbody id="rows"></tbody>
           </table>
         </div>
@@ -112,6 +123,30 @@
     <span>I have reviewed this and authorise it to proceed.</span></label>
   <div class="row" style="justify-content:flex-end;margin-top:14px">
     <button id="ap-cancel">Cancel</button><button id="ap-confirm" class="risky" disabled>Confirm &amp; Authorize</button></div>
+</div></div>
+
+<div id="legend-modal" class="modal hide"><div class="modal-box" style="width:min(760px,94vw)">
+  <div class="row"><b style="flex:1">What the columns and marks mean</b><button onclick="window.legendClose()">✕</button></div>
+  <div class="legend">
+    <div class="legend-col">
+      <h4>Columns</h4>
+      <dl>
+        <dt>Date</dt><dd>When the register row was last updated.</dd>
+        <dt>ATS</dt><dd>The applicant-tracking system the application went through.</dd>
+        <dt>Status</dt><dd>Where the application currently stands (list below).</dd>
+        <dt>Match</dt><dd>How much of the ad's ATS keyword list the tailored CV covers. <b>align✗</b> = the pre-submit alignment gate failed.</dd>
+        <dt>Queue</dt><dd>Where the role sits in the apply queue (list below).</dd>
+        <dt>Files (✓)</dt><dd>Provenance on file — the exact CV + letter and their SHA-256 hashes. <span class="muted">—</span> = none recorded.</dd>
+        <dt>Job ad (✓)</dt><dd>A saved job description exists for this role. <span class="muted">—</span> = none saved.</dd>
+      </dl>
+    </div>
+    <div class="legend-col">
+      <h4>Status</h4>
+      <dl id="legend-status"></dl>
+      <h4 style="margin-top:12px">Queue</h4>
+      <dl id="legend-queue"></dl>
+    </div>
+  </div>
 </div></div>
 
 <div id="docv" class="modal hide"><div class="modal-box" style="width:min(900px,94vw)">

@@ -2,7 +2,25 @@
 const TOKEN = document.body.dataset.sessionToken;
 const $ = (s) => document.querySelector(s);
 const esc = (s) => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const chip = (s) => `<span class="chip ${esc(s)}">${esc(s || '')}</span>`;
+const STATUS_HELP = {
+  SUBMITTED: 'Application sent — awaiting a reply',
+  IN_PROGRESS: 'Application in progress (multi-step form being completed)',
+  INTERVIEW: 'Interview stage — an interview is scheduled or requested',
+  OFFER: 'Offer received',
+  REJECTED: 'Rejected / declined by the employer',
+  BLOCKED: 'Blocked — CAPTCHA, bot check or a hard wall stopped submission',
+  MANUAL: 'Needs you — 2FA/CAPTCHA, or a reply that could not be auto-matched',
+  PREPARED: 'Documents generated and gated, but not submitted yet',
+  CLOSED: 'Closed / withdrawn / expired — no further action',
+};
+const QUEUE_HELP = {
+  pending: 'Queued to apply (state/queue.tsv)',
+  human: 'Handed to you for a human step (state/queue-human.tsv)',
+  retry: 'Failed once — queued to retry',
+  done: 'Finished — moved to queue.done',
+};
+const T = (s) => ` title="${esc(s)}"`;
+const chip = (s) => `<span class="chip ${esc(s)}"${T(STATUS_HELP[s] || '')}>${esc(s || '')}</span>`;
 const md = (s) => {
   let t = esc(s || '');
   t = t.replace(/```(?:\w+)?\n?([\s\S]*?)```/g, (m, c) => `<pre>${c.replace(/\n$/, '')}</pre>`);
@@ -49,9 +67,15 @@ const App = {
   cfSave: async () => { const d = await api('/api/config', { target: CF, content: $('#cf-text').value }); $('#cf-msg').textContent = d.ok || d.error; toast(d.ok || d.error, !!d.error); },
   chat: async () => {
     const inp = $('#chatmsg'), m = inp.value.trim(); if (!m) return; inp.value = '';
-    CHAT = { segments: [], running: true }; renderChat();
-    const d = await api('/api/chat', { message: m }); if (d.error) { toast(d.error, true); return; }
+    CHAT.running = true; setSpin(true); renderChat();
+    const d = await api('/api/chat', { message: m });
+    if (d.error) { toast(d.error, true); CHAT.running = false; setSpin(false); return; }
     chatOffset = 0; clearInterval(CHAT_TIMER); CHAT_TIMER = setInterval(chatPoll, 1200);
+  },
+  newChat: async () => {
+    const d = await api('/api/chat/new', {});
+    if (d.error) { toast(d.error, true); return; }
+    CHAT = { segments: [], running: false }; setSpin(false); renderChat(); toast('new conversation');
   },
   open: (i) => openDetail(GRID[i]),
   saveRow: async () => {
@@ -78,13 +102,13 @@ async function loadGrid() {
   const [g, s] = await Promise.all([api('/api/grid'), api('/api/state')]);
   GRID = Array.isArray(g) ? g : [];
   $('#metrics').innerHTML =
-    `<span class="metric hero"><b>${s.kpis.in_process}</b>in process</span>` +
-    `<span class="metric"><b>${s.kpis.interviews}</b>interviews</span>` +
-    `<span class="metric"><b>${s.kpis.blocked}</b>blocked</span>` +
-    `<span class="metric"><b>${s.kpis.human}</b>human</span>` +
-    `<span class="metric"><b>${s.kpis.offers}</b>offers</span>` +
-    `<span class="metric"><b>${s.kpis.total}</b>total</span>` +
-    `<span class="metric"><b>${s.kpis.submissions}</b>submissions</span>`;
+    `<span class="metric hero"${T('Applications still live: submitted + in progress + interviews + offers')}><b>${s.kpis.in_process}</b>in process</span>` +
+    `<span class="metric"${T('Applications that reached at least one interview')}><b>${s.kpis.interviews}</b>interviews</span>` +
+    `<span class="metric"${T('Blocked by a CAPTCHA / bot check, or needing manual action')}><b>${s.kpis.blocked}</b>blocked</span>` +
+    `<span class="metric"${T('Roles waiting on you — a human step (state/queue-human.tsv)')}><b>${s.kpis.human}</b>human</span>` +
+    `<span class="metric"${T('Offers received')}><b>${s.kpis.offers}</b>offers</span>` +
+    `<span class="metric"${T('All rows in the register (state/applications.csv)')}><b>${s.kpis.total}</b>total</span>` +
+    `<span class="metric"${T('Submissions with recorded provenance — exact CV + letter + hashes (state/submissions.csv)')}><b>${s.kpis.submissions}</b>submissions</span>`;
   renderRows();
 }
 function renderRows() {
@@ -93,15 +117,20 @@ function renderRows() {
     (!q || (r.company + ' ' + r.role + ' ' + (r.ats || '')).toLowerCase().includes(q)));
   const k = SORT.k; rows = rows.slice().sort((a, b) => (a[k] || '') < (b[k] || '') ? -SORT.dir : (a[k] || '') > (b[k] || '') ? SORT.dir : 0);
   $('#count').textContent = `${rows.length} / ${GRID.length} rows`;
-  const mbadge = (r) => r.match == null ? '<span class="muted">—</span>'
-    : `<span class="badge ${r.match >= 70 ? 'good' : r.match >= 40 ? 'mid' : 'bad'}">${r.match}%</span>` + (r.alignment === 'FAIL' ? ' <span class="badge bad">align✗</span>' : '');
+  const mbadge = (r) => r.match == null ? '<span class="muted"' + T('Not scored yet — computed when the role is prepared') + '>—</span>'
+    : `<span class="badge ${r.match >= 70 ? 'good' : r.match >= 40 ? 'mid' : 'bad'}"${T("CV-to-job fit: this % of the ad's ATS keywords are covered by the tailored CV")}>${r.match}%</span>`
+      + (r.alignment === 'FAIL' ? ' <span class="badge bad"' + T('Pre-submit alignment gate FAILED for this role') + '>align✗</span>' : '');
   $('#rows').innerHTML = rows.map((r) => {
     const i = GRID.indexOf(r);
     return `<tr class="click" onclick="App.open(${i})">` +
-      `<td class="muted">${esc(r.date)}</td><td>${esc(r.company)}</td><td>${esc(r.role)}</td>` +
-      `<td class="muted">${esc(r.ats)}</td><td>${chip(r.status)}</td><td>${mbadge(r)}</td>` +
-      `<td class="muted">${esc(r.queue)}</td><td>${r.applied ? '✓' : '<span class="muted">—</span>'}</td>` +
-      `<td>${r.spec ? '✓' : '<span class="muted">—</span>'}</td></tr>`;
+      `<td class="muted"${T('Register row last updated ' + r.date)}>${esc(r.date)}</td>` +
+      `<td${T('Employer / recruiter')}>${esc(r.company)}</td>` +
+      `<td${T('Job title')}>${esc(r.role)}</td>` +
+      `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
+      `<td>${chip(r.status)}</td><td>${mbadge(r)}</td>` +
+      `<td class="muted"${T(QUEUE_HELP[r.queue] || 'Not in any queue')}>${esc(r.queue)}</td>` +
+      `<td${T(r.applied ? 'Provenance recorded — exact CV, letter and SHA-256 hashes on file' : 'No submission recorded (not applied, or not reconciled yet)')}>${r.applied ? '✓' : '<span class="muted">—</span>'}</td>` +
+      `<td${T(r.spec ? 'A saved job description exists — open the row for the ad, ATS keywords and grounded context' : 'No saved job description')}>${r.spec ? '✓' : '<span class="muted">—</span>'}</td></tr>`;
   }).join('') || '<tr><td colspan=9 class="muted">no matching rows</td></tr>';
 }
 document.querySelectorAll('#grid th[data-s]').forEach(th => th.onclick = () => { const k = th.dataset.s; SORT = { k, dir: SORT.k === k ? -SORT.dir : 1 }; renderRows(); });
@@ -270,18 +299,32 @@ function initSplitter(el, kind) {
     el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
   });
 }
-async function chatPoll() { const d = await api('/api/chat/stream?since=' + chatOffset); if (d.segments) { CHAT = d; renderChat(); } chatOffset = d.offset || chatOffset; if (d.done) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; renderChat(); } }
+async function chatPoll() {
+  const d = await api('/api/chat/stream?since=' + chatOffset);
+  if (d.segments) { CHAT = d; renderChat(); }
+  chatOffset = d.offset || chatOffset;
+  setSpin(!!d.running);
+  if (d.running && !CHAT_TIMER) CHAT_TIMER = setInterval(chatPoll, 1200);
+  else if (!d.running && CHAT_TIMER) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; renderChat(); }
+}
 function toolBlock(s) {
   const tag = (s.tool && s.tool !== 'bash') ? esc(s.tool) + ' · ' : '$ ';
-  return `<details class="c-tool"><summary><code>${tag}${esc(s.cmd)}</code></summary>${s.body ? `<pre>${esc(s.body)}</pre>` : ''}</details>`;
+  return `<details class="c-tool" data-k="t:${esc(s.cmd).slice(0, 90)}"><summary><code>${tag}${esc(s.cmd)}</code></summary>${s.body ? `<pre>${esc(s.body)}</pre>` : ''}</details>`;
 }
 function collapseCode(html) {
   return html.replace(/<pre>([\s\S]*?)<\/pre>/g, (m, c) => ((c.match(/\n/g) || []).length >= 2)
-    ? `<details class="c-code"><summary>code</summary><pre>${c}</pre></details>` : m);
+    ? `<details class="c-code" data-k="c:${esc(c).slice(0, 80)}"><summary>code</summary><pre>${c}</pre></details>` : m);
 }
+function setSpin(v) {
+  document.body.classList.toggle('chat-busy', !!v);
+  const s = $('#chat-spin'); if (s) s.classList.toggle('hide', !v);
+}
+function openKeys(el) { return new Set([...el.querySelectorAll('details[open]')].map(d => d.getAttribute('data-k')).filter(Boolean)); }
 function renderChat() {
   const el = $('#chat'), segs = (CHAT && CHAT.segments) || [];
-  if (!segs.length) { el.innerHTML = '<span class="muted">' + (CHAT.running ? '◌ thinking…' : 'ask the agent anything…') + '</span>'; return; }
+  if (!segs.length && !CHAT.running) { el.innerHTML = '<span class="muted">ask the agent anything…</span>'; return; }
+  const keys = openKeys(el);                                  // keep expanded steps open across re-renders
+  const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
   let h = '', i = 0;
   while (i < segs.length) {
     const s = segs[i];
@@ -289,7 +332,7 @@ function renderChat() {
       const grp = [];
       while (i < segs.length && segs[i].t === 'tool') { grp.push(segs[i]); i++; }
       h += grp.length === 1 ? toolBlock(grp[0])
-        : `<details class="c-tools"><summary>🔧 ${grp.length} steps</summary>${grp.map(toolBlock).join('')}</details>`;
+        : `<details class="c-tools" data-k="g:${esc(grp.map(x => x.cmd).join('|')).slice(0, 90)}"><summary>🔧 ${grp.length} steps</summary>${grp.map(toolBlock).join('')}</details>`;
       continue;
     }
     if (s.t === 'user') h += `<div class="c-user"><div class="md">${md(s.body)}</div></div>`;
@@ -297,8 +340,10 @@ function renderChat() {
     else h += `<div class="md">${collapseCode(md(s.body))}</div>`;
     i++;
   }
-  if (CHAT.running) h += '<span class="muted">▮</span>';
-  el.innerHTML = h; el.scrollTop = el.scrollHeight;
+  if (CHAT.running) h += `<div class="working"><span class="spin">🥜</span> <span class="muted">working…</span></div>`;
+  el.innerHTML = h;
+  el.querySelectorAll('details[data-k]').forEach(d => { if (keys.has(d.getAttribute('data-k'))) d.open = true; });
+  if (nearBottom || CHAT.running) el.scrollTop = el.scrollHeight;
 }
 
 /* ---------- wiring ---------- */
@@ -308,6 +353,12 @@ $('#a-submit').onclick = () => App.run('submit_queue');
 $('#a-reconcile').onclick = () => App.run('reconcile');
 $('#a-config').onclick = () => { $('#cfg').classList.remove('hide'); App.cf(CF); };
 window.cfgClose = () => $('#cfg').classList.add('hide');
+window.legendClose = () => $('#legend-modal').classList.add('hide');
+$('#legend').onclick = () => {
+  $('#legend-status').innerHTML = Object.entries(STATUS_HELP).map(([k, v]) => `<dt>${chip(k)}</dt><dd>${esc(v)}</dd>`).join('');
+  $('#legend-queue').innerHTML = Object.entries(QUEUE_HELP).map(([k, v]) => `<dt><code>${esc(k)}</code></dt><dd>${esc(v)}</dd>`).join('');
+  $('#legend-modal').classList.remove('hide');
+};
 $('#a-drawer').onclick = () => openDock(document.body.dataset.agent !== 'open');
 $('#dock-tab').onclick = () => openDock(true);
 $('#dock-close').onclick = () => openDock(false);
@@ -316,6 +367,7 @@ $('#act-toggle').onclick = () => DOCK.setAct(document.body.dataset.act !== 'open
 initSplitter($('#split-dock'), 'dock');
 initSplitter($('#split-inner'), 'act');
 $('#chat-send').onclick = () => App.chat();
+$('#chat-new').onclick = () => App.newChat();
 $('#q').oninput = renderRows; $('#fstatus').onchange = renderRows; $('#fqueue').onchange = renderRows;
 $('#export').onclick = () => {
   const cs = ['date', 'company', 'role', 'ats', 'status', 'match', 'queue', 'applied', 'spec', 'key'];
@@ -326,4 +378,4 @@ $('#export').onclick = () => {
 window.App = App;
 async function healthPill() { const s = await api('/api/health'); const h = $('#health');
   h.textContent = 'health: ' + (s.v || '?'); h.className = 'pill ' + (s.v || 'unknown'); h.title = s.detail || ''; setTimeout(healthPill, 60000); }
-DOCK.init(); loadGrid(); liveTick(); healthPill();
+DOCK.init(); loadGrid(); liveTick(); healthPill(); chatPoll();
