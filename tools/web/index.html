@@ -6,7 +6,7 @@
 <title>Jobsquirrel</title>
 <link rel="stylesheet" href="/app.css">
 </head>
-<body data-session-token="{{TOKEN}}">
+<body data-session-token="{{TOKEN}}" data-dock="left" data-agent="closed" data-act="closed">
 <header class="top">
   <div class="brand"><span class="mascot">🐿️</span><h1>Jobsquirrel</h1>
     <span id="health" class="pill unknown">health…</span><span class="pill" title="UI build marker">WebUI v5</span></div>
@@ -19,33 +19,71 @@
   </div>
 </header>
 
-<div class="strip">
-  <div class="metrics" id="metrics"></div>
-  <div class="livestrip" id="live"><span class="muted">idle — no run active</span></div>
+<div id="app">
+  <aside id="dock" aria-label="Agent console">
+    <div class="dock-head">
+      <span class="dock-title">💬 Agent Console</span>
+      <span class="dock-tools">
+        <span class="dock-pos" title="Dock position">
+          <button class="pos" data-pos="left" title="Dock left">⇤</button>
+          <button class="pos" data-pos="top" title="Dock top">⇧</button>
+          <button class="pos" data-pos="bottom" title="Dock bottom">⇩</button>
+          <button class="pos" data-pos="right" title="Dock right">⇥</button>
+        </span>
+        <button id="dock-close" class="small" title="Collapse">✕</button>
+      </span>
+    </div>
+    <div class="panes" id="panes">
+      <section class="pane pane-chat">
+        <div class="pane-h">Chat <span id="agent-name" class="muted">…</span></div>
+        <div id="chat" class="term grow">ask the agent anything…</div>
+        <div class="row chat-in">
+          <input id="chatmsg" placeholder="e.g. apply to the top 5 prepared roles" style="flex:1"
+            onkeydown="if(event.key==='Enter')App.chat()"><button id="chat-send">Send</button>
+        </div>
+      </section>
+      <div class="splitter split-inner" id="split-inner" title="Drag to resize"></div>
+      <section class="pane pane-act" id="pane-act">
+        <button class="pane-h act-toggle" id="act-toggle" title="Show/hide activity">
+          <span class="chev">▸</span>Activity<span id="act-sum" class="muted">idle</span></button>
+        <div id="liveterm" class="term grow act-body">idle.</div>
+      </section>
+    </div>
+  </aside>
+  <div class="splitter split-dock" id="split-dock" title="Drag to resize"></div>
+  <div id="main">
+    <div class="strip">
+      <div class="metrics" id="metrics"></div>
+      <div class="livestrip" id="live"><span class="muted">idle — no run active</span></div>
+    </div>
+    <div class="scroll">
+      <main>
+        <div class="toolbar">
+          <input id="q" placeholder="search company / role / ATS / notes…" style="flex:1;max-width:420px">
+          <select id="fstatus"><option value="">all statuses</option>
+            <option>SUBMITTED</option><option>IN_PROGRESS</option><option>INTERVIEW</option><option>OFFER</option>
+            <option>REJECTED</option><option>BLOCKED</option><option>MANUAL</option><option>PREPARED</option><option>CLOSED</option></select>
+          <select id="fqueue"><option value="">any queue</option><option value="pending">pending</option>
+            <option value="human">human-assist</option><option value="retry">retry</option><option value="done">done</option></select>
+          <button id="export">Export CSV</button>
+          <span id="count" class="muted"></span>
+        </div>
+        <div class="gridwrap">
+          <table id="grid">
+            <thead><tr>
+              <th data-s="date">Date</th><th data-s="company">Company</th><th data-s="role">Role</th>
+              <th data-s="ats">ATS</th><th data-s="status">Status</th><th>Match</th><th>Queue</th>
+              <th>Prov.</th><th>Spec</th>
+            </tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+  </div>
 </div>
 
-<main>
-  <div class="toolbar">
-    <input id="q" placeholder="search company / role / ATS / notes…" style="flex:1;max-width:420px">
-    <select id="fstatus"><option value="">all statuses</option>
-      <option>SUBMITTED</option><option>IN_PROGRESS</option><option>INTERVIEW</option><option>OFFER</option>
-      <option>REJECTED</option><option>BLOCKED</option><option>MANUAL</option><option>PREPARED</option><option>CLOSED</option></select>
-    <select id="fqueue"><option value="">any queue</option><option value="pending">pending</option>
-      <option value="human">human-assist</option><option value="retry">retry</option><option value="done">done</option></select>
-    <button id="export">Export CSV</button>
-    <span id="count" class="muted"></span>
-  </div>
-  <div class="gridwrap">
-    <table id="grid">
-      <thead><tr>
-        <th data-s="date">Date</th><th data-s="company">Company</th><th data-s="role">Role</th>
-        <th data-s="ats">ATS</th><th data-s="status">Status</th><th>Match</th><th>Queue</th>
-        <th>Prov.</th><th>Spec</th>
-      </tr></thead>
-      <tbody id="rows"></tbody>
-    </table>
-  </div>
-</main>
+<button id="dock-tab" class="dock-tab" title="Open agent console">💬 Agent</button>
 
 <aside id="detail" class="right">
   <div class="drawer-head"><b id="d-title">detail</b><button id="d-close" class="small">✕</button></div>
@@ -66,17 +104,6 @@
   <div class="muted" style="margin-top:6px">JSON is validated before saving; a <code>.bak</code> is kept.</div>
   <div id="cf-msg" class="muted"></div>
 </div></div>
-
-<aside id="drawer" class="drawer">
-  <div class="drawer-head"><span>Agent Console</span><button id="dr-close" class="small">✕ close</button></div>
-  <div class="panes">
-    <div class="pane"><div class="pane-h">Chat — <span id="agent-name" class="muted">…</span></div>
-      <div id="chat" class="term grow">ask the agent anything…</div>
-      <div class="row"><input id="chatmsg" placeholder="e.g. apply to the top 5 prepared roles" style="flex:1"
-        onkeydown="if(event.key==='Enter')App.chat()"><button id="chat-send">Send</button></div></div>
-    <div class="pane"><div class="pane-h">Activity — actions &amp; live run</div><div id="liveterm" class="term grow">idle.</div></div>
-  </div>
-</aside>
 
 <div id="approve" class="modal hide"><div class="modal-box">
   <h2 style="text-transform:none;letter-spacing:0;color:var(--fg)">Confirm irreversible action</h2>
