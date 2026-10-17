@@ -255,6 +255,7 @@ tools/                      # the pipeline (language/library-free CLI tools)
   watch_queue.sh            #   live queue progress
   prioritise_queue.py       #   sort the queue most-senior-first
   init_config.py            #   scaffold/validate config/ (used by the bootstrap)
+  doctor.py                 #   one-shot health check (config, KB, browser, register, git)
   setup_kb.sh               #   explain + build the GraphRAG knowledge base
   kb_graphrag.py            #   build the cited grounding pack per role (required)
   kb_ingest.py              #   ingest kb/sources/ any-format -> GraphRAG text input

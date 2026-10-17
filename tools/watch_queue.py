@@ -282,12 +282,25 @@ def live_tasks():
 
 
 def register_counts():
-    try:
-        lines = open(os.path.join(STATE, "counts.md")).read().splitlines()
-    except OSError:
-        return ""
+    """Live register counts from `register.py --stats`, so the dashboard never
+    shows a stale counts.md. Falls back to counts.md only if the tool is missing."""
+    text = ""
+    reg = os.path.join(ROOT, "tools", "register.py")
+    if os.path.isfile(reg):
+        try:
+            r = subprocess.run([sys.executable, reg, "--stats"], cwd=ROOT,
+                               capture_output=True, text=True, timeout=10)
+            if r.returncode == 0:
+                text = r.stdout
+        except (OSError, subprocess.SubprocessError):
+            text = ""
+    if not text:
+        try:
+            text = open(os.path.join(STATE, "counts.md")).read()
+        except OSError:
+            return ""
     parts = []
-    for s in lines:
+    for s in text.splitlines():
         s = s.strip()
         if not s or s.startswith(("#", "_", "```")):
             continue

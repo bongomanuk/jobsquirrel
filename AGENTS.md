@@ -91,6 +91,7 @@ cat config/profile.md      # identity, eligibility, accuracy rules, EEO answers,
 cat config/cv.json         # the candidate's ground-truth CV
 cat config/archetypes.json # role-family CV templates
 python3 tools/register.py --stats          # current outcomes
+python3 tools/doctor.py                    # environment/config/KB/browser health
 python3 tools/register.py --list --status INTERVIEW
 ```
 
@@ -269,6 +270,8 @@ Stop and ask (or record `MANUAL`/`BLOCKED`) when:
 - "Use one fixed CV for these." → `LIGHT=1 FIXED_CV=<path> PARALLEL=3 bash tools/run_queue.sh`.
 - "Check what's outstanding." → `register.py --stats`, list `INTERVIEW` rows,
   surface verification links and blocked items.
+- "Is everything set up?" → `python3 tools/doctor.py` (config, knowledge base,
+  browser, register, git), then act on any FAIL.
 
 ---
 
