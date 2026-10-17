@@ -559,6 +559,7 @@ def read_task_log(name):
 
 
 def live():
+    _act_load()
     active = bool(WQ and WQ.runner_active())
     running = sorted(WQ.live_tasks()) if WQ else []
     tail_name, tail = "", []
@@ -939,6 +940,27 @@ ACTIONS = {
 
 
 _ACT = {"name": "", "proc": None, "offset": 0, "t0": 0}
+ACT_FILE = os.path.join(LOGS, "dashboard-activity.json")
+
+
+def _act_save():
+    try:
+        json.dump({k: _ACT.get(k) for k in ("name", "offset", "t0")}, open(ACT_FILE, "w"))
+    except OSError:
+        pass
+
+
+def _act_load():
+    """Restore the last action so the Activity pane survives a server restart."""
+    if _ACT.get("name") or _ACT.get("proc"):
+        return
+    try:
+        with open(ACT_FILE, encoding="utf-8") as fh:
+            d = json.load(fh)
+        for k in ("name", "offset", "t0"):
+            _ACT[k] = d.get(k, _ACT.get(k))
+    except (OSError, ValueError):
+        pass
 
 
 def action_log(n=100):
@@ -962,6 +984,7 @@ def _spawn(purpose, argv, env=None):
     proc = subprocess.Popen(argv, cwd=ROOT, env=dict(os.environ, ROOT=ROOT, **(env or {})),
                             stdout=logf, stderr=subprocess.STDOUT, start_new_session=True)
     _ACT.update(name=purpose, proc=proc, offset=logf.tell(), t0=time.time())
+    _act_save()
     return proc
 
 

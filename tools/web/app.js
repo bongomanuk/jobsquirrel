@@ -420,6 +420,11 @@ function initActSplit() {
   });
 }
 function initPanels() {
+  // migrate pre-v6 keys so upgrading doesn't reset the panel layout
+  if (localStorage.getItem('agent.open') === null && localStorage.getItem('dock.open') !== null)
+    localStorage.setItem('agent.open', localStorage.getItem('dock.open'));
+  if (localStorage.getItem('agent.pos') === null && localStorage.getItem('dock.pos') !== null)
+    localStorage.setItem('agent.pos', localStorage.getItem('dock.pos'));
   document.body.dataset.act = localStorage.getItem('dock.actOpen') === '1' ? 'open' : 'closed';
   document.querySelectorAll('.dock-drag').forEach(initDockDrag);
   document.querySelectorAll('.edge-split').forEach(initEdgeSplit);
