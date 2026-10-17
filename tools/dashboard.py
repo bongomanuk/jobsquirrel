@@ -16,8 +16,11 @@ import html
 import json
 import os
 import re
+import secrets
+import subprocess
 import sys
 import threading
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -155,6 +158,56 @@ def read_task_log(name):
     return {"name": name, "curated": curate(text)}
 
 
+SESSION_TOKEN = secrets.token_urlsafe(18)
+ACTIONS = {
+    # safe: prepares documents (REVIEW=1) and never submits or emails
+    "review": {"argv": ["bash", "tools/run_queue.sh"], "env": {"REVIEW": "1", "PARALLEL": "1"},
+               "purpose": "prepare documents (review run)", "token": "RUN-REVIEW", "gated": False},
+    # risky: actually applies to roles (submits). Gated by approval.
+    "queue": {"argv": ["bash", "tools/run_queue.sh"], "env": {},
+              "purpose": "run the apply queue (submits applications)", "token": "RUN-QUEUE", "gated": True},
+}
+
+
+def gather_live():
+    active = bool(WQ and WQ.runner_active())
+    running = sorted(WQ.live_tasks()) if WQ else []
+    tail_name, tail = "", []
+    if running:
+        cand = []
+        for key in running:
+            co, _, role = key.partition("|")
+            p = os.path.join(LOGS, f"{co}-{role}".translate(str.maketrans(" /|", "___")) + ".log")
+            if os.path.isfile(p):
+                cand.append((os.path.getmtime(p), f"{co}-{role}".translate(str.maketrans(" /|", "___"))))
+        if cand:
+            tail_name = max(cand)[1]
+            tail = read_task_log(tail_name)["curated"][-150:]
+    return {"active": active, "running": [k.replace("|", " — ") for k in running],
+            "tail_name": tail_name, "tail": tail}
+
+
+def start_action(name):
+    spec = ACTIONS.get(name)
+    if not spec:
+        return {"error": "unknown action"}
+    if WQ and WQ.runner_active():
+        return {"error": "a queue run is already active"}
+    if spec["gated"]:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import approval
+        if not approval.approved(spec["purpose"], spec["token"]):
+            env = "APPROVE_" + spec["token"].replace("-", "_")
+            return {"error": f"refused: start the dashboard with {env}=1 to allow this"}
+    os.makedirs(LOGS, exist_ok=True)
+    logf = open(os.path.join(LOGS, "dashboard-action.log"), "a", encoding="utf-8")
+    logf.write(f"\n=== {time.strftime('%Y-%m-%dT%H:%M:%S')}  action={name} ===\n")
+    logf.flush()
+    subprocess.Popen(spec["argv"], cwd=ROOT, env=dict(os.environ, ROOT=ROOT, **spec["env"]),
+                     stdout=logf, stderr=subprocess.STDOUT, start_new_session=True)
+    return {"ok": f"started: {spec['purpose']}"}
+
+
 INDEX = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Jobsquirrel</title>
@@ -187,14 +240,26 @@ tr:last-child td{border-bottom:0}tbody tr{cursor:pointer}tbody tr:hover{backgrou
 font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}
 .log .p{color:var(--accent);font-weight:700}.log .e{color:var(--bad)}.log .g{color:var(--good)}
 .muted{color:var(--dim)}a{color:var(--info);text-decoration:none}
+.tools{display:flex;align-items:center;gap:8px}
+button{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:7px 12px;
+font:600 13px inherit;cursor:pointer}button:hover{border-color:var(--accent)}
+button.risky{border-color:#6e2b2b;color:#ffb4b4}button:disabled{opacity:.5;cursor:default}
+#live .r{color:var(--accent);font-weight:700}
 </style></head><body>
 <header><div class="sq">🐿️</div>
-<div><h1>Jobsquirrel <span class="muted" style="font-size:12px">· dashboard</span></h1>
-<div class="sub" id="ts">loading…</div></div></header>
+<div style="flex:1"><h1>Jobsquirrel <span class="muted" style="font-size:12px">· dashboard</span></h1>
+<div class="sub" id="ts">loading…</div></div>
+<div class="tools">
+<button id="b-review" onclick="act('review')">Prepare (review)</button>
+<button id="b-queue" class="risky" onclick="act('queue')">Apply queue</button>
+<span id="amsg" class="sub"></span>
+</div></header>
 <div class="wrap">
 <div class="cards" id="cards"></div>
 <div class="card"><div class="l">Queue progress</div><div id="qbar" class="bar"><i style="width:0%"></i></div>
 <div class="sub" id="qtext" style="margin-top:6px"></div></div>
+<h2>Live</h2>
+<div class="card" id="live"><span class="muted">idle — no run active</span></div>
 <h2>Recent runs</h2>
 <table><thead><tr><th>When</th><th>Company</th><th>Role</th><th>Outcome</th><th>Detail</th></tr></thead>
 <tbody id="runs"></tbody></table>
@@ -202,6 +267,7 @@ font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}
 <h2>Task log</h2><div class="log" id="log">click a run to see its curated log</div>
 </div>
 <script>
+const TOKEN="__TOKEN__";
 async function j(u){const r=await fetch(u);return r.json()}
 function chip(s){return '<span class="chip s-'+s+'">'+s+'</span>'}
 async function tick(){
@@ -227,7 +293,27 @@ async function loadlog(name){
  const el=document.getElementById('log');
  el.innerHTML='<div class=muted>'+esc(d.name)+'</div>'+(d.curated||[]).map(x=>x.k=='phase'?'<span class=p>▶ '+esc(x.t)+'</span>':'  '+esc(x.t)).join('\n');
 }
-tick();setInterval(tick,3000);
+async function act(name){
+ const b=document.getElementById('b-'+name), msg=document.getElementById('amsg');
+ if(name==='queue' && !confirm('Apply queue will submit applications on your behalf. Continue?')) return;
+ b.disabled=true; msg.textContent='starting…';
+ try{
+  const r=await fetch('/api/action',{method:'POST',headers:{'Content-Type':'application/json','X-Session':TOKEN},
+    body:JSON.stringify({action:name})});
+  const d=await r.json(); msg.textContent=d.ok||d.error||'done';
+ }catch(e){msg.textContent='error: '+e}
+ setTimeout(function(){b.disabled=false;liveTick();},1500);
+}
+async function liveTick(){
+ const d=await j('/api/live'), el=document.getElementById('live'), running=d.running||[];
+ if(!d.active && !running.length){el.innerHTML='<span class=muted>idle — no run active</span>';return}
+ let h='<div class=sub>'+(d.active?'● runner active':'○ runner idle')+'</div>';
+ if(running.length) h+='<div>'+running.map(r=>'<div class=r>▶ '+esc(r)+'</div>').join('')+'</div>';
+ if(d.tail&&d.tail.length) h+='<div class=log style="margin-top:10px;max-height:30vh">'+
+   d.tail.map(x=>x.k=='phase'?'<span class=p>▶ '+esc(x.t)+'</span>':'  '+esc(x.t)).join('\n')+'</div>';
+ el.innerHTML=h;
+}
+tick();liveTick();setInterval(tick,3000);setInterval(liveTick,2000);
 </script></body></html>"""
 
 
@@ -245,17 +331,34 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
         if u.path == "/":
-            return self._send(200, "text/html; charset=utf-8", INDEX.encode())
+            return self._send(200, "text/html; charset=utf-8", INDEX.replace("__TOKEN__", SESSION_TOKEN).encode())
         if u.path == "/api/state":
             return self._send(200, "application/json", json.dumps(gather_state()).encode())
         if u.path == "/api/runs":
             return self._send(200, "application/json", json.dumps(gather_runs()).encode())
         if u.path == "/api/tasks":
             return self._send(200, "application/json", json.dumps(task_logs()).encode())
+        if u.path == "/api/live":
+            return self._send(200, "application/json", json.dumps(gather_live()).encode())
         if u.path == "/api/log":
             name = parse_qs(u.query).get("task", [""])[0]
             return self._send(200, "application/json", json.dumps(read_task_log(name)).encode())
         self._send(404, "text/plain", b"not found")
+
+    def do_POST(self):
+        u = urlparse(self.path)
+        if u.path != "/api/action":
+            return self._send(404, "text/plain", b"not found")
+        n = int(self.headers.get("Content-Length", "0") or 0)
+        try:
+            data = json.loads(self.rfile.read(n).decode() or "{}")
+        except ValueError:
+            data = {}
+        # anti-CSRF: only our own page holds the session token
+        if self.headers.get("X-Session") != SESSION_TOKEN:
+            return self._send(403, "application/json", json.dumps({"error": "bad session token"}).encode())
+        res = start_action(data.get("action", ""))
+        return self._send(200, "application/json", json.dumps(res).encode())
 
 
 def main():
