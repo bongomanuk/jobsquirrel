@@ -438,11 +438,32 @@ def live():
         if cand:
             tail_name = max(cand)[1]
             tail = read_task_log(tail_name)["curated"][-150:]
+    proc = _ACT.get("proc")
+    act_running = bool(proc and proc.poll() is None)
+    act_log = action_log(400)
     return {"active": active, "running": [k.replace("|", " — ") for k in running],
             "tail_name": tail_name, "tail": tail,
-            "action": {"name": _ACT.get("name", ""),
-                       "running": bool(_ACT.get("proc") and _ACT["proc"].poll() is None),
-                       "log": action_log(120)}}
+            "action": {"name": _ACT.get("name", ""), "running": act_running,
+                       "summary": summarize_action(_ACT.get("name", ""), act_log, act_running),
+                       "log": act_log}}
+
+
+ACT_NOISE = re.compile(r"^\s*(?:[─═\-_=]{4,}|[.|·•]\s*$|\d+%?\s*\|)")
+
+
+def summarize_action(name, lines, running):
+    """Compress an action log into a headline + the few lines that matter."""
+    clean = [l.rstrip() for l in lines if l.strip() and not ACT_NOISE.match(l)]
+    wanted = re.compile(r"(error|fail|warn|refus|denied|traceback|⇒|→|nothing to|no changes|"
+                        r"\bwrote\b|\bwritten\b|\bsaved\b|prepared|submitted|applied|created|"
+                        r"proposal|\b[1-9]\d*\b\s*(?:new|found|queued|sent|updated|skipped|matched))", re.I)
+    notable, seen = [], set()
+    for l in clean:
+        if wanted.search(l) and l not in seen:
+            notable.append(l.strip()[:200]); seen.add(l)
+    notable = notable[-8:]
+    return {"headline": (clean[-1][:200] if clean else ("running…" if running else "no output")),
+            "notable": notable, "lines": len(clean)}
 
 
 def logs_tail(lines=100):
@@ -569,7 +590,7 @@ ACTIONS = {
 }
 
 
-_ACT = {"name": "", "proc": None, "offset": 0}
+_ACT = {"name": "", "proc": None, "offset": 0, "t0": 0}
 
 
 def action_log(n=100):
@@ -603,7 +624,7 @@ def start_action(command, approval_token=""):
     logf.flush()
     proc = subprocess.Popen(spec["argv"], cwd=ROOT, env=dict(os.environ, ROOT=ROOT, **spec["env"]),
                             stdout=logf, stderr=subprocess.STDOUT, start_new_session=True)
-    _ACT.update(name=spec["purpose"], proc=proc, offset=logf.tell())
+    _ACT.update(name=spec["purpose"], proc=proc, offset=logf.tell(), t0=time.time())
     return {"ok": f"started: {spec['purpose']}"}
 
 

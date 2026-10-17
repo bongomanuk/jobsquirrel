@@ -93,6 +93,17 @@ pre.doc{background:#07090c;border:1px solid var(--line);border-radius:var(--radi
 .md hr{border:0;border-top:1px solid var(--line);margin:.9em 0}
 .md table{margin:.5em 0}
 
+/* agent console: rendered chat + compact activity */
+.term>.md{white-space:normal;font-family:var(--sans);font-size:13px}
+.act-h{font-weight:700;color:var(--fg)}
+.act-sum{margin-top:2px}
+.act-list{margin:4px 0 0;padding-left:16px;color:var(--muted)}
+.act-list li{margin:1px 0}
+.act-raw{margin-top:6px}
+.act-raw summary{cursor:pointer;color:var(--muted);font-size:12px}
+.act-raw pre{background:#07090c;border:1px solid var(--line);border-radius:6px;padding:8px;max-height:30vh;overflow:auto;font:12px/1.5 var(--mono);white-space:pre-wrap}
+.act-sep{border-top:1px solid var(--line);margin:8px 0}
+
 /* master-detail */
 .grid2{display:grid;grid-template-columns:340px 1fr;gap:16px}
 .list{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);max-height:70vh;overflow:auto}
