@@ -195,6 +195,8 @@ email, and so on.
 - **[docs/AGENT-SETUP.md](docs/AGENT-SETUP.md)**: bootstrap it with opencode,
   Claude Code or any agent; keep it cheap with opencode + DeepSeek Flash; and what
   it typically costs to run.
+- **[docs/PRODUCT-SPEC.md](docs/PRODUCT-SPEC.md)**: the full product + web-interface
+  specification (data model, tools, safety/approval model, dashboard API).
 - **[docs/USING-IT.md](docs/USING-IT.md)**: how you actually use it day to day:
   **typical prompts** and how to **monitor** a run.
 - **[docs/AGENT-GUIDE.md](docs/AGENT-GUIDE.md)**: the human's guide to handing
