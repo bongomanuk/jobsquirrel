@@ -101,18 +101,17 @@
   <div id="d-body" class="d-body muted">select a row…</div>
 </aside>
 
-<div id="cfg" class="modal hide"><div class="modal-box" style="width:min(920px,94vw)">
-  <div class="row"><div class="tabs2" id="cf-tabs" style="margin:0;border:0">
-    <a data-t="cv.json" onclick="App.cf('cv.json')">cv.json</a>
-    <a data-t="archetypes.json" onclick="App.cf('archetypes.json')">archetypes.json</a>
-    <a data-t="profile.md" onclick="App.cf('profile.md')">profile.md</a></div>
-    <span style="flex:1"></span>
-    <button onclick="App.cfSave()">Save</button>
-    <button onclick="App.run('build_archetypes')">Regenerate archetype CVs</button>
-    <button onclick="window.cfgClose()">✕</button></div>
-  <textarea id="cf-text" spellcheck="false" style="margin-top:12px"></textarea>
-  <div class="muted" style="margin-top:6px">JSON is validated before saving; a <code>.bak</code> is kept.</div>
-  <div id="cf-msg" class="muted"></div>
+<div id="cfg" class="modal hide"><div class="modal-box" style="width:min(1040px,96vw);height:min(760px,92vh);display:flex;flex-direction:column">
+  <div class="row"><b style="flex:1">Settings</b><button class="small" onclick="window.cfgClose()">✕</button></div>
+  <div class="settings">
+    <nav class="set-nav">
+      <a data-s="accounts" onclick="App.settings('accounts')">Accounts</a>
+      <a data-s="kb" onclick="App.settings('kb')">Knowledge base</a>
+      <a data-s="graph" onclick="App.settings('graph')">GraphRAG</a>
+      <a data-s="profile" onclick="App.settings('profile')">Profile &amp; CV</a>
+    </nav>
+    <div id="set-body" class="set-body"><span class="muted">loading…</span></div>
+  </div>
 </div></div>
 
 <div id="approve" class="modal hide"><div class="modal-box">

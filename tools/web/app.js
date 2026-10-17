@@ -65,6 +65,46 @@ const App = {
     const d = await api('/api/config?target=' + target); CF = target; $('#cf-text').value = d.content || ''; $('#cf-msg').textContent = '';
   },
   cfSave: async () => { const d = await api('/api/config', { target: CF, content: $('#cf-text').value }); $('#cf-msg').textContent = d.ok || d.error; toast(d.ok || d.error, !!d.error); },
+  settings: async (sec) => {
+    CF_SEC = sec || CF_SEC || 'accounts';
+    document.querySelectorAll('.set-nav a').forEach(a => a.classList.toggle('on', a.dataset.s === CF_SEC));
+    const b = $('#set-body'); b.innerHTML = '<span class="muted">loading…</span>';
+    if (CF_SEC === 'accounts') return setAccounts(b);
+    if (CF_SEC === 'kb') return setKB(b);
+    if (CF_SEC === 'graph') return setGraph(b);
+    return setProfile(b);
+  },
+  auth: async (kind) => { const d = await api('/api/accounts/auth', { kind }); toast(d.ok || d.error, !!d.error); },
+  kbRebuild: async () => { const d = await api('/api/kb/rebuild', {}); toast(d.ok || d.error, !!d.error); },
+  kbDel: async (path) => { const d = await api('/api/kb/delete', { path }); toast(d.ok || d.error, !!d.error); if (!d.error) App.settings('kb'); },
+  kbUpload: async () => {
+    const inp = $('#kb-file'), grp = $('#kb-group').value.trim() || 'imported';
+    if (!inp.files.length) { toast('choose file(s) first', true); return; }
+    const fd = new FormData(); fd.append('group', grp);
+    for (const f of inp.files) fd.append('files', f, f.name);
+    try {
+      const r = await fetch('/api/kb/upload', { method: 'POST', headers: { 'X-Session': TOKEN }, body: fd });
+      const d = await r.json(); toast(d.ok || d.error, !!d.error); if (!d.error) App.settings('kb');
+    } catch (e) { toast('upload failed: ' + e, true); }
+  },
+  graphLoad: async () => {
+    const kind = $('#g-kind').value, q = $('#g-q').value.trim();
+    $('#g-res').innerHTML = '<span class="muted">reading the graph…</span>';
+    const d = await api(`/api/graph?kind=${kind}&q=${encodeURIComponent(q)}&limit=300`);
+    if (d.error) { $('#g-res').innerHTML = `<span class="muted">${esc(d.error)}</span>`; return; }
+    const rows = d.rows || [];
+    if (kind === 'entities') $('#g-res').innerHTML = `<div class="muted mini">${rows.length} entities</div><table><tbody>` +
+      rows.map(r => `<tr><td><b>${esc(r.title)}</b><div class="muted mini">${esc(r.type)} · degree ${r.degree}</div></td>
+        <td class="muted mini">${esc((r.description || '').slice(0, 220))}</td></tr>`).join('') + '</tbody></table>';
+    else if (kind === 'relationships') $('#g-res').innerHTML = `<div class="muted mini">${rows.length} relationships</div><table><tbody>` +
+      rows.map(r => `<tr><td class="mini"><b>${esc(r.source)}</b> → <b>${esc(r.target)}</b> <span class="muted">w${r.weight}</span></td>
+        <td class="muted mini">${esc((r.description || '').slice(0, 200))}</td></tr>`).join('') + '</tbody></table>';
+    else if (kind === 'communities') $('#g-res').innerHTML = `<div class="muted mini">${rows.length} communities</div><table><tbody>` +
+      rows.map(r => `<tr><td class="mini"><b>${esc(r.title)}</b><div class="muted">level ${r.level} · ${r.size} entities</div></td>
+        <td class="muted mini">${esc((r.summary || '').slice(0, 240))}</td></tr>`).join('') + '</tbody></table>';
+    else $('#g-res').innerHTML = `<table><tbody>` + rows.map(r =>
+      `<tr><td class="mini">${esc(r.title)}</td><td class="muted mini">${r.chars} chars</td></tr>`).join('') + '</tbody></table>';
+  },
   chat: async () => {
     const inp = $('#chatmsg'), m = inp.value.trim(); if (!m) return; inp.value = '';
     CHAT.running = true; setSpin(true); renderChat();
@@ -83,7 +123,7 @@ const App = {
     toast(d.ok || d.error, !!d.error); if (!d.error) { loadGrid(); }
   },
 };
-let CF = 'cv.json', CUR = null;
+let CF = 'cv.json', CUR = null, CF_SEC = 'accounts';
 
 /* ---------- approval ---------- */
 function approve(purpose, token, command) {
@@ -117,7 +157,7 @@ function renderRows() {
     (!q || (r.company + ' ' + r.role + ' ' + (r.ats || '')).toLowerCase().includes(q)));
   const k = SORT.k; rows = rows.slice().sort((a, b) => (a[k] || '') < (b[k] || '') ? -SORT.dir : (a[k] || '') > (b[k] || '') ? SORT.dir : 0);
   $('#count').textContent = `${rows.length} / ${GRID.length} rows`;
-  const mbadge = (r) => r.match == null ? '<span class="muted"' + T('Not scored yet — computed when the role is prepared') + '>—</span>'
+  const mbadge = (r) => r.match == null ? '<span class="muted"' + T('No score — this role has no saved job ad (ATS keywords) and/or no CV to compare') + '>—</span>'
     : `<span class="badge ${r.match >= 70 ? 'good' : r.match >= 40 ? 'mid' : 'bad'}"${T("CV-to-job fit: this % of the ad's ATS keywords are covered by the tailored CV")}>${r.match}%</span>`
       + (r.alignment === 'FAIL' ? ' <span class="badge bad"' + T('Pre-submit alignment gate FAILED for this role') + '>align✗</span>' : '');
   $('#rows').innerHTML = rows.map((r) => {
@@ -139,7 +179,7 @@ document.querySelectorAll('#grid th[data-s]').forEach(th => th.onclick = () => {
 async function openDetail(r) {
   if (!r) return; CUR = r; D = {}; P = {};
   $('#detail').classList.add('open'); $('#d-title').textContent = `${r.company} — ${r.role}`;
-  const tabs = ['Summary', 'Provenance', 'Job spec', 'ATS', 'KB context', 'Tailored'];
+  const tabs = ['Summary', 'Provenance', 'Job spec', 'ATS', 'Grounding', 'Tailored'];
   $('#dtabs').innerHTML = tabs.map((t, i) => `<a class="${i === 0 ? 'on' : ''}" onclick="dt(${i})">${t}</a>`).join('');
   $('#d-body').innerHTML = '<span class="muted">loading…</span>';
   const jobs = [api(`/api/provenance?company=${encodeURIComponent(r.company)}&role=${encodeURIComponent(r.role)}`)];
@@ -148,7 +188,7 @@ async function openDetail(r) {
   dt(0);
 }
 window.dt = (i) => {
-  const r = CUR, map = [summary, prov, spec, ats, kb, tailored];
+  const r = CUR, map = [summary, prov, spec, ats, grounding, tailored];
   document.querySelectorAll('#dtabs a').forEach((a, n) => a.classList.toggle('on', n === i));
   $('#d-body').innerHTML = map[i](r) || '<span class="muted">—</span>';
 };
@@ -179,6 +219,23 @@ function prov() {
     `<tr><td class="muted">screenshots</td><td class="mini mono">${(P.screenshots || []).map(esc).join('<br>') || '—'}</td></tr></tbody></table>`;
 }
 const spec = () => sec(D.jd), ats = () => sec(D.ats, true), kb = () => sec(D.kb), tailored = () => sec(D.tailored_cv || D.letter);
+function grounding(r) {
+  setTimeout(async () => {
+    const el = $('#grd'); if (!el) return;
+    const d = await api('/api/grounding?key=' + encodeURIComponent(r.key || ''));
+    if (d.error) { el.innerHTML = `<span class="muted">${esc(d.error)}</span>`; return; }
+    el.innerHTML =
+      `<p class="muted">How the knowledge graph was used for this role: the grounding pack cites
+        <b>${d.cited_entities || 0}</b> entities and <b>${d.cited_sources || 0}</b> source documents.</p>` +
+      ((d.entities || []).length ? `<h4>Entities cited</h4><table><tbody>${d.entities.map(e =>
+        `<tr><td><b>${esc(e.title)}</b> <span class="muted mini">${esc(e.type)}</span></td>
+          <td class="muted mini">${esc(e.description || '')}</td></tr>`).join('')}</tbody></table>` : '') +
+      ((d.documents || []).length ? `<h4>Source documents</h4><ul class="mini">${d.documents.map(x =>
+        `<li>${esc(x.title)} <span class="muted">(${x.chars} chars)</span></li>`).join('')}</ul>` : '') +
+      `<h4>Context pack</h4><div class="md">${md(d.pack || '(none — this role has no grounding pack)')}</div>`;
+  }, 0);
+  return '<div id="grd"><span class="muted">loading grounding…</span></div>';
+}
 
 window.docClose = () => $('#docv').classList.remove('open');
 window.viewDoc = async (rel, title) => {
@@ -346,12 +403,70 @@ function renderChat() {
   if (nearBottom || CHAT.running) el.scrollTop = el.scrollHeight;
 }
 
+/* ---------- settings sections ---------- */
+const fmtSize = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n > 1024 ? (n / 1024).toFixed(0) + ' KB' : n + ' B';
+async function setAccounts(b) {
+  const d = await api('/api/accounts');
+  b.innerHTML = `<p class="muted">Connect your accounts. Authorisation opens in your browser - finish it there, then re-check.
+      Per-site logins: <b>${d.sites}</b> stored.</p>
+    <div class="row" style="margin:8px 0"><button onclick="App.auth('gmail')">Authorise Gmail (read-only)</button>
+      <button onclick="App.auth('calendar')">Authorise Calendar</button>
+      <button onclick="viewDoc('docs/ACCOUNT-SETUP.md','Account setup guide')">Open setup guide</button>
+      <button onclick="App.settings('accounts')">Re-check</button></div>
+    <pre class="doc">${esc(d.text || '(no output)')}</pre>`;
+}
+async function setKB(b) {
+  const d = await api('/api/kb');
+  let list = '';
+  for (const [g, files] of Object.entries(d.sources || {})) {
+    if (!files.length) continue;
+    list += `<div class="kb-group"><b>${esc(g)}</b> <span class="muted mini">${files.length} file(s)</span><ul>` +
+      files.map(f => `<li><span class="mini">${esc(f.name)}</span> <span class="muted mini">${fmtSize(f.size)}</span>
+        <button class="small" title="delete" onclick="App.kbDel('kb/sources/${g === '(root)' ? '' : g + '/'}${esc(f.name)}')">✕</button></li>`).join('') +
+      '</ul></div>';
+  }
+  const s = d.stats || {};
+  b.innerHTML = `<p class="muted">Documents in <code>kb/sources/</code> feed the GraphRAG knowledge graph. Add documents, then rebuild the index.</p>
+    <div class="row" style="margin:8px 0"><input id="kb-group" placeholder="group (personal, contracts…)" style="max-width:230px">
+      <input type="file" id="kb-file" multiple><button onclick="App.kbUpload()">Upload</button>
+      <button class="risky" onclick="App.kbRebuild()">Rebuild graph</button></div>
+    <div class="kb-list">${list || '<span class="muted">no source documents yet</span>'}</div>
+    <h4 style="margin:14px 0 4px">Index</h4>
+    <div class="muted mini">${s.index ? `${s.entities} entities · ${s.relationships} relationships · ${s.communities} communities · ${s.documents} documents` : 'not built yet'}</div>
+    <pre class="doc" style="margin-top:8px">${esc(d.check || '')}</pre>`;
+}
+async function setGraph(b) {
+  const d = await api('/api/graph?kind=stats');
+  b.innerHTML = `<p class="muted">The knowledge graph built from your documents (GraphRAG index in <code>kb/graphrag/</code>).
+      ${d.entities ? `<b>${d.entities}</b> entities · <b>${d.relationships}</b> relationships · <b>${d.communities}</b> communities` : ''}</p>
+    <div class="row" style="margin:8px 0">
+      <select id="g-kind" onchange="App.graphLoad()">
+        <option value="entities">Entities</option><option value="relationships">Relationships</option>
+        <option value="communities">Communities</option><option value="documents">Documents</option></select>
+      <input id="g-q" placeholder="search the graph…" style="flex:1" onkeydown="if(event.key==='Enter')App.graphLoad()">
+      <button onclick="App.graphLoad()">Search</button></div>
+    <div id="g-res" class="g-res"><span class="muted">loading…</span></div>`;
+  App.graphLoad();
+}
+function setProfile(b) {
+  b.innerHTML = `<p class="muted">Your ground-truth CV, role-family templates and rules. JSON is validated before saving; a <code>.bak</code> is kept.</p>
+    <div class="row"><div class="tabs2" id="cf-tabs" style="margin:0;border:0">
+      <a data-t="cv.json" onclick="App.cf('cv.json')">cv.json</a>
+      <a data-t="archetypes.json" onclick="App.cf('archetypes.json')">archetypes.json</a>
+      <a data-t="profile.md" onclick="App.cf('profile.md')">profile.md</a></div>
+      <span style="flex:1"></span><button onclick="App.cfSave()">Save</button>
+      <button onclick="App.run('build_archetypes')">Regenerate archetype CVs</button></div>
+    <textarea id="cf-text" spellcheck="false"></textarea>
+    <div id="cf-msg" class="muted"></div>`;
+  App.cf(CF);
+}
+
 /* ---------- wiring ---------- */
 $('#d-close').onclick = () => $('#detail').classList.remove('open');
 $('#a-prepare').onclick = () => App.run('prepare');
 $('#a-submit').onclick = () => App.run('submit_queue');
 $('#a-reconcile').onclick = () => App.run('reconcile');
-$('#a-config').onclick = () => { $('#cfg').classList.remove('hide'); App.cf(CF); };
+$('#a-config').onclick = () => { $('#cfg').classList.remove('hide'); App.settings(CF_SEC); };
 window.cfgClose = () => $('#cfg').classList.add('hide');
 window.legendClose = () => $('#legend-modal').classList.add('hide');
 $('#legend').onclick = () => {

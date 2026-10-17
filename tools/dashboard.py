@@ -254,6 +254,116 @@ def roles_list():
 
 _MATCH_CACHE = {}
 
+# Coverage (ATS-keyword hit %) is cheap to compute, so the grid can show it for
+# every row; alignment runs a subprocess and stays on-demand. Both are persisted
+# here, keyed by a signature of the inputs so restarts don't recompute.
+MATCH_FILE = os.path.join(LOGS, "dashboard-match.json")
+_COV, _cov_loaded, _cov_dirty = {}, False, False
+_arch_text = {}
+
+
+def _load_cov():
+    global _cov_loaded
+    if _cov_loaded:
+        return
+    _cov_loaded = True
+    try:
+        with open(MATCH_FILE, encoding="utf-8") as fh:
+            _COV.update(json.load(fh))
+    except (OSError, ValueError):
+        pass
+
+
+def _save_cov():
+    global _cov_dirty
+    if not _cov_dirty:
+        return
+    try:
+        os.makedirs(LOGS, exist_ok=True)
+        tmp = MATCH_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(_COV, fh)
+        os.replace(tmp, MATCH_FILE)
+        _cov_dirty = False
+    except OSError:
+        pass
+
+
+def _doc_text(path):
+    """Plain text of a CV file: .docx, .pdf (pdftotext) or .md/.txt. Cached by path+mtime."""
+    if not path or not os.path.isfile(path):
+        return ""
+    ck = f"{path}:{_mtime(path)}"
+    if ck in _arch_text:
+        return _arch_text[ck]
+    ext = os.path.splitext(path)[1].lower()
+    t = ""
+    try:
+        if ext == ".docx":
+            import docx
+            doc = docx.Document(path)
+            out = [p.text for p in doc.paragraphs]
+
+            def walk(tbl):
+                for row in tbl.rows:
+                    for c in row.cells:
+                        out.append(c.text)
+                        for t in c.tables:
+                            walk(t)
+            for t in doc.tables:
+                walk(t)
+            t = "\n".join(x for x in out if x and x.strip())
+        elif ext == ".pdf":
+            import shutil
+            exe = shutil.which("pdftotext")
+            if exe:
+                r = subprocess.run([exe, path, "-"], capture_output=True, text=True, timeout=30)
+                t = r.stdout or ""
+        else:
+            t = _read(path)
+    except Exception:
+        t = ""
+    _arch_text[ck] = t
+    return t
+
+
+def _mtime(path):
+    try:
+        return int(os.path.getmtime(path))
+    except OSError:
+        return 0
+
+
+def _cov_sig(key, cvrel):
+    cvp = cvrel if os.path.isabs(cvrel or "") else os.path.join(ROOT, cvrel or "")
+    return ":".join(str(_mtime(p)) for p in (
+        os.path.join(STATE, "ats", key + ".txt"),
+        os.path.join(STATE, "cv-content", key + ".json"),
+        os.path.join(STATE, "letters-content", key + ".json"), cvp))
+
+
+def coverage_for(key, cvrel=""):
+    """ATS-keyword coverage %: the tailored content packs if present, else the archetype CV text."""
+    global _cov_dirty
+    kws = [l.strip() for l in _lines(os.path.join(STATE, "ats", key + ".txt"))]
+    if not kws:
+        return None
+    sig = _cov_sig(key, cvrel)
+    hit = _COV.get(key) or {}
+    if hit.get("sig") == sig and "cov" in hit:
+        return hit["cov"]
+    hay = (_read(os.path.join(STATE, "cv-content", key + ".json")) + " "
+           + _read(os.path.join(STATE, "letters-content", key + ".json"))).lower()
+    if not hay.strip() and cvrel:
+        cvp = cvrel if os.path.isabs(cvrel) else os.path.join(ROOT, cvrel)
+        hay = _doc_text(cvp).lower()
+    cov = None
+    if hay.strip():
+        cov = round(100 * sum(1 for k in kws if k.lower() in hay) / len(kws))
+    _COV.setdefault(key, {}).update(sig=sig, cov=cov)
+    _cov_dirty = True
+    return cov
+
 
 def match_score(key, cache=True):
     if cache and key in _MATCH_CACHE:
@@ -283,6 +393,10 @@ def match_score(key, cache=True):
         res["coverage"] = round(100 * len(hit) / len(kws))
         res["missing"] = [k for k in kws if k.lower() not in hay][:24]
     _MATCH_CACHE[key] = res
+    _load_cov()
+    _COV.setdefault(key, {})["align"] = res["alignment"]
+    globals()["_cov_dirty"] = True
+    _save_cov()
     return res
 
 
@@ -354,10 +468,22 @@ def _key_map():
     return m
 
 
+def _key_maps():
+    km, cv = {}, {}
+    for path in ("queue.tsv", "queue-human.tsv", "queue.retry"):
+        for r in _queue_rows(os.path.join(STATE, path)):
+            if r["key"]:
+                km[(r["company"].lower(), r["role"].lower())] = r["key"]
+                if r["cv"]:
+                    cv[r["key"]] = r["cv"]
+    return km, cv
+
+
 def grid():
     """One canonical row per application, joined with queue state, spec, provenance."""
     apps = _rows(os.path.join(STATE, "applications.csv"))
-    km = _key_map()
+    _load_cov()
+    km, cvmap = _key_maps()
     qstate = {}
     for st, path in (("pending", "queue.tsv"), ("human", "queue-human.tsv"), ("retry", "queue.retry")):
         for r in _queue_rows(os.path.join(STATE, path)):
@@ -365,6 +491,8 @@ def grid():
     done = set(l.strip() for l in _lines(os.path.join(STATE, "queue.done")))
     subm = {(r["company"].lower(), r["role"].lower())
             for r in _rows(os.path.join(STATE, "submissions.csv"))}
+    subm_cv = {(r["company"].lower(), r["role"].lower()): r.get("cv_file", "")
+               for r in _rows(os.path.join(STATE, "submissions.csv")) if r.get("cv_file")}
     try:
         specs = {f[:-3] for f in os.listdir(os.path.join(STATE, "job-descriptions")) if f.endswith(".md")}
     except OSError:
@@ -375,11 +503,16 @@ def grid():
         ck = (co.lower(), role.lower())
         key = km.get(ck) or _slug(f"{co}-{role}")
         m = _MATCH_CACHE.get(key, {})
+        cov = m.get("coverage")
+        if cov is None:
+            cov = coverage_for(key, cvmap.get(key, "") or subm_cv.get(ck, ""))
+        align = m.get("alignment") or (_COV.get(key, {}) or {}).get("align", "")
         out.append({"date": r.get("date", ""), "company": co, "role": role, "ats": r.get("ats", ""),
                     "status": (r.get("status") or "").upper(), "key": key,
                     "queue": qstate.get(ck, "done" if f"{co}|{role}" in done else ""),
                     "spec": key in specs, "applied": ck in subm,
-                    "match": m.get("coverage"), "alignment": m.get("alignment")})
+                    "match": cov, "alignment": align})
+    _save_cov()
     out.sort(key=lambda x: (x["date"] or ""), reverse=True)
     return out
 
@@ -472,7 +605,7 @@ def logs_tail(lines=100):
 
 
 # ---------------------------------------------------------------- file viewer
-SAFE_DIRS = ("documents", "state", "config", "kb", "answers")
+SAFE_DIRS = ("documents", "state", "config", "kb", "answers", "docs")
 
 
 def _safe_path(rel):
@@ -810,6 +943,18 @@ def action_log(n=100):
     return txt.splitlines()[-int(n or 100):]
 
 
+def _spawn(purpose, argv, env=None):
+    """Run a command detached, logged to the activity pane (state/logs/dashboard-action.log)."""
+    os.makedirs(LOGS, exist_ok=True)
+    logf = open(os.path.join(LOGS, "dashboard-action.log"), "a", encoding="utf-8")
+    logf.write(f"\n=== {time.strftime('%Y-%m-%dT%H:%M:%S')} {purpose} ===\n")
+    logf.flush()
+    proc = subprocess.Popen(argv, cwd=ROOT, env=dict(os.environ, ROOT=ROOT, **(env or {})),
+                            stdout=logf, stderr=subprocess.STDOUT, start_new_session=True)
+    _ACT.update(name=purpose, proc=proc, offset=logf.tell(), t0=time.time())
+    return proc
+
+
 def start_action(command, approval_token=""):
     spec = ACTIONS.get(command)
     if not spec:
@@ -823,14 +968,147 @@ def start_action(command, approval_token=""):
             approval._record(spec["purpose"], "REFUSED (no approval token)")
             return {"error": f"refused: this action is irreversible; confirm to send {spec['token']}"}
         approval._record(spec["purpose"], f"ui-token:{spec['token']}")
-    os.makedirs(LOGS, exist_ok=True)
-    logf = open(os.path.join(LOGS, "dashboard-action.log"), "a", encoding="utf-8")
-    logf.write(f"\n=== {time.strftime('%Y-%m-%dT%H:%M:%S')} action={command} ({spec['purpose']}) ===\n")
-    logf.flush()
-    proc = subprocess.Popen(spec["argv"], cwd=ROOT, env=dict(os.environ, ROOT=ROOT, **spec["env"]),
-                            stdout=logf, stderr=subprocess.STDOUT, start_new_session=True)
-    _ACT.update(name=spec["purpose"], proc=proc, offset=logf.tell(), t0=time.time())
+    _spawn(f"action={command} ({spec['purpose']})", spec["argv"], spec["env"])
     return {"ok": f"started: {spec['purpose']}"}
+
+
+# ---------------------------------------------------------------- knowledge base + graph
+GRAPH_PY = os.path.join(ROOT, ".venv-graphrag", "bin", "python")
+GRAPH_TOOL = os.path.join(ROOT, "tools", "graph_explore.py")
+KB_SOURCES = os.path.join(ROOT, "kb", "sources")
+_gcache = {}
+
+
+def graph_query(*args):
+    key = "|".join(str(a) for a in args)
+    if key in _gcache:
+        return _gcache[key]
+    py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
+    try:
+        r = subprocess.run([py, GRAPH_TOOL, *[str(a) for a in args]], cwd=ROOT,
+                           capture_output=True, text=True, timeout=90)
+        data = json.loads((r.stdout or "").strip() or "{}")
+        if r.returncode != 0 and "error" not in data:
+            data = {"error": (r.stderr or "graph read failed").strip()[-300:]}
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        data = {"error": f"{type(e).__name__}: {e}"}
+    _gcache[key] = data
+    return data
+
+
+def kb_sources():
+    groups = {}
+    if os.path.isdir(KB_SOURCES):
+        for g in sorted(os.listdir(KB_SOURCES)):
+            d = os.path.join(KB_SOURCES, g)
+            if os.path.isdir(d):
+                groups[g] = sorted(({"name": f, "size": os.path.getsize(os.path.join(d, f))}
+                                    for f in os.listdir(d) if os.path.isfile(os.path.join(d, f))),
+                                   key=lambda x: x["name"])
+        groups["(root)"] = sorted(({"name": f, "size": os.path.getsize(os.path.join(KB_SOURCES, f))}
+                                   for f in os.listdir(KB_SOURCES) if os.path.isfile(os.path.join(KB_SOURCES, f))),
+                                  key=lambda x: x["name"])
+    return groups
+
+
+_kb_check = {"t": 0.0, "text": ""}
+
+
+def kb_info():
+    if time.time() - _kb_check["t"] > 30:
+        try:
+            r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "kb_graphrag.py"), "--check"],
+                               cwd=ROOT, capture_output=True, text=True, timeout=60)
+            _kb_check.update(t=time.time(), text=ANSI.sub("", (r.stdout or "") + (r.stderr or "")).strip())
+        except (OSError, subprocess.SubprocessError) as e:
+            _kb_check.update(t=time.time(), text=f"check failed: {e}")
+    return {"sources": kb_sources(), "stats": graph_query("stats"), "check": _kb_check["text"]}
+
+
+def _safe_kb_path(rel):
+    base = os.path.realpath(KB_SOURCES)
+    p = os.path.realpath(os.path.join(ROOT, rel))
+    return p if p.startswith(base + os.sep) else None
+
+
+def kb_delete(rel):
+    p = _safe_kb_path(rel)
+    if not p or not os.path.isfile(p):
+        return {"error": "not found"}
+    try:
+        os.remove(p)
+        return {"ok": f"removed {os.path.relpath(p, ROOT)}"}
+    except OSError as e:
+        return {"error": str(e)}
+
+
+def kb_upload(group, files):
+    """files: list of (filename, bytes). Saves into kb/sources/<group>/."""
+    group = re.sub(r"[^a-zA-Z0-9._-]", "_", (group or "imported").strip()) or "imported"
+    if group.startswith("."):
+        group = "imported"
+    dest = os.path.join(KB_SOURCES, group)
+    os.makedirs(dest, exist_ok=True)
+    saved = []
+    for name, data in files:
+        name = os.path.basename(name or "").replace("/", "_").strip()
+        if not name or not data:
+            continue
+        with open(os.path.join(dest, name), "wb") as fh:
+            fh.write(data)
+        saved.append(f"{group}/{name}")
+    return {"ok": f"uploaded {len(saved)} file(s) to kb/sources/{group}/", "files": saved} if saved \
+        else {"error": "no files"}
+
+
+def kb_rebuild():
+    if WQ and WQ.runner_active():
+        return {"error": "a queue run is active"}
+    _spawn("rebuild knowledge graph (setup_kb.sh)", ["bash", os.path.join(ROOT, "tools", "setup_kb.sh")])
+    return {"ok": "rebuilding knowledge graph - watch the Activity pane"}
+
+
+def accounts():
+    try:
+        r = subprocess.run(["bash", os.path.join(ROOT, "tools", "setup_accounts.sh"), "--check"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=60)
+        text = ANSI.sub("", (r.stdout or "") + (r.stderr or "")).strip()
+    except (OSError, subprocess.SubprocessError) as e:
+        text = f"check failed: {e}"
+    n = 0
+    acc = os.path.join(ROOT, "config", "accounts.json")
+    if os.path.isfile(acc):
+        try:
+            n = len(json.load(open(acc, encoding="utf-8")))
+        except (OSError, ValueError):
+            n = 0
+    return {"text": text, "sites": n}
+
+
+def account_auth(kind):
+    argv = {"gmail": [sys.executable, os.path.join(ROOT, "tools", "gmail_readonly.py"), "--auth"],
+            "calendar": [sys.executable, os.path.join(ROOT, "tools", "gmail_calendar_auth.py")]}.get(kind)
+    if not argv:
+        return {"error": "unknown account"}
+    _spawn(f"authorise {kind}",
+           argv, {"PYTHONUNBUFFERED": "1"})
+    return {"ok": f"started {kind} authorisation - finish it in the browser / Activity pane"}
+
+
+def role_grounding(key):
+    """The GraphRAG context pack for a role + the entities/sources it cites, resolved."""
+    key = os.path.basename(key)[:120]
+    pack = _read(os.path.join(STATE, "kb-context", key + ".md"))[:20000]
+    ents, docs = [], []
+    for m in re.finditer(r"Entities \(([^)]*)\)", pack):
+        ents += re.findall(r"\d+", m.group(1))
+    for m in re.finditer(r"Sources \(([^)]*)\)", pack):
+        docs += re.findall(r"\d+", m.group(1))
+    ents, docs = sorted(set(ents), key=int)[:60], sorted(set(docs), key=int)[:40]
+    resolved = graph_query("resolve", ",".join(ents), "--docs", ",".join(docs)) if (ents or docs) else {}
+    return {"key": key, "pack": pack, "entities": resolved.get("entities", []),
+            "documents": resolved.get("documents", []),
+            "cited_entities": len(ents), "cited_sources": len(docs)}
 
 
 # ---------------------------------------------------------------- HTTP
@@ -887,6 +1165,15 @@ class H(BaseHTTPRequestHandler):
             return self._json(role_detail(p[len("/api/roles/"):]))
         if p == "/api/config":
             return self._json(config_get(qs.get("target", ["profile"])[0]))
+        if p == "/api/accounts":
+            return self._json(accounts())
+        if p == "/api/kb":
+            return self._json(kb_info())
+        if p == "/api/graph":
+            return self._json(graph_query(qs.get("kind", ["entities"])[0], qs.get("q", [""])[0],
+                                          qs.get("limit", ["200"])[0]))
+        if p == "/api/grounding":
+            return self._json(role_grounding(qs.get("key", [""])[0]))
         if p == "/api/outcomes":
             return self._json(outcomes())
         if p == "/api/runs":
@@ -930,10 +1217,36 @@ class H(BaseHTTPRequestHandler):
         self._json({"error": "bad session token"}, 403)
         return False
 
+    def _upload(self):
+        n = int(self.headers.get("Content-Length", "0") or 0)
+        raw = self.rfile.read(n)
+        m = re.search(r"boundary=([^;]+)", self.headers.get("Content-Type", ""))
+        if not m:
+            return {"error": "expected multipart/form-data"}
+        b = m.group(1).strip('"').encode()
+        group, files = "imported", []
+        for part in raw.split(b"--" + b):
+            if part.strip() in (b"", b"--", b"--\r\n"):
+                continue
+            head, _, body = part.partition(b"\r\n\r\n")
+            if body.endswith(b"\r\n"):
+                body = body[:-2]
+            hs = head.decode("utf-8", "ignore")
+            fm = re.search(r'filename="([^"]*)"', hs)
+            nm = re.search(r'name="([^"]*)"', hs)
+            if fm and fm.group(1):
+                files.append((fm.group(1), body))
+            elif nm and nm.group(1) == "group":
+                group = body.decode("utf-8", "ignore").strip() or group
+        return kb_upload(group, files)
+
     def do_POST(self):
-        p, data = urlparse(self.path).path, self._body()
+        p = urlparse(self.path).path
         if not self._authed():
             return
+        if p == "/api/kb/upload":
+            return self._json(self._upload())
+        data = self._body()
         if p == "/api/register/row":
             return self._json(update_row(data.get("company", ""), data.get("role", ""),
                                          data.get("status", ""), data.get("notes", "")))
@@ -949,6 +1262,12 @@ class H(BaseHTTPRequestHandler):
             return self._json(chat_start(data.get("message", "")))
         if p == "/api/chat/new":
             return self._json(chat_new())
+        if p == "/api/kb/delete":
+            return self._json(kb_delete(data.get("path", "")))
+        if p == "/api/kb/rebuild":
+            return self._json(kb_rebuild())
+        if p == "/api/accounts/auth":
+            return self._json(account_auth(data.get("kind", "")))
         self._json({"error": "not found"}, 404)
 
 
