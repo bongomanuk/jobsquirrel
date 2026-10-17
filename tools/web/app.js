@@ -20,7 +20,7 @@ const md = (s) => {
   t = t.replace(/^(?!<h\d|<ul|<li|<\/?ul|<pre|<\/?pre|<blockquote|<hr|\s*$)(.+)$/gm, '<p>$1</p>');
   return t;
 };
-let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHATRAW = '';
+let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] };
 
 async function api(path, body) {
   const o = { headers: {} };
@@ -49,7 +49,7 @@ const App = {
   cfSave: async () => { const d = await api('/api/config', { target: CF, content: $('#cf-text').value }); $('#cf-msg').textContent = d.ok || d.error; toast(d.ok || d.error, !!d.error); },
   chat: async () => {
     const inp = $('#chatmsg'), m = inp.value.trim(); if (!m) return; inp.value = '';
-    CHATRAW = ''; renderChat(true);
+    CHAT = { segments: [], running: true }; renderChat();
     const d = await api('/api/chat', { message: m }); if (d.error) { toast(d.error, true); return; }
     chatOffset = 0; clearInterval(CHAT_TIMER); CHAT_TIMER = setInterval(chatPoll, 1200);
   },
@@ -197,17 +197,19 @@ async function liveTick() {
   setTimeout(liveTick, 2500);
 }
 function drawer(open) { $('#drawer').classList.toggle('open', open); if (open) { api('/api/agent').then(d => $('#agent-name').textContent = d.agent || '?'); liveTick(); } }
-async function chatPoll() { const d = await api('/api/chat/stream?since=' + chatOffset); if (d.chunk) { CHATRAW += d.chunk; renderChat(); } chatOffset = d.offset; if (d.done) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; renderChat(); } }
-function compressChat(t) {
-  t = t.replace(/\r/g, '').replace(/\n{3,}/g, '\n\n');
-  t = t.split('\n').filter(l => !/^\s*[─═\-_•·]{4,}\s*$/.test(l)).join('\n');
-  return t.trim();
-}
-function renderChat(placeholder) {
-  const el = $('#chat');
-  if (placeholder && !CHATRAW.trim()) { el.innerHTML = '<span class="muted">◌ thinking…</span>'; return; }
-  el.innerHTML = `<div class="md">${md(compressChat(CHATRAW))}</div>` + (CHAT_TIMER ? ' <span class="muted">▮</span>' : '');
-  el.scrollTop = el.scrollHeight;
+async function chatPoll() { const d = await api('/api/chat/stream?since=' + chatOffset); if (d.segments) { CHAT = d; renderChat(); } chatOffset = d.offset || chatOffset; if (d.done) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; renderChat(); } }
+function renderChat() {
+  const el = $('#chat'), segs = (CHAT && CHAT.segments) || [];
+  if (!segs.length) { el.innerHTML = '<span class="muted">' + (CHAT.running ? '◌ thinking…' : 'ask the agent anything…') + '</span>'; return; }
+  let h = '';
+  for (const s of segs) {
+    if (s.t === 'user') h += `<div class="c-user"><div class="md">${md(s.body)}</div></div>`;
+    else if (s.t === 'status') h += `<div class="c-status">${esc(s.body)}</div>`;
+    else if (s.t === 'tool') { const tag = (s.tool && s.tool !== 'bash') ? esc(s.tool) + ' · ' : '$ '; h += `<details class="c-tool"><summary><code>${tag}${esc(s.cmd)}</code></summary>${s.body ? `<pre>${esc(s.body)}</pre>` : ''}</details>`; }
+    else h += `<div class="md">${md(s.body)}</div>`;
+  }
+  if (CHAT.running) h += '<span class="muted">▮</span>';
+  el.innerHTML = h; el.scrollTop = el.scrollHeight;
 }
 
 /* ---------- wiring ---------- */

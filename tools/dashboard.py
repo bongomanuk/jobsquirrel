@@ -557,8 +557,100 @@ def chat_start(message):
     f = open(CHAT_LOG, "a", encoding="utf-8")
     _CHAT["proc"] = subprocess.Popen(["bash", os.path.join(ROOT, "tools", "agent_run.sh"),
                                       preamble + "\n\n---\n" + message], cwd=ROOT,
+                                     env=dict(os.environ, AGENT_JSON="1"),
                                      stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
     return {"status": "queued", "run_id": "chat", "agent": chat_agent()}
+
+
+CHAT_USER = re.compile(r"^>\s?(.*)$")
+CHAT_TOOL = re.compile(r"^\$\s?(.*)$")
+CHAT_STATUS = re.compile(r"^>\s*build\b.*$", re.I)
+
+
+def chat_parse(text):
+    """Split an agent transcript into typed segments so the UI can collapse tool noise."""
+    segs, cur, fence = [], None, False
+
+    def push(seg):
+        if seg and (seg.get("body", "").strip() or seg["t"] == "tool"):
+            segs.append(seg)
+
+    for ln in text.splitlines():
+        if ln.strip().startswith("```"):
+            fence = not fence
+            cur = cur or {"t": "text", "body": ""}
+            cur["body"] += ("\n" if cur["body"] else "") + ln
+            continue
+        if not fence:
+            if CHAT_STATUS.match(ln):
+                push(cur); cur = None
+                push({"t": "status", "body": ln.lstrip("> ").strip()}); continue
+            m_user = CHAT_USER.match(ln)
+            if m_user:
+                push(cur); cur = None
+                push({"t": "user", "body": m_user.group(1)}); continue
+            m_tool = CHAT_TOOL.match(ln)
+            if m_tool:
+                push(cur); cur = None
+                cur = {"t": "tool", "cmd": m_tool.group(1), "body": ""}
+                continue
+        cur = cur or {"t": "text", "body": ""}
+        cur["body"] += ("\n" if cur["body"] else "") + ln
+    push(cur)
+    for s in segs:
+        s["body"] = s.get("body", "").strip("\n")
+        if s["t"] == "tool" and len(s["body"]) > 6000:
+            s["body"] = s["body"][:6000] + "\n… (truncated)"
+    return segs
+
+
+def chat_parse_json(text):
+    """Parse opencode `--format json` events into typed segments."""
+    segs, tokens, cost = [], None, None
+    for ln in text.splitlines():
+        s = ln.strip()
+        if s.startswith(">") and not CHAT_STATUS.match(s):
+            segs.append({"t": "user", "body": s[1:].strip()})
+            continue
+        if not s.startswith("{"):
+            continue
+        try:
+            e = json.loads(s)
+        except ValueError:
+            continue
+        t, p = e.get("type"), (e.get("part") or {})
+        if t == "text" and p.get("text"):
+            segs.append({"t": "text", "body": p["text"]})
+        elif t == "tool_use":
+            st = p.get("state") or {}
+            inp = st.get("input") or {}
+            cmd = inp.get("command") or inp.get("filePath") or inp.get("pattern") or st.get("title") or p.get("tool")
+            out = st.get("output")
+            if out in (None, ""):
+                out = st.get("metadata") or ""
+            if isinstance(out, (dict, list)):
+                out = json.dumps(out, indent=2)
+            segs.append({"t": "tool", "tool": p.get("tool", ""), "cmd": str(cmd), "body": str(out)})
+        elif t == "step_finish":
+            tk = p.get("tokens") or {}
+            tokens = tk.get("total", tokens)
+            if p.get("cost") is not None:
+                cost = p.get("cost")
+    if tokens is not None:
+        segs.append({"t": "status", "body": f"{tokens} tokens" + (f" · ${cost:.4f}" if isinstance(cost, (int, float)) else "")})
+    for s in segs:
+        if s["t"] == "tool" and len(s.get("body", "")) > 6000:
+            s["body"] = s["body"][:6000] + "\n… (truncated)"
+    return segs
+
+
+def _looks_json(text):
+    for ln in text.splitlines():
+        ln = ln.strip()
+        if not ln or ln.startswith(">") or ln.startswith("build "):
+            continue
+        return ln.startswith("{") and '"type"' in ln
+    return False
 
 
 def chat_stream(run_id, since):
@@ -566,15 +658,11 @@ def chat_stream(run_id, since):
         size = os.path.getsize(CHAT_LOG)
     except OSError:
         size = 0
-    try:
-        since = max(0, min(int(since or 0), size))
-    except (TypeError, ValueError):
-        since = 0
     with open(CHAT_LOG, encoding="utf-8", errors="ignore") as fh:
-        fh.seek(since)
         text = ANSI.sub("", fh.read())
     running = bool(_CHAT["proc"] and _CHAT["proc"].poll() is None)
-    return {"chunk": text, "offset": size, "done": not running}
+    segs = chat_parse_json(text) if _looks_json(text) else chat_parse(text)
+    return {"segments": segs, "offset": size, "running": running, "done": not running}
 
 
 # ---------------------------------------------------------------- actions

@@ -104,6 +104,19 @@ pre.doc{background:#07090c;border:1px solid var(--line);border-radius:var(--radi
 .act-raw pre{background:#07090c;border:1px solid var(--line);border-radius:6px;padding:8px;max-height:30vh;overflow:auto;font:12px/1.5 var(--mono);white-space:pre-wrap}
 .act-sep{border-top:1px solid var(--line);margin:8px 0}
 
+/* chat transcript segments */
+.c-user{border-left:3px solid var(--accent);padding:1px 0 1px 9px;margin:10px 0 4px}
+.c-user .md p:first-child{margin-top:0}
+.c-user .md p:last-child{margin-bottom:0}
+.c-status{color:var(--muted);font-size:11px;margin:2px 0 6px;letter-spacing:.02em}
+.c-tool{margin:6px 0;border:1px solid var(--line);border-radius:6px;background:#0a0c10}
+.c-tool>summary{cursor:pointer;padding:4px 9px;color:var(--muted);font-size:12px;list-style:none}
+.c-tool>summary::-webkit-details-marker{display:none}
+.c-tool>summary::before{content:'▸ ';color:var(--accent)}
+.c-tool[open]>summary::before{content:'▾ '}
+.c-tool>summary code{background:none;border:none;color:var(--accent)}
+.c-tool>pre{margin:0;padding:8px 9px;max-height:34vh;overflow:auto;border-top:1px solid var(--line);white-space:pre-wrap;font:12px/1.5 var(--mono);background:#07090c}
+
 /* master-detail */
 .grid2{display:grid;grid-template-columns:340px 1fr;gap:16px}
 .list{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);max-height:70vh;overflow:auto}
