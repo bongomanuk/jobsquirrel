@@ -17,6 +17,10 @@ Check the current status at any time:
 bash tools/setup_accounts.sh --check
 ```
 
+The same status, and the Gmail / Google Calendar authorisation flows, are available in
+the web UI: **Settings → Accounts** (`python3 tools/dashboard.py --open`). The agent will
+walk you through the steps below either way.
+
 ---
 
 ## 0. An LLM for the agent (required)

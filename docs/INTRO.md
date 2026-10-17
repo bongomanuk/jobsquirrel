@@ -76,7 +76,9 @@ tireless assistant working under your instructions", not "press go and forget it
   gated tool that needs explicit per-use authorisation, you'll likely never use it.
 - Secrets and tokens live **outside** the project folder; your CV, rules and
   applications stay git-ignored.
-- Everything is recorded, so you can always see what was sent to whom, and when.
+- Everything is recorded, so you can always see what was sent to whom, and when. There is a local
+  **web dashboard** (single grid of every application, a live run view, the knowledge graph and the
+  agent chat) if you like to watch or configure things directly.
 
 **What happens next:** I'll install what I need, interview you, write your
 configuration, build your CV templates, build the knowledge base, and set up your

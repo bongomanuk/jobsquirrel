@@ -144,3 +144,14 @@ python3 tools/identity.py --json        # your standard answers
 python3 tools/facts.py --show           # employers derived from cv.json
 python3 tools/register.py --check       # register consistency (empty is fine)
 ```
+
+## 9. Watch it (web UI)
+
+```bash
+python3 tools/dashboard.py --open       # single-grid dashboard over the register + queue
+```
+
+The same UI can also **configure accounts** (Settings → Accounts, with Gmail/Calendar
+authorisation), **import knowledge-base documents** (Settings → Knowledge base, upload
+then rebuild) and **browse the GraphRAG index** (Settings → GraphRAG). See
+[USING-IT.md](USING-IT.md) for what everything means.

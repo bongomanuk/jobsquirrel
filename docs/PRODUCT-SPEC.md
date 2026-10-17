@@ -151,25 +151,33 @@ same record is never duplicated across separate pages.
 - **Toolbar:** search (company/role/ATS), status filter, queue filter, **Export CSV**, row count.
 
 ### 9.3 Master grid (the one table)
-Columns: **Date · Company · Role · ATS · Status · Match · Queue · Prov · Spec**.
+Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files · Job ad**
+(every header/cell/chip has a hover tooltip; **ⓘ Legend** explains them all).
 - Search / filter / sort (click a header); **Export CSV**.
-- **Match** = alignment badge (PASS/FAIL) + keyword-coverage % (computed & cached as roles are opened).
-- **Queue** = `pending | human | retry | done`; **Prov** = provenance recorded; **Spec** = a saved job spec exists.
+- **Match** = ATS-keyword coverage % of the CV (computed for every role that has a saved ad;
+  shown with an `align✗` badge when the alignment gate failed).
+- **Queue** = `pending | human | retry | done`; **Files** = provenance recorded (✓/—);
+  **Job ad** = a saved job description exists (✓/—).
 
 ### 9.4 Detail drawer (right-hand)
 Clicking a row opens a drawer with tabs:
 - **Summary** — status (editable, writes back), ATS, queue, key, match, notes; actions (Prepare).
 - **Provenance** — CV/letter paths + sha256 (click to copy), confidence, evidence, snapshot, screenshots.
-- **Job spec · ATS · KB context · Tailored** — the ad text, keywords, GraphRAG pack, generated CV/letter.
+- **Job spec · ATS · Grounding · Tailored** — the ad text, keywords, the GraphRAG context pack
+  **plus the entities and source documents it cited** (resolved from the index), generated CV/letter.
 
-### 9.5 Config (modal)
-- Edit `config/cv.json`, `config/archetypes.json`, `config/profile.md`; JSON validated, `.bak` kept;
-  **Regenerate archetype CVs** runs `build_archetypes.py`.
+### 9.5 Settings panel (⚙ Config)
+- Sections: **Accounts** (status + Gmail/Calendar authorisation), **Knowledge base** (list / upload /
+  delete sources, rebuild the index), **GraphRAG** (browse entities / relationships / communities /
+  documents), **Profile & CV** (edit `cv.json` / `archetypes.json` / `profile.md`, regenerate archetypes).
 
-### 9.6 Chat (agent-agnostic, bottom drawer)
-- Drives whatever `tools/agent_run.sh --which` resolves — `opencode`, `claude`, `hermes`, `pi`, or `AGENT=`.
-- `POST /api/chat` + `GET /api/chat/stream?since=` stream the reply; the chat agent inherits the
-  approval gates; the drawer's second pane shows the live run tail (`/api/live`).
+### 9.6 Agent console (dockable)
+- Dockable pullout (left by default; drag its header to any edge; splitters resize it and its panes;
+  an Activity pane toggles open/closed). Drives whatever `tools/agent_run.sh --which` resolves —
+  `opencode`, `claude`, or any `AGENT=` CLI.
+- `POST /api/chat` + `GET /api/chat/stream` return **typed segments** (user / tool / text / status);
+  the conversation persists across messages (session pinned; `＋ New` resets), tool runs collapse,
+  and a spinner shows while working.
 
 ### 9.8 HTTP API
 
@@ -185,13 +193,21 @@ Clicking a row opens a drawer with tabs:
 | GET | `/api/roles` · `/api/roles/<key>` | — | spec list · {jd, ats, kb, tailored_cv, letter, match} |
 | GET | `/api/config` | `target` | {target, content, format} |
 | GET | `/api/outcomes` | — | {by_ats, interview_rate} |
+| GET | `/api/accounts` | — | credential status (runs `setup_accounts.sh --check`) |
+| GET | `/api/kb` | — | {sources, stats, check} |
+| GET | `/api/graph` | `kind,q,limit` | graph rows from the index (entities/relationships/communities/documents) |
+| GET | `/api/grounding` | `key` | a role's context pack + the entities/sources it cited, resolved |
 | GET | `/api/runs` · `/api/log` · `/api/live` · `/api/tasks` · `/api/logs/tail` · `/api/agent` · `/api/chat/stream` | — | as named |
 | POST | `/api/register/row` | `{company,role,status,notes}` | update a register row |
 | POST | `/api/queue/action` | `{action,company,role}` | `delete` / `retry` / `unblock` |
 | POST | `/api/roles/discover` | `{url}` | save a job spec from a URL |
 | POST | `/api/config` | `{target,content}` | save config (JSON validated, `.bak`) |
 | POST | `/api/action/run` | `{command, approval_token}` | `prepare` / `submit_queue` / `reconcile` / `build_archetypes` |
-| POST | `/api/chat` | `{message}` | start a chat turn |
+| POST | `/api/kb/upload` | multipart (`group`, `files`) | save documents into `kb/sources/<group>/` |
+| POST | `/api/kb/delete` | `{path}` | remove a source document |
+| POST | `/api/kb/rebuild` | — | rebuild the GraphRAG index (detached) |
+| POST | `/api/accounts/auth` | `{kind}` | start Gmail/Calendar authorisation (detached) |
+| POST | `/api/chat` · `/api/chat/new` | `{message}` · — | start a chat turn · reset the conversation |
 
 All POSTs require header `X-Session: <token>` (else 403); the token is injected into the page.
 

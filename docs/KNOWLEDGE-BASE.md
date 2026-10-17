@@ -31,7 +31,9 @@ larger corpus directly produces sharper, more targeted, more honest documents,
 because retrieval can find the *exact right* fact for each ad, **with a citation**.
 
 Put your documents there, **any format** (PDF, DOCX, DOC/ODT, HTML, Markdown,
-email, CSV/JSON):
+email, CSV/JSON). You can drop them into `kb/sources/` by hand, or **upload them from
+the web UI** (**Settings → Knowledge base**, then *Rebuild graph*) and see exactly what
+the index contains under **Settings → GraphRAG**.
 
 - **Every version of your CV**: a master plus each old/role-specific one.
   Different versions hold different bullets; the graph merges them.

@@ -56,24 +56,28 @@ Everything is observable. Useful things to ask for, or run yourself:
   counterpart to `run_queue.out` for scripts and dashboards.
 - **Health**: `python3 tools/doctor.py` (`--json` for scripts) checks config, the
   knowledge base, the browser, the register and git before you start a run.
-- **Web UI**: `python3 tools/dashboard.py` (then open http://127.0.0.1:8765, or
-  `--open`). A dependency-free dashboard: counts, queue progress, a **Live** panel
-  (running tasks + curated tail), recent runs, interviews, and a **curated** view of
-  any task log (only the meaningful lines — gate results, commands, submissions,
-  errors — never the tool spam). 🐿️ It can also **start a run** from buttons:
-  *Prepare (review)* is safe (REVIEW=1, no submits); *Apply queue* submits, so it is
-  refused unless you started the dashboard with `APPROVE_RUN_QUEUE=1`, and it asks to
-  confirm. Actions need a per-session token (anti-CSRF) and bind to `127.0.0.1`.
-  There's also a **chat panel** that drives whichever agent `tools/agent_run.sh`
-  resolves — opencode, Claude Code, `hermes`, `pi`, or any CLI you point `AGENT=` at
-  — streaming the reply into the page (agent-agnostic, same token gate). The chat
-  agent inherits the approval gates: it cannot send email or delete mail without them.
-  **Single master grid** (no tabbed pages): one row per application with columns
-  Date · Company · Role · ATS · Status · **Match** (alignment + keyword coverage) · Queue ·
-  Prov · Spec, plus search/status/queue filters, sort, and CSV export. Click a row to open the
-  right-hand **detail drawer** (Summary · Provenance · Job spec · ATS · KB context · Tailored).
-  Metrics + a live-tail line sit in the strip under the header; **Config** (edit `profile.md` /
-  `cv.json` / `archetypes.json` + regenerate the CVs) is a modal; **Agent** is the bottom drawer.
+- **Web UI**: `python3 tools/dashboard.py --open` (binds `127.0.0.1:8765`; `--port` to change).
+  A dependency-free dashboard over the register, queue, specs and provenance:
+  - **One master grid** (no tabs): a row per application with Date · Company · Role · ATS ·
+    Status · **Match** (ATS-keyword coverage; `align✗` = the alignment gate failed) · Queue ·
+    Files · Job ad, plus search / status / queue filters, sortable columns, CSV export and an
+    **ⓘ Legend**. Hover anything for what it means; click a row for the detail drawer
+    (Summary · Provenance · Job spec · ATS · **Grounding** · Tailored).
+  - **Grounding** shows how your knowledge graph was used for that role: the cited context pack
+    plus the entities and source documents it referenced, resolved from the index.
+  - **Agent console** (dockable — **left by default**; drag its header to any edge, or the pullout
+    tab when collapsed; panes resize with the splitters). Chat drives whichever agent
+    `tools/agent_run.sh` resolves — opencode, Claude Code, or any `AGENT=` CLI — remembers the
+    conversation across messages (＋ New to reset), collapses tool runs, and shows a 🥜 spinner
+    while it works. An **Activity** pane shows action output, compressed to the lines that matter.
+  - **Settings** (⚙ Config): **Accounts** (credential status + Gmail/Calendar authorisation),
+    **Knowledge base** (list / upload / delete source documents, rebuild the index), **GraphRAG**
+    (browse entities, relationships, communities and documents), and **Profile & CV** (edit
+    `profile.md` / `cv.json` / `archetypes.json`, regenerate the archetype CVs).
+  - It can **start runs** from buttons: *Prepare (review)* is safe (REVIEW=1, no submits); *Apply
+    queue* submits, so it needs a two-step confirmation (`APPROVE_RUN_QUEUE`). Every action needs
+    the per-session token (anti-CSRF) and the UI binds to `127.0.0.1` only; the chat agent inherits
+    the same approval gates — it cannot send or delete mail without them.
 - **Register**: `python3 tools/register.py --stats`;
   `python3 tools/register.py --list --status INTERVIEW`;
   `python3 tools/register.py --show "<Company>"`.

@@ -167,7 +167,7 @@ python3 tools/build_archetypes.py     # -> documents/archetypes/
 # 4. Put roles in the queue (one per line, tab-separated):
 #    company  role  url  cv-archetype  ats  key
 #    then run the pipeline (it tailors + gates + applies per role; most senior first):
-python3 tools/run_queue.sh            # or:  PARALLEL=3 bash tools/run_queue.sh
+bash tools/run_queue.sh               # or:  PARALLEL=3 bash tools/run_queue.sh
 ```
 
 See **[docs/SETUP.md](docs/SETUP.md)** for the full setup, and
@@ -214,6 +214,10 @@ You steer it with plain English. Typical prompts:
 "Reconcile with my email and tell me what needs me."
 ```
 
+**Prefer a GUI?** Open the built-in web UI — `python3 tools/dashboard.py --open` — to
+watch runs, browse the register in one master grid, explore the knowledge graph, and
+configure accounts / import documents. See [docs/USING-IT.md](docs/USING-IT.md).
+
 Watch a run live with `bash tools/watch_queue.sh`; ask for *"status + what it's
 cost so far"* any time. Full prompt/monitoring guide: [docs/USING-IT.md](docs/USING-IT.md).
 
@@ -259,6 +263,7 @@ tools/                      # the pipeline (language/library-free CLI tools)
   init_config.py            #   scaffold/validate config/ (used by the bootstrap)
   doctor.py                 #   one-shot health check (config, KB, browser, register, git)
   dashboard.py              #   slick web UI over the register, queue, runs + curated logs, live view, chat (agent-agnostic)
+  graph_explore.py          #   reads the GraphRAG index (entities/relationships/communities) for the web UI
   setup_kb.sh               #   explain + build the GraphRAG knowledge base
   kb_graphrag.py            #   build the cited grounding pack per role (required)
   kb_ingest.py              #   ingest kb/sources/ any-format -> GraphRAG text input
