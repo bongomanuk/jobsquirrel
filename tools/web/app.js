@@ -45,10 +45,14 @@ async function api(path, body) {
   if (body !== undefined) { o.method = 'POST'; o.headers['Content-Type'] = 'application/json'; o.headers['X-Session'] = TOKEN; o.body = JSON.stringify(body); }
   try { return await (await fetch(path, o)).json(); } catch (e) { return { error: String(e) }; }
 }
+let _toastTimer = null;
 function toast(msg, bad) {
-  const t = document.createElement('div'); t.textContent = msg;
-  t.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:60;border-radius:10px;padding:10px 14px;font-size:13px;max-width:440px;color:#fff;background:' + (bad ? '#3a1414' : '#10351f') + ';border:1px solid #232838';
-  document.body.appendChild(t); setTimeout(() => t.remove(), 6000);
+  let t = document.getElementById('toast');
+  if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
+  t.className = 'toast ' + (bad ? 'bad' : 'ok') + ' show';   // one notification surface, never a stack
+  t.textContent = msg;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.classList.remove('show'), 6000);
 }
 
 const App = {
@@ -262,6 +266,8 @@ async function liveTick() {
   const t = (d.tail || []).slice(-1)[0];
   if (t) s += '   ' + t.t;
   $('#live').textContent = s;
+  const busy = !!a.running || d.active;                       // don't allow piling up duplicate runs
+  document.querySelectorAll('#a-prepare,#a-submit,#a-reconcile').forEach(b => { b.disabled = busy; });
   const sm = a.summary || {};
   $('#act-sum').textContent = a.name ? ((a.running ? '● ' : '✓ ') + a.name) : (d.active ? 'runner active' : 'idle');
   if (document.body.dataset.act === 'open') {
