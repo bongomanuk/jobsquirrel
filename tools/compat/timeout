@@ -81,16 +81,15 @@ def main(argv):
         die("missing operand")
     limit, cmd = duration(argv[i]), argv[i + 1:]
 
-    try:
-        child = subprocess.Popen(cmd, start_new_session=not foreground)
-    except FileNotFoundError:
-        print(f"timeout: failed to run command {cmd[0]!r}: No such file or directory", file=sys.stderr)
-        return 127
-    except PermissionError:
-        print(f"timeout: failed to run command {cmd[0]!r}: Permission denied", file=sys.stderr)
-        return 126
+    # Signals aimed at us (TERM/INT/HUP) are forwarded to the command's group,
+    # like GNU timeout. The handlers are installed before the child exists so a
+    # signal arriving in that window is not lost; send() no-ops until it does.
+    box = {"child": None}
 
     def send(s):
+        child = box["child"]
+        if child is None:
+            return
         try:
             if foreground:
                 child.send_signal(s)
@@ -99,9 +98,18 @@ def main(argv):
         except ProcessLookupError:
             pass
 
-    # Pass a TERM/INT/HUP aimed at us on to the command's group, like GNU timeout.
     for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         signal.signal(s, lambda n, _f: send(n))
+
+    try:
+        child = subprocess.Popen(cmd, start_new_session=not foreground)
+    except FileNotFoundError:
+        print(f"timeout: failed to run command {cmd[0]!r}: No such file or directory", file=sys.stderr)
+        return 127
+    except PermissionError:
+        print(f"timeout: failed to run command {cmd[0]!r}: Permission denied", file=sys.stderr)
+        return 126
+    box["child"] = child
 
     timed_out = False
     try:

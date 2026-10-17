@@ -133,7 +133,17 @@ sandbox: `python3` can still do anything. To change it:
 | `CLAUDE_ARGS="--max-turns 80"` | extra flags for every task, e.g. `--no-session-persistence` to keep the runs out of your session history |
 
 The same mechanism runs any other CLI agent: `AGENT="mycli run"` runs
-`mycli run "<prompt>"` for each role.
+`mycli run "<prompt>"` for each role. `AGENT` applies to `run_queue.sh`,
+`run_linkedin.sh` and `human_assist.sh` alike.
+
+### macOS
+
+Everything runs on macOS as well as Linux. macOS ships without GNU `flock`,
+`setsid` and `timeout`, so `tools/compat/` provides portable stand-ins. The
+runners append that directory to `PATH` (after the system directories, so a real
+command always wins where one exists) and bake the resolved `timeout` path into
+each task prompt, so the agent uses the same one. The stand-ins are self-contained
+Python and are covered by `tests/test_compat.py`.
 
 ---
 

@@ -10,7 +10,8 @@ The FD form is the one the runners use:
 
 It locks the open file the shell passed in as FD. The lock belongs to that open
 file, not to this process, so it stays held after we exit and is released when
-the shell closes the descriptor (or dies), exactly like the real flock.
+the shell closes the descriptor (or dies), exactly like the real flock. The FILE
+form creates the lock file if it is missing (O_CREAT), as util-linux does.
 Exit status: 0 locked, 1 lock not obtained (-n / -w), otherwise the command's.
 """
 import fcntl
