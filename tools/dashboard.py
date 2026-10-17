@@ -339,6 +339,49 @@ def config_save(target, content):
     return {"ok": f"saved {CONFIG_FILES[target]} (backup .bak)"}
 
 
+def _slug(s):
+    return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
+
+
+def _key_map():
+    m = {}
+    for path in ("queue.tsv", "queue-human.tsv", "queue.retry"):
+        for r in _queue_rows(os.path.join(STATE, path)):
+            if r["key"]:
+                m[(r["company"].lower(), r["role"].lower())] = r["key"]
+    return m
+
+
+def grid():
+    """One canonical row per application, joined with queue state, spec, provenance."""
+    apps = _rows(os.path.join(STATE, "applications.csv"))
+    km = _key_map()
+    qstate = {}
+    for st, path in (("pending", "queue.tsv"), ("human", "queue-human.tsv"), ("retry", "queue.retry")):
+        for r in _queue_rows(os.path.join(STATE, path)):
+            qstate[(r["company"].lower(), r["role"].lower())] = st
+    done = set(l.strip() for l in _lines(os.path.join(STATE, "queue.done")))
+    subm = {(r["company"].lower(), r["role"].lower())
+            for r in _rows(os.path.join(STATE, "submissions.csv"))}
+    try:
+        specs = {f[:-3] for f in os.listdir(os.path.join(STATE, "job-descriptions")) if f.endswith(".md")}
+    except OSError:
+        specs = set()
+    out = []
+    for r in apps:
+        co, role = r["company"], r["role"]
+        ck = (co.lower(), role.lower())
+        key = km.get(ck) or _slug(f"{co}-{role}")
+        m = _MATCH_CACHE.get(key, {})
+        out.append({"date": r.get("date", ""), "company": co, "role": role, "ats": r.get("ats", ""),
+                    "status": (r.get("status") or "").upper(), "key": key,
+                    "queue": qstate.get(ck, "done" if f"{co}|{role}" in done else ""),
+                    "spec": key in specs, "applied": ck in subm,
+                    "match": m.get("coverage"), "alignment": m.get("alignment")})
+    out.sort(key=lambda x: (x["date"] or ""), reverse=True)
+    return out
+
+
 def outcomes():
     rows = _rows(os.path.join(STATE, "applications.csv"))
     by_ats = {}
@@ -528,6 +571,8 @@ class H(BaseHTTPRequestHandler):
         if p == "/api/register":
             return self._json(register_api(qs.get("q", [""])[0], qs.get("status", [""])[0],
                                            qs.get("limit", ["200"])[0], qs.get("offset", ["0"])[0]))
+        if p == "/api/grid":
+            return self._json(grid())
         if p == "/api/provenance":
             return self._json(provenance(qs.get("company", [""])[0], qs.get("role", [""])[0]))
         if p == "/api/queue":
