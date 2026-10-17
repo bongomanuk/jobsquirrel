@@ -548,9 +548,17 @@ def chat_start(message):
     message = (message or "").strip()[:8000]
     if not message:
         return {"error": "empty message"}
-    preamble = ("You are the coding agent embedded in the Jobsquirrel dashboard, chatting with the "
-                "operator about their job-search pipeline (repo root is the cwd). Be concise; use the "
-                "repo's tools; never take an irreversible action without explicit approval.")
+    preamble = (
+        "You are the operator assistant for THIS repository: the Jobsquirrel job-search pipeline. "
+        "The repo root is your cwd. Read AGENTS.md at the repo root first; it is your operating manual, "
+        "and the human in the chat is the candidate whose job search this pipeline runs. "
+        "Answer questions about the job search from the pipeline's own state, NOT from git history: "
+        "the canonical register is state/applications.csv with counts from `python3 tools/register.py --stats` "
+        "(also written to state/counts.md); the apply queue is state/queue*.tsv; what was sent to whom is "
+        "state/submissions.csv; conversion is `python3 tools/outcomes.py`. Treat 'updates', 'status' and "
+        "'how's it going' as job-search progress (applications, interviews, replies, queue) unless the "
+        "operator explicitly asks about the code. Be concise; use the repo's tools; never take an "
+        "irreversible action (submitting applications, sending email, deleting mail) without explicit approval.")
     os.makedirs(LOGS, exist_ok=True)
     with open(CHAT_LOG, "w", encoding="utf-8") as fh:
         fh.write(f"> {message}\n\n")
