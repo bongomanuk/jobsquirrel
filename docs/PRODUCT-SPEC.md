@@ -203,6 +203,14 @@ All POSTs require header `X-Session: <token>` (else 403); the token is injected 
 - **Regenerate archetype CVs:** `build_archetypes.py`. Safe.
 - Runs are detached and logged to `state/logs/dashboard-action.log`.
 
+### 9.9b Settings panel & knowledge graph
+- **Settings** (⚙ Config) has sections: **Accounts** (credential status + Gmail/Calendar
+  authorisation), **Knowledge base** (list/upload/delete source documents, rebuild the index),
+  **GraphRAG** (browse entities / relationships / communities / documents from the index), and
+  **Profile & CV** (edit `profile.md` / `cv.json` / `archetypes.json`, regenerate archetypes).
+- Each role's detail drawer has a **Grounding** tab: the GraphRAG context pack plus the
+  entities and source documents it cited, resolved from the index.
+
 ### 9.10 Theming & UX
 - Dark, high-contrast; amber accent; colour-coded status chips; squirrel mascot animates; empty-state-safe.
 - Degrades to empty state with no local data (safe on the public base).
