@@ -57,9 +57,13 @@ Everything is observable. Useful things to ask for, or run yourself:
 - **Health**: `python3 tools/doctor.py` (`--json` for scripts) checks config, the
   knowledge base, the browser, the register and git before you start a run.
 - **Web UI**: `python3 tools/dashboard.py` (then open http://127.0.0.1:8765, or
-  `--open`). A read-only, dependency-free dashboard: counts, queue progress, recent
-  runs, interviews, and a **curated** view of any task log (only the meaningful
-  lines — gate results, commands, submissions, errors — never the tool spam). 🐿️
+  `--open`). A dependency-free dashboard: counts, queue progress, a **Live** panel
+  (running tasks + curated tail), recent runs, interviews, and a **curated** view of
+  any task log (only the meaningful lines — gate results, commands, submissions,
+  errors — never the tool spam). 🐿️ It can also **start a run** from buttons:
+  *Prepare (review)* is safe (REVIEW=1, no submits); *Apply queue* submits, so it is
+  refused unless you started the dashboard with `APPROVE_RUN_QUEUE=1`, and it asks to
+  confirm. Actions need a per-session token (anti-CSRF) and bind to `127.0.0.1`.
 - **Register**: `python3 tools/register.py --stats`;
   `python3 tools/register.py --list --status INTERVIEW`;
   `python3 tools/register.py --show "<Company>"`.
