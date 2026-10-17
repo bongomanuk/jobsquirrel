@@ -40,7 +40,7 @@ const App = {
       if (!ok) return;
     }
     const d = await api('/api/action/run', { command, approval_token: command === 'submit_queue' ? 'APPROVE_RUN_QUEUE' : '' });
-    toast(d.ok || d.error, !!d.error); if (!d.error) { drawer(true); }
+    toast(d.ok || d.error, !!d.error); if (!d.error) { openDock(true); }
   },
   cf: async (target) => {
     document.querySelectorAll('#cf-tabs a').forEach(a => a.classList.toggle('on', a.dataset.t === target));
@@ -167,7 +167,7 @@ window.viewDoc = async (rel, title) => {
   else $('#docv-body').innerHTML = `<a href="${d.url}" target="_blank">open ${esc(d.name)}</a>`;
 };
 
-/* ---------- live strip + drawer ---------- */
+/* ---------- live strip + agent dock ---------- */
 async function liveTick() {
   const d = await api('/api/live');
   const a = d.action || {};
@@ -176,17 +176,16 @@ async function liveTick() {
   const t = (d.tail || []).slice(-1)[0];
   if (t) s += '   ' + t.t;
   $('#live').textContent = s;
-  if ($('#drawer').classList.contains('open')) {
+  const sm = a.summary || {};
+  $('#act-sum').textContent = a.name ? ((a.running ? '● ' : '✓ ') + a.name) : (d.active ? 'runner active' : 'idle');
+  if (document.body.dataset.act === 'open') {
     let h = '';
-    const a = d.action || {};
     if (a.name && (a.running || (a.log || []).length)) {
-      const sm = a.summary || {};
       h += `<div class="act-h">${a.running ? '●' : '✓'} ${esc(a.name)} <span class="muted">${a.running ? 'running…' : 'done'}</span></div>`;
       if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
       if ((sm.notable || []).length) h += '<ul class="act-list">' + sm.notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
-      const shown = (sm.notable || []).length;
       const total = (a.log || []).length;
-      if (total > shown) h += `<details class="act-raw"><summary>full output · ${total} lines</summary><pre>${esc((a.log || []).join('\n'))}</pre></details>`;
+      if (total > (sm.notable || []).length) h += `<details class="act-raw"><summary>full output · ${total} lines</summary><pre>${esc((a.log || []).join('\n'))}</pre></details>`;
       h += '<div class="act-sep"></div>';
     }
     h += d.active ? '● runner active' : '○ runner idle';
@@ -196,17 +195,85 @@ async function liveTick() {
   }
   setTimeout(liveTick, 2500);
 }
-function drawer(open) { $('#drawer').classList.toggle('open', open); if (open) { api('/api/agent').then(d => $('#agent-name').textContent = d.agent || '?'); liveTick(); } }
+
+/* ---------- dock (pullout agent panel) ---------- */
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+let dockW = parseInt(localStorage.getItem('dock.w') || '380', 10);
+let dockH = parseInt(localStorage.getItem('dock.h') || '320', 10);
+let actSize = parseInt(localStorage.getItem('dock.act') || '180', 10);
+const DOCK = {
+  isVertical() { const p = document.body.dataset.dock; return p === 'left' || p === 'right'; },
+  apply() {
+    const r = document.documentElement.style;
+    r.setProperty('--dock-w', dockW + 'px');
+    r.setProperty('--dock-h', dockH + 'px');
+    r.setProperty('--act-size', actSize + 'px');
+    document.querySelectorAll('.dock-pos .pos').forEach(b => b.classList.toggle('on', b.dataset.pos === document.body.dataset.dock));
+  },
+  init() {
+    document.body.dataset.dock = localStorage.getItem('dock.pos') || 'left';
+    document.body.dataset.agent = localStorage.getItem('dock.open') === '1' ? 'open' : 'closed';
+    document.body.dataset.act = localStorage.getItem('dock.actOpen') === '1' ? 'open' : 'closed';
+    this.apply();
+  },
+  setPos(p) { document.body.dataset.dock = p; localStorage.setItem('dock.pos', p); this.apply(); },
+  setOpen(v) { document.body.dataset.agent = v ? 'open' : 'closed'; localStorage.setItem('dock.open', v ? '1' : '0'); if (v) liveTick(); },
+  setAct(v) { document.body.dataset.act = v ? 'open' : 'closed'; localStorage.setItem('dock.actOpen', v ? '1' : '0'); if (v) liveTick(); },
+  sizeW(v) { dockW = clamp(v, 240, window.innerWidth - 300); localStorage.setItem('dock.w', dockW); this.apply(); },
+  sizeH(v) { dockH = clamp(v, 150, window.innerHeight - 140); localStorage.setItem('dock.h', dockH); this.apply(); },
+  sizeAct(v) {
+    const span = this.isVertical() ? dockH : dockW;
+    actSize = clamp(v, 90, Math.max(120, span - 150));
+    localStorage.setItem('dock.act', actSize); this.apply();
+  },
+};
+function openDock(v) { DOCK.setOpen(v); if (v) { api('/api/agent').then(d => $('#agent-name').textContent = d.agent || '?'); } }
+function initSplitter(el, kind) {
+  el.addEventListener('pointerdown', e => {
+    e.preventDefault(); el.classList.add('drag'); el.setPointerCapture(e.pointerId);
+    const pos = document.body.dataset.dock, vert = pos === 'left' || pos === 'right';
+    const x0 = e.clientX, y0 = e.clientY;
+    const base = kind === 'dock' ? (vert ? dockW : dockH) : actSize;
+    const move = ev => {
+      const dx = ev.clientX - x0, dy = ev.clientY - y0;
+      if (kind === 'dock') {
+        if (pos === 'left') DOCK.sizeW(base + dx);
+        else if (pos === 'right') DOCK.sizeW(base - dx);
+        else if (pos === 'top') DOCK.sizeH(base + dy);
+        else DOCK.sizeH(base - dy);
+      } else if (vert) DOCK.sizeAct(base - dy);
+      else DOCK.sizeAct(base - dx);
+    };
+    const up = () => { el.classList.remove('drag'); el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); };
+    el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  });
+}
 async function chatPoll() { const d = await api('/api/chat/stream?since=' + chatOffset); if (d.segments) { CHAT = d; renderChat(); } chatOffset = d.offset || chatOffset; if (d.done) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; renderChat(); } }
+function toolBlock(s) {
+  const tag = (s.tool && s.tool !== 'bash') ? esc(s.tool) + ' · ' : '$ ';
+  return `<details class="c-tool"><summary><code>${tag}${esc(s.cmd)}</code></summary>${s.body ? `<pre>${esc(s.body)}</pre>` : ''}</details>`;
+}
+function collapseCode(html) {
+  return html.replace(/<pre>([\s\S]*?)<\/pre>/g, (m, c) => ((c.match(/\n/g) || []).length >= 2)
+    ? `<details class="c-code"><summary>code</summary><pre>${c}</pre></details>` : m);
+}
 function renderChat() {
   const el = $('#chat'), segs = (CHAT && CHAT.segments) || [];
   if (!segs.length) { el.innerHTML = '<span class="muted">' + (CHAT.running ? '◌ thinking…' : 'ask the agent anything…') + '</span>'; return; }
-  let h = '';
-  for (const s of segs) {
+  let h = '', i = 0;
+  while (i < segs.length) {
+    const s = segs[i];
+    if (s.t === 'tool') {                       // collapse runs of tool calls into one group
+      const grp = [];
+      while (i < segs.length && segs[i].t === 'tool') { grp.push(segs[i]); i++; }
+      h += grp.length === 1 ? toolBlock(grp[0])
+        : `<details class="c-tools"><summary>🔧 ${grp.length} steps</summary>${grp.map(toolBlock).join('')}</details>`;
+      continue;
+    }
     if (s.t === 'user') h += `<div class="c-user"><div class="md">${md(s.body)}</div></div>`;
     else if (s.t === 'status') h += `<div class="c-status">${esc(s.body)}</div>`;
-    else if (s.t === 'tool') { const tag = (s.tool && s.tool !== 'bash') ? esc(s.tool) + ' · ' : '$ '; h += `<details class="c-tool"><summary><code>${tag}${esc(s.cmd)}</code></summary>${s.body ? `<pre>${esc(s.body)}</pre>` : ''}</details>`; }
-    else h += `<div class="md">${md(s.body)}</div>`;
+    else h += `<div class="md">${collapseCode(md(s.body))}</div>`;
+    i++;
   }
   if (CHAT.running) h += '<span class="muted">▮</span>';
   el.innerHTML = h; el.scrollTop = el.scrollHeight;
@@ -219,8 +286,13 @@ $('#a-submit').onclick = () => App.run('submit_queue');
 $('#a-reconcile').onclick = () => App.run('reconcile');
 $('#a-config').onclick = () => { $('#cfg').classList.remove('hide'); App.cf(CF); };
 window.cfgClose = () => $('#cfg').classList.add('hide');
-$('#a-drawer').onclick = () => drawer(!$('#drawer').classList.contains('open'));
-$('#dr-close').onclick = () => drawer(false);
+$('#a-drawer').onclick = () => openDock(document.body.dataset.agent !== 'open');
+$('#dock-tab').onclick = () => openDock(true);
+$('#dock-close').onclick = () => openDock(false);
+document.querySelectorAll('.dock-pos .pos').forEach(b => b.onclick = () => DOCK.setPos(b.dataset.pos));
+$('#act-toggle').onclick = () => DOCK.setAct(document.body.dataset.act !== 'open');
+initSplitter($('#split-dock'), 'dock');
+initSplitter($('#split-inner'), 'act');
 $('#chat-send').onclick = () => App.chat();
 $('#q').oninput = renderRows; $('#fstatus').onchange = renderRows; $('#fqueue').onchange = renderRows;
 $('#export').onclick = () => {
@@ -232,4 +304,4 @@ $('#export').onclick = () => {
 window.App = App;
 async function healthPill() { const s = await api('/api/health'); const h = $('#health');
   h.textContent = 'health: ' + (s.v || '?'); h.className = 'pill ' + (s.v || 'unknown'); h.title = s.detail || ''; setTimeout(healthPill, 60000); }
-loadGrid(); liveTick(); healthPill();
+DOCK.init(); loadGrid(); liveTick(); healthPill();
