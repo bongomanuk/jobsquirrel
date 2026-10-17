@@ -301,13 +301,22 @@ button{background:var(--panel2);color:var(--fg);border:1px solid var(--line);bor
 font:600 13px inherit;cursor:pointer}button:hover{border-color:var(--accent)}
 button.risky{border-color:#6e2b2b;color:#ffb4b4}button:disabled{opacity:.5;cursor:default}
 #live .r{color:var(--accent);font-weight:700}
+.hint{cursor:help;border-bottom:1px dotted var(--dim)}
+button.help{padding:7px 12px;font-weight:800}
+#help{display:none;position:fixed;inset:0;background:rgba(2,4,8,.66);z-index:50;padding:40px 18px;overflow:auto}
+#help.on{display:block}
+#help .box{max-width:780px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px}
+#help h3{margin:16px 0 2px;font-size:14px;color:var(--fg)}#help p{margin:0 0 2px;color:var(--dim);font-size:13px}
 </style></head><body>
 <header><div class="sq">🐿️</div>
 <div style="flex:1"><h1>Jobsquirrel <span class="muted" style="font-size:12px">· dashboard</span></h1>
 <div class="sub" id="ts">loading…</div></div>
 <div class="tools">
-<button id="b-review" onclick="act('review')">Prepare (review)</button>
-<button id="b-queue" class="risky" onclick="act('queue')">Apply queue</button>
+<button id="b-review" onclick="act('review')" class="hint"
+ title="Safe: builds a tailored CV + cover letter for each queued role and runs the pre-submit gate. Records PREPARED. Never submits or emails.">Prepare (review)</button>
+<button id="b-queue" class="risky hint" onclick="act('queue')"
+ title="Applies to queued roles for real (submits applications). Gated: start the dashboard with APPROVE_RUN_QUEUE=1, and it confirms first.">Apply queue</button>
+<button class="help hint" onclick="toggleHelp()" title="Help: what everything means">?</button>
 <span id="amsg" class="sub"></span>
 </div></header>
 <div class="wrap">
@@ -315,7 +324,7 @@ button.risky{border-color:#6e2b2b;color:#ffb4b4}button:disabled{opacity:.5;curso
 <div class="card"><div class="l">Queue progress</div><div id="qbar" class="bar"><i style="width:0%"></i></div>
 <div class="sub" id="qtext" style="margin-top:6px"></div></div>
 <h2>Chat <span class="muted" id="agentname" style="text-transform:none;letter-spacing:0"></span></h2>
-<div class="card">
+<div class="card" title="Talk to the coding agent the pipeline uses to do work.">
 <div class="log" id="chat" style="max-height:34vh">ask the agent anything about your pipeline…</div>
 <div style="display:flex;gap:8px;margin-top:10px">
 <input id="chatmsg" placeholder="e.g. which interviews are coming up?"
@@ -325,14 +334,28 @@ button.risky{border-color:#6e2b2b;color:#ffb4b4}button:disabled{opacity:.5;curso
 </div>
 <div class="sub" id="chatst"></div>
 </div>
-<h2>Live</h2>
+<h2 class="hint" title="Whether a runner is active, the tasks running now, and a curated tail of the newest task log.">Live</h2>
 <div class="card" id="live"><span class="muted">idle — no run active</span></div>
-<h2>Recent runs</h2>
+<h2 class="hint" title="One row per finished task (state/logs/runs.jsonl). Click a row to see its curated log.">Recent runs</h2>
 <table><thead><tr><th>When</th><th>Company</th><th>Role</th><th>Outcome</th><th>Detail</th></tr></thead>
 <tbody id="runs"></tbody></table>
-<h2>Interviews</h2><div id="int" class="muted">—</div>
-<h2>Task log</h2><div class="log" id="log">click a run to see its curated log</div>
+<h2 class="hint" title="Roles currently at the interview stage (status INTERVIEW).">Interviews</h2>
+<div id="int" class="muted">—</div>
+<h2 class="hint" title="Curated view of a task's opencode log: phases, gate PASS/FAIL, commands, submissions, errors — not the tool noise. Full logs are in state/logs/*.log.">Task log</h2><div class="log" id="log">click a run to see its curated log</div>
 </div>
+<div id="help" onclick="if(event.target.id==='help')toggleHelp()"><div class="box">
+<h2 style="margin-top:0">What everything means</h2>
+<h3>In process</h3><p>Applications you've sent and are still awaiting an outcome on: SUBMITTED + IN_PROGRESS + INTERVIEW + OFFER. The number that actually matters.</p>
+<h3>Interviews / Rejected / Blocked / Human queue / Total</h3><p>Counts by status. <b>Blocked</b> = needs a manual step (CAPTCHA / login). <b>Human queue</b> = roles only a person can finish. <b>Total</b> = every row in the register.</p>
+<h3>Queue progress</h3><p>How many queued roles the runners have processed (state/queue.done ÷ queue.tsv).</p>
+<h3>Prepare (review)</h3><p><b>Safe.</b> Builds a tailored CV + cover letter per queued role and runs the pre-submit gate; records PREPARED. Nothing is submitted and no email is sent.</p>
+<h3>Apply queue</h3><p><b>Submits applications.</b> Gated: start the dashboard with <code>APPROVE_RUN_QUEUE=1</code> and confirm the dialog. It never runs the same company+role twice (duplicate guard).</p>
+<h3>Chat</h3><p>Talk to the coding agent the pipeline uses. It's <b>agent-agnostic</b> — whatever <code>tools/agent_run.sh</code> resolves (opencode, Claude Code, hermes, pi, or your <code>AGENT=</code>). It can use the repo's tools; irreversible actions still hit their own approval gates.</p>
+<h3>Live</h3><p>Whether a runner is active, which tasks are running right now, and a curated tail of the newest task log.</p>
+<h3>Recent runs &amp; Task log</h3><p>One row per finished task from <code>state/logs/runs.jsonl</code>. Click a row for a <b>curated</b> log — only the meaningful lines (phases, gate PASS/FAIL, commands, submissions, errors). Raw logs live in <code>state/logs/*.log</code>.</p>
+<h3>Approvals</h3><p>Anything irreversible — sending email, deleting mail, applying — is approval-gated (see <code>tools/approval.py</code>). The dashboard is localhost-only and actions need a per-session token (anti-CSRF).</p>
+<p style="margin-top:18px"><button onclick="toggleHelp()">close</button></p>
+</div></div>
 <script>
 const TOKEN="__TOKEN__";
 async function j(u){const r=await fetch(u);return r.json()}
@@ -353,7 +376,15 @@ async function tick(){
  const runs=await j('/api/runs');
  document.getElementById('runs').innerHTML=runs.map(r=>'<tr onclick="loadlog(\''+esc(r.company+'-'+r.role).replace(/\//g,'_')+'\')"><td class=muted>'+esc((r.ts||'').slice(11,19))+'</td><td>'+esc(r.company)+'</td><td>'+esc(r.role)+'</td><td>'+chip(r.outcome||'?')+'</td><td class=muted>'+esc(r.reason||'')+'</td></tr>').join('')||'<tr><td colspan=5 class=muted>no runs recorded yet (they appear once run_queue.sh runs)</td></tr>';
 }
-function card(c,l,n){return '<div class="card '+c+'"><div class="n">'+n+'</div><div class="l">'+l+'</div></div>'}
+function card(c,l,n){return '<div class="card '+c+' hint" title="'+esc(CARDHELP[l]||'')+'"><div class="n">'+n+'</div><div class="l">'+l+'</div></div>'}
+const CARDHELP={
+ 'In process':'Sent, still awaiting an outcome: SUBMITTED + IN_PROGRESS + INTERVIEW + OFFER.',
+ 'Interviews':'Roles currently at the interview stage.',
+ 'Rejected':'Applications that came back as a no.',
+ 'Blocked':'Applications that need a manual step (CAPTCHA / login).',
+ 'Human queue':'Roles only a human can finish (see state/queue-human.tsv).',
+ 'Total':'Every row in the register (state/applications.csv).'};
+function toggleHelp(){document.getElementById('help').classList.toggle('on')}
 function esc(s){return (s+'').replace(/[&<>"]/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[x]))}
 async function loadlog(name){
  const d=await j('/api/log?task='+encodeURIComponent(name));
