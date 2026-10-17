@@ -173,6 +173,13 @@ python3 tools/run_queue.sh            # or:  PARALLEL=3 bash tools/run_queue.sh
 See **[docs/SETUP.md](docs/SETUP.md)** for the full setup, and
 **[docs/WORKFLOW.md](docs/WORKFLOW.md)** for the per-role procedure.
 
+**Platforms and agents.** The tools run on **Linux and macOS** — macOS ships
+without GNU `flock`/`setsid`/`timeout`, so the portable stand-ins in
+`tools/compat/` are used automatically. The queue runners drive whichever coding
+agent you have: **opencode** by default, **Claude Code** with `AGENT=claude`, or
+any CLI that takes the prompt as its last argument (`AGENT="mycli run"`). See
+[docs/AGENT-SETUP.md](docs/AGENT-SETUP.md#running-the-queue-with-claude-code).
+
 ---
 
 ## Driving it with an AI agent

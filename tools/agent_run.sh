@@ -55,7 +55,13 @@ case "$agent" in
     # the employer's own apply page, and run the pipeline's Python tools (some
     # wrapped in timeout, as the prompt asks).
     tmo="${TIMEOUT_CMD:-timeout}"
-    allowed="${CLAUDE_ALLOWED_TOOLS:-Read Write Edit Glob Grep WebSearch WebFetch Bash(python3 *) Bash(.venv/bin/python *) Bash(timeout *) Bash($tmo *) Bash(sleep *)}"
+    allowed="${CLAUDE_ALLOWED_TOOLS:-Read Write Edit Glob Grep WebSearch WebFetch Bash(python3 *) Bash(.venv/bin/python *) Bash(timeout *) Bash(sleep *)}"
+    # On macOS the portable timeout is used; allow its exact path too. A path
+    # containing a space cannot go in --allowedTools (space-separated rules), so
+    # leave it out rather than emit a rule that never matches.
+    if [ "$tmo" != "timeout" ] && [ "$tmo" = "${tmo% *}" ]; then
+      allowed="$allowed Bash($tmo *)"
+    fi
     args=(--permission-mode "${CLAUDE_PERMISSION_MODE:-dontAsk}" --allowedTools "$allowed"
           --strict-mcp-config)   # no MCP servers: none are needed, and it keeps mail/social tools out of reach
     [ -n "${MODEL:-}" ] && args+=(--model "$MODEL")
