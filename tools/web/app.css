@@ -147,11 +147,21 @@ body[data-agent="closed"] #dock,body[data-agent="closed"] #split-dock{display:no
 .dock-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;flex:0 0 auto;
   border-bottom:1px solid var(--line);font-weight:700;font-size:13px}
 .dock-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dock-tools{display:flex;gap:6px;align-items:center}
-.dock-pos{display:flex;gap:1px;background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:2px}
-.dock-pos .pos{padding:2px 7px;font-size:12px;line-height:1;background:none;border:0;color:var(--muted);border-radius:6px}
-.dock-pos .pos:hover{color:var(--fg)}
-.dock-pos .pos.on{color:var(--accent);background:#0a0c10}
+.dock-grip{cursor:grab;color:var(--muted);padding:2px 5px;border-radius:6px;line-height:1;font-size:15px}
+.dock-grip:hover{color:var(--accent);background:#0a0c10}
+.dock-drag{cursor:grab}
+body.dock-dragging{cursor:grabbing;user-select:none}
+body.dock-dragging .dock-drag{cursor:grabbing}
+
+/* drag-to-dock drop zones */
+.dockzone{position:fixed;z-index:55;pointer-events:none;opacity:0;border-radius:10px;
+  background:rgba(245,158,11,.14);border:2px dashed var(--accent);transition:opacity .12s}
+body.dock-dragging .dockzone{opacity:.30}
+body.dock-dragging .dockzone.on{opacity:1;background:rgba(245,158,11,.30)}
+#zone-left{left:8px;top:calc(var(--top) + 8px);bottom:8px;width:26%}
+#zone-right{right:8px;top:calc(var(--top) + 8px);bottom:8px;width:26%}
+#zone-top{left:8px;right:8px;top:calc(var(--top) + 8px);height:22%}
+#zone-bottom{left:8px;right:8px;bottom:8px;height:22%}
 
 .splitter{flex:0 0 auto;position:relative;background:none;z-index:6}
 .splitter::after{content:'';position:absolute;inset:0;background:var(--accent);opacity:0;transition:opacity .15s;border-radius:2px}

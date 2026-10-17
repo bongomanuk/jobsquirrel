@@ -206,15 +206,16 @@ All POSTs require header `X-Session: <token>` (else 403); the token is injected 
 ### 9.10 Theming & UX
 - Dark, high-contrast; amber accent; colour-coded status chips; squirrel mascot animates; empty-state-safe.
 - Degrades to empty state with no local data (safe on the public base).
-- **Agent console:** a dockable pullout — **left by default**, or top / bottom / right (a small
-  tab pulls it out when collapsed). The console and its Chat / Activity panes are **resizable with
-  drag splitters** (sizes + dock position persist in `localStorage`), and the Activity pane is a
-  **collapsible toggle** (headline summary shown in its header). Chat replies render as Markdown
-  with runs of tool calls grouped into a single collapsed step block (and multi-line code fences
-  collapsed), so only the assistant's prose stays in the body; a token/cost footer closes the
-  turn. Driven by the agent's structured event stream — opencode `--format json`, Claude Code
-  `stream-json` — with a plain-transcript fallback for any other `AGENT=` command. Action output
-  is compressed to a headline + only the notable lines, with the full log behind a toggle.
+- **Agent console:** a dockable pullout — **left by default**, or top / bottom / right. **Drag the
+  console's header** to an edge (highlighted drop zones) to dock it; a small tab pulls it out when
+  collapsed. The console and its Chat / Activity panes are **resizable with drag splitters** (sizes
+  + dock position persist in `localStorage`), and the Activity pane is a **collapsible toggle**
+  (headline summary shown in its header). Chat replies render as Markdown with runs of tool calls
+  grouped into a single collapsed step block (and multi-line code fences collapsed), so only the
+  assistant's prose stays in the body; a token/cost footer closes the turn. Driven by the agent's
+  structured event stream — opencode `--format json`, Claude Code `stream-json` — with a
+  plain-transcript fallback for any other `AGENT=` command. Action output is compressed to a
+  headline + only the notable lines, with the full log behind a toggle.
 
 ## 10. Configuration schemas
 

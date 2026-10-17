@@ -208,7 +208,6 @@ const DOCK = {
     r.setProperty('--dock-w', dockW + 'px');
     r.setProperty('--dock-h', dockH + 'px');
     r.setProperty('--act-size', actSize + 'px');
-    document.querySelectorAll('.dock-pos .pos').forEach(b => b.classList.toggle('on', b.dataset.pos === document.body.dataset.dock));
   },
   init() {
     document.body.dataset.dock = localStorage.getItem('dock.pos') || 'left';
@@ -224,6 +223,31 @@ const DOCK = {
   sizeAct(v, span) { actSize = clamp(v, 90, Math.max(140, span - 150)); localStorage.setItem('dock.act', actSize); this.apply(); },
 };
 function openDock(v) { DOCK.setOpen(v); if (v) { api('/api/agent').then(d => $('#agent-name').textContent = d.agent || '?'); } }
+function zoneAt(x, y) {
+  const w = window.innerWidth, h = window.innerHeight, top = 56;
+  const dl = x, dr = w - x, dt = y - top, db = h - y;
+  const min = Math.min(dl, dr, dt, db);
+  if (min > Math.min(w, h) * 0.30) return null;      // dragged into the middle → no dock
+  if (min === dl) return 'left';
+  if (min === dr) return 'right';
+  if (min === dt) return 'top';
+  return 'bottom';
+}
+function setZone(z) { document.querySelectorAll('.dockzone').forEach(e => e.classList.toggle('on', e.id === 'zone-' + z)); }
+function initDockDrag(handle) {
+  handle.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault(); handle.setPointerCapture(e.pointerId);
+    document.body.classList.add('dock-dragging'); let zone = null; setZone(null);
+    const move = ev => { zone = zoneAt(ev.clientX, ev.clientY); setZone(zone); };
+    const up = () => {
+      handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); handle.removeEventListener('pointercancel', up);
+      document.body.classList.remove('dock-dragging'); setZone(null);
+      if (zone && zone !== document.body.dataset.dock) DOCK.setPos(zone);
+    };
+    handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up); handle.addEventListener('pointercancel', up);
+  });
+}
 function initSplitter(el, kind) {
   el.addEventListener('pointerdown', e => {
     e.preventDefault(); el.classList.add('drag'); el.setPointerCapture(e.pointerId);
@@ -287,7 +311,7 @@ window.cfgClose = () => $('#cfg').classList.add('hide');
 $('#a-drawer').onclick = () => openDock(document.body.dataset.agent !== 'open');
 $('#dock-tab').onclick = () => openDock(true);
 $('#dock-close').onclick = () => openDock(false);
-document.querySelectorAll('.dock-pos .pos').forEach(b => b.onclick = () => DOCK.setPos(b.dataset.pos));
+document.querySelectorAll('.dock-drag').forEach(initDockDrag);
 $('#act-toggle').onclick = () => DOCK.setAct(document.body.dataset.act !== 'open');
 initSplitter($('#split-dock'), 'dock');
 initSplitter($('#split-inner'), 'act');

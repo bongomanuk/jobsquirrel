@@ -22,16 +22,10 @@
 <div id="app">
   <aside id="dock" aria-label="Agent console">
     <div class="dock-head">
-      <span class="dock-title">💬 Agent Console</span>
-      <span class="dock-tools">
-        <span class="dock-pos" title="Dock position">
-          <button class="pos" data-pos="left" title="Dock left">⇤</button>
-          <button class="pos" data-pos="top" title="Dock top">⇧</button>
-          <button class="pos" data-pos="bottom" title="Dock bottom">⇩</button>
-          <button class="pos" data-pos="right" title="Dock right">⇥</button>
-        </span>
-        <button id="dock-close" class="small" title="Collapse">✕</button>
-      </span>
+      <span class="dock-grip dock-drag" id="dock-grip" title="Drag to dock (left / top / bottom / right)">⠿</span>
+      <span class="dock-title dock-drag" title="Drag me to dock this panel">💬 Agent Console</span>
+      <span style="flex:1"></span>
+      <button id="dock-close" class="small" title="Collapse">✕</button>
     </div>
     <div class="panes" id="panes">
       <section class="pane pane-chat">
@@ -84,6 +78,11 @@
 </div>
 
 <button id="dock-tab" class="dock-tab" title="Open agent console">💬 Agent</button>
+
+<div class="dockzone" id="zone-left"></div>
+<div class="dockzone" id="zone-right"></div>
+<div class="dockzone" id="zone-top"></div>
+<div class="dockzone" id="zone-bottom"></div>
 
 <aside id="detail" class="right">
   <div class="drawer-head"><b id="d-title">detail</b><button id="d-close" class="small">✕</button></div>
