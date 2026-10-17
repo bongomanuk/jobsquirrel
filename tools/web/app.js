@@ -221,11 +221,7 @@ const DOCK = {
   setAct(v) { document.body.dataset.act = v ? 'open' : 'closed'; localStorage.setItem('dock.actOpen', v ? '1' : '0'); if (v) liveTick(); },
   sizeW(v) { dockW = clamp(v, 240, window.innerWidth - 300); localStorage.setItem('dock.w', dockW); this.apply(); },
   sizeH(v) { dockH = clamp(v, 150, window.innerHeight - 140); localStorage.setItem('dock.h', dockH); this.apply(); },
-  sizeAct(v) {
-    const span = this.isVertical() ? dockH : dockW;
-    actSize = clamp(v, 90, Math.max(120, span - 150));
-    localStorage.setItem('dock.act', actSize); this.apply();
-  },
+  sizeAct(v, span) { actSize = clamp(v, 90, Math.max(140, span - 150)); localStorage.setItem('dock.act', actSize); this.apply(); },
 };
 function openDock(v) { DOCK.setOpen(v); if (v) { api('/api/agent').then(d => $('#agent-name').textContent = d.agent || '?'); } }
 function initSplitter(el, kind) {
@@ -234,6 +230,8 @@ function initSplitter(el, kind) {
     const pos = document.body.dataset.dock, vert = pos === 'left' || pos === 'right';
     const x0 = e.clientX, y0 = e.clientY;
     const base = kind === 'dock' ? (vert ? dockW : dockH) : actSize;
+    const panes = el.parentElement;
+    const span = vert ? panes.clientHeight : panes.clientWidth;
     const move = ev => {
       const dx = ev.clientX - x0, dy = ev.clientY - y0;
       if (kind === 'dock') {
@@ -241,8 +239,8 @@ function initSplitter(el, kind) {
         else if (pos === 'right') DOCK.sizeW(base - dx);
         else if (pos === 'top') DOCK.sizeH(base + dy);
         else DOCK.sizeH(base - dy);
-      } else if (vert) DOCK.sizeAct(base - dy);
-      else DOCK.sizeAct(base - dx);
+      } else if (vert) DOCK.sizeAct(base - dy, span);
+      else DOCK.sizeAct(base - dx, span);
     };
     const up = () => { el.classList.remove('drag'); el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); };
     el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
