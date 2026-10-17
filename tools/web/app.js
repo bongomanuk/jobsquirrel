@@ -181,8 +181,10 @@ document.querySelectorAll('#grid th[data-s]').forEach(th => th.onclick = () => {
 
 /* ---------- detail drawer ---------- */
 async function openDetail(r) {
-  if (!r) return; CUR = r; D = {}; P = {};
-  $('#detail').classList.add('open'); $('#d-title').textContent = `${r.company} — ${r.role}`;
+  if (!r) return;
+  CUR = r; D = {}; P = {};
+  setPanel('detail', { open: true });
+  $('#d-title').textContent = `${r.company} — ${r.role}`;
   const tabs = ['Summary', 'Provenance', 'Job spec', 'ATS', 'Grounding', 'Tailored'];
   $('#dtabs').innerHTML = tabs.map((t, i) => `<a class="${i === 0 ? 'on' : ''}" onclick="dt(${i})">${t}</a>`).join('');
   $('#d-body').innerHTML = '<span class="muted">loading…</span>';
@@ -288,38 +290,98 @@ async function liveTick() {
   setTimeout(liveTick, 2500);
 }
 
-/* ---------- dock (pullout agent panel) ---------- */
+/* ---------- shared dockable panels (edges) ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-let dockW = parseInt(localStorage.getItem('dock.w') || '380', 10);
-let dockH = parseInt(localStorage.getItem('dock.h') || '320', 10);
-let actSize = parseInt(localStorage.getItem('dock.act') || '180', 10);
-const DOCK = {
-  isVertical() { const p = document.body.dataset.dock; return p === 'left' || p === 'right'; },
-  apply() {
-    const r = document.documentElement.style;
-    r.setProperty('--dock-w', dockW + 'px');
-    r.setProperty('--dock-h', dockH + 'px');
-    r.setProperty('--act-size', actSize + 'px');
-  },
-  init() {
-    document.body.dataset.dock = localStorage.getItem('dock.pos') || 'left';
-    document.body.dataset.agent = localStorage.getItem('dock.open') === '1' ? 'open' : 'closed';
-    document.body.dataset.act = localStorage.getItem('dock.actOpen') === '1' ? 'open' : 'closed';
-    this.apply();
-  },
-  setPos(p) { document.body.dataset.dock = p; localStorage.setItem('dock.pos', p); this.apply(); },
-  setOpen(v) { document.body.dataset.agent = v ? 'open' : 'closed'; localStorage.setItem('dock.open', v ? '1' : '0'); if (v) liveTick(); },
-  setAct(v) { document.body.dataset.act = v ? 'open' : 'closed'; localStorage.setItem('dock.actOpen', v ? '1' : '0'); if (v) liveTick(); },
-  sizeW(v) { dockW = clamp(v, 240, window.innerWidth - 300); localStorage.setItem('dock.w', dockW); this.apply(); },
-  sizeH(v) { dockH = clamp(v, 150, window.innerHeight - 140); localStorage.setItem('dock.h', dockH); this.apply(); },
-  sizeAct(v, span) { actSize = clamp(v, 90, Math.max(140, span - 150)); localStorage.setItem('dock.act', actSize); this.apply(); },
+const EDGE_SIZE = {
+  left: parseInt(localStorage.getItem('edge.left') || '380', 10),
+  right: parseInt(localStorage.getItem('edge.right') || '380', 10),
+  top: parseInt(localStorage.getItem('edge.top') || '300', 10),
+  bottom: parseInt(localStorage.getItem('edge.bottom') || '300', 10),
 };
-function openDock(v) { DOCK.setOpen(v); if (v) { api('/api/agent').then(d => $('#agent-name').textContent = d.agent || '?'); } }
+const PANELS = {
+  agent: { pos: localStorage.getItem('agent.pos') || 'left', open: localStorage.getItem('agent.open') === '1', tab: '#agent-tab' },
+  detail: { pos: localStorage.getItem('detail.pos') || 'right', open: false, tab: '#detail-tab' },
+};
+let actSize = parseInt(localStorage.getItem('dock.act') || '180', 10);
+const panelOf = (k) => document.querySelector(`.panel[data-panel="${k}"]`);
+const isVert = (edge) => edge === 'left' || edge === 'right';
+
+function applyEdgeSizes() {
+  const r = document.documentElement.style;
+  r.setProperty('--edge-left', EDGE_SIZE.left + 'px');
+  r.setProperty('--edge-right', EDGE_SIZE.right + 'px');
+  r.setProperty('--edge-top', EDGE_SIZE.top + 'px');
+  r.setProperty('--edge-bottom', EDGE_SIZE.bottom + 'px');
+  r.setProperty('--act-size', actSize + 'px');
+}
+function layoutPanels() {
+  for (const k in PANELS) {
+    const el = panelOf(k), p = PANELS[k];
+    el.hidden = !p.open;
+    const cont = document.querySelector(`.edge-panels[data-edge="${p.pos}"]`);
+    if (el.parentElement !== cont) cont.appendChild(el);
+  }
+  document.querySelectorAll('.edge-panels').forEach(reflowEdge);
+  document.querySelectorAll('.edge').forEach(edge =>
+    edge.classList.toggle('has', !!edge.querySelector('.panel:not([hidden])')));
+  applyEdgeSizes();
+  // pullout tabs (offset when both sit on the same edge)
+  const openEdges = {};
+  for (const k in PANELS) {
+    const t = document.querySelector(PANELS[k].tab); if (!t) continue;
+    t.hidden = PANELS[k].open; t.dataset.edge = PANELS[k].pos;
+    t.classList.toggle('stacked', !!openEdges[PANELS[k].pos]); openEdges[PANELS[k].pos] = true;
+  }
+}
+function reflowEdge(cont) {
+  cont.querySelectorAll('.split-panel').forEach(s => s.remove());
+  const panels = [...cont.querySelectorAll('.panel')].filter(p => !p.hidden);
+  for (let i = 0; i < panels.length - 1; i++) {
+    const s = document.createElement('div'); s.className = 'splitter split-panel'; s.dataset.edge = cont.dataset.edge;
+    s.title = 'Drag to resize';
+    cont.insertBefore(s, panels[i + 1]);
+    initPanelSplit(s, panels[i]);
+  }
+}
+function initPanelSplit(split, first) {
+  split.addEventListener('pointerdown', e => {
+    e.preventDefault(); split.classList.add('drag'); split.setPointerCapture(e.pointerId);
+    const vert = isVert(split.dataset.edge), start = vert ? e.clientY : e.clientX;
+    const base = vert ? first.getBoundingClientRect().height : first.getBoundingClientRect().width;
+    const move = ev => {
+      const d = (vert ? ev.clientY : ev.clientX) - start;
+      first.style.flex = `0 0 ${clamp(base + d, 90, 100000)}px`;
+    };
+    const up = () => { split.classList.remove('drag'); split.removeEventListener('pointermove', move); split.removeEventListener('pointerup', up); };
+    split.addEventListener('pointermove', move); split.addEventListener('pointerup', up);
+  });
+}
+function initEdgeSplit(split) {
+  split.addEventListener('pointerdown', e => {
+    e.preventDefault(); split.classList.add('drag'); split.setPointerCapture(e.pointerId);
+    const edge = split.dataset.edge, vert = isVert(edge), start = vert ? e.clientX : e.clientY, base = EDGE_SIZE[edge];
+    const move = ev => {
+      const d = (vert ? ev.clientX : ev.clientY) - start;
+      let v = (edge === 'left' || edge === 'top') ? base + d : base - d;
+      v = clamp(v, 220, (vert ? window.innerWidth : window.innerHeight) - 240);
+      EDGE_SIZE[edge] = v; localStorage.setItem('edge.' + edge, v); applyEdgeSizes();
+    };
+    const up = () => { split.classList.remove('drag'); split.removeEventListener('pointermove', move); split.removeEventListener('pointerup', up); };
+    split.addEventListener('pointermove', move); split.addEventListener('pointerup', up);
+  });
+}
+function setPanel(key, props) {
+  Object.assign(PANELS[key], props);
+  localStorage.setItem(key + '.pos', PANELS[key].pos);
+  localStorage.setItem(key + '.open', PANELS[key].open ? '1' : '0');
+  layoutPanels();
+}
+function openDock(v) { setPanel('agent', { open: v }); if (v) api('/api/agent').then(d => $('#agent-name').textContent = d.agent || '?'); }
 function zoneAt(x, y) {
   const w = window.innerWidth, h = window.innerHeight, top = 56;
   const dl = x, dr = w - x, dt = y - top, db = h - y;
   const min = Math.min(dl, dr, dt, db);
-  if (min > Math.min(w, h) * 0.30) return null;      // dragged into the middle → no dock
+  if (min > Math.min(w, h) * 0.30) return null;      // dragged into the middle → no move
   if (min === dl) return 'left';
   if (min === dr) return 'right';
   if (min === dt) return 'top';
@@ -329,38 +391,45 @@ function setZone(z) { document.querySelectorAll('.dockzone').forEach(e => e.clas
 function initDockDrag(handle) {
   handle.addEventListener('pointerdown', e => {
     if (e.button !== 0) return;
+    const key = handle.dataset.panel; if (!key) return;
     e.preventDefault(); handle.setPointerCapture(e.pointerId);
     document.body.classList.add('dock-dragging'); let zone = null; setZone(null);
     const move = ev => { zone = zoneAt(ev.clientX, ev.clientY); setZone(zone); };
     const up = () => {
       handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); handle.removeEventListener('pointercancel', up);
       document.body.classList.remove('dock-dragging'); setZone(null);
-      if (zone && zone !== document.body.dataset.dock) DOCK.setPos(zone);
+      if (zone && zone !== PANELS[key].pos) setPanel(key, { pos: zone, open: true });
     };
     handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up); handle.addEventListener('pointercancel', up);
   });
 }
-function initSplitter(el, kind) {
+function initActSplit() {
+  const el = $('#split-inner'); if (!el) return;
   el.addEventListener('pointerdown', e => {
     e.preventDefault(); el.classList.add('drag'); el.setPointerCapture(e.pointerId);
-    const pos = document.body.dataset.dock, vert = pos === 'left' || pos === 'right';
-    const x0 = e.clientX, y0 = e.clientY;
-    const base = kind === 'dock' ? (vert ? dockW : dockH) : actSize;
-    const panes = el.parentElement;
-    const span = vert ? panes.clientHeight : panes.clientWidth;
+    const vert = isVert(PANELS.agent.pos), x0 = e.clientX, y0 = e.clientY, base = actSize;
+    const panes = el.parentElement, span = vert ? panes.clientHeight : panes.clientWidth;
     const move = ev => {
-      const dx = ev.clientX - x0, dy = ev.clientY - y0;
-      if (kind === 'dock') {
-        if (pos === 'left') DOCK.sizeW(base + dx);
-        else if (pos === 'right') DOCK.sizeW(base - dx);
-        else if (pos === 'top') DOCK.sizeH(base + dy);
-        else DOCK.sizeH(base - dy);
-      } else if (vert) DOCK.sizeAct(base - dy, span);
-      else DOCK.sizeAct(base - dx, span);
+      const d = vert ? (ev.clientY - y0) : (ev.clientX - x0);
+      actSize = clamp(base - d, 90, Math.max(140, span - 150));
+      localStorage.setItem('dock.act', actSize); applyEdgeSizes();
     };
-    const up = () => { el.classList.remove('drag'); el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); };
-    el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+    const up = () => { el.classList.remove('drag'); el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); };
+    el.addEventListener('pointermove', move); el.addEventListener('pointerup', up);
   });
+}
+function initPanels() {
+  document.body.dataset.act = localStorage.getItem('dock.actOpen') === '1' ? 'open' : 'closed';
+  document.querySelectorAll('.dock-drag').forEach(initDockDrag);
+  document.querySelectorAll('.edge-split').forEach(initEdgeSplit);
+  initActSplit();
+  $('#agent-tab').onclick = () => openDock(true);
+  $('#detail-tab').onclick = () => setPanel('detail', { open: true });
+  document.querySelectorAll('.panel-close').forEach(b => b.onclick = () => {
+    if (b.dataset.panel === 'detail') setPanel('detail', { open: false });
+    else openDock(false);
+  });
+  layoutPanels();
 }
 async function chatPoll() {
   const d = await api('/api/chat/stream?since=' + chatOffset);
@@ -468,7 +537,6 @@ function setProfile(b) {
 }
 
 /* ---------- wiring ---------- */
-$('#d-close').onclick = () => $('#detail').classList.remove('open');
 $('#a-prepare').onclick = () => App.run('prepare');
 $('#a-submit').onclick = () => App.run('submit_queue');
 $('#a-reconcile').onclick = () => App.run('reconcile');
@@ -480,13 +548,13 @@ $('#legend').onclick = () => {
   $('#legend-queue').innerHTML = Object.entries(QUEUE_HELP).map(([k, v]) => `<dt><code>${esc(k)}</code></dt><dd>${esc(v)}</dd>`).join('');
   $('#legend-modal').classList.remove('hide');
 };
-$('#a-drawer').onclick = () => openDock(document.body.dataset.agent !== 'open');
-$('#dock-tab').onclick = () => openDock(true);
-$('#dock-close').onclick = () => openDock(false);
-document.querySelectorAll('.dock-drag').forEach(initDockDrag);
-$('#act-toggle').onclick = () => DOCK.setAct(document.body.dataset.act !== 'open');
-initSplitter($('#split-dock'), 'dock');
-initSplitter($('#split-inner'), 'act');
+$('#a-drawer').onclick = () => openDock(!PANELS.agent.open);
+$('#act-toggle').onclick = () => {
+  const open = document.body.dataset.act !== 'open';
+  document.body.dataset.act = open ? 'open' : 'closed';
+  localStorage.setItem('dock.actOpen', open ? '1' : '0');
+  if (open) liveTick();
+};
 $('#chat-send').onclick = () => App.chat();
 $('#chat-new').onclick = () => App.newChat();
 $('#q').oninput = renderRows; $('#fstatus').onchange = renderRows; $('#fqueue').onchange = renderRows;
@@ -499,4 +567,4 @@ $('#export').onclick = () => {
 window.App = App;
 async function healthPill() { const s = await api('/api/health'); const h = $('#health');
   h.textContent = 'health: ' + (s.v || '?'); h.className = 'pill ' + (s.v || 'unknown'); h.title = s.detail || ''; setTimeout(healthPill, 60000); }
-DOCK.init(); loadGrid(); liveTick(); healthPill(); chatPoll();
+initPanels(); loadGrid(); liveTick(); healthPill(); chatPoll();

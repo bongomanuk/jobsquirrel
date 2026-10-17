@@ -6,10 +6,10 @@
 <title>Jobsquirrel</title>
 <link rel="stylesheet" href="/app.css">
 </head>
-<body data-session-token="{{TOKEN}}" data-dock="left" data-agent="closed" data-act="closed">
+<body data-session-token="{{TOKEN}}" data-act="closed">
 <header class="top">
   <div class="brand"><span class="mascot">🐿️</span><h1>Jobsquirrel</h1>
-    <span id="health" class="pill unknown">health…</span><span class="pill" title="UI build marker">WebUI v5</span></div>
+    <span id="health" class="pill unknown">health…</span><span class="pill" title="UI build marker">WebUI v6</span></div>
   <div class="actions">
     <button id="a-prepare" title="Safe: build tailored documents + run gates (REVIEW=1). Never submits.">⚡ Prepare</button>
     <button id="a-submit" class="risky" title="Applies to queued roles (submits). Requires approval.">🚀 Run Submissions</button>
@@ -20,36 +20,9 @@
 </header>
 
 <div id="app">
-  <aside id="dock" aria-label="Agent console">
-    <div class="dock-head">
-      <span class="dock-grip dock-drag" id="dock-grip" title="Drag to dock (left / top / bottom / right)">⠿</span>
-      <span class="dock-title dock-drag" title="Drag me to dock this panel">💬 Agent Console</span>
-      <span style="flex:1"></span>
-      <button id="dock-close" class="small" title="Collapse">✕</button>
-    </div>
-    <div class="panes" id="panes">
-      <section class="pane pane-chat">
-        <div class="pane-h">Chat <span id="agent-name" class="muted">…</span>
-          <span style="flex:1"></span>
-          <span id="chat-spin" class="spin hide" title="The agent is working…">🥜</span>
-          <button id="chat-new" class="small" title="Start a new conversation (clears this chat)">＋ New</button>
-        </div>
-        <div id="chat" class="term grow">ask the agent anything…</div>
-        <div class="row chat-in">
-          <input id="chatmsg" placeholder="e.g. apply to the top 5 prepared roles" style="flex:1"
-            onkeydown="if(event.key==='Enter')App.chat()"><button id="chat-send">Send</button>
-        </div>
-      </section>
-      <div class="splitter split-inner" id="split-inner" title="Drag to resize"></div>
-      <section class="pane pane-act" id="pane-act">
-        <button class="pane-h act-toggle" id="act-toggle" title="Show/hide activity">
-          <span class="chev">▸</span>Activity<span id="act-sum" class="muted">idle</span></button>
-        <div id="liveterm" class="term grow act-body">idle.</div>
-      </section>
-    </div>
-  </aside>
-  <div class="splitter split-dock" id="split-dock" title="Drag to resize"></div>
+  <div class="edge" data-edge="left"><div class="edge-panels" data-edge="left"></div><div class="splitter edge-split" data-edge="left" title="Drag to resize"></div></div>
   <div id="main">
+    <div class="edge" data-edge="top"><div class="edge-panels" data-edge="top"></div><div class="splitter edge-split" data-edge="top" title="Drag to resize"></div></div>
     <div class="strip">
       <div class="metrics" id="metrics"></div>
       <div class="livestrip" id="live"><span class="muted">idle — no run active</span></div>
@@ -85,18 +58,55 @@
         </div>
       </main>
     </div>
+    <div class="edge" data-edge="bottom"><div class="splitter edge-split" data-edge="bottom" title="Drag to resize"></div><div class="edge-panels" data-edge="bottom"></div></div>
   </div>
+  <div class="edge" data-edge="right"><div class="splitter edge-split" data-edge="right" title="Drag to resize"></div><div class="edge-panels" data-edge="right"></div></div>
 </div>
 
-<button id="dock-tab" class="dock-tab" title="Open agent console">💬 Agent</button>
+<button class="dock-tab" id="agent-tab" data-panel="agent" title="Open agent console">💬 Agent</button>
+<button class="dock-tab" id="detail-tab" data-panel="detail" title="Open detail" hidden>🔎 Detail</button>
 
 <div class="dockzone" id="zone-left"></div>
 <div class="dockzone" id="zone-right"></div>
 <div class="dockzone" id="zone-top"></div>
 <div class="dockzone" id="zone-bottom"></div>
 
-<aside id="detail" class="right">
-  <div class="drawer-head"><b id="d-title">detail</b><button id="d-close" class="small">✕</button></div>
+<aside class="panel" id="dock" data-panel="agent" aria-label="Agent console">
+  <div class="dock-head">
+    <span class="dock-grip dock-drag" data-panel="agent" title="Drag to dock (left / top / bottom / right)">⠿</span>
+    <span class="dock-title dock-drag" data-panel="agent" title="Drag me to dock this panel">💬 Agent Console</span>
+    <span style="flex:1"></span>
+    <button class="panel-close small" data-panel="agent" title="Collapse">✕</button>
+  </div>
+  <div class="panes" id="panes">
+    <section class="pane pane-chat">
+      <div class="pane-h">Chat <span id="agent-name" class="muted">…</span>
+        <span style="flex:1"></span>
+        <span id="chat-spin" class="spin hide" title="The agent is working…">🥜</span>
+        <button id="chat-new" class="small" title="Start a new conversation (clears this chat)">＋ New</button>
+      </div>
+      <div id="chat" class="term grow">ask the agent anything…</div>
+      <div class="row chat-in">
+        <input id="chatmsg" placeholder="e.g. apply to the top 5 prepared roles" style="flex:1"
+          onkeydown="if(event.key==='Enter')App.chat()"><button id="chat-send">Send</button>
+      </div>
+    </section>
+    <div class="splitter split-inner" id="split-inner" title="Drag to resize"></div>
+    <section class="pane pane-act" id="pane-act">
+      <button class="pane-h act-toggle" id="act-toggle" title="Show/hide activity">
+        <span class="chev">▸</span>Activity<span id="act-sum" class="muted">idle</span></button>
+      <div id="liveterm" class="term grow act-body">idle.</div>
+    </section>
+  </div>
+</aside>
+
+<aside class="panel" id="detail" data-panel="detail" aria-label="Detail">
+  <div class="dock-head">
+    <span class="dock-grip dock-drag" data-panel="detail" title="Drag to dock (left / top / bottom / right)">⠿</span>
+    <b id="d-title" class="dock-title dock-drag" data-panel="detail" style="font-weight:700">detail</b>
+    <span style="flex:1"></span>
+    <button class="panel-close small" data-panel="detail" title="Close">✕</button>
+  </div>
   <div class="tabs2" id="dtabs"></div>
   <div id="d-body" class="d-body muted">select a row…</div>
 </aside>

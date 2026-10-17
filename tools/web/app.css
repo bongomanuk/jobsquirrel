@@ -127,22 +127,25 @@ pre.doc{background:#07090c;border:1px solid var(--line);border-radius:var(--radi
 .tabs2 a{padding:7px 12px;color:var(--muted);cursor:pointer;font-weight:600;font-size:13px;border-bottom:2px solid transparent}
 .tabs2 a.on{color:var(--fg);border-bottom-color:var(--accent)}
 
-/* ---- app shell + dockable agent panel ---- */
+/* ---- app shell: shared dockable panels (edges) ---- */
 #app{flex:1;min-height:0;min-width:0;display:flex}
 #main{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
 .scroll{flex:1;min-height:0;overflow:auto}
 
-#dock{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;background:var(--surface);border:0 solid var(--line)}
-body[data-dock="left"] #app,body[data-dock="right"] #app{flex-direction:row}
-body[data-dock="top"] #app,body[data-dock="bottom"] #app{flex-direction:column}
-body[data-dock="left"] #dock{order:1;width:var(--dock-w,380px);border-right-width:1px}
-body[data-dock="right"] #dock{order:3;width:var(--dock-w,380px);border-left-width:1px}
-body[data-dock="top"] #dock{order:1;height:var(--dock-h,300px);width:100%;border-bottom-width:1px}
-body[data-dock="bottom"] #dock{order:3;height:var(--dock-h,300px);width:100%;border-top-width:1px}
-body[data-dock="left"] #main{order:3} body[data-dock="right"] #main{order:1}
-body[data-dock="top"] #main{order:3} body[data-dock="bottom"] #main{order:1}
-#split-dock{order:2}
-body[data-agent="closed"] #dock,body[data-agent="closed"] #split-dock{display:none}
+.edge{display:none;flex-direction:row;flex:0 0 auto;min-width:0;min-height:0;background:var(--surface)}
+.edge.has{display:flex}
+#app>.edge[data-edge="left"]{width:var(--edge-left,380px);border-right:1px solid var(--line)}
+#app>.edge[data-edge="right"]{width:var(--edge-right,380px);border-left:1px solid var(--line)}
+#main>.edge[data-edge="top"]{height:var(--edge-top,300px);border-bottom:1px solid var(--line)}
+#main>.edge[data-edge="bottom"]{height:var(--edge-bottom,300px);border-top:1px solid var(--line)}
+.edge[data-edge="top"],.edge[data-edge="bottom"]{flex-direction:column}
+
+.edge-panels{flex:1;min-width:0;min-height:0;display:flex;overflow:hidden}
+.edge[data-edge="left"] .edge-panels,.edge[data-edge="right"] .edge-panels{flex-direction:column}
+.edge[data-edge="top"] .edge-panels,.edge[data-edge="bottom"] .edge-panels{flex-direction:row}
+
+.panel{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden;background:var(--surface)}
+.panel[hidden]{display:none !important}
 
 .dock-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;flex:0 0 auto;
   border-bottom:1px solid var(--line);font-weight:700;font-size:13px}
@@ -166,13 +169,17 @@ body.dock-dragging .dockzone.on{opacity:1;background:rgba(245,158,11,.30)}
 .splitter{flex:0 0 auto;position:relative;background:none;z-index:6}
 .splitter::after{content:'';position:absolute;inset:0;background:var(--accent);opacity:0;transition:opacity .15s;border-radius:2px}
 .splitter:hover::after,.splitter.drag::after{opacity:.65}
-body[data-dock="left"] #split-dock,body[data-dock="right"] #split-dock{width:7px;cursor:col-resize}
-body[data-dock="left"] #split-dock::after,body[data-dock="right"] #split-dock::after{inset:0 3px}
-body[data-dock="top"] #split-dock,body[data-dock="bottom"] #split-dock{height:7px;cursor:row-resize}
-body[data-dock="top"] #split-dock::after,body[data-dock="bottom"] #split-dock::after{inset:3px 0}
+.edge[data-edge="left"] .edge-split,.edge[data-edge="right"] .edge-split{width:7px;cursor:col-resize}
+.edge[data-edge="left"] .edge-split::after,.edge[data-edge="right"] .edge-split::after{inset:0 3px}
+.edge[data-edge="top"] .edge-split,.edge[data-edge="bottom"] .edge-split{height:7px;cursor:row-resize}
+.edge[data-edge="top"] .edge-split::after,.edge[data-edge="bottom"] .edge-split::after{inset:3px 0}
+.edge[data-edge="left"] .split-panel,.edge[data-edge="right"] .split-panel{height:7px;cursor:row-resize}
+.edge[data-edge="left"] .split-panel::after,.edge[data-edge="right"] .split-panel::after{inset:3px 0}
+.edge[data-edge="top"] .split-panel,.edge[data-edge="bottom"] .split-panel{width:7px;cursor:col-resize}
+.edge[data-edge="top"] .split-panel::after,.edge[data-edge="bottom"] .split-panel::after{inset:0 3px}
 
 .panes{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;padding:10px;overflow:hidden}
-body[data-dock="top"] .panes,body[data-dock="bottom"] .panes{flex-direction:row}
+.edge[data-edge="top"] .panes,.edge[data-edge="bottom"] .panes{flex-direction:row}
 .pane{display:flex;flex-direction:column;gap:8px;min-height:0;min-width:0}
 .pane-chat{flex:1 1 auto}
 .pane-act{flex:0 0 auto}
@@ -195,23 +202,26 @@ body[data-act="closed"] .act-body,body[data-act="closed"] #split-inner{display:n
 
 /* inner splitter (chat vs activity) */
 .split-inner{flex:0 0 auto}
-body[data-dock="left"] .split-inner,body[data-dock="right"] .split-inner{height:7px;cursor:row-resize}
-body[data-dock="left"] .split-inner::after,body[data-dock="right"] .split-inner::after{inset:3px 0}
-body[data-dock="top"] .split-inner,body[data-dock="bottom"] .split-inner{width:7px;align-self:stretch;cursor:col-resize}
-body[data-dock="top"] .split-inner::after,body[data-dock="bottom"] .split-inner::after{inset:0 3px}
+.edge[data-edge="left"] .split-inner,.edge[data-edge="right"] .split-inner{height:7px;cursor:row-resize}
+.edge[data-edge="left"] .split-inner::after,.edge[data-edge="right"] .split-inner::after{inset:3px 0}
+.edge[data-edge="top"] .split-inner,.edge[data-edge="bottom"] .split-inner{width:7px;align-self:stretch;cursor:col-resize}
+.edge[data-edge="top"] .split-inner::after,.edge[data-edge="bottom"] .split-inner::after{inset:0 3px}
 
-/* pullout tab */
+/* pullout tabs (one per panel; positioned by the panel's edge) */
 .dock-tab{display:none;position:fixed;z-index:36;background:var(--surface2);color:var(--fg);border:1px solid var(--line);
   border-radius:10px;padding:8px 12px;font:700 12px var(--sans);cursor:pointer;align-items:center;gap:6px;
   box-shadow:0 6px 18px rgba(0,0,0,.4);transition:border-color .15s}
 .dock-tab:hover{border-color:var(--accent)}
-body[data-agent="closed"] .dock-tab{display:flex}
-body[data-dock="left"] .dock-tab{left:0;border-radius:0 10px 10px 0}
-body[data-dock="right"] .dock-tab{right:0;border-radius:10px 0 0 10px}
-body[data-dock="left"] .dock-tab,body[data-dock="right"] .dock-tab{
-  writing-mode:vertical-rl;top:calc(var(--top) + (100vh - var(--top)) / 2);transform:translateY(-50%);padding:12px 6px}
-body[data-dock="top"] .dock-tab{left:50%;transform:translateX(-50%);top:var(--top);border-radius:0 0 10px 10px}
-body[data-dock="bottom"] .dock-tab{left:50%;transform:translateX(-50%);bottom:0;border-radius:10px 10px 0 0}
+.dock-tab:not([hidden]){display:flex}
+.dock-tab[data-edge="left"]{left:0;border-radius:0 10px 10px 0}
+.dock-tab[data-edge="right"]{right:0;border-radius:10px 0 0 10px}
+.dock-tab[data-edge="left"],.dock-tab[data-edge="right"]{writing-mode:vertical-rl;
+  top:calc(var(--top) + (100vh - var(--top)) / 2);transform:translateY(-50%);padding:12px 6px}
+.dock-tab[data-edge="top"]{left:50%;transform:translateX(-50%);top:var(--top);border-radius:0 0 10px 10px}
+.dock-tab[data-edge="bottom"]{left:50%;transform:translateX(-50%);bottom:0;border-radius:10px 10px 0 0}
+.dock-tab.stacked[data-edge="left"],.dock-tab.stacked[data-edge="right"]{top:calc(var(--top) + (100vh - var(--top)) / 2 + 44px)}
+.dock-tab.stacked[data-edge="top"]{transform:translateX(calc(-50% + 52px))}
+.dock-tab.stacked[data-edge="bottom"]{transform:translateX(calc(-50% + 52px))}
 
 /* grouped tool blocks + collapsed code */
 .spin{display:inline-block;animation:nuts 1.1s linear infinite}
@@ -256,11 +266,7 @@ body.chat-busy .dock-tab::after{content:'🥜';margin-left:6px;display:inline-bl
 #grid thead th{position:sticky;top:0;z-index:2}
 #grid th[data-s]{cursor:pointer}
 #grid tbody tr.click{cursor:pointer}
-.right{position:fixed;top:0;right:0;height:100vh;width:min(700px,94vw);background:var(--surface);
-  border-left:1px solid var(--line);transform:translateX(102%);transition:transform .22s ease;z-index:35;
-  display:flex;flex-direction:column;overflow:hidden;box-shadow:-20px 0 40px rgba(0,0,0,.35)}
-.right.open{transform:none}
-.right .tabs2{padding:0 12px}
+#detail .tabs2{padding:0 12px}
 .d-body{padding:14px;overflow:auto;flex:1}
 .mini{font-size:12px}
 
