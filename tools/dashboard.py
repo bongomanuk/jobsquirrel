@@ -208,6 +208,62 @@ def start_action(name):
     return {"ok": f"started: {spec['purpose']}"}
 
 
+CHAT_LOG = os.path.join(LOGS, "dashboard-chat.log")
+_CHAT = {"proc": None}
+
+
+def chat_agent():
+    """Which agent CLI the chat will drive (agent-agnostic, via agent_run.sh)."""
+    try:
+        r = subprocess.run(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), "--which"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=10)
+        return (r.stdout or "").strip() or "?"
+    except (OSError, subprocess.SubprocessError):
+        return "?"
+
+
+def chat_start(message):
+    if _CHAT["proc"] and _CHAT["proc"].poll() is None:
+        return {"error": "a message is still running"}
+    message = (message or "").strip()[:8000]
+    if not message:
+        return {"error": "empty message"}
+    preamble = (
+        "You are the coding agent embedded in the Jobsquirrel dashboard, chatting with the operator "
+        "about their job-search pipeline (the repo root is the cwd). Answer concisely and use the "
+        "repo's tools when useful. Never take an irreversible action (submit an application, send "
+        "email, delete mail) without explicit approval; those tools enforce their own approval gates."
+    )
+    os.makedirs(LOGS, exist_ok=True)
+    with open(CHAT_LOG, "w", encoding="utf-8") as fh:
+        fh.write(f"> {message}\n\n")
+    f = open(CHAT_LOG, "a", encoding="utf-8")
+    _CHAT["proc"] = subprocess.Popen(
+        ["bash", os.path.join(ROOT, "tools", "agent_run.sh"), preamble + "\n\n---\n" + message],
+        cwd=ROOT, stdout=f, stderr=subprocess.STDOUT, start_new_session=True)
+    return {"ok": f"sent to {chat_agent()}"}
+
+
+def chat_tail(since):
+    try:
+        size = os.path.getsize(CHAT_LOG)
+    except OSError:
+        size = 0
+    running = bool(_CHAT["proc"] and _CHAT["proc"].poll() is None)
+    try:
+        since = max(0, min(int(since or 0), size))
+    except (TypeError, ValueError):
+        since = 0
+    text = ""
+    try:
+        with open(CHAT_LOG, encoding="utf-8", errors="ignore") as fh:
+            fh.seek(since)
+            text = ANSI.sub("", fh.read())
+    except OSError:
+        pass
+    return {"text": text, "offset": size, "running": running}
+
+
 INDEX = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Jobsquirrel</title>
@@ -258,6 +314,17 @@ button.risky{border-color:#6e2b2b;color:#ffb4b4}button:disabled{opacity:.5;curso
 <div class="cards" id="cards"></div>
 <div class="card"><div class="l">Queue progress</div><div id="qbar" class="bar"><i style="width:0%"></i></div>
 <div class="sub" id="qtext" style="margin-top:6px"></div></div>
+<h2>Chat <span class="muted" id="agentname" style="text-transform:none;letter-spacing:0"></span></h2>
+<div class="card">
+<div class="log" id="chat" style="max-height:34vh">ask the agent anything about your pipeline…</div>
+<div style="display:flex;gap:8px;margin-top:10px">
+<input id="chatmsg" placeholder="e.g. which interviews are coming up?"
+ style="flex:1;background:#0b0e12;border:1px solid var(--line);border-radius:8px;color:var(--fg);padding:8px 10px;font:13px ui-monospace,monospace"
+ onkeydown="if(event.key==='Enter')chatSend()">
+<button onclick="chatSend()">Send</button>
+</div>
+<div class="sub" id="chatst"></div>
+</div>
 <h2>Live</h2>
 <div class="card" id="live"><span class="muted">idle — no run active</span></div>
 <h2>Recent runs</h2>
@@ -313,7 +380,28 @@ async function liveTick(){
    d.tail.map(x=>x.k=='phase'?'<span class=p>▶ '+esc(x.t)+'</span>':'  '+esc(x.t)).join('\n')+'</div>';
  el.innerHTML=h;
 }
-tick();liveTick();setInterval(tick,3000);setInterval(liveTick,2000);
+tick();liveTick();agentName();setInterval(tick,3000);setInterval(liveTick,2000);
+let chatOffset=0, chatTimer=null;
+async function agentName(){try{const d=await j('/api/agent');document.getElementById('agentname').textContent='· via '+d.agent}catch(e){}}
+async function chatSend(){
+ const inp=document.getElementById('chatmsg'), msg=inp.value.trim(); if(!msg)return;
+ inp.value=''; document.getElementById('chatst').textContent='thinking…';
+ try{
+  const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json','X-Session':TOKEN},
+    body:JSON.stringify({message:msg})});
+  const d=await r.json();
+  if(d.error){document.getElementById('chatst').textContent=d.error;return}
+ }catch(e){document.getElementById('chatst').textContent='error: '+e;return}
+ chatOffset=0; document.getElementById('chat').textContent='';
+ if(!chatTimer) chatTimer=setInterval(chatPoll,1200);
+ chatPoll();
+}
+async function chatPoll(){
+ const d=await j('/api/chat/tail?since='+chatOffset);
+ if(d.text){const el=document.getElementById('chat'); el.textContent+=d.text; el.scrollTop=el.scrollHeight}
+ chatOffset=d.offset; document.getElementById('chatst').textContent=d.running?'running…':'';
+ if(!d.running && chatTimer){clearInterval(chatTimer);chatTimer=null}
+}
 </script></body></html>"""
 
 
@@ -343,12 +431,15 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/log":
             name = parse_qs(u.query).get("task", [""])[0]
             return self._send(200, "application/json", json.dumps(read_task_log(name)).encode())
+        if u.path == "/api/agent":
+            return self._send(200, "application/json", json.dumps({"agent": chat_agent()}).encode())
+        if u.path == "/api/chat/tail":
+            since = parse_qs(u.query).get("since", ["0"])[0]
+            return self._send(200, "application/json", json.dumps(chat_tail(since)).encode())
         self._send(404, "text/plain", b"not found")
 
     def do_POST(self):
         u = urlparse(self.path)
-        if u.path != "/api/action":
-            return self._send(404, "text/plain", b"not found")
         n = int(self.headers.get("Content-Length", "0") or 0)
         try:
             data = json.loads(self.rfile.read(n).decode() or "{}")
@@ -357,8 +448,11 @@ class Handler(BaseHTTPRequestHandler):
         # anti-CSRF: only our own page holds the session token
         if self.headers.get("X-Session") != SESSION_TOKEN:
             return self._send(403, "application/json", json.dumps({"error": "bad session token"}).encode())
-        res = start_action(data.get("action", ""))
-        return self._send(200, "application/json", json.dumps(res).encode())
+        if u.path == "/api/action":
+            return self._send(200, "application/json", json.dumps(start_action(data.get("action", ""))).encode())
+        if u.path == "/api/chat":
+            return self._send(200, "application/json", json.dumps(chat_start(data.get("message", ""))).encode())
+        self._send(404, "text/plain", b"not found")
 
 
 def main():

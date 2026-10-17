@@ -64,6 +64,10 @@ Everything is observable. Useful things to ask for, or run yourself:
   *Prepare (review)* is safe (REVIEW=1, no submits); *Apply queue* submits, so it is
   refused unless you started the dashboard with `APPROVE_RUN_QUEUE=1`, and it asks to
   confirm. Actions need a per-session token (anti-CSRF) and bind to `127.0.0.1`.
+  There's also a **chat panel** that drives whichever agent `tools/agent_run.sh`
+  resolves — opencode, Claude Code, `hermes`, `pi`, or any CLI you point `AGENT=` at
+  — streaming the reply into the page (agent-agnostic, same token gate). The chat
+  agent inherits the approval gates: it cannot send email or delete mail without them.
 - **Register**: `python3 tools/register.py --stats`;
   `python3 tools/register.py --list --status INTERVIEW`;
   `python3 tools/register.py --show "<Company>"`.
