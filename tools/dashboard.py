@@ -16,6 +16,7 @@ import mimetypes
 import os
 import re
 import secrets
+import signal
 import subprocess
 import sys
 import threading
@@ -706,15 +707,20 @@ def _record_chat_session(text):
 
 
 def chat_new():
-    """Start a fresh conversation (clears the transcript + session)."""
-    if _CHAT["proc"] and _CHAT["proc"].poll() is None:
-        return {"error": "a message is still running"}
-    for p in (CHAT_LOG, CHAT_SESSION):
+    """Clear the chat history: stop any running turn, then drop the transcript + session."""
+    p = _CHAT.get("proc")
+    if p and p.poll() is None:
         try:
-            os.remove(p)
+            os.killpg(os.getpgid(p.pid), signal.SIGTERM)
         except OSError:
             pass
-    return {"ok": "new conversation"}
+        _CHAT["proc"] = None
+    for path in (CHAT_LOG, CHAT_SESSION):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    return {"ok": "history cleared"}
 
 
 def chat_start(message):

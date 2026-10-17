@@ -119,7 +119,8 @@ const App = {
   newChat: async () => {
     const d = await api('/api/chat/new', {});
     if (d.error) { toast(d.error, true); return; }
-    CHAT = { segments: [], running: false }; setSpin(false); renderChat(); toast('new conversation');
+    clearInterval(CHAT_TIMER); CHAT_TIMER = null;
+    CHAT = { segments: [], running: false }; setSpin(false); renderChat(); toast('agent history cleared');
   },
   open: (i) => openDetail(GRID[i]),
   saveRow: async () => {
