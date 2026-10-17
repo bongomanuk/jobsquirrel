@@ -241,13 +241,13 @@ function grounding(r) {
   return '<div id="grd"><span class="muted">loading grounding…</span></div>';
 }
 
-window.docClose = () => $('#docv').classList.remove('open');
+window.docClose = () => $('#docv').classList.add('hide');
 window.viewDoc = async (rel, title) => {
   if (!rel) return;
   $('#docv-title').textContent = title || String(rel).split('/').pop();
   $('#docv-raw').href = '/raw?path=' + encodeURIComponent(rel);
   $('#docv-body').innerHTML = '<span class="muted">loading…</span>';
-  $('#docv').classList.add('open');
+  $('#docv').classList.remove('hide');
   const d = await api('/api/file?path=' + encodeURIComponent(rel));
   if (!d || d.error) { $('#docv-body').innerHTML = `<span class="muted">${esc((d && d.error) || 'not found')}</span>`; return; }
   if (d.kind === 'docx') $('#docv-body').innerHTML = `<div class="md">${d.html}</div>`;

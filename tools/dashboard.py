@@ -609,15 +609,19 @@ SAFE_DIRS = ("documents", "state", "config", "kb", "answers", "docs")
 
 
 def _safe_path(rel):
-    rel = (rel or "").lstrip("/")
+    """Resolve a viewable path: inside the repo (allow-listed top dir) or under $HOME
+    (recorded CVs/letters can be absolute paths outside the repo). Secrets always blocked."""
+    rel = (rel or "").strip()
     root = os.path.realpath(ROOT)
-    p = os.path.realpath(os.path.join(ROOT, rel))
-    if not p.startswith(root + os.sep):
+    home = os.path.realpath(os.path.expanduser("~"))
+    p = os.path.realpath(rel if os.path.isabs(rel) else os.path.join(ROOT, rel.lstrip("/")))
+    if p.startswith(root + os.sep):
+        top = p[len(root) + 1:].split(os.sep)[0]
+        if top not in SAFE_DIRS:
+            return None
+    elif not p.startswith(home + os.sep):
         return None
-    top = p[len(root) + 1:].split(os.sep)[0]
-    if top not in SAFE_DIRS:
-        return None
-    if any(x in p.lower() for x in ("token", "credential", ".env", "accounts.json", ".ssh")):
+    if any(x in p.lower() for x in ("token", "credential", ".env", "accounts.json", ".ssh", ".gnupg")):
         return None
     return p
 

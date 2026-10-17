@@ -239,6 +239,9 @@ body.chat-busy .dock-tab::after{content:'🥜';margin-left:6px;display:inline-bl
 .modal-box{width:min(680px,92vw);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px}
 .modal-box h2{margin-top:0;color:var(--fg);text-transform:none;letter-spacing:0}
 .hide{display:none !important}
+/* doc viewer: cap the height and scroll the body, else a long CV centres off-screen */
+#docv .modal-box{display:flex;flex-direction:column;max-height:88vh}
+#docv-body{min-height:0}
 
 /* single-grid layout */
 .strip{flex:0 0 auto;display:flex;gap:14px;align-items:center;padding:8px 18px;
