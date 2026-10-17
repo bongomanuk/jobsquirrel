@@ -67,6 +67,8 @@ case "$agent" in
     args=(--permission-mode "${CLAUDE_PERMISSION_MODE:-dontAsk}" --allowedTools "$allowed"
           --strict-mcp-config)   # no MCP servers: none are needed, and it keeps mail/social tools out of reach
     [ -n "${MODEL:-}" ] && args+=(--model "$MODEL")
+    # Structured event stream for the dashboard chat (opencode --format json equivalent).
+    [ "${AGENT_JSON:-}" = "1" ] && args+=(--output-format stream-json --verbose)
     # The prompt goes straight after -p: --allowedTools takes a variable number
     # of values and would otherwise swallow it.
     # shellcheck disable=SC2086  # CLAUDE_ARGS is a list of flags

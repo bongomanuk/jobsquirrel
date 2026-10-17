@@ -207,8 +207,9 @@ All POSTs require header `X-Session: <token>` (else 403); the token is injected 
 - Dark, high-contrast; amber accent; colour-coded status chips; squirrel mascot animates; empty-state-safe.
 - Degrades to empty state with no local data (safe on the public base).
 - **Agent console:** chat replies render as Markdown and each tool call collapses into a
-  toggle (parse is driven by the agent's JSON event stream, with a plain-transcript fallback),
-  so only the assistant's prose stays in the body; a token/cost footer closes the turn. Action
+  toggle, so only the assistant's prose stays in the body; a token/cost footer closes the turn.
+  Driven by the agent's structured event stream — opencode `--format json`, Claude Code
+  `stream-json` — with a plain-transcript fallback for any other `AGENT=` command. Action
   output is compressed to a headline + only the notable lines (errors/writes/counts), with the
   full log behind a toggle.
 
