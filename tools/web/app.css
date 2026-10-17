@@ -214,6 +214,11 @@ body[data-dock="top"] .dock-tab{left:50%;transform:translateX(-50%);top:var(--to
 body[data-dock="bottom"] .dock-tab{left:50%;transform:translateX(-50%);bottom:0;border-radius:10px 10px 0 0}
 
 /* grouped tool blocks + collapsed code */
+.spin{display:inline-block;animation:nuts 1.1s linear infinite}
+@keyframes nuts{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+.working{display:flex;align-items:center;gap:6px;margin:8px 0;font-size:13px}
+body.chat-busy #a-drawer::after{content:' 🥜';display:inline-block;animation:nuts 1.1s linear infinite}
+body.chat-busy .dock-tab::after{content:'🥜';margin-left:6px;display:inline-block;animation:nuts 1.1s linear infinite}
 .c-tools{margin:6px 0;border:1px solid var(--line);border-radius:8px;background:#0a0c10}
 .c-tools>summary{cursor:pointer;padding:5px 9px;color:var(--muted);font-size:12px;list-style:none}
 .c-tools>summary::-webkit-details-marker{display:none}
@@ -255,3 +260,12 @@ body[data-dock="bottom"] .dock-tab{left:50%;transform:translateX(-50%);bottom:0;
 .right .tabs2{padding:0 12px}
 .d-body{padding:14px;overflow:auto;flex:1}
 .mini{font-size:12px}
+
+/* legend */
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:14px}
+@media(max-width:720px){.legend{grid-template-columns:1fr}}
+.legend h4{margin:0 0 8px;color:var(--accent);font-size:12px;text-transform:uppercase;letter-spacing:.07em}
+.legend dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;align-items:baseline}
+.legend dt{font-weight:700;white-space:nowrap}
+.legend dd{margin:0;color:var(--muted);font-size:13px}
+.legend code{background:#0a0c10;border:1px solid var(--line);border-radius:4px;padding:0 5px;font:12px var(--mono)}
