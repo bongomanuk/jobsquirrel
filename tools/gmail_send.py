@@ -47,6 +47,14 @@ def main():
         print(body)
         return
 
+    # Sending email is risky and irreversible: require explicit human approval
+    # (interactive y/N, or APPROVE_SEND_EMAIL=1 for this one command).
+    import approval
+    if not approval.approved(f"sending email to {args.to} (subject: {args.subject!r})", "SEND-EMAIL"):
+        print("refused: sending email needs explicit approval "
+              "(answer y at the prompt, or set APPROVE_SEND_EMAIL=1 for this command).", file=sys.stderr)
+        sys.exit(4)
+
     svc = G.authenticate()
     sent = svc.users().messages().send(userId="me", body={"raw": raw}).execute()
     print("sent", sent.get("id"))
