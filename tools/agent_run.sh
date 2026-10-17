@@ -45,10 +45,12 @@ prompt="$1"
 
 case "$agent" in
   opencode)
+    fmt=()
+    [ "${AGENT_JSON:-}" = "1" ] && fmt+=(--format json)
     if [ -n "${MODEL:-}" ]; then
-      exec opencode run --model "$MODEL" "$prompt"
+      exec opencode run --model "$MODEL" "${fmt[@]}" "$prompt"
     fi
-    exec opencode run "$prompt"
+    exec opencode run "${fmt[@]}" "$prompt"
     ;;
   claude)
     # What a queue task needs: read/write files in the repo, search the web for
