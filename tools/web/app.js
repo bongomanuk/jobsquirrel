@@ -3,6 +3,23 @@ const TOKEN = document.body.dataset.sessionToken;
 const $ = (s) => document.querySelector(s);
 const esc = (s) => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const chip = (s) => `<span class="chip ${esc(s)}">${esc(s || '')}</span>`;
+const md = (s) => {
+  let t = esc(s || '');
+  t = t.replace(/```(?:\w+)?\n?([\s\S]*?)```/g, (m, c) => `<pre>${c.replace(/\n$/, '')}</pre>`);
+  t = t.replace(/^###### (.*)$/gm, '<h6>$1</h6>').replace(/^##### (.*)$/gm, '<h5>$1</h5>')
+    .replace(/^#### (.*)$/gm, '<h4>$1</h4>').replace(/^### (.*)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.*)$/gm, '<h2>$1</h2>').replace(/^# (.*)$/gm, '<h1>$1</h1>');
+  t = t.replace(/^\s*[-*+] (.*)$/gm, '<li>$1</li>');
+  t = t.replace(/(?:^<li>.*<\/li>\n?)+/gm, m => '<ul>' + m + '</ul>');
+  t = t.replace(/^&gt;\s?(.*)$/gm, '<blockquote>$1</blockquote>');
+  t = t.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/__([^_]+)__/g, '<b>$1</b>');
+  t = t.replace(/(^|[^*\w])\*([^*\n]+)\*/g, '$1<i>$2</i>').replace(/(^|[^_\w])_([^_\n]+)_/g, '$1<i>$2</i>');
+  t = t.replace(/`([^`]+)`/g, '<code>$1</code>');
+  t = t.replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  t = t.replace(/^\s*---+\s*$/gm, '<hr>');
+  t = t.replace(/^(?!<h\d|<ul|<li|<\/?ul|<pre|<\/?pre|<blockquote|<hr|\s*$)(.+)$/gm, '<p>$1</p>');
+  return t;
+};
 let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null;
 
 async function api(path, body) {
@@ -106,7 +123,8 @@ window.dt = (i) => {
   document.querySelectorAll('#dtabs a').forEach((a, n) => a.classList.toggle('on', n === i));
   $('#d-body').innerHTML = map[i](r) || '<span class="muted">—</span>';
 };
-const sec = (s) => `<pre class="doc">${s ? esc(s) : '(nothing yet)'}</pre>`;
+const sec = (s, raw) => s ? (raw ? `<pre class="doc">${esc(s)}</pre>` : `<div class="doc md">${md(s)}</div>`) : '<span class="muted">(nothing yet)</span>';
+const vbtn = (f, t) => f ? ` <button class="mini" onclick='viewDoc(${JSON.stringify(f)},"${t}")'>view</button>` : '';
 function summary(r) {
   const m = (D.match) || {};
   return `<div class="row" style="margin-bottom:10px"><span class="muted">status</span><select id="dt-status">` +
@@ -124,14 +142,30 @@ function prov() {
   if (!Object.keys(P).length) return '<span class="muted">no provenance recorded yet</span>';
   const sha = (s) => s ? `<span class="sha" title="copy" onclick="navigator.clipboard.writeText('${esc(s)}')">${esc(s.slice(0, 16))}…</span>` : '—';
   return `<table><tbody>` +
-    `<tr><td class="muted">CV</td><td>${esc(P.cv_file || '—')} ${sha(P.cv_sha256)}</td></tr>` +
-    `<tr><td class="muted">letter</td><td>${esc(P.letter_file || '—')} ${sha(P.letter_sha256)}</td></tr>` +
+    `<tr><td class="muted">CV</td><td>${esc(P.cv_file || '—')} ${sha(P.cv_sha256)}${vbtn(P.cv_file, 'CV')}</td></tr>` +
+    `<tr><td class="muted">letter</td><td>${esc(P.letter_file || '—')} ${sha(P.letter_sha256)}${vbtn(P.letter_file, 'Cover letter')}</td></tr>` +
     `<tr><td class="muted">confidence</td><td>${chip((P.confidence || '').toUpperCase())}</td></tr>` +
-    `<tr><td class="muted">evidence</td><td>${esc(P.evidence || '—')}</td></tr>` +
+    `<tr><td class="muted">evidence</td><td class="md">${P.evidence ? md(P.evidence) : '—'}</td></tr>` +
     `<tr><td class="muted">snapshot</td><td class="mini mono">${esc(P.snapshot_dir || '—')}</td></tr>` +
     `<tr><td class="muted">screenshots</td><td class="mini mono">${(P.screenshots || []).map(esc).join('<br>') || '—'}</td></tr></tbody></table>`;
 }
-const spec = () => sec(D.jd), ats = () => sec(D.ats), kb = () => sec(D.kb), tailored = () => sec(D.tailored_cv || D.letter);
+const spec = () => sec(D.jd), ats = () => sec(D.ats, true), kb = () => sec(D.kb), tailored = () => sec(D.tailored_cv || D.letter);
+
+window.docClose = () => $('#docv').classList.remove('open');
+window.viewDoc = async (rel, title) => {
+  if (!rel) return;
+  $('#docv-title').textContent = title || String(rel).split('/').pop();
+  $('#docv-raw').href = '/raw?path=' + encodeURIComponent(rel);
+  $('#docv-body').innerHTML = '<span class="muted">loading…</span>';
+  $('#docv').classList.add('open');
+  const d = await api('/api/file?path=' + encodeURIComponent(rel));
+  if (!d || d.error) { $('#docv-body').innerHTML = `<span class="muted">${esc((d && d.error) || 'not found')}</span>`; return; }
+  if (d.kind === 'docx') $('#docv-body').innerHTML = `<div class="md">${d.html}</div>`;
+  else if (d.kind === 'text') $('#docv-body').innerHTML = `<pre class="doc">${esc(d.text)}</pre>`;
+  else if (d.kind === 'pdf') $('#docv-body').innerHTML = `<embed src="${d.url}" type="application/pdf" style="width:100%;height:76vh">`;
+  else if (d.kind === 'image') $('#docv-body').innerHTML = `<img src="${d.url}" style="max-width:100%">`;
+  else $('#docv-body').innerHTML = `<a href="${d.url}" target="_blank">open ${esc(d.name)}</a>`;
+};
 
 /* ---------- live strip + drawer ---------- */
 async function liveTick() {
