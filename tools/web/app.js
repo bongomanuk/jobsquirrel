@@ -419,19 +419,32 @@ function prov() {
 const spec = () => sec(D.jd), ats = () => sec(D.ats, true), kb = () => sec(D.kb);
 function tailored() {
   const d = D.docs || {};
+  if (!d.cv && !d.cv_pdf && !d.letter && !d.letter_pdf) {
+    return '<span class="muted">No rendered documents yet — run Prepare (review).</span>';
+  }
+  const raw = (p) => '/raw?path=' + encodeURIComponent(p);
   setTimeout(async () => {
     const el = $('#tpre'); if (!el) return;
-    if (!d.cv) { el.innerHTML = '<span class="muted">No rendered documents for this role yet — run Prepare.</span>'; return; }
-    const f = await api('/api/file?path=' + encodeURIComponent(d.cv));
-    el.innerHTML = (f && f.kind === 'docx') ? `<div class="md">${f.html}</div>`
-      : `<span class="muted">${esc((f && f.error) || 'could not render')}</span>`;
+    if (d.cv_pdf) {                                       // embedded PDF viewer (the real rendered CV)
+      el.innerHTML = `<embed src="${raw(d.cv_pdf)}#view=FitH" type="application/pdf"
+        style="width:100%;height:74vh;border:1px solid var(--line);border-radius:8px">`;
+      return;
+    }
+    if (d.cv) {
+      const f = await api('/api/file?path=' + encodeURIComponent(d.cv));
+      el.innerHTML = (f && f.kind === 'docx') ? `<div class="md">${f.html}</div>`
+        : `<span class="muted">${esc((f && f.error) || 'could not render')}</span>`;
+      return;
+    }
+    el.innerHTML = '<span class="muted">no CV file for this role</span>';
   }, 0);
-  if (!d.cv && !d.letter) return '<span class="muted">No rendered documents yet — run Prepare (review).</span>';
   return `<div class="row" style="margin-bottom:8px">
-      ${d.cv ? `<button onclick='viewDoc(${JSON.stringify(d.cv)},"CV (rendered)")'>Open CV</button>` : ''}
-      ${d.cv_pdf ? `<a class="mini" style="align-self:center" href="/raw?path=${encodeURIComponent(d.cv_pdf)}" target="_blank">CV PDF ↗</a>` : ''}
-      ${d.letter ? `<button onclick='viewDoc(${JSON.stringify(d.letter)},"Cover letter (rendered)")'>Open cover letter</button>` : ''}</div>` +
-    `<div class="muted mini" style="margin-bottom:4px">RENDERED CV</div><div id="tpre">loading…</div>` +
+      ${d.cv_pdf ? `<button onclick='viewDoc(${JSON.stringify(d.cv_pdf)},"CV (PDF)")'>Open CV PDF</button>` : ''}
+      ${d.cv ? `<button onclick='viewDoc(${JSON.stringify(d.cv)},"CV (Word)")'>CV (Word)</button>` : ''}
+      ${d.letter_pdf ? `<button onclick='viewDoc(${JSON.stringify(d.letter_pdf)},"Cover letter (PDF)")'>Open cover letter PDF</button>` : ''}
+      ${d.letter ? `<button onclick='viewDoc(${JSON.stringify(d.letter)},"Cover letter (Word)")'>Cover letter (Word)</button>` : ''}
+      ${d.cv_pdf ? `<a class="mini" style="align-self:center" href="${raw(d.cv_pdf)}" target="_blank">open in a tab ↗</a>` : ''}</div>` +
+    `<div class="muted mini" style="margin-bottom:4px">CV${d.cv_pdf ? ' (PDF)' : ''}</div><div id="tpre">loading…</div>` +
     `<details style="margin-top:12px"><summary class="muted mini">content pack (JSON)</summary>` +
     `<pre class="doc">${esc((D.tailored_cv || '') + (D.letter ? '\n\n---\n' + D.letter : ''))}</pre></details>`;
 }

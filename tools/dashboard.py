@@ -467,6 +467,7 @@ def role_docs(key):
     out["cv"] = pick("*_CV_{k}.docx")
     out["cv_pdf"] = pick("*_CV_{k}.pdf")
     out["letter"] = pick("*_Motivation_{k}.docx") or pick("*_Letter_{k}.docx")
+    out["letter_pdf"] = pick("*_Motivation_{k}.pdf") or pick("*_Letter_{k}.pdf")
     return out
 
 
