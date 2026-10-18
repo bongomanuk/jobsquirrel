@@ -981,10 +981,10 @@ def chat_stream(run_id, since):
     _chat_pump()                                    # start the next queued message if the agent is free
     try:
         size = os.path.getsize(CHAT_LOG)
+        with open(CHAT_LOG, encoding="utf-8", errors="ignore") as fh:
+            text = ANSI.sub("", fh.read())
     except OSError:
-        size = 0
-    with open(CHAT_LOG, encoding="utf-8", errors="ignore") as fh:
-        text = ANSI.sub("", fh.read())
+        size, text = 0, ""                          # transcript cleared/not created yet
     _record_chat_session(text)
     running = bool(_CHAT["proc"] and _CHAT["proc"].poll() is None)
     kind = _json_kind(text)
