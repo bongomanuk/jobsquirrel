@@ -111,10 +111,12 @@ const App = {
       `<tr><td class="mini">${esc(r.title)}</td><td class="muted mini">${r.chars} chars</td></tr>`).join('') + '</tbody></table>';
   },
   chat: async () => {
-    const inp = $('#chatmsg'), m = inp.value.trim(); if (!m) return; inp.value = '';
+    const inp = $('#chatmsg'), m = inp.value.trim(); if (!m) return;
     CHAT.running = true; setSpin(true); renderChat();
     const d = await api('/api/chat', { message: m });
-    if (d.error) { toast(d.error, true); CHAT.running = false; setSpin(false); return; }
+    if (d.error) { toast(d.error, true); CHAT.running = false; setSpin(false); renderChat(); return; }  // keep your text
+    inp.value = '';
+    if (d.queued) toast(`queued — the agent is busy (${d.pending} waiting)`);
     chatOffset = 0; clearInterval(CHAT_TIMER); CHAT_TIMER = setInterval(chatPoll, 1200);
   },
   newChat: async () => {
@@ -485,8 +487,9 @@ async function chatPoll() {
   if (d.segments) { CHAT = d; renderChat(); }
   chatOffset = d.offset || chatOffset;
   setSpin(!!d.running);
-  if (d.running && !CHAT_TIMER) CHAT_TIMER = setInterval(chatPoll, 1200);
-  else if (!d.running && CHAT_TIMER) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; renderChat(); }
+  const active = d.running || (d.pending || 0) > 0;      // keep polling while a turn runs OR messages wait
+  if (active && !CHAT_TIMER) CHAT_TIMER = setInterval(chatPoll, 1200);
+  else if (!active && CHAT_TIMER) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; renderChat(); }
 }
 function toolBlock(s) {
   const tag = (s.tool && s.tool !== 'bash') ? esc(s.tool) + ' · ' : '$ ';

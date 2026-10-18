@@ -716,7 +716,7 @@ def raw_file(rel):
 # ---------------------------------------------------------------- chat
 CHAT_LOG = os.path.join(LOGS, "dashboard-chat.log")
 CHAT_SESSION = os.path.join(LOGS, "dashboard-chat.session")
-_CHAT = {"proc": None}
+_CHAT = {"proc": None, "queue": []}
 
 
 def chat_agent():
@@ -754,7 +754,8 @@ def _record_chat_session(text):
 
 
 def chat_new():
-    """Clear the chat history: stop any running turn, then drop the transcript + session."""
+    """Clear the chat history: stop any running turn, drop the queue, transcript + session."""
+    _CHAT["queue"] = []
     p = _CHAT.get("proc")
     if p and p.poll() is None:
         try:
@@ -770,30 +771,31 @@ def chat_new():
     return {"ok": "history cleared"}
 
 
-def chat_start(message):
-    if _CHAT["proc"] and _CHAT["proc"].poll() is None:
-        return {"error": "a message is still running"}
-    message = (message or "").strip()[:8000]
-    if not message:
-        return {"error": "empty message"}
-    preamble = (
-        "You are the operator assistant for THIS repository: the Jobsquirrel job-search pipeline. "
-        "The repo root is your cwd. Read AGENTS.md at the repo root first; it is your operating manual, "
-        "and the human in the chat is the candidate whose job search this pipeline runs. "
-        "Answer questions about the job search from the pipeline's own state, NOT from git history: "
-        "the canonical register is state/applications.csv with counts from `python3 tools/register.py --stats` "
-        "(also written to state/counts.md); the apply queue is state/queue*.tsv; what was sent to whom is "
-        "state/submissions.csv; conversion is `python3 tools/outcomes.py`. Treat 'updates', 'status' and "
-        "'how's it going' as job-search progress (applications, interviews, replies, queue) unless the "
-        "operator explicitly asks about the code. Be concise; use the repo's tools; never take an "
-        "irreversible action (submitting applications, sending email, deleting mail) without explicit approval.")
+CHAT_PREAMBLE = (
+    "You are the operator assistant for THIS repository: the Jobsquirrel job-search pipeline. "
+    "The repo root is your cwd. Read AGENTS.md at the repo root first; it is your operating manual, "
+    "and the human in the chat is the candidate whose job search this pipeline runs. "
+    "Answer questions about the job search from the pipeline's own state, NOT from git history: "
+    "the canonical register is state/applications.csv with counts from `python3 tools/register.py --stats` "
+    "(also written to state/counts.md); the apply queue is state/queue*.tsv; what was sent to whom is "
+    "state/submissions.csv; conversion is `python3 tools/outcomes.py`. Treat 'updates', 'status' and "
+    "'how's it going' as job-search progress (applications, interviews, replies, queue) unless the "
+    "operator explicitly asks about the code. Be concise; use the repo's tools; never take an "
+    "irreversible action (submitting applications, sending email, deleting mail) without explicit approval.")
+
+
+def _chat_echo(message):
     os.makedirs(LOGS, exist_ok=True)
+    with open(CHAT_LOG, "a", encoding="utf-8") as fh:
+        fh.write(f"\n> {message}\n")
+
+
+def _chat_spawn(message):
+    """Run one turn for `message` (the echo is written by the caller)."""
     sid = _chat_session()
     if not os.path.exists(CHAT_LOG):
         sid = ""                                    # transcript gone -> start fresh
-    prompt = message if sid else (preamble + "\n\n---\n" + message)
-    with open(CHAT_LOG, "a", encoding="utf-8") as fh:
-        fh.write(f"\n> {message}\n")
+    prompt = message if sid else (CHAT_PREAMBLE + "\n\n---\n" + message)
     f = open(CHAT_LOG, "a", encoding="utf-8")
     env = dict(os.environ, AGENT_JSON="1")
     if sid:
@@ -801,7 +803,29 @@ def chat_start(message):
     _CHAT["proc"] = subprocess.Popen(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), prompt],
                                      cwd=ROOT, env=env, stdout=f, stderr=subprocess.STDOUT,
                                      start_new_session=True)
-    return {"status": "queued", "run_id": "chat", "agent": chat_agent(), "continued": bool(sid)}
+
+
+def _chat_pump():
+    """Start the next queued message if the agent is free."""
+    proc = _CHAT.get("proc")
+    if proc and proc.poll() is None:
+        return
+    q = _CHAT.get("queue") or []
+    if q:
+        _chat_spawn(q.pop(0))
+
+
+def chat_start(message):
+    message = (message or "").strip()[:8000]
+    if not message:
+        return {"error": "empty message"}
+    if _CHAT.get("proc") and _CHAT["proc"].poll() is None:
+        _CHAT.setdefault("queue", []).append(message)      # queue it — never lose the message
+        _chat_echo(message)
+        return {"status": "queued", "queued": True, "pending": len(_CHAT["queue"])}
+    _chat_echo(message)
+    _chat_spawn(message)
+    return {"status": "queued", "run_id": "chat", "agent": chat_agent(), "pending": 0}
 
 
 CHAT_USER = re.compile(r"^>\s?(.*)$")
@@ -954,6 +978,7 @@ def _json_kind(text):
 
 
 def chat_stream(run_id, since):
+    _chat_pump()                                    # start the next queued message if the agent is free
     try:
         size = os.path.getsize(CHAT_LOG)
     except OSError:
@@ -969,7 +994,9 @@ def chat_stream(run_id, since):
         segs = chat_parse_claude(text)
     else:
         segs = chat_parse(text)
-    return {"segments": segs, "offset": size, "running": running, "done": not running}
+    pending = len(_CHAT.get("queue") or [])
+    return {"segments": segs, "offset": size, "running": running, "pending": pending,
+            "done": not running and not pending}
 
 
 # ---------------------------------------------------------------- actions

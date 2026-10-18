@@ -182,7 +182,8 @@ Clicking a row opens a drawer with tabs:
   `opencode`, `claude`, or any `AGENT=` CLI.
 - `POST /api/chat` + `GET /api/chat/stream` return **typed segments** (user / tool / text / status);
   the conversation persists across messages (session pinned; `＋ New` resets), tool runs collapse,
-  and a spinner shows while working.
+  and a spinner shows while working. A message sent while the agent is busy is **queued** (never
+  rejected) and runs in order; the UI keeps polling while messages wait.
 
 ### 9.8 HTTP API
 
