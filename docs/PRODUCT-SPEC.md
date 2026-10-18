@@ -76,6 +76,10 @@ Components:
 
 `SUBMITTED | IN_PROGRESS | INTERVIEW | OFFER | REJECTED | BLOCKED | MANUAL | PREPARED | CLOSED`.
 
+- **Engagement type** (`employment` in the register; shown as a per-row badge, editable in
+  the drawer, filterable in the toolbar): `full-time | part-time | contract | consultant |
+  freelance | internship | temporary`. Set explicitly on the row; otherwise guessed from the
+  saved job ad, then the notes; `unknown` when nothing says.
 - `INTERVIEW` splits into three display labels (the stored status stays `INTERVIEW`,
   derived from the notes): **`SCHEDULED`** (a future interview is booked), **`INVITED`**
   (being arranged, no confirmed time), and plain **`INTERVIEW`** (held — awaiting the outcome).

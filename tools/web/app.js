@@ -277,7 +277,7 @@ const App = {
     const d = await api('/api/kb/rebuild', {}); toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true); else { LIVE_RUNNING = false; $('#peras').classList.add('hide'); }
   },
   saveRow: async () => {
-    const d = await api('/api/register/row', { company: CUR.company, role: CUR.role, status: $('#dt-status').value, notes: $('#dt-notes').value });
+    const d = await api('/api/register/row', { company: CUR.company, role: CUR.role, status: $('#dt-status').value, notes: $('#dt-notes').value, employment: $('#dt-emp') ? $('#dt-emp').value : undefined });
     toast(d.ok || d.error, !!d.error); if (!d.error) { loadGrid(); }
   },
 };
@@ -319,11 +319,13 @@ async function gridTick() {                 // keep the grid live (faster while 
 }
 function renderRows() {
   const q = $('#q').value.toLowerCase(), st = $('#fstatus').value, qq = $('#fqueue').value;
+  const ft = $('#ftype') ? $('#ftype').value : '';
   const cy = String(new Date().getFullYear());
   const shortDate = (d) => { const [y, m, dd] = d.split('-'); return y === cy ? `${m}-${dd}` : `${y.slice(2)}-${m}-${dd}`; };
   const disp = (r) => r.label || r.status;               // INTERVIEW rows show SCHEDULED when an interview is still ahead
   const statusMatch = (r) => !st || (st === 'INTERVIEW' ? ['INTERVIEW', 'SCHEDULED', 'INVITED'].includes(disp(r)) : disp(r) === st);
-  let rows = GRID.filter(r => statusMatch(r) && (!qq || r.queue === qq) &&
+  const typeMatch = (r) => !ft || (ft === '__none' ? !r.employment : (r.employment || '') === ft);
+  let rows = GRID.filter(r => statusMatch(r) && typeMatch(r) && (!qq || r.queue === qq) &&
     (!q || (r.company + ' ' + r.role + ' ' + (r.ats || '')).toLowerCase().includes(q)));
   if (SPECIAL === 'in_process') rows = rows.filter(r => ['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER'].includes(r.status));
   else if (SPECIAL === 'blocked') rows = rows.filter(r => ['BLOCKED', 'MANUAL'].includes(r.status));
@@ -346,7 +348,7 @@ function renderRows() {
     return `<tr class="click" onclick="App.open(${i})">` +
       `<td class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet — queued, not applied')}>${r.date ? esc(shortDate(r.date)) : '—'}</td>` +
       `<td${T(r.company + '  ·  employer / recruiter')}>${(r.running || PENDING.has(r.key)) ? '<span class="spin" title="Being worked on now">🥜</span> ' : ''}${esc(r.company)}</td>` +
-      `<td${T(r.role + '  ·  job title')}>${esc(r.role)}</td>` +
+      `<td${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}</td>` +
       `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
       `<td>${chip(r.label || r.status)}${r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : ''}</td><td>${mbadge(r)}</td>` +
       `<td${T(QUEUE_HELP[r.queue] || 'Not in any queue')}>${['pending', 'human', 'retry'].includes(r.queue)
@@ -393,12 +395,15 @@ function summary(r) {
         const cell = (k, label) => `<span class="stage ${st[k] ? 'on' : ''}" title="${st[k] ? 'done' : 'not yet'}">${st[k] ? '✓' : '○'} ${label}</span>`;
         return cell('ad', 'Ad saved') + cell('keywords', 'Keywords') + cell('grounding', 'Grounded') + cell('documents', 'Documents') + cell('applied', 'Applied');
       })()}</div>
-      <div class="state-meta mini muted">ATS: ${esc(r.ats || '—')} · Queue: ${esc(r.queue || 'not queued')}${r.date ? ' · updated ' + esc(r.date) : ''}${r.interview_at ? ' · interview ' + esc(r.interview_at) : ''} · <span class="mono">${esc(r.key)}</span></div>
+      <div class="state-meta mini muted">ATS: ${esc(r.ats || '—')}${r.employment ? ' · type: ' + esc(r.employment) : ''} · Queue: ${esc(r.queue || 'not queued')}${r.date ? ' · updated ' + esc(r.date) : ''}${r.interview_at ? ' · interview ' + esc(r.interview_at) : ''} · <span class="mono">${esc(r.key)}</span></div>
       ${r.running ? '<div class="working"><span class="spin">🥜</span> being worked on right now</div>' : ''}
     </div>` +
     `<div class="row" style="margin:6px 0 10px"><span class="muted">Set status</span>
       <select id="dt-status"><option value="">— keep as ${esc(r.label || r.status || 'is')} —</option>` +
       reg.map(x => `<option ${x === r.status ? 'selected' : ''}>${x}</option>`).join('') + '</select>' +
+      `<span class="muted">Type</span><select id="dt-emp">` +
+      ['', 'full-time', 'part-time', 'contract', 'consultant', 'freelance', 'internship', 'temporary']
+        .map(x => `<option value="${x}" ${x === (r.employment || '') ? 'selected' : ''}>${x || '— unknown —'}</option>`).join('') + '</select>' +
       `<button onclick="App.saveRow()">Save</button>
       <button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>Prepare this role</button>
       ${r.status === 'PREPARED' ? `<button class="risky" data-act onclick='App.submitThis(${JSON.stringify(r.key)})' title="Submit this application now with the documents already prepared — sends it, needs approval">🚀 Submit this application</button>` : ''}
@@ -909,11 +914,12 @@ $('#chat-new').onclick = () => App.newChat();
 $('#q').oninput = renderRows;
 $('#fstatus').onchange = () => { SPECIAL = ''; ACTIVE_METRIC = ''; document.querySelectorAll('#metrics .metric').forEach(m => m.classList.remove('on')); renderRows(); };
 $('#fqueue').onchange = () => { SPECIAL = ''; ACTIVE_METRIC = ''; document.querySelectorAll('#metrics .metric').forEach(m => m.classList.remove('on')); renderRows(); };
+$('#ftype').onchange = () => renderRows();
 $('#a-prepare-shown').onclick = () => App.prepareShown();
 $('#a-submit-shown').onclick = () => App.submitPrepared();
 $('#a-match').onclick = () => App.matchShown($('#a-match'));
 $('#export').onclick = () => {
-  const cs = ['date', 'company', 'role', 'ats', 'status', 'match', 'queue', 'applied', 'spec', 'key'];
+  const cs = ['date', 'company', 'role', 'employment', 'ats', 'status', 'match', 'queue', 'applied', 'spec', 'key'];
   const body = GRID.map(r => cs.map(c => JSON.stringify(r[c] == null ? '' : r[c])).join(',')).join('\n');
   const url = URL.createObjectURL(new Blob([cs.join(',') + '\n' + body], { type: 'text/csv' }));
   const a = document.createElement('a'); a.href = url; a.download = 'jobsquirrel.csv'; a.click(); URL.revokeObjectURL(url);

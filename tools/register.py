@@ -28,7 +28,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSV_PATH = os.environ.get("APPLICATIONS_CSV", os.path.join(ROOT, "state", "applications.csv"))
 MD_PATH = os.environ.get("APPLICATIONS_MD", os.path.join(ROOT, "state", "applications-register.md"))
 LOCK_PATH = CSV_PATH + ".lock"
-FIELDS = ["date", "company", "role", "ats", "status", "letter", "notes"]
+FIELDS = ["date", "company", "role", "ats", "status", "letter", "notes", "employment"]
 STATUSES = ["QUEUED", "SUBMITTED", "INTERVIEW", "OFFER", "REJECTED", "BLOCKED", "MANUAL",
             "PREPARED", "IN_PROGRESS", "CLOSED"]
 # Statuses that count as a live process - an application we have sent and are
@@ -87,7 +87,7 @@ def _key(company, role):
     return (company.strip().lower(), role.strip().lower())
 
 
-def upsert(company, role, status, day="", ats="", letter="", notes=""):
+def upsert(company, role, status, day="", ats="", letter="", notes="", employment=""):
     """Insert or update the single row for (company, role). Returns the row."""
     with locked():
         rows = load()
@@ -103,11 +103,14 @@ def upsert(company, role, status, day="", ats="", letter="", notes=""):
                     r["letter"] = letter
                 if notes:
                     r["notes"] = notes
+                if employment:
+                    r["employment"] = employment
                 save(rows)
                 render(silent=True)
                 return r
         r = {"date": day or date.today().isoformat(), "company": company, "role": role,
-             "ats": ats, "status": status, "letter": letter, "notes": notes}
+             "ats": ats, "status": status, "letter": letter, "notes": notes,
+             "employment": employment}
         rows.append(r)
         save(rows)
         render(silent=True)
@@ -127,7 +130,7 @@ def delete(company, role):
         return removed
 
 
-def set_row(company, role, status="", note=""):
+def set_row(company, role, status="", note="", employment=None):
     """Update exactly one row (company+role): set status and/or append a note."""
     with locked():
         rows = load()
@@ -139,6 +142,8 @@ def set_row(company, role, status="", note=""):
                     r["status"] = status
                 if note:
                     r["notes"] = (r["notes"] + " | " if r["notes"] else "") + note
+                if employment is not None:
+                    r["employment"] = employment.strip()
                 n += 1
         if n:
             save(rows)
@@ -242,13 +247,13 @@ def render(silent=False):
         group.sort(key=lambda r: (r["date"], r["company"].lower(), r["role"].lower()))
         lines.append(f"## {GROUP_TITLES[status]} ({len(group)})")
         lines.append("")
-        lines.append("| Date | Company | Role | ATS | Notes |")
-        lines.append("|---|---|---|---|---|")
+        lines.append("| Date | Company | Role | Type | ATS | Notes |")
+        lines.append("|---|---|---|---|---|---|")
         for r in group:
             note = r["notes"]
             if r["letter"]:
                 note = (note + " " if note else "") + f"letter: `{r['letter']}`"
-            lines.append(f"| {r['date']} | {r['company']} | {r['role']} | {r['ats']} | {note} |")
+            lines.append(f"| {r['date']} | {r['company']} | {r['role']} | {r.get('employment','')} | {r['ats']} | {note} |")
         lines.append("")
     with open(MD_PATH, "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines))
@@ -272,6 +277,8 @@ def main():
     ap.add_argument("--ats", default="")
     ap.add_argument("--letter", default="")
     ap.add_argument("--notes", default="")
+    ap.add_argument("--employment", default="",
+                    help="engagement type: full-time | part-time | contract | consultant | freelance | internship | temporary")
     args = ap.parse_args()
 
     # --company/--role/--notes only mean something with --set or --delete. Without
@@ -288,7 +295,8 @@ def main():
     elif args.set:
         if not args.company or not args.role or not args.status:
             ap.error("--set requires --company, --role and --status")
-        row = upsert(args.company, args.role, args.status.upper(), args.date, args.ats, args.letter, args.notes)
+        row = upsert(args.company, args.role, args.status.upper(), args.date, args.ats,
+                     args.letter, args.notes, args.employment)
         print(f"set {row['status']}: {row['company']} — {row['role']}")
     elif args.stats:
         stats()

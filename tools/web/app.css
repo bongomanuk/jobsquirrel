@@ -290,6 +290,7 @@ body[data-act="closed"] .act-body,body[data-act="closed"] #split-inner{display:n
 #detail .tabs2{padding:0 12px}
 .d-body{padding:14px;overflow:auto;flex:1}
 .mini{font-size:12px}
+.etag{font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:0 5px;margin-left:4px;vertical-align:1px}
 
 /* settings */
 .settings{display:grid;grid-template-columns:190px 1fr;gap:16px;flex:1;min-height:0;margin-top:12px}

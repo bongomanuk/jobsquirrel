@@ -42,6 +42,12 @@
             <option>REJECTED</option><option>BLOCKED</option><option>MANUAL</option><option>PREPARED</option><option>CLOSED</option></select>
           <select id="fqueue"><option value="">any queue</option><option value="pending">pending</option>
             <option value="human">human-assist</option><option value="retry">retry</option><option value="finished">finished</option></select>
+          <select id="ftype" title="Filter by engagement type (read from the job ad, or set per row in the drawer)">
+            <option value="">any type</option>
+            <option value="full-time">full-time</option><option value="part-time">part-time</option>
+            <option value="contract">contract</option><option value="consultant">consultant</option>
+            <option value="freelance">freelance</option><option value="internship">internship</option>
+            <option value="temporary">temporary</option><option value="__none">unknown</option></select>
           <button id="export">Export CSV</button>
           <button id="a-prepare-shown" title="Generate documents for the rows shown — runs the agent per role (a few minutes each); nothing is submitted">⚡ Prepare shown</button>
           <button id="a-submit-shown" class="risky" title="Submit the PREPARED rows shown, with the documents already generated — sends applications; needs approval">🚀 Submit prepared</button>

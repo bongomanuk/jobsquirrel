@@ -180,12 +180,12 @@ def provenance(company, role):
     return {}
 
 
-def update_row(company, role, status, note):
+def update_row(company, role, status, note, employment=None):
     if not (company and role):
         return {"error": "company and role required"}
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import register as REG
-    REG.set_row(company, role, status=(status or "").upper(), note=note or "")
+    REG.set_row(company, role, status=(status or "").upper(), note=note or "", employment=employment)
     return {"ok": f"updated {company} / {role}"}
 
 
@@ -194,7 +194,17 @@ def _queue_rows(path):
     out = []
     for ln in _lines(path):
         p = (ln.split("\t") + [""] * 6)[:6]
-        out.append({"company": p[0], "role": p[1], "url": p[2], "cv": p[3], "ats": p[4], "key": p[5]})
+        # Some queues (queue-human.tsv) put a reason in the 6th column rather
+        # than a key; never mistake that for the key -- derive the slug instead.
+        key = p[5]
+        reason = ""
+        if not re.fullmatch(r"[a-z0-9._-]{3,}", key or ""):
+            reason, key = key, _slug(f"{p[0]}-{p[1]}")
+        ats, letter = p[4], ""
+        if ats.lower().endswith((".docx", ".pdf")):     # human queue carries the letter here
+            letter, ats = ats, ""
+        out.append({"company": p[0], "role": p[1], "url": p[2], "cv": p[3], "ats": ats,
+                    "key": key, "reason": reason, "letter": letter})
     return out
 
 
@@ -369,6 +379,90 @@ def _save_cov():
         _cov_dirty = False
     except OSError:
         pass
+
+
+# Employment/engagement type: the register field wins; otherwise guess it from
+# the saved job ad. Persisted (with the JD's mtime) so the grid stays cheap.
+EMP_FILE = os.path.join(LOGS, "dashboard-employment.json")
+_EMP, _emp_loaded, _emp_dirty = {}, False, False
+EMPLOYMENT_TYPES = ["full-time", "part-time", "contract", "consultant",
+                    "freelance", "internship", "temporary"]
+# Ordered checks; the first that matches wins. Deliberately conservative so a
+# job title like "Senior Consultant" at a consultancy isn't mistaken for a
+# consultancy engagement, and "permanent contract" reads as full-time.
+_EMP_CHECKS = (
+    ("freelance", lambda t: re.search(r"freelance|freelancer", t)),
+    ("part-time", lambda t: re.search(r"part[- ]time", t)),
+    ("internship", lambda t: re.search(r"internship|\bintern\b|\bpraktik\b", t)),
+    ("temporary", lambda t: re.search(r"\btemporary\b|maternity cover|parental cover|\bvikariat\b", t)),
+    ("consultant", lambda t: re.search(r"\bconsultant (contract|role|engagement|position|basis)"
+                                       r"|\bas a consultant\b|independent consultant"
+                                       r"|consultancy contract|freelance consultant", t)),
+    ("contract", lambda t: re.search(r"fixed[- ]term|\bcontractor\b|\bb2b\b|day rate|\binterim\b"
+                                     r"|outside ir35|inside ir35"
+                                     r"|\b\d+[- ]?(month|year)s?[- ]contract\b"
+                                     r"|\bcontract (role|position|basis|assignment|work|employment|"
+                                     r"duration|length|to hire|of \d)\b|\bon a contract\b", t)),
+    ("full-time", lambda t: re.search(r"full[- ]time|permanent|\bfte\b|tillsvidare|direct hire", t)),
+)
+
+
+def _load_emp():
+    global _emp_loaded
+    if _emp_loaded:
+        return
+    _emp_loaded = True
+    try:
+        with open(EMP_FILE, encoding="utf-8") as fh:
+            _EMP.update(json.load(fh))
+    except (OSError, ValueError):
+        pass
+
+
+def _save_emp():
+    global _emp_dirty
+    if not _emp_dirty:
+        return
+    try:
+        os.makedirs(LOGS, exist_ok=True)
+        tmp = EMP_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(_EMP, fh)
+        os.replace(tmp, EMP_FILE)
+        _emp_dirty = False
+    except OSError:
+        pass
+
+
+def _employment_from_jd(key):
+    """Engagement type read from the saved job ad (cached by the ad's mtime)."""
+    path = os.path.join(STATE, "job-descriptions", key + ".md")
+    mt = _mtime(path)
+    if not mt:
+        return ""
+    hit = _EMP.get(key) or {}
+    if hit.get("mt") == mt:
+        return hit.get("type", "")
+    text = _read(path, 30000).lower()
+    etype = ""
+    for name, check in _EMP_CHECKS:
+        if check(text):
+            etype = name
+            break
+    _EMP[key] = {"mt": mt, "type": etype}
+    globals()["_emp_dirty"] = True
+    return etype
+
+
+def _employment_from_notes(notes):
+    """Engagement type guessed from the register notes (weaker signal than the ad)."""
+    t = (notes or "").lower()
+    if not t:
+        return ""
+    for name, check in _EMP_CHECKS:
+        if check(t):
+            return name
+    return ""
 
 
 def _doc_text(path):
@@ -703,7 +797,7 @@ def _interview_label(status, notes):
 def grid():
     """One row per application: register ⋈ queue ⋈ in-flight running tasks ⋈ provenance."""
     apps = _rows(os.path.join(STATE, "applications.csv"))
-    _load_cov()
+    _load_cov(); _load_emp()
     km, cvmap = _key_maps()
     qstate, qrow = {}, {}
     for st, path in (("pending", "queue.tsv"), ("human", "queue-human.tsv"), ("retry", "queue.retry")):
@@ -763,8 +857,11 @@ def grid():
                     "INVITED": "interview requested — reply and get a time booked"}.get(
                         label, (f"interview held {interview_at} — awaiting the outcome" if interview_at
                                 else "interview held — awaiting the outcome"))
+        employment = ((r.get("employment") or "").strip().lower()
+                      or _employment_from_jd(key) or _employment_from_notes(notes))
         out.append({"date": r.get("date", ""), "company": co, "role": role, "ats": r.get("ats", ""),
                     "status": status, "label": label, "interview_at": interview_at, "key": key,
+                    "employment": employment,
                     "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, ""),
                     "spec": key in specs, "applied": ck in subm,
                     "match": cov, "alignment": align, "running": ck in running,
@@ -798,12 +895,13 @@ def grid():
             stg = "QUEUED"
         out.append({"date": qdate, "company": co, "role": role, "ats": r.get("ats", ""),
                     "status": stg, "label": stg, "interview_at": "", "key": key,
+                    "employment": r.get("employment", "") or _employment_from_jd(key),
                     "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, "pending"),
                     "spec": key in specs, "applied": ck in subm,
                     "match": cov, "alignment": m.get("alignment", ""), "running": ck in running,
                     "notes": "", "letter": "", "url": r.get("url", ""), "stages": st,
                     "hint": _hint(stg, "")})
-    _save_cov()
+    _save_cov(); _save_emp()
     out.sort(key=lambda x: (x["date"] or ""), reverse=True)
     out.sort(key=lambda x: 0 if x["running"] else (1 if x["status"] == "QUEUED" else 2))
     return out
@@ -2029,7 +2127,8 @@ class H(BaseHTTPRequestHandler):
         data = self._body()
         if p == "/api/register/row":
             return self._json(update_row(data.get("company", ""), data.get("role", ""),
-                                         data.get("status", ""), data.get("notes", "")))
+                                         data.get("status", ""), data.get("notes", ""),
+                                         data.get("employment")))
         if p == "/api/queue/action":
             return self._json(queue_action(data.get("action", ""), data.get("company", ""), data.get("role", "")))
         if p == "/api/roles/discover":
