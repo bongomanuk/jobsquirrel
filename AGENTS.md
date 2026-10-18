@@ -154,6 +154,16 @@ LIGHT=1 FIXED_CV=documents/archetypes/<Prefix>_CV_<Archetype>.docx PARALLEL=3 ba
 
 **E. One role, manually**: follow §4 (for a single URL or a retry).
 
+**F. Submit what's already prepared** (reuse the gated CV/letter, no re-generation)
+The dashboard's **🚀 Submit prepared** (grid) / **Submit this application** (a `PREPARED`
+row's drawer) build a scoped queue and run `run_queue.sh` over just those rows: the runner
+reuses the existing artifacts (§0d), re-runs the gates and applies. Requires
+`APPROVE_RUN_QUEUE`. Equivalent CLI:
+
+```bash
+QUEUE=<tmp-queue> DONE=<tmp.done> bash tools/run_queue.sh
+```
+
 Common to batch modes:
 - Queue file `state/queue.tsv`: `company  role  url  cv-archetype  ats  key`.
 - **Most-senior-first** by default (`PRIORITISE=1`); `prioritise_queue.py` sorts the file.

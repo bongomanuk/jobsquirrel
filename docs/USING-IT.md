@@ -24,6 +24,7 @@ built-in procedures:
 | *"Find new senior roles and queue them"* | `discover.py` (+ web search) → `state/queue.tsv`, prioritised most-senior-first |
 | *"What's in the queue?"* | shows pending rows and the order they'll run |
 | *"Prepare documents for the top 5, don't send"* | `REVIEW=1 … run_queue.sh`: builds + gates, records `PREPARED` |
+| *"Submit the prepared ones"* | *🚀 Submit prepared* (grid) or *Submit this application* (drawer): reuses the already-gated CV/letter and applies — two-step confirmation (`APPROVE_RUN_QUEUE`) |
 | *"Run the pipeline"* / *"Apply to the queue"* | `PARALLEL=3 bash tools/run_queue.sh`, most senior first |
 | *"Use one fixed CV for these"* | `LIGHT=1 FIXED_CV=<path> … run_queue.sh` |
 | *"Apply to just this one: <url>"* | the per-role manual procedure (`AGENTS.md` §4) |
@@ -74,8 +75,10 @@ Everything is observable. Useful things to ask for, or run yourself:
     **Knowledge base** (list / upload / delete source documents, rebuild the index), **GraphRAG**
     (browse entities, relationships, communities and documents), and **Profile & CV** (edit
     `profile.md` / `cv.json` / `archetypes.json`, regenerate the archetype CVs).
-  - It can **start runs** from buttons: *Prepare (review)* is safe (REVIEW=1, no submits); *Apply
-    queue* submits, so it needs a two-step confirmation (`APPROVE_RUN_QUEUE`). Every action needs
+  - It can **start runs** from buttons: *Prepare (review)* is safe (REVIEW=1, no submits); *Submit
+    prepared* (grid toolbar) and *Submit this application* (a `PREPARED` row's drawer) apply with
+    the documents already generated — no re-generation — and *Apply
+    queue* submits, so both need a two-step confirmation (`APPROVE_RUN_QUEUE`). Every action needs
     the per-session token (anti-CSRF) and the UI binds to `127.0.0.1` only; the chat agent inherits
     the same approval gates — it cannot send or delete mail without them.
 - **Register**: `python3 tools/register.py --stats`;

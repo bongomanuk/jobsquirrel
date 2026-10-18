@@ -49,7 +49,7 @@ function starting(label, keys) {
   (keys || []).forEach(k => PENDING.add(k));
   const rc = $('#runctl'); if (rc) rc.classList.remove('hide');
   const l = $('#live'); if (l) l.textContent = '● ' + (label || 'working') + ' — starting…';
-  document.querySelectorAll('#a-prepare,#a-submit,#a-reconcile,#a-prepare-shown,#a-match,#d-body [data-act]')
+  document.querySelectorAll('#a-prepare,#a-submit,#a-reconcile,#a-prepare-shown,#a-submit-shown,#a-match,#d-body [data-act]')
     .forEach(b => { b.disabled = true; });
   renderRows();
 }
@@ -103,7 +103,8 @@ function toast(msg, bad) {
 const App = {
   async run(command) {
     if (command === 'submit_queue') {
-      const ok = await approve('Run the apply queue — this SUBMITS applications and is irreversible.', 'APPROVE_RUN_QUEUE', command);
+      const ok = await approve('Run the apply queue — this SUBMITS applications and is irreversible.',
+        'POST /api/action/run { "command": "submit_queue", "approval_token": "APPROVE_RUN_QUEUE" }');
       if (!ok) return;
     }
     starting(command);
@@ -219,6 +220,18 @@ const App = {
   },
   prepareThis: (key) => App.prepareRoles([key]),
   prepareShown: () => App.prepareRoles(VISIBLE),
+  submitRoles: async (keys) => {
+    const n = (keys || []).length;
+    if (!n) { toast('no prepared rows to submit — prepare them first', true); return; }
+    if (!await approve(`Submit ${n} prepared application(s) — this SENDS them through the employer's site and is irreversible.`,
+      `POST /api/submit { "keys": [${n} role key(s)], "approval_token": "APPROVE_RUN_QUEUE" }`)) return;
+    starting('submitting applications', keys); working('Submitting ' + n + ' application(s)…');
+    const d = await api('/api/submit', { keys, approval_token: 'APPROVE_RUN_QUEUE' });
+    toast(d.ok || d.error, !!d.error);
+    if (!d.error) { openDock(true); } else { PENDING.clear(); LIVE_RUNNING = false; liveTick(); }
+  },
+  submitThis: (key) => App.submitRoles([key]),
+  submitPrepared: () => App.submitRoles(GRID.filter(r => r.status === 'PREPARED' && VISIBLE.includes(r.key)).map(r => r.key)),
   matchShown: async (el) => busyBtn(el, '⏳ recomputing match…', async () => {
     const d = await api('/api/match/recompute', { keys: VISIBLE });
     toast(d.error ? d.error : 'match recomputed for the rows shown', !!d.error);
@@ -269,10 +282,10 @@ const App = {
 let CF = 'cv.json', CUR = null, CF_SEC = 'accounts';
 
 /* ---------- approval ---------- */
-function approve(purpose, token, command) {
+function approve(purpose, callText) {
   return new Promise(res => {
     $('#ap-text').textContent = purpose;
-    $('#ap-cmd').textContent = `POST /api/action/run { "command": "${command}", "approval_token": "${token}" }`;
+    $('#ap-cmd').textContent = callText;
     $('#ap-check').checked = false; $('#ap-confirm').disabled = true; $('#approve').classList.remove('hide');
     $('#ap-confirm').onclick = () => { $('#approve').classList.add('hide'); res(true); };
     $('#ap-cancel').onclick = () => { $('#approve').classList.add('hide'); res(false); };
@@ -384,6 +397,7 @@ function summary(r) {
       reg.map(x => `<option ${x === r.status ? 'selected' : ''}>${x}</option>`).join('') + '</select>' +
       `<button onclick="App.saveRow()">Save</button>
       <button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>Prepare this role</button>
+      ${r.status === 'PREPARED' ? `<button class="risky" data-act onclick='App.submitThis(${JSON.stringify(r.key)})' title="Submit this application now with the documents already prepared — sends it, needs approval">🚀 Submit this application</button>` : ''}
       <button data-act onclick='App.matchThis(${JSON.stringify(r.key)}, this)'>Recompute match</button></div>` +
     `<div class="row">${m.alignment ? `<span class="badge ${m.alignment === 'PASS' ? 'good' : 'bad'}">alignment ${m.alignment}</span>` : ''}` +
     `${m.coverage != null ? `<span class="badge ${m.coverage >= 70 ? 'good' : 'mid'}">coverage ${m.coverage}%</span>` : ''}${known ? '' : '<span class="muted mini">(runner-derived state)</span>'}</div>` +
@@ -497,7 +511,7 @@ async function liveTick() {
   $('#live').textContent = s;
   const busy = !!a.running || d.active;
   LIVE_RUNNING = busy || LIVE_RUNNING;                 // stay optimistic until confirmed idle
-  document.querySelectorAll('#a-prepare,#a-submit,#a-reconcile,#a-prepare-shown,#a-match,#d-body [data-act]')
+  document.querySelectorAll('#a-prepare,#a-submit,#a-reconcile,#a-prepare-shown,#a-submit-shown,#a-match,#d-body [data-act]')
     .forEach(b => { b.disabled = LIVE_RUNNING; });
   const rc = $('#runctl'); if (rc) { rc.classList.toggle('hide', !LIVE_RUNNING); $('#btn-pause').textContent = d.paused ? '▶ Resume' : '⏸ Pause'; }
   if (LIVE_RUNNING && !busy) $('#live').textContent = '● starting… (the run takes a few minutes — see the monitor)';
@@ -892,6 +906,7 @@ $('#q').oninput = renderRows;
 $('#fstatus').onchange = () => { SPECIAL = ''; ACTIVE_METRIC = ''; document.querySelectorAll('#metrics .metric').forEach(m => m.classList.remove('on')); renderRows(); };
 $('#fqueue').onchange = () => { SPECIAL = ''; ACTIVE_METRIC = ''; document.querySelectorAll('#metrics .metric').forEach(m => m.classList.remove('on')); renderRows(); };
 $('#a-prepare-shown').onclick = () => App.prepareShown();
+$('#a-submit-shown').onclick = () => App.submitPrepared();
 $('#a-match').onclick = () => App.matchShown($('#a-match'));
 $('#export').onclick = () => {
   const cs = ['date', 'company', 'role', 'ats', 'status', 'match', 'queue', 'applied', 'spec', 'key'];

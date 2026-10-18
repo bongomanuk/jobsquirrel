@@ -1493,17 +1493,13 @@ def pause_action(on):
     return {"ok": "paused — workers will finish the current task, then wait" if on else "resumed"}
 
 
-def prepare_roles(keys):
-    """Run a REVIEW pass (generate + gate documents, never submit) over the given roles,
-    by handing run_queue.sh a temporary queue containing just those rows.
+def _resolve_roles(keys):
+    """Resolve register/queue keys to complete queue rows (company, role, url, cv, ats, key).
 
-    Works for any role: queued rows are taken from the queue files; others are rebuilt
-    from the register / submissions so a role you opened (e.g. a done or blocked one) can
-    still be (re)prepared."""
-    keys = [str(k).strip() for k in (keys or []) if str(k).strip()]
-    if not keys:
-        return {"error": "no roles selected"}
-    want = set(keys)
+    Queued rows are taken from the queue files; other keys are rebuilt from the
+    register / submissions, so a role you opened (e.g. a prepared or blocked one)
+    can still be acted on."""
+    want = {str(k).strip() for k in (keys or []) if str(k).strip()}
     rows, found = [], set()
     for path in ("queue.tsv", "queue-human.tsv", "queue.retry"):
         for r in _queue_rows(os.path.join(STATE, path)):
@@ -1519,22 +1515,66 @@ def prepare_roles(keys):
                 url, cv, ats, _ = _queue_fields(co, role)
                 rows.append({"company": co, "role": role, "url": url, "cv": cv, "ats": ats, "key": k})
                 found.add(k)
-    if not rows:
-        return {"error": "couldn't resolve those roles to a company/role"}
+    return rows
+
+
+def _queue_only_roles(rows):
+    """Write rows to a private queue (and an empty DONE file) so a scoped run
+    processes exactly those roles and never skips them as already done."""
     os.makedirs(LOGS, exist_ok=True)
     tmp = os.path.join(LOGS, "queue-ui.tsv")
     with open(tmp, "w", encoding="utf-8") as fh:
         for r in rows:
             fh.write("\t".join([r["company"], r["role"], r.get("url", ""), r.get("cv", ""),
                                 r.get("ats", ""), r["key"]]) + "\n")
-    # a scoped run must NOT skip rows already marked done in the shared queue.done
     tmp_done = os.path.join(LOGS, "queue-ui.done")
     with open(tmp_done, "w", encoding="utf-8"):
         pass
+    return tmp, tmp_done
+
+
+def prepare_roles(keys):
+    """Run a REVIEW pass (generate + gate documents, never submit) over the given roles."""
+    rows = _resolve_roles(keys)
+    if not rows:
+        return {"error": "couldn't resolve those roles to a company/role"}
+    tmp, tmp_done = _queue_only_roles(rows)
     _spawn(f"prepare {len(rows)} role(s) (review)",
            ["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
            {"REVIEW": "1", "PARALLEL": "1", "QUEUE": tmp, "DONE": tmp_done})
     return {"ok": f"generating documents for {len(rows)} role(s) — watch the Activity pane (nothing is submitted)"}
+
+
+def submit_roles(keys, approval_token=""):
+    """Submit the selected roles with the documents already prepared for them.
+
+    The runner reuses the existing artifacts (step 0d: job ad, keywords, grounding,
+    content pack, CV and letter), re-runs the gates and applies through the browser.
+    Irreversible: requires the APPROVE_RUN_QUEUE approval token."""
+    rows = _resolve_roles(keys)
+    if not rows:
+        return {"error": "couldn't resolve those roles to a company/role"}
+    if WQ and WQ.runner_active():
+        return {"error": "a queue run is already active"}
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import approval
+    if approval_token != "APPROVE_RUN_QUEUE":
+        approval._record(f"submit {len(rows)} prepared role(s) via dashboard", "REFUSED (no approval token)")
+        return {"error": "refused: submitting applications is irreversible; confirm to send APPROVE_RUN_QUEUE"}
+    approval._record(f"submit {len(rows)} prepared role(s) via dashboard", "ui-token:APPROVE_RUN_QUEUE")
+    tmp, tmp_done = _queue_only_roles(rows)
+    try:
+        import register as REG
+        for r in rows:
+            REG.set_row(r["company"], r["role"], status="QUEUED",
+                        note="submitting prepared documents via dashboard")
+    except Exception:
+        pass
+    _spawn(f"submit {len(rows)} prepared role(s)",
+           ["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+           {"PARALLEL": "1", "QUEUE": tmp, "DONE": tmp_done})
+    return {"ok": f"submitting {len(rows)} application(s) — watch the Activity pane (this sends them)"}
+
 
 
 def recompute_match(keys=None):
@@ -1919,6 +1959,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(apply_update(str(data.get("approval_token", ""))))
         if p == "/api/prepare":
             return self._json(prepare_roles(data.get("keys") or []))
+        if p == "/api/submit":
+            return self._json(submit_roles(data.get("keys") or [], data.get("approval_token", "")))
         if p == "/api/match/recompute":
             return self._json(recompute_match(data.get("keys")))
         if p == "/api/open":
