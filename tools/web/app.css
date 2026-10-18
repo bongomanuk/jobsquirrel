@@ -270,6 +270,7 @@ body[data-act="closed"] .act-body,body[data-act="closed"] #split-inner{display:n
 .toolbar{display:flex;gap:8px;align-items:center;margin:14px 0 10px;flex-wrap:wrap}
 .gridwrap{overflow:visible;border:1px solid var(--line);border-radius:var(--radius)}
 #grid thead th{position:sticky;top:0;z-index:2}
+#grid th:nth-child(5),#grid td:nth-child(5){min-width:210px}
 #grid th[data-s]{cursor:pointer}
 #grid tbody tr.click{cursor:pointer}
 #detail .tabs2{padding:0 12px}

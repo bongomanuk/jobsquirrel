@@ -55,3 +55,6 @@ kb/graphrag/
 *.docx
 *.pdf
 ~$*
+
+# runtime agent permission policy (machine-local)
+config/agent-permissions.json
