@@ -328,6 +328,7 @@ CLAIMED="$ROOT/state/queue.claimed"
 LOCK="$ROOT/state/queue.lock"
 RETRY_FILE="$ROOT/state/queue.retry"
 STOP_FILE="$ROOT/state/queue.stop"
+PAUSE_FILE="$ROOT/state/queue.pause"
 TOKENFAIL_FILE="$ROOT/state/queue.tokenfail"
 TOKENFAIL_LOCK="$ROOT/state/queue.tokenfail.lock"
 rm -f "$STOP_FILE"
@@ -398,6 +399,8 @@ worker() {
   local server="$1" line
   while :; do
     [ -e "$STOP_FILE" ] && break
+    while [ -e "$PAUSE_FILE" ] && [ ! -e "$STOP_FILE" ]; do sleep 2; done   # pause: finish nothing new
+    [ -e "$STOP_FILE" ] && break
     line="$(pop_next)"
     [ -z "$line" ] && break
     run_task "$line" "$server"
@@ -406,6 +409,8 @@ worker() {
 
 run_pool() {
   while [ ! -e "$STOP_FILE" ] && has_pending; do
+    while [ -e "$PAUSE_FILE" ] && [ ! -e "$STOP_FILE" ]; do sleep 2; done
+    [ -e "$STOP_FILE" ] && break
     for ((i = 0; i < PARALLEL; i++)); do worker "${SERVERS[i % NS]}" & done
     wait
   done

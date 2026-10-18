@@ -152,6 +152,9 @@ same record is never duplicated across separate pages.
   **⚡ Prepare shown** (generate documents, review-only) and **↻ Match** (recompute) for the rows shown.
 - **Metric pills are filters:** click *in process / interviews / blocked / human / offers / total /
   submissions* to filter the grid to that set (click again or *total* to clear); the active pill is highlighted.
+- **Process control:** while a run is active the strip shows **⏸ Pause** (workers finish the current task
+  then wait) and **⏹ Stop** (no new tasks; terminate the in-flight action). Backend: `POST /api/action/pause`
+  + `/api/action/stop` (`state/queue.pause` / `state/queue.stop`).
 
 ### 9.3 Master grid (the one table)
 Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files · Job ad**

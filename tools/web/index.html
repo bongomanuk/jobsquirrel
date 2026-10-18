@@ -28,6 +28,10 @@
     <div class="strip">
       <div class="metrics" id="metrics"></div>
       <div class="livestrip" id="live"><span class="muted">idle — no run active</span></div>
+      <span id="runctl" class="runctl hide">
+        <button id="btn-pause" title="Finish the current task, then start nothing new">⏸ Pause</button>
+        <button id="btn-stop" class="risky" title="Stop now: no new tasks, terminate the in-flight work">⏹ Stop</button>
+      </span>
     </div>
     <div class="scroll">
       <main>

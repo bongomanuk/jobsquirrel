@@ -150,6 +150,8 @@ const App = {
   prepareShown: () => App.prepareRoles(VISIBLE),
   matchShown: async () => { const d = await api('/api/match/recompute', { keys: VISIBLE }); toast(d.ok || d.error, !!d.error); if (!d.error) loadGrid(); },
   matchThis: async (key) => { const d = await api('/api/match/recompute', { keys: [key] }); toast(d.ok || d.error, !!d.error); if (!d.error) loadGrid(); },
+  stop: async () => { const d = await api('/api/action/stop', {}); toast(d.ok || d.error, !!d.error); },
+  togglePause: async (on) => { const d = await api('/api/action/pause', { on }); toast(d.ok || d.error, !!d.error); },
   queueAct: async (action, company, role) => {
     const d = await api('/api/queue/action', { action, company, role });
     toast(d.ok || d.error, !!d.error); if (!d.error) { loadGrid(); if (action !== 'human' && action !== 'delete') openDetail(CUR); }
@@ -364,6 +366,7 @@ async function liveTick() {
   const busy = !!a.running || d.active;                       // don't allow piling up duplicate runs
   document.querySelectorAll('#a-prepare,#a-submit,#a-reconcile').forEach(b => { b.disabled = busy; });
   LIVE_RUNNING = !!(d.active || (d.running || []).length);
+  const rc = $('#runctl'); if (rc) { rc.classList.toggle('hide', !busy); $('#btn-pause').textContent = d.paused ? '▶ Resume' : '⏸ Pause'; }
   const sm = a.summary || {};
   $('#act-sum').textContent = a.name ? ((a.running ? '● ' : '✓ ') + a.name) : (d.active ? 'runner active' : 'idle');
   if (document.body.dataset.act === 'open') {
@@ -681,6 +684,8 @@ $('#legend').onclick = () => {
 };
 $('#a-drawer').onclick = () => openDock(!PANELS.agent.open);
 $('#updpill').onclick = () => updateDialog();
+$('#btn-stop').onclick = () => App.stop();
+$('#btn-pause').onclick = () => App.togglePause($('#btn-pause').textContent.includes('Pause'));
 $('#perm-once').onclick = () => permAnswer('allow', false);
 $('#perm-always').onclick = () => permAnswer('allow', true);
 $('#perm-deny').onclick = () => permAnswer('deny', false);

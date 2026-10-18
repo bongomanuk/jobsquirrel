@@ -264,6 +264,7 @@ body[data-act="closed"] .act-body,body[data-act="closed"] #split-inner{display:n
 .metric:hover{border-color:var(--accent);color:var(--fg)}
 .metric.on{border-color:var(--accent);color:var(--fg);background:var(--surface2);box-shadow:0 0 0 1px var(--accent) inset}
 .livestrip{flex:1;min-width:220px;color:var(--muted);font-family:var(--mono);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.runctl{display:flex;gap:6px;flex:0 0 auto}
 .toolbar{display:flex;gap:8px;align-items:center;margin:14px 0 10px;flex-wrap:wrap}
 .gridwrap{overflow:visible;border:1px solid var(--line);border-radius:var(--radius)}
 #grid thead th{position:sticky;top:0;z-index:2}

@@ -674,6 +674,8 @@ def live():
     act_log = action_log(400)
     return {"active": active, "running": [k.replace("|", " — ") for k in running],
             "tail_name": tail_name, "tail": tail,
+            "paused": os.path.exists(PAUSE_FILE),
+            "stopping": os.path.exists(STOP_FILE),
             "action": {"name": _ACT.get("name", ""), "running": act_running,
                        "summary": summarize_action(_ACT.get("name", ""), act_log, act_running),
                        "log": act_log}}
@@ -1249,6 +1251,52 @@ def _spawn(purpose, argv, env=None):
     return proc
 
 
+STOP_FILE = os.path.join(STATE, "queue.stop")
+PAUSE_FILE = os.path.join(STATE, "queue.pause")
+
+
+def process_running():
+    p = _ACT.get("proc")
+    return bool(p and p.poll() is None)
+
+
+def stop_action():
+    """Stop everything: no new tasks, and terminate the running action + queue runner."""
+    try:
+        os.makedirs(STATE, exist_ok=True)
+        with open(STOP_FILE, "w") as fh:
+            fh.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} stop requested via dashboard\n")
+    except OSError:
+        pass
+    stopped = False
+    p = _ACT.get("proc")
+    if p and p.poll() is None:
+        try:
+            os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+            stopped = True
+        except OSError:
+            pass
+    _ACT["proc"] = None
+    return {"ok": "stopped" + (" (terminated the running action)" if stopped else "") +
+            " — no new tasks will start. Pause stays off; re-run when ready."}
+
+
+def pause_action(on):
+    try:
+        os.makedirs(STATE, exist_ok=True)
+        if on:
+            with open(PAUSE_FILE, "w") as fh:
+                fh.write("paused via dashboard\n")
+        else:
+            try:
+                os.remove(PAUSE_FILE)
+            except OSError:
+                pass
+    except OSError as e:
+        return {"error": str(e)}
+    return {"ok": "paused — workers will finish the current task, then wait" if on else "resumed"}
+
+
 def prepare_roles(keys):
     """Run a REVIEW pass (generate + gate documents, never submit) over the given roles,
     by handing run_queue.sh a temporary queue containing just those rows."""
@@ -1625,6 +1673,10 @@ class H(BaseHTTPRequestHandler):
             return self._json(recompute_match(data.get("keys")))
         if p == "/api/open":
             return self._json(open_apply(data.get("company", ""), data.get("role", "")))
+        if p == "/api/action/stop":
+            return self._json(stop_action())
+        if p == "/api/action/pause":
+            return self._json(pause_action(bool(data.get("on"))))
         self._json({"error": "not found"}, 404)
 
 
