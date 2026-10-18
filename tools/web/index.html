@@ -43,8 +43,8 @@
           <select id="fqueue"><option value="">any queue</option><option value="pending">pending</option>
             <option value="human">human-assist</option><option value="retry">retry</option><option value="finished">finished</option></select>
           <button id="export">Export CSV</button>
-          <button id="a-prepare-shown" title="Generate documents (review, no submit) for the rows currently shown">⚡ Prepare shown</button>
-          <button id="a-match" title="Recompute CV↔job match for the rows currently shown">↻ Match</button>
+          <button id="a-prepare-shown" title="Generate documents for the rows shown — runs the agent per role (a few minutes each); nothing is submitted">⚡ Prepare shown</button>
+          <button id="a-match" title="Recompute CV–job match for the rows shown — instant (no agent)">↻ Match</button>
           <button id="legend" title="What the columns, marks and statuses mean">ⓘ Legend</button>
           <span id="count" class="muted"></span>
         </div>
@@ -132,6 +132,13 @@
     </nav>
     <div id="set-body" class="set-body"><span class="muted">loading…</span></div>
   </div>
+</div></div>
+
+<div id="warn" class="modal hide"><div class="modal-box">
+  <h2 style="text-transform:none;letter-spacing:0;color:var(--fg)">This may take a while</h2>
+  <div id="warn-text" class="md muted"></div>
+  <div class="row" style="justify-content:flex-end;margin-top:16px">
+    <button id="warn-cancel">Cancel</button><button id="warn-ok" class="risky">Start anyway</button></div>
 </div></div>
 
 <div id="approve" class="modal hide"><div class="modal-box">

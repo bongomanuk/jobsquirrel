@@ -56,6 +56,26 @@ function working(label) {                         // immediate "something is hap
   $('#peras-body').innerHTML = `<span class="muted">${esc(label || 'working…')}</span>`;
   $('#peras').classList.remove('hide');
 }
+function warn(text) {
+  return new Promise(res => {
+    $('#warn-text').innerHTML = md(text);
+    $('#warn').classList.remove('hide');
+    $('#warn-ok').onclick = () => { $('#warn').classList.add('hide'); res(true); };
+    $('#warn-cancel').onclick = () => { $('#warn').classList.add('hide'); res(false); };
+  });
+}
+const LONG = {
+  rebuild: 'Rebuilding the knowledge graph re-indexes **every** source document with the LLM.\n\n' +
+    '- It can take **20–30+ minutes** (longer for a big corpus).\n- It uses API tokens/quota.\n' +
+    '- It runs in the background — press **⏹ Stop** in the Activity monitor to cancel.\n\nStart the rebuild?',
+  update: 'An incremental graph update only processes the new/changed sources, so it is usually much faster ' +
+    'than a rebuild — but it still calls the LLM and can take several minutes. Continue?',
+  prepareMany: (n) => `Generating documents for **${n}** roles runs the agent once per role, so it can take ` +
+    `a while and use API tokens.\n\n- Roughly a few minutes **per role**.\n- Nothing is submitted.\n` +
+    `- You can **⏹ Stop** it from the Activity monitor.\n\nContinue?`,
+  prepareOne: 'Generating documents for one role runs the agent for a few minutes (GraphRAG + CV + letter + gates). ' +
+    'It runs in the background — nothing is submitted. Continue?',
+};
 window.perasClose = () => $('#peras').classList.add('hide');
 
 async function api(path, body) {
@@ -124,7 +144,6 @@ const App = {
     const d = await api('/api/graphrag/env', { vars });
     toast(d.ok || d.error, !!d.error); if (!d.error) App.settings('ai');
   },
-  kbRebuild: async () => { const d = await api('/api/kb/rebuild', {}); toast(d.ok || d.error, !!d.error); },
   kbDel: async (path) => { const d = await api('/api/kb/delete', { path }); toast(d.ok || d.error, !!d.error); if (!d.error) App.settings('kb'); },
   kbUpload: async () => {
     const inp = $('#kb-file'), grp = $('#kb-group').value.trim() || 'imported';
@@ -184,7 +203,9 @@ const App = {
     renderRows();
   },
   prepareRoles: async (keys) => {
-    starting('preparing documents', keys); working('Preparing documents for ' + (keys || []).length + ' role(s)…');
+    const n = (keys || []).length;
+    if (n && !await warn(n > 1 ? LONG.prepareMany(n) : LONG.prepareOne)) return;
+    starting('preparing documents', keys); working('Preparing documents for ' + n + ' role(s)…');
     const d = await api('/api/prepare', { keys });
     toast(d.ok || d.error, !!d.error);
     if (!d.error) { openDock(true); } else { PENDING.clear(); $('#peras').classList.add('hide'); }
@@ -215,11 +236,16 @@ const App = {
     toast('saved — the fit across roles now counts it (no re-prepare needed)');
   },
   updateKB: async () => {
+    if (!await warn(LONG.update)) return;
     starting('updating the knowledge graph'); working('Updating the knowledge graph (incremental — only the new source)…');
     const d = await api('/api/action/run', { command: 'kb_update', approval_token: '' });
     toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true); else { LIVE_RUNNING = false; $('#peras').classList.add('hide'); }
   },
-  rebuildKB: async () => { starting('rebuilding the knowledge graph'); working('Rebuilding the knowledge graph (full re-index — slow)…'); const d = await api('/api/kb/rebuild', {}); toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true); },
+  rebuildKB: async () => {
+    if (!await warn(LONG.rebuild)) return;
+    starting('rebuilding the knowledge graph'); working('Rebuilding the knowledge graph (full re-index — can take 20–30+ min)…');
+    const d = await api('/api/kb/rebuild', {}); toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true); else { LIVE_RUNNING = false; $('#peras').classList.add('hide'); }
+  },
   saveRow: async () => {
     const d = await api('/api/register/row', { company: CUR.company, role: CUR.role, status: $('#dt-status').value, notes: $('#dt-notes').value });
     toast(d.ok || d.error, !!d.error); if (!d.error) { loadGrid(); }
@@ -319,21 +345,23 @@ const sec = (s, raw) => s ? (raw ? `<pre class="doc">${esc(s)}</pre>` : `<div cl
 const vbtn = (f, t) => f ? ` <button class="mini" onclick='viewDoc(${JSON.stringify(f)},"${t}")'>view</button>` : '';
 function summary(r) {
   const m = (D.match) || {};
+  const reg = ['QUEUED', 'PREPARED', 'SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER', 'REJECTED', 'BLOCKED', 'MANUAL', 'CLOSED'];
+  const known = reg.includes(r.status);
   const notes = (r.notes || '').trim();
   const hist = notes ? notes.split(/\s*\|\s*/).filter(Boolean).map(x => `<li>${md(x)}</li>`).join('') : '';
-  const when = r.date ? ` · updated ${esc(r.date)}` : '';
-  return `<div class="why">
-      <div class="why-h"><span class="muted mini">WHY / HISTORY</span>${chip(r.status)}<span class="muted mini">${when}</span></div>
-      ${hist ? `<ul class="hist">${hist}</ul>` : '<div class="muted">no notes recorded for this row</div>'}
+  return `<div class="statebox">
+      <div class="row">${chip(r.status)}${r.hint ? `<span class="statehint">${esc(r.hint)}</span>` : ''}</div>
+      <div class="state-meta mini muted">ATS: ${esc(r.ats || '—')} · Queue: ${esc(r.queue || 'not queued')}${r.date ? ' · updated ' + esc(r.date) : ''} · <span class="mono">${esc(r.key)}</span></div>
       ${r.running ? '<div class="working"><span class="spin">🥜</span> being worked on right now</div>' : ''}
-      ${P.evidence ? `<div class="muted mini" style="margin-top:6px">submission evidence: ${esc(String(P.evidence).slice(0, 240))}</div>` : ''}
     </div>` +
-    `<div class="row" style="margin:10px 0"><span class="muted">status</span><select id="dt-status">` +
-    ['QUEUED', 'SUBMITTED', 'INTERVIEW', 'OFFER', 'REJECTED', 'BLOCKED', 'MANUAL', 'PREPARED', 'IN_PROGRESS', 'CLOSED'].map(x => `<option ${x === r.status ? 'selected' : ''}>${x}</option>`).join('') + '</select>' +
-    `<span class="muted">ATS</span><b>${esc(r.ats || '—')}</b><span class="muted">queue</span><b>${esc(r.queue || '—')}</b>` +
-    `<span class="muted">key</span><span class="mini mono">${esc(r.key)}</span></div>` +
+    `<div class="row" style="margin:6px 0 10px"><span class="muted">Set status</span>
+      <select id="dt-status"><option value="">— keep as ${esc(r.status || 'is')} —</option>` +
+      reg.map(x => `<option ${x === r.status ? 'selected' : ''}>${x}</option>`).join('') + '</select>' +
+      `<button onclick="App.saveRow()">Save</button>
+      <button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>Prepare this role</button>
+      <button data-act onclick='App.matchThis(${JSON.stringify(r.key)})'>Recompute match</button></div>` +
     `<div class="row">${m.alignment ? `<span class="badge ${m.alignment === 'PASS' ? 'good' : 'bad'}">alignment ${m.alignment}</span>` : ''}` +
-    `${m.coverage != null ? `<span class="badge ${m.coverage >= 70 ? 'good' : 'mid'}">coverage ${m.coverage}%</span>` : ''}</div>` +
+    `${m.coverage != null ? `<span class="badge ${m.coverage >= 70 ? 'good' : 'mid'}">coverage ${m.coverage}%</span>` : ''}${known ? '' : '<span class="muted mini">(runner-derived state)</span>'}</div>` +
     (m.missing && m.missing.length ? `<div class="muted mini" style="margin-top:8px">missing skills — click one to add where you have it:
       <div style="margin-top:4px">${m.missing.map(x => {
         const ev = (m.evidenced || []).some(e => e.toLowerCase() === x.toLowerCase());
@@ -341,10 +369,11 @@ function summary(r) {
       }).join('')}</div></div>
       ${(m.evidenced || []).length ? `<div class="row" style="margin-top:6px"><span class="muted mini">${m.evidenced.length} skill(s) have evidence — re-prepare this role to fold them into the CV (grounding includes them now).</span>
         <button class="small" onclick='App.prepareThis(${JSON.stringify(r.key)})'>↻ Re-prepare with the new evidence</button></div>` : ''}` : '') +
-    `<div class="muted" style="margin:12px 0 4px">notes (editable)</div><textarea id="dt-notes" style="min-height:14vh">${esc(r.notes || '')}</textarea>` +
-    `<div class="row" style="margin-top:10px"><button onclick="App.saveRow()">Save</button>` +
-    `<button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>Prepare this role</button>` +
-    `<button data-act onclick='App.matchThis(${JSON.stringify(r.key)})'>Recompute match</button></div>` +
+    `<div class="why" style="margin-top:12px"><div class="why-h"><span class="muted mini">WHY / HISTORY</span></div>
+      ${hist ? `<ul class="hist">${hist}</ul>` : '<div class="muted">no notes recorded for this row</div>'}
+      ${P.evidence ? `<div class="muted mini" style="margin-top:6px">submission evidence: ${esc(String(P.evidence).slice(0, 240))}</div>` : ''}</div>` +
+    `<div class="muted mini" style="margin:12px 0 4px">your notes (editable)</div><textarea id="dt-notes" style="min-height:12vh">${esc(r.notes || '')}</textarea>` +
+    `<div class="row" style="margin-top:8px"><button onclick="App.saveRow()">Save notes</button></div>` +
     (['BLOCKED', 'MANUAL'].includes(r.status) ? `<div class="why resolve">
       <div class="why-h"><span class="muted mini">GET PAST THE BLOCK</span></div>
       ${r.url ? `<a class="mini" href="${esc(r.url)}" target="_blank">${esc(r.url.slice(0, 70))}</a>` : '<span class="muted mini">no apply URL recorded</span>'}
@@ -704,7 +733,7 @@ async function setKB(b) {
   b.innerHTML = `<p class="muted">Documents in <code>kb/sources/</code> feed the GraphRAG knowledge graph. Add documents, then rebuild the index.</p>
     <div class="row" style="margin:8px 0"><input id="kb-group" placeholder="group (personal, contracts…)" style="max-width:230px">
       <input type="file" id="kb-file" multiple><button onclick="App.kbUpload()">Upload</button>
-      <button class="risky" onclick="App.kbRebuild()">Rebuild graph</button></div>
+      <button class="risky" onclick="App.rebuildKB()" title="Full re-index of the knowledge graph — can take 20–30+ minutes">Rebuild graph (slow)</button></div>
     <div class="kb-list">${list || '<span class="muted">no source documents yet</span>'}</div>
     <h4 style="margin:14px 0 4px">Index</h4>
     <div class="muted mini">${s.index ? `${s.entities} entities · ${s.relationships} relationships · ${s.communities} communities · ${s.documents} documents` : 'not built yet'}</div>

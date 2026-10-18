@@ -301,6 +301,9 @@ body[data-act="closed"] .act-body,body[data-act="closed"] #split-inner{display:n
 .hist li p{margin:0}
 .whycell{max-width:230px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
 .why.resolve{margin-top:12px;border-color:var(--accent)}
+.statebox{background:#0a0c10;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:6px}
+.statehint{color:var(--fg);font-size:13px}
+.state-meta{margin-top:5px;line-height:1.5}
 .missk{cursor:pointer;display:inline-block;border:1px solid var(--line);border-radius:6px;padding:1px 7px;margin:2px;background:#0a0c10}
 .missk:hover{border-color:var(--accent);color:var(--fg)}
 .missk.evidenced{border-color:var(--offer);color:#8ce99a}
