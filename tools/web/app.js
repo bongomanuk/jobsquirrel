@@ -281,7 +281,7 @@ function approve(purpose, token, command) {
 }
 
 /* ---------- grid ---------- */
-let GRID_TIMER = null, LIVE_RUNNING = false, IDLE_TICKS = 0;
+let GRID_TIMER = null, LIVE_RUNNING = false, IDLE_TICKS = 0, WAS_BUSY = false, DTAB = 0;
 async function loadGrid() {
   const sc = document.querySelector('.scroll'), y = sc ? sc.scrollTop : 0;
   const [g, s] = await Promise.all([api('/api/grid'), api('/api/state')]);
@@ -344,15 +344,16 @@ async function openDetail(r) {
   setPanel('detail', { open: true });
   $('#d-title').textContent = `${r.company} — ${r.role}`;
   const tabs = ['Summary', 'Provenance', 'Job spec', 'ATS', 'Grounding', 'Documents'];
-  $('#dtabs').innerHTML = tabs.map((t, i) => `<a class="${i === 0 ? 'on' : ''}" onclick="dt(${i})">${t}</a>`).join('');
+  $('#dtabs').innerHTML = tabs.map((t, i) => `<a class="${i === DTAB ? 'on' : ''}" onclick="dt(${i})">${t}</a>`).join('');
   $('#d-body').innerHTML = '<span class="muted">loading…</span>';
   const jobs = [api(`/api/provenance?company=${encodeURIComponent(r.company)}&role=${encodeURIComponent(r.role)}`)];
   if (r.spec) jobs.push(api('/api/roles/' + encodeURIComponent(r.key)));
   const [p, d] = await Promise.all(jobs); P = p || {}; D = d || {};
-  dt(0);
+  dt(DTAB);
 }
 window.dt = (i) => {
   const r = CUR, map = [summary, prov, spec, ats, grounding, tailored];
+  DTAB = i;
   document.querySelectorAll('#dtabs a').forEach((a, n) => a.classList.toggle('on', n === i));
   $('#d-body').innerHTML = map[i](r) || '<span class="muted">—</span>';
 };
@@ -483,8 +484,15 @@ async function liveTick() {
     .forEach(b => { b.disabled = LIVE_RUNNING; });
   const rc = $('#runctl'); if (rc) { rc.classList.toggle('hide', !LIVE_RUNNING); $('#btn-pause').textContent = d.paused ? '▶ Resume' : '⏸ Pause'; }
   if (LIVE_RUNNING && !busy) $('#live').textContent = '● starting… (the run takes a few minutes — see the monitor)';
-  if (busy) { IDLE_TICKS = 0; } else if (LIVE_RUNNING && ++IDLE_TICKS >= 3) {
-    LIVE_RUNNING = false; PENDING.clear(); $('#peras').classList.add('hide'); renderRows();
+  if (busy) { IDLE_TICKS = 0; WAS_BUSY = true; } else if (LIVE_RUNNING && ++IDLE_TICKS >= 3) {
+    LIVE_RUNNING = false;
+    if (WAS_BUSY) {                                    // a run just finished — refresh everything
+      WAS_BUSY = false;
+      loadGrid();
+      if (CUR && !$('#detail').hidden) openDetail(CUR);
+      toast('run finished — updated the grid and this role');
+    }
+    PENDING.clear(); $('#peras').classList.add('hide'); renderRows();
   }
   if (!$('#peras').classList.contains('hide')) {         // background-run monitor
     const sm = a.summary || {};
