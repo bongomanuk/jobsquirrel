@@ -178,7 +178,8 @@ Clicking a row opens a drawer with tabs:
   open either in the viewer and to open the CV PDF; the raw content pack is behind a toggle.
 
 ### 9.5 Settings panel (⚙ Config)
-- Sections: **Accounts** (status + Gmail/Calendar authorisation), **Knowledge base** (list / upload /
+- Sections: **Accounts** (status + Gmail/Calendar authorisation), **AI & agent** (which agent CLI +
+  model + API-token env, and the GraphRAG LLM `.env`), **Knowledge base** (list / upload /
   delete sources, rebuild the index), **GraphRAG** (browse entities / relationships / communities /
   documents), **Agent permissions** (per-category allow/ask/deny), **Profile & CV** (edit files, regenerate).
 

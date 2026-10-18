@@ -859,6 +859,103 @@ GATE_NOTE = ("Before reading files outside this repo, writing files, or running 
 DASH = {"url": ""}          # set in main(); handed to the embedded agent so it can ask for approval
 
 
+# ---------------------------------------------------------------- agent / LLM config
+AGENT_CFG_FILE = os.path.join(os.path.expanduser("~"), ".config", "job-search", "agent.json")
+GRAPHRAG_ENV = os.path.join(ROOT, "kb", "graphrag", ".env")
+
+
+def load_agent_cfg():
+    try:
+        with open(AGENT_CFG_FILE, encoding="utf-8") as fh:
+            d = json.load(fh)
+        return {"agent": d.get("agent", "") or "", "model": d.get("model", "") or "",
+                "env": d.get("env", {}) or {}}
+    except (OSError, ValueError):
+        return {"agent": "", "model": "", "env": {}}
+
+
+def save_agent_cfg(d):
+    prev = load_agent_cfg()
+    agent = str(d.get("agent", prev["agent"]) or "").strip()[:200]
+    model = str(d.get("model", prev["model"]) or "").strip()[:200]
+    env = dict(prev["env"])
+    for k, v in (d.get("env") or {}).items():
+        k = re.sub(r"[^A-Za-z0-9_]", "", str(k))[:80]
+        if not k:
+            continue
+        if v in ("", None):
+            env.pop(k, None)                      # blank clears
+        else:
+            env[k] = str(v)[:1000]
+    out = {"agent": agent, "model": model, "env": env}
+    os.makedirs(os.path.dirname(AGENT_CFG_FILE), exist_ok=True)
+    fd = os.open(AGENT_CFG_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(out, fh, indent=2)
+    return out
+
+
+def _mask(v):
+    v = v or ""
+    return ("…" + v[-4:]) if len(v) > 4 else ("set" if v else "")
+
+
+def agent_config():
+    import shutil
+    cfg = load_agent_cfg()
+    detected = [a for a in ("opencode", "claude") if shutil.which(a)]
+    which = ""
+    try:
+        r = subprocess.run(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), "--which"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=10)
+        which = (r.stdout or "").strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return {"agent": cfg["agent"], "model": cfg["model"],
+            "env": {k: _mask(v) for k, v in cfg["env"].items()},
+            "env_keys": sorted(cfg["env"]), "detected": detected, "which": which,
+            "config_path": AGENT_CFG_FILE,
+            "known_keys": ["OPENCODE_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]}
+
+
+def graphrag_env():
+    vars_, order = {}, []
+    for ln in _read(GRAPHRAG_ENV).splitlines():
+        s = ln.strip()
+        if not s or s.startswith("#") or "=" not in s:
+            continue
+        k, v = s.split("=", 1)
+        k, v = k.strip(), v.strip()
+        order.append(k)
+        secret = bool(re.search(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL", k, re.I))
+        vars_[k] = _mask(v) if secret else v
+    return {"path": GRAPHRAG_ENV, "vars": vars_, "keys": order, "exists": os.path.isfile(GRAPHRAG_ENV)}
+
+
+def save_graphrag_env(updates):
+    lines = _read(GRAPHRAG_ENV).splitlines()
+    updates = {re.sub(r"[^A-Za-z0-9_]", "", str(k))[:80]: str(v)[:1000]
+               for k, v in (updates or {}).items()}
+    seen, out = set(), []
+    for ln in lines:
+        s = ln.strip()
+        if s and not s.startswith("#") and "=" in s:
+            k = s.split("=", 1)[0].strip()
+            if k in updates:
+                seen.add(k)
+                if updates[k] != "":
+                    out.append(f"{k}={updates[k]}")
+                continue
+        out.append(ln)
+    for k, v in updates.items():
+        if k not in seen and v != "":
+            out.append(f"{k}={v}")
+    os.makedirs(os.path.dirname(GRAPHRAG_ENV), exist_ok=True)
+    with open(GRAPHRAG_ENV, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(out).rstrip("\n") + "\n")
+    return graphrag_env()
+
+
 def agent_env(**extra):
     env = dict(os.environ)
     env.update(extra)
@@ -866,6 +963,13 @@ def agent_env(**extra):
     if DASH["url"]:
         env.setdefault("JOBSQUIRREL_URL", DASH["url"])
     env.setdefault("JOBSQUIRREL_TOKEN", SESSION_TOKEN)
+    cfg = load_agent_cfg()                        # user-configured agent/model/token
+    if cfg.get("agent"):
+        env.setdefault("AGENT", cfg["agent"])
+    if cfg.get("model"):
+        env.setdefault("MODEL", cfg["model"])
+    for k, v in cfg.get("env", {}).items():
+        env.setdefault(k, v)
     return env
 
 
@@ -1552,6 +1656,10 @@ class H(BaseHTTPRequestHandler):
             return self._json(accounts())
         if p == "/api/permissions":
             return self._json({"policy": load_perms(), "defaults": DEFAULT_PERMS})
+        if p == "/api/agent/config":
+            return self._json(agent_config())
+        if p == "/api/graphrag/env":
+            return self._json(graphrag_env())
         if p == "/api/agent/pending":
             return self._json({"pending": permission_pending()})
         if p == "/api/update":
@@ -1659,6 +1767,10 @@ class H(BaseHTTPRequestHandler):
             return self._json(account_auth(data.get("kind", "")))
         if p == "/api/permissions":
             return self._json({"policy": save_perms(data.get("policy") or {})})
+        if p == "/api/agent/config":
+            return self._json({"ok": "saved", "config": save_agent_cfg(data)})
+        if p == "/api/graphrag/env":
+            return self._json({"ok": "saved", "env": save_graphrag_env(data.get("vars") or {})})
         if p == "/api/agent/permission":
             return self._json(permission_request(str(data.get("category", "?"))[:60],
                                                  str(data.get("detail", ""))[:400]))

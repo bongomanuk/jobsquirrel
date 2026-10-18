@@ -76,6 +76,7 @@ const App = {
     document.querySelectorAll('.set-nav a').forEach(a => a.classList.toggle('on', a.dataset.s === CF_SEC));
     const b = $('#set-body'); b.innerHTML = '<span class="muted">loading…</span>';
     if (CF_SEC === 'accounts') return setAccounts(b);
+    if (CF_SEC === 'ai') return setAI(b);
     if (CF_SEC === 'kb') return setKB(b);
     if (CF_SEC === 'graph') return setGraph(b);
     if (CF_SEC === 'perms') return setPerms(b);
@@ -85,6 +86,26 @@ const App = {
   savePerms: async () => {
     const policy = {}; document.querySelectorAll('#set-body select[data-cat]').forEach(s => policy[s.dataset.cat] = s.value);
     const d = await api('/api/permissions', { policy }); toast(d.error ? d.error : 'permissions saved', !!d.error);
+  },
+  aiAdd: () => {
+    const k = $('#ai-env-k').value.trim(), v = $('#ai-env-v').value;
+    if (!k) { toast('name the key first', true); return; }
+    const box = $('#ai-env'); if (box.querySelector('span.muted')) box.innerHTML = '';
+    const row = document.createElement('div'); row.className = 'row'; row.style.margin = '3px 0';
+    row.innerHTML = `<code style="min-width:190px">${esc(k)}</code>
+      <input data-env="${esc(k)}" value="${esc(v)}" style="flex:1"><button class="small" onclick="this.parentElement.remove()">✕</button>`;
+    box.appendChild(row); $('#ai-env-k').value = ''; $('#ai-env-v').value = '';
+  },
+  aiDel: (k) => { const el = document.querySelector(`#ai-env input[data-env="${k}"]`); if (el) el.closest('.row').remove(); },
+  saveAI: async () => {
+    const env = {}; document.querySelectorAll('#ai-env input[data-env]').forEach(i => { if (i.value) env[i.dataset.env] = i.value; });
+    const d = await api('/api/agent/config', { agent: $('#ai-agent').value, model: $('#ai-model').value, env });
+    toast(d.ok || d.error, !!d.error); if (!d.error) App.settings('ai');
+  },
+  saveGR: async () => {
+    const vars = {}; document.querySelectorAll('#ai-gr input[data-gr]').forEach(i => { if (i.value) vars[i.dataset.gr] = i.value; });
+    const d = await api('/api/graphrag/env', { vars });
+    toast(d.ok || d.error, !!d.error); if (!d.error) App.settings('ai');
   },
   kbRebuild: async () => { const d = await api('/api/kb/rebuild', {}); toast(d.ok || d.error, !!d.error); },
   kbDel: async (path) => { const d = await api('/api/kb/delete', { path }); toast(d.ok || d.error, !!d.error); if (!d.error) App.settings('kb'); },
@@ -656,6 +677,40 @@ async function setPerms(b) {
         `<option value="${v}" ${(d.policy[c] === v) ? 'selected' : ''}>${v}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table>
     <div class="row" style="margin-top:10px"><button onclick="App.savePerms()">Save</button>
       <span class="muted mini">Applies to every agent (opencode, Claude Code, any <code>AGENT=</code>).</span></div>`;
+}
+async function setAI(b) {
+  const [a, g] = await Promise.all([api('/api/agent/config'), api('/api/graphrag/env')]);
+  const detected = (a.detected || []);
+  const envRows = (a.env_keys || []).map(k =>
+    `<div class="row" style="margin:3px 0"><code style="min-width:190px">${esc(k)}</code>
+      <input data-env="${esc(k)}" placeholder="${esc(a.env[k])} (blank = keep)" style="flex:1">
+      <button class="small" onclick="App.aiDel('${esc(k)}')" title="remove">✕</button></div>`).join('');
+  const grRows = (g.keys || []).map(k =>
+    `<div class="row" style="margin:3px 0"><code style="min-width:190px">${esc(k)}</code>
+      <input data-gr="${esc(k)}" placeholder="${esc(g.vars[k])} (blank = keep)" style="flex:1"></div>`).join('');
+  b.innerHTML = `<p class="muted">Which LLM/agent runs the pipeline. Token values are stored outside the repo
+      (<code>${esc(a.config_path)}</code>, 0600) and shown masked.</p>
+    <div class="row" style="margin:6px 0"><b>Detected:</b>
+      ${detected.length ? detected.map(x => `<span class="pill">${esc(x)}</span>`).join(' ')
+        : '<span class="muted">none on PATH</span>'}
+      <span class="muted">· in use: <b>${esc(a.which || '?')}</b></span></div>
+    ${detected.length ? '' : `<div class="muted mini" style="margin-bottom:8px">Install one, then set the command below:
+      <code>npm i -g opencode-ai</code> (opencode) or <code>npm i -g @anthropic-ai/claude-code</code> (Claude Code),
+      or set a custom command.</div>`}
+    <div class="row" style="margin-top:8px"><span class="muted">Agent</span>
+      <input id="ai-agent" value="${esc(a.agent)}" placeholder="auto (opencode, else claude)" style="flex:1">
+      <span class="muted">Model</span><input id="ai-model" value="${esc(a.model)}" placeholder="agent default" style="flex:1"></div>
+    <h4 style="margin:14px 0 4px">API keys / env</h4>
+    <div id="ai-env">${envRows || '<span class="muted mini">none set</span>'}</div>
+    <div class="row" style="margin-top:6px">
+      <input id="ai-env-k" list="ai-known" placeholder="KEY name" style="max-width:220px">
+      <datalist id="ai-known">${(a.known_keys || []).map(k => `<option>${esc(k)}</option>`).join('')}</datalist>
+      <input id="ai-env-v" placeholder="value" style="flex:1"><button onclick="App.aiAdd()">＋ Add</button></div>
+    <div class="row" style="margin-top:10px"><button onclick="App.saveAI()">Save agent config</button></div>
+    <h4 style="margin:18px 0 4px">GraphRAG LLM (<code>kb/graphrag/.env</code>)</h4>
+    <div id="ai-gr">${grRows || '<span class="muted mini">no .env yet</span>'}</div>
+    <div class="row" style="margin-top:8px"><button onclick="App.saveGR()">Save GraphRAG env</button>
+      <span class="muted mini">Used by the knowledge graph (same OPENCODE_API_KEY works for both).</span></div>`;
 }
 function setProfile(b) {
   b.innerHTML = `<p class="muted">Your ground-truth CV, role-family templates and rules. JSON is validated before saving; a <code>.bak</code> is kept.</p>
