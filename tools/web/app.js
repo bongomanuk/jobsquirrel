@@ -40,6 +40,7 @@ const md = (s) => {
   return t;
 };
 let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] }, CUR_PERM = null;
+let SPECIAL = '', ACTIVE_METRIC = '', VISIBLE = [];
 
 async function api(path, body) {
   const o = { headers: {} };
@@ -131,6 +132,24 @@ const App = {
     CHAT = { segments: [], running: false }; setSpin(false); renderChat(); toast('agent history cleared');
   },
   open: (i) => openDetail(GRID[i]),
+  metric: (kind) => {
+    if (kind === 'total') { SPECIAL = ''; ACTIVE_METRIC = ''; $('#fstatus').value = ''; $('#fqueue').value = ''; }
+    else if (ACTIVE_METRIC === kind) { SPECIAL = ''; ACTIVE_METRIC = ''; $('#fstatus').value = ''; $('#fqueue').value = ''; }
+    else {
+      ACTIVE_METRIC = kind; SPECIAL = ''; $('#fstatus').value = ''; $('#fqueue').value = '';
+      if (kind === 'interviews') $('#fstatus').value = 'INTERVIEW';
+      else if (kind === 'offers') $('#fstatus').value = 'OFFER';
+      else if (kind === 'human') $('#fqueue').value = 'human';
+      else SPECIAL = kind;                                  // in_process / blocked / submissions
+    }
+    document.querySelectorAll('#metrics .metric').forEach(m => m.classList.toggle('on', m.dataset.metric === ACTIVE_METRIC));
+    renderRows();
+  },
+  prepareRoles: async (keys) => { const d = await api('/api/prepare', { keys }); toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true); },
+  prepareThis: (key) => App.prepareRoles([key]),
+  prepareShown: () => App.prepareRoles(VISIBLE),
+  matchShown: async () => { const d = await api('/api/match/recompute', { keys: VISIBLE }); toast(d.ok || d.error, !!d.error); if (!d.error) loadGrid(); },
+  matchThis: async (key) => { const d = await api('/api/match/recompute', { keys: [key] }); toast(d.ok || d.error, !!d.error); if (!d.error) loadGrid(); },
   saveRow: async () => {
     const d = await api('/api/register/row', { company: CUR.company, role: CUR.role, status: $('#dt-status').value, notes: $('#dt-notes').value });
     toast(d.ok || d.error, !!d.error); if (!d.error) { loadGrid(); }
@@ -157,13 +176,14 @@ async function loadGrid() {
   const [g, s] = await Promise.all([api('/api/grid'), api('/api/state')]);
   GRID = Array.isArray(g) ? g : [];
   $('#metrics').innerHTML =
-    `<span class="metric hero"${T('Applications still live: submitted + in progress + interviews + offers')}><b>${s.kpis.in_process}</b>in process</span>` +
-    `<span class="metric"${T('Applications that reached at least one interview')}><b>${s.kpis.interviews}</b>interviews</span>` +
-    `<span class="metric"${T('Blocked by a CAPTCHA / bot check, or needing manual action')}><b>${s.kpis.blocked}</b>blocked</span>` +
-    `<span class="metric"${T('Roles waiting on you — a human step (state/queue-human.tsv)')}><b>${s.kpis.human}</b>human</span>` +
-    `<span class="metric"${T('Offers received')}><b>${s.kpis.offers}</b>offers</span>` +
-    `<span class="metric"${T('All rows in the register (state/applications.csv)')}><b>${s.kpis.total}</b>total</span>` +
-    `<span class="metric"${T('Submissions with recorded provenance — exact CV + letter + hashes (state/submissions.csv)')}><b>${s.kpis.submissions}</b>submissions</span>`;
+    `<span class="metric hero" data-metric="in_process"${T('Applications still live: submitted + in progress + interviews + offers — click to filter')}><b>${s.kpis.in_process}</b>in process</span>` +
+    `<span class="metric" data-metric="interviews"${T('Applications that reached at least one interview — click to filter')}><b>${s.kpis.interviews}</b>interviews</span>` +
+    `<span class="metric" data-metric="blocked"${T('Blocked or manual — click to filter')}><b>${s.kpis.blocked}</b>blocked</span>` +
+    `<span class="metric" data-metric="human"${T('Roles waiting on you — click to filter')}><b>${s.kpis.human}</b>human</span>` +
+    `<span class="metric" data-metric="offers"${T('Offers received — click to filter')}><b>${s.kpis.offers}</b>offers</span>` +
+    `<span class="metric" data-metric="total"${T('All rows — click to clear filters')}><b>${s.kpis.total}</b>total</span>` +
+    `<span class="metric" data-metric="submissions"${T('Submissions with recorded provenance — click to filter')}><b>${s.kpis.submissions}</b>submissions</span>`;
+  document.querySelectorAll('#metrics .metric').forEach(m => m.onclick = () => App.metric(m.dataset.metric));
   renderRows();
   if (sc) sc.scrollTop = y;
 }
@@ -175,6 +195,10 @@ function renderRows() {
   const q = $('#q').value.toLowerCase(), st = $('#fstatus').value, qq = $('#fqueue').value;
   let rows = GRID.filter(r => (!st || r.status === st) && (!qq || r.queue === qq) &&
     (!q || (r.company + ' ' + r.role + ' ' + (r.ats || '')).toLowerCase().includes(q)));
+  if (SPECIAL === 'in_process') rows = rows.filter(r => ['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER'].includes(r.status));
+  else if (SPECIAL === 'blocked') rows = rows.filter(r => ['BLOCKED', 'MANUAL'].includes(r.status));
+  else if (SPECIAL === 'applied') rows = rows.filter(r => r.applied);
+  VISIBLE = rows.map(r => r.key);
   const k = SORT.k;
   const rank = (r) => r.running ? 0 : (r.status === 'QUEUED' ? 1 : 2);   // in-flight + queued float to the top
   rows = rows.slice().sort((a, b) => {
@@ -243,7 +267,8 @@ function summary(r) {
     (m.missing && m.missing.length ? `<div class="muted mini" style="margin-top:6px">missing: ${m.missing.map(esc).join(', ')}</div>` : '') +
     `<div class="muted" style="margin:12px 0 4px">notes (editable)</div><textarea id="dt-notes" style="min-height:14vh">${esc(r.notes || '')}</textarea>` +
     `<div class="row" style="margin-top:10px"><button onclick="App.saveRow()">Save</button>` +
-    `<button onclick="App.run('prepare')">Prepare (review)</button></div>`;
+    `<button onclick="App.prepareThis(${JSON.stringify(r.key)})">Prepare this role</button>` +
+    `<button onclick="App.matchThis(${JSON.stringify(r.key)})">Recompute match</button></div>`;
 }
 function prov() {
   if (!Object.keys(P).length) return '<span class="muted">no provenance recorded yet</span>';
@@ -649,7 +674,11 @@ $('#act-toggle').onclick = () => {
 };
 $('#chat-send').onclick = () => App.chat();
 $('#chat-new').onclick = () => App.newChat();
-$('#q').oninput = renderRows; $('#fstatus').onchange = renderRows; $('#fqueue').onchange = renderRows;
+$('#q').oninput = renderRows;
+$('#fstatus').onchange = () => { SPECIAL = ''; ACTIVE_METRIC = ''; document.querySelectorAll('#metrics .metric').forEach(m => m.classList.remove('on')); renderRows(); };
+$('#fqueue').onchange = () => { SPECIAL = ''; ACTIVE_METRIC = ''; document.querySelectorAll('#metrics .metric').forEach(m => m.classList.remove('on')); renderRows(); };
+$('#a-prepare-shown').onclick = () => App.prepareShown();
+$('#a-match').onclick = () => App.matchShown();
 $('#export').onclick = () => {
   const cs = ['date', 'company', 'role', 'ats', 'status', 'match', 'queue', 'applied', 'spec', 'key'];
   const body = GRID.map(r => cs.map(c => JSON.stringify(r[c] == null ? '' : r[c])).join(',')).join('\n');

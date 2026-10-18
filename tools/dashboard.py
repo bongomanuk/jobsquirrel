@@ -1204,6 +1204,47 @@ def _spawn(purpose, argv, env=None):
     return proc
 
 
+def prepare_roles(keys):
+    """Run a REVIEW pass (generate + gate documents, never submit) over the given roles,
+    by handing run_queue.sh a temporary queue containing just those rows."""
+    keys = [str(k).strip() for k in (keys or []) if str(k).strip()]
+    if not keys:
+        return {"error": "no roles selected"}
+    want = set(keys)
+    rows = []
+    for path in ("queue.tsv", "queue-human.tsv", "queue.retry"):
+        for r in _queue_rows(os.path.join(STATE, path)):
+            if r["key"] in want:
+                rows.append(r)
+    if not rows:
+        return {"error": "those roles aren't in a queue (already applied, or never queued)"}
+    os.makedirs(LOGS, exist_ok=True)
+    tmp = os.path.join(LOGS, "queue-ui.tsv")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        for r in rows:
+            fh.write("\t".join([r["company"], r["role"], r["url"], r["cv"], r["ats"], r["key"]]) + "\n")
+    _spawn(f"prepare {len(rows)} role(s) (review)",
+           ["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+           {"REVIEW": "1", "PARALLEL": "1", "QUEUE": tmp})
+    return {"ok": f"generating documents for {len(rows)} role(s) — watch the Activity pane (nothing is submitted)"}
+
+
+def recompute_match(keys=None):
+    keys = [str(k).strip() for k in (keys or []) if str(k).strip()]
+    if keys:
+        for k in keys:
+            _COV.pop(k, None)
+            _MATCH_CACHE.pop(k, None)
+        msg = f"recomputing match for {len(keys)} role(s)"
+    else:
+        _COV.clear()
+        _MATCH_CACHE.clear()
+        msg = "recomputing match for all roles"
+    globals()["_cov_dirty"] = True
+    _save_cov()
+    return {"ok": msg}
+
+
 def start_action(command, approval_token=""):
     spec = ACTIONS.get(command)
     if not spec:
@@ -1533,6 +1574,10 @@ class H(BaseHTTPRequestHandler):
                                                 bool(data.get("remember"))))
         if p == "/api/update/apply":
             return self._json(apply_update(str(data.get("approval_token", ""))))
+        if p == "/api/prepare":
+            return self._json(prepare_roles(data.get("keys") or []))
+        if p == "/api/match/recompute":
+            return self._json(recompute_match(data.get("keys")))
         self._json({"error": "not found"}, 404)
 
 

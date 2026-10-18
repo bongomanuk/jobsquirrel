@@ -148,7 +148,10 @@ same record is never duplicated across separate pages.
   (**⚡ Prepare**, **🚀 Run Submissions** (gated), **📥 Reconcile**, **⚙ Config**, **💬 Agent**).
 - **Strip:** metric pills (in process · interviews · blocked · human · offers · total · submissions)
   and a live-tail line (`/api/live`).
-- **Toolbar:** search (company/role/ATS), status filter, queue filter, **Export CSV**, row count.
+- **Toolbar:** search (company/role/ATS), status filter, queue filter, **Export CSV**, row count,
+  **⚡ Prepare shown** (generate documents, review-only) and **↻ Match** (recompute) for the rows shown.
+- **Metric pills are filters:** click *in process / interviews / blocked / human / offers / total /
+  submissions* to filter the grid to that set (click again or *total* to clear); the active pill is highlighted.
 
 ### 9.3 Master grid (the one table)
 Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files · Job ad**
