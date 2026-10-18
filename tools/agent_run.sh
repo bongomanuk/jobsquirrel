@@ -20,9 +20,10 @@ set -u
 
 resolve_agent() {
   if [ -n "${AGENT:-}" ]; then
-    command -v "${AGENT%% *}" >/dev/null 2>&1 && { printf '%s' "$AGENT"; return 0; }
-    echo "agent_run: AGENT=$AGENT, but '${AGENT%% *}' is not installed or not on PATH" >&2
-    return 1
+    if command -v "${AGENT%% *}" >/dev/null 2>&1; then printf '%s' "$AGENT"; return 0; fi
+    # AGENT is set but not a real command (e.g. a stray AGENT=1 / AGENT=true in the
+    # environment) — warn and fall through to auto-detect instead of failing the run.
+    echo "agent_run: AGENT='$AGENT' is not installed or on PATH — falling back to auto-detect" >&2
   fi
   local a
   for a in opencode claude; do
