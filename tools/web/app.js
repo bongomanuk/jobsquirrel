@@ -185,7 +185,7 @@ function renderRows() {
   $('#rows').innerHTML = rows.map((r) => {
     const i = GRID.indexOf(r);
     return `<tr class="click" onclick="App.open(${i})">` +
-      `<td class="muted"${T('Register row last updated ' + r.date)}>${esc(r.date)}</td>` +
+      `<td class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet — queued, not applied')}>${r.date ? esc(r.date) : '—'}</td>` +
       `<td${T('Employer / recruiter')}>${r.running ? '<span class="spin" title="Being worked on now">🥜</span> ' : ''}${esc(r.company)}</td>` +
       `<td${T('Job title')}>${esc(r.role)}</td>` +
       `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +

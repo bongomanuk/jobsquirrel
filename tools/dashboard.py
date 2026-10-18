@@ -553,7 +553,10 @@ def grid():
         cov = m.get("coverage")
         if cov is None:
             cov = coverage_for(key, r.get("cv", ""))
-        out.append({"date": "", "company": co, "role": role, "ats": r.get("ats", ""),
+        jd = os.path.join(STATE, "job-descriptions", key + ".md")
+        stamp = _mtime(jd) or _mtime(os.path.join(STATE, "queue.tsv"))
+        qdate = time.strftime("%Y-%m-%d", time.localtime(stamp)) if stamp else ""
+        out.append({"date": qdate, "company": co, "role": role, "ats": r.get("ats", ""),
                     "status": "QUEUED", "key": key, "queue": qstate.get(ck, "pending"),
                     "spec": key in specs, "applied": ck in subm,
                     "match": cov, "alignment": m.get("alignment", ""), "running": ck in running,
