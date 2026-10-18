@@ -70,6 +70,8 @@ tbody tr.click{cursor:pointer}
 .DRAFTING{background:#0e2a3a;color:var(--sub)}
 .NO_RESULT{background:#161b24;color:#94a3b8}
 .INTERVIEW{background:#27143a;color:var(--interview)}
+.SCHEDULED{background:#0b2f2a;color:#5eead4}
+.INVITED{background:#2a2410;color:#fadf8a}
 .OFFER{background:#10351f;color:var(--offer)}
 .REJECTED,.CLOSED{background:#1c2230;color:var(--closed)}
 .BLOCKED,.MANUAL{background:#3a1414;color:var(--blocked)}

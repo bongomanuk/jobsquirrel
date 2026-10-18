@@ -599,9 +599,69 @@ def _hint(status, notes):
         "NO RESULT": "a run finished but produced nothing (no ad, no documents, no application) — re-prepare it, or remove it",
         "SUBMITTED": "applied — waiting for a reply",
         "IN_PROGRESS": "application in progress",
-        "INTERVIEW": "interview stage — prepare",
+        "INTERVIEW": "interview held — awaiting the outcome",
         "OFFER": "offer — respond",
     }.get(status, "")
+
+
+_MONTHS = {m: i for i, m in enumerate(
+    ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
+# A segment counts as interview-related if it says any of these; "booked" and
+# "confirmed" catch the terse "Booked: Thu 15 Oct …" / "Confirmed: …" notes.
+_INTERVIEW_WORDS = ("interview", "screen", "intro call", "first chat", "call with",
+                    "booked", "confirmed", "invit")
+# No date yet, but clearly still being arranged -> INVITED rather than held.
+_INVITED_WORDS = ("invit", "schedul", "availabil", "await", "reschedul", "book at")
+
+
+def _interview_time(notes):
+    """Latest interview datetime mentioned in the notes (epoch seconds, 0 if none).
+
+    Only '|'-separated segments that talk about an interview/screen/call are
+    scanned, so application dates or start dates don't flip the label."""
+    best = 0.0
+    for seg in re.split(r"\s*\|\s*", notes or ""):
+        if seg.strip().lower().startswith("gmail:"):     # reconciler metadata: the email's date, not the interview's
+            continue
+        if not any(w in seg.lower() for w in _INTERVIEW_WORDS):
+            continue
+        for m in re.finditer(r"\b(20\d{2})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?", seg):
+            try:
+                best = max(best, time.mktime((int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                                              int(m.group(4) or 0), int(m.group(5) or 0),
+                                              0, 0, 0, -1)))
+            except (OverflowError, ValueError):
+                pass
+        for m in re.finditer(r"\b(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+                             r"[a-z]*\.?\s+(20\d{2})(?:[ ,]+(\d{1,2}):(\d{2}))?", seg, re.I):
+            try:
+                best = max(best, time.mktime((int(m.group(3)), _MONTHS[m.group(2).lower()[:3]],
+                                              int(m.group(1)), int(m.group(4) or 0),
+                                              int(m.group(5) or 0), 0, 0, 0, -1)))
+            except (OverflowError, ValueError):
+                pass
+    return best
+
+
+def _interview_label(status, notes):
+    """Distinguish the interview sub-states for the grid.
+
+      SCHEDULED  a future interview is booked
+      INVITED     being arranged (no confirmed date yet)
+      INTERVIEW   held — awaiting the outcome
+
+    Returns (display_label, 'YYYY-MM-DD HH:MM' or '')."""
+    if status != "INTERVIEW":
+        return status, ""
+    iv = _interview_time(notes)
+    if iv > time.time():
+        return "SCHEDULED", time.strftime("%Y-%m-%d %H:%M", time.localtime(iv))
+    if iv:
+        return "INTERVIEW", time.strftime("%Y-%m-%d %H:%M", time.localtime(iv))
+    if any(w in (notes or "").lower() for w in _INVITED_WORDS):
+        return "INVITED", ""
+    return "INTERVIEW", ""
+
 
 
 def grid():
@@ -658,15 +718,24 @@ def grid():
         if cov is None:
             cov = coverage_for(key, cvmap.get(key, "") or subm_cv.get(ck, ""))
         align = m.get("alignment") or (_COV.get(key, {}) or {}).get("align", "")
+        status = (r.get("status") or "").upper()
+        notes = r.get("notes", "")
+        label, interview_at = _interview_label(status, notes)
+        hint = _hint(status, notes)
+        if status == "INTERVIEW":
+            hint = {"SCHEDULED": f"interview booked {interview_at} — prepare",
+                    "INVITED": "interview requested — reply and get a time booked"}.get(
+                        label, (f"interview held {interview_at} — awaiting the outcome" if interview_at
+                                else "interview held — awaiting the outcome"))
         out.append({"date": r.get("date", ""), "company": co, "role": role, "ats": r.get("ats", ""),
-                    "status": (r.get("status") or "").upper(), "key": key,
+                    "status": status, "label": label, "interview_at": interview_at, "key": key,
                     "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, ""),
                     "spec": key in specs, "applied": ck in subm,
                     "match": cov, "alignment": align, "running": ck in running,
-                    "notes": r.get("notes", ""), "letter": r.get("letter", ""),
+                    "notes": notes, "letter": r.get("letter", ""),
                     "url": qrow.get(ck, {}).get("url", "") or subm_url.get(ck, ""),
                     "stages": stages_for(key, ck in subm),
-                    "hint": _hint((r.get("status") or "").upper(), r.get("notes", ""))})
+                    "hint": hint})
     # queued but not yet in the register — show the work that's waiting / in flight
     for ck, r in qrow.items():
         if ck in seen:
@@ -692,7 +761,7 @@ def grid():
         else:
             stg = "QUEUED"
         out.append({"date": qdate, "company": co, "role": role, "ats": r.get("ats", ""),
-                    "status": stg, "key": key,
+                    "status": stg, "label": stg, "interview_at": "", "key": key,
                     "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, "pending"),
                     "spec": key in specs, "applied": ck in subm,
                     "match": cov, "alignment": m.get("alignment", ""), "running": ck in running,

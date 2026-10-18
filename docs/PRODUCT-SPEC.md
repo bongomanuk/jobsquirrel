@@ -76,6 +76,9 @@ Components:
 
 `SUBMITTED | IN_PROGRESS | INTERVIEW | OFFER | REJECTED | BLOCKED | MANUAL | PREPARED | CLOSED`.
 
+- `INTERVIEW` splits into three display labels (the stored status stays `INTERVIEW`,
+  derived from the notes): **`SCHEDULED`** (a future interview is booked), **`INVITED`**
+  (being arranged, no confirmed time), and plain **`INTERVIEW`** (held — awaiting the outcome).
 - **IN PROCESS** = `SUBMITTED + IN_PROGRESS + INTERVIEW + OFFER` (the live pipeline).
 - `BLOCKED` = a manual step is required (CAPTCHA/login); do not auto-retry.
 - `MANUAL` = the human must act (login/email); `PREPARED` = documents ready, not sent.

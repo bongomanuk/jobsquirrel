@@ -8,7 +8,9 @@ const STATUS_HELP = {
   'NO RESULT': 'A run finished but produced nothing (no ad, no documents, no application) — re-prepare it, or remove it',
   SUBMITTED: 'Application sent — awaiting a reply',
   IN_PROGRESS: 'Application in progress (multi-step form being completed)',
-  INTERVIEW: 'Interview stage — an interview is scheduled or requested',
+  INTERVIEW: 'Interview held — awaiting the outcome',
+  SCHEDULED: 'Interview booked but not happened yet — prepare for it',
+  INVITED: 'Interview requested — not booked yet; reply and arrange a time',
   OFFER: 'Offer received',
   REJECTED: 'Rejected / declined by the employer',
   BLOCKED: 'Blocked — CAPTCHA, bot check or a hard wall stopped submission',
@@ -319,7 +321,9 @@ function renderRows() {
   const q = $('#q').value.toLowerCase(), st = $('#fstatus').value, qq = $('#fqueue').value;
   const cy = String(new Date().getFullYear());
   const shortDate = (d) => { const [y, m, dd] = d.split('-'); return y === cy ? `${m}-${dd}` : `${y.slice(2)}-${m}-${dd}`; };
-  let rows = GRID.filter(r => (!st || r.status === st) && (!qq || r.queue === qq) &&
+  const disp = (r) => r.label || r.status;               // INTERVIEW rows show SCHEDULED when an interview is still ahead
+  const statusMatch = (r) => !st || (st === 'INTERVIEW' ? ['INTERVIEW', 'SCHEDULED', 'INVITED'].includes(disp(r)) : disp(r) === st);
+  let rows = GRID.filter(r => statusMatch(r) && (!qq || r.queue === qq) &&
     (!q || (r.company + ' ' + r.role + ' ' + (r.ats || '')).toLowerCase().includes(q)));
   if (SPECIAL === 'in_process') rows = rows.filter(r => ['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER'].includes(r.status));
   else if (SPECIAL === 'blocked') rows = rows.filter(r => ['BLOCKED', 'MANUAL'].includes(r.status));
@@ -344,7 +348,7 @@ function renderRows() {
       `<td${T(r.company + '  ·  employer / recruiter')}>${(r.running || PENDING.has(r.key)) ? '<span class="spin" title="Being worked on now">🥜</span> ' : ''}${esc(r.company)}</td>` +
       `<td${T(r.role + '  ·  job title')}>${esc(r.role)}</td>` +
       `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
-      `<td>${chip(r.status)}${r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : ''}</td><td>${mbadge(r)}</td>` +
+      `<td>${chip(r.label || r.status)}${r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : ''}</td><td>${mbadge(r)}</td>` +
       `<td${T(QUEUE_HELP[r.queue] || 'Not in any queue')}>${['pending', 'human', 'retry'].includes(r.queue)
         ? `<span class="badge ${r.queue === 'human' ? 'bad' : r.queue === 'retry' ? 'mid' : 'good'}">${esc(r.queue)}</span>`
         : `<span class="muted">—</span>`}</td>` +
@@ -383,17 +387,17 @@ function summary(r) {
   const notes = (r.notes || '').trim();
   const hist = notes ? notes.split(/\s*\|\s*/).filter(Boolean).map(x => `<li>${md(x)}</li>`).join('') : '';
   return `<div class="statebox">
-      <div class="row">${chip(r.status)}${r.hint ? `<span class="statehint">${esc(r.hint)}</span>` : ''}</div>
+      <div class="row">${chip(r.label || r.status)}${r.hint ? `<span class="statehint">${esc(r.hint)}</span>` : ''}</div>
       <div class="stages">${(() => {
         const st = r.stages || {};
         const cell = (k, label) => `<span class="stage ${st[k] ? 'on' : ''}" title="${st[k] ? 'done' : 'not yet'}">${st[k] ? '✓' : '○'} ${label}</span>`;
         return cell('ad', 'Ad saved') + cell('keywords', 'Keywords') + cell('grounding', 'Grounded') + cell('documents', 'Documents') + cell('applied', 'Applied');
       })()}</div>
-      <div class="state-meta mini muted">ATS: ${esc(r.ats || '—')} · Queue: ${esc(r.queue || 'not queued')}${r.date ? ' · updated ' + esc(r.date) : ''} · <span class="mono">${esc(r.key)}</span></div>
+      <div class="state-meta mini muted">ATS: ${esc(r.ats || '—')} · Queue: ${esc(r.queue || 'not queued')}${r.date ? ' · updated ' + esc(r.date) : ''}${r.interview_at ? ' · interview ' + esc(r.interview_at) : ''} · <span class="mono">${esc(r.key)}</span></div>
       ${r.running ? '<div class="working"><span class="spin">🥜</span> being worked on right now</div>' : ''}
     </div>` +
     `<div class="row" style="margin:6px 0 10px"><span class="muted">Set status</span>
-      <select id="dt-status"><option value="">— keep as ${esc(r.status || 'is')} —</option>` +
+      <select id="dt-status"><option value="">— keep as ${esc(r.label || r.status || 'is')} —</option>` +
       reg.map(x => `<option ${x === r.status ? 'selected' : ''}>${x}</option>`).join('') + '</select>' +
       `<button onclick="App.saveRow()">Save</button>
       <button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>Prepare this role</button>
