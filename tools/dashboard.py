@@ -232,6 +232,31 @@ def _queue_fields(company, role):
     return "", "", "", _slug(f"{company}-{role}")
 
 
+def _row_note(company, role):
+    for r in _rows(os.path.join(STATE, "applications.csv")):
+        if r["company"].lower() == company.lower() and r["role"].lower() == role.lower():
+            return r.get("notes", "")
+    return ""
+
+
+def _prepared_letter(company, role, key):
+    """The cover letter recorded/prepared for this row, if any."""
+    m = re.search(r"documents/[^\s|;]*_Motivation_[^\s|;]*\.docx", _row_note(company, role))
+    if m and os.path.exists(os.path.join(ROOT, m.group(0))):
+        return m.group(0)
+    hits = sorted(glob.glob(os.path.join(ROOT, "documents", "applications", f"*_Motivation_{key}.docx")))
+    return os.path.relpath(hits[-1], ROOT) if hits else ""
+
+
+def _prepared_cv(company, role, key):
+    """The targeted CV prepared for this row (falls back to the queue's archetype)."""
+    m = re.search(r"documents/[^\s|;]*_CV_[^\s|;]*\.docx", _row_note(company, role))
+    if m and os.path.exists(os.path.join(ROOT, m.group(0))):
+        return m.group(0)
+    hits = sorted(glob.glob(os.path.join(ROOT, "documents", "applications", f"*_CV_{key}.docx")))
+    return os.path.relpath(hits[-1], ROOT) if hits else ""
+
+
 def queue_action(action, company, role):
     if not (company and role):
         return {"error": "company and role required"}
@@ -255,14 +280,25 @@ def queue_action(action, company, role):
             pass
         return {"ok": f"{'unblocked' if action == 'unblock' else 're-queued'} {company} / {role}"}
     if action == "human":
+        # One role, one visible browser, everything pre-filled: the human only has
+        # to clear the challenge and press Submit. The queue row carries the exact
+        # cv/letter/reason so the assist agent uploads the prepared documents.
         url, cv, ats, k = _queue_fields(company, role)
+        cv = _prepared_cv(company, role, k) or cv
+        letter = _prepared_letter(company, role, k)
+        reason = (_row_note(company, role).split("|")[0].strip() or "human step")[:200]
         os.makedirs(LOGS, exist_ok=True)
         tmp = os.path.join(LOGS, "queue-human-ui.tsv")
         with open(tmp, "w", encoding="utf-8") as fh:
-            fh.write("\t".join([company, role, url, cv, ats, k]) + "\n")
+            fh.write("\t".join([company, role, url, cv, letter, reason]) + "\n")
+        tmp_done = os.path.join(LOGS, "queue-human-ui.done")     # empty: never skip this row
+        with open(tmp_done, "w", encoding="utf-8"):
+            pass
         _spawn(f"human assist: {company} / {role}",
-               ["bash", os.path.join(ROOT, "tools", "human_assist.sh")], {"QUEUE": tmp})
-        return {"ok": f"opening a visible Camoufox browser for {company} / {role} — solve the block there, then submit"}
+               ["bash", os.path.join(ROOT, "tools", "human_assist.sh")],
+               {"QUEUE": tmp, "DONE": tmp_done})
+        return {"ok": f"opening a VISIBLE browser for {company} / {role} — it pre-fills everything, "
+                      f"then you solve the challenge and submit"}
     return {"error": "unknown action"}
 
 

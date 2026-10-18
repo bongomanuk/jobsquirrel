@@ -107,15 +107,27 @@ if [ -z "${HUMAN_SERVER:-}" ]; then
 fi
 if ! curl -s -m 3 "$HUMAN_SERVER/health" >/dev/null 2>&1; then
   echo "starting headful camoufox server on port $PORT ..."
-  setsid nohup python3 "$ROOT/tools/camoufox_server.py" --port "$PORT" --headful \
+  # camoufox may live outside the project venv, so start the server with an
+  # interpreter that can actually import it.
+  HUMAN_PY=""
+  for _p in python3 /usr/bin/python3 "$ROOT/.venv/bin/python3"; do
+    command -v "$_p" >/dev/null 2>&1 || continue
+    "$_p" -c 'import camoufox' >/dev/null 2>&1 && { HUMAN_PY="$_p"; break; }
+  done
+  HUMAN_PY="${HUMAN_PY:-python3}"
+  setsid nohup "$HUMAN_PY" "$ROOT/tools/camoufox_server.py" --port "$PORT" --headful \
     --os "${HUMAN_OS:-linux}" --profile "${HUMAN_PROFILE:-$HOME/.config/job-search/human-profile}" \
     --disable-coop --main-world-eval \
     >> "$LOGS/camoufox_server.log" 2>&1 < /dev/null &
   disown
-  for _ in $(seq 1 20); do
-    curl -s -m 3 "$HUMAN_SERVER/health" >/dev/null 2>&1 && break
+  # give it time to launch the visible browser
+  for _ in $(seq 1 30); do
+    curl -s -m 3 "$HUMAN_SERVER/health" >/dev/null 2>&1 && { echo "browser ready"; break; }
     sleep 1
   done
+  if ! curl -s -m 3 "$HUMAN_SERVER/health" >/dev/null 2>&1; then
+    echo "WARN: camoufox server did not come up on $PORT — see $LOGS/camoufox_server.log" >&2
+  fi
 fi
 echo "Human-assist browser: $HUMAN_SERVER (VISIBLE Camoufox). Queue: $QUEUE"
 
@@ -131,6 +143,7 @@ If Apply URL is empty, find the employer's OWN apply URL with a web search (Leve
 CV: $cv
 Cover letter: $letter
 EEO/diversity questions: read config/profile.md first and use its identity, work-authorisation, pay and standard diversity/EEO answers exactly - never decline these or choose "prefer not to say" unless profile.md says so.
+The CV and cover letter above are ALREADY PREPARED - upload those exact files. Do NOT generate, re-render or edit any document, and do not run GraphRAG.
 
 Browser: run every command as \`python3 tools/camoufox_browser.py --server $HUMAN_SERVER <cmd>\` (nav/snap/click/fill/select/check/upload/value/eval/wait). Prefix \`$TIMEOUT_CMD 30\`. This browser is VISIBLE to the human.
 

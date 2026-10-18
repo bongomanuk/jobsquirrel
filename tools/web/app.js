@@ -421,7 +421,7 @@ function summary(r) {
       <div class="why-h"><span class="muted mini">GET PAST THE BLOCK</span></div>
       ${r.url ? `<a class="mini" href="${esc(r.url)}" target="_blank">${esc(r.url.slice(0, 70))}</a>` : '<span class="muted mini">no apply URL recorded</span>'}
       <div class="row" style="margin-top:8px">
-        <button onclick='App.queueAct("human",${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Open a visible Camoufox browser, pre-fill, and pause so you solve the CAPTCHA/2FA/login">🖐 Solve it (human assist)</button>
+        <button class="risky" onclick='App.queueAct("human",${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Opens a VISIBLE browser, pre-fills everything (identity, EEO answers, your prepared CV and cover letter), then waits for you to solve the CAPTCHA/2FA and press Submit">🖐 Autofill &amp; finish</button>
         <button onclick='App.queueAct("retry",${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Re-queue this role for another automated attempt">↻ Retry</button>
         <button onclick='App.queueAct("unblock",${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Clear the blocked status and re-queue">✓ Unblock</button>
         ${r.url ? `<button onclick='App.openPage(${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Open the apply page in your own browser">🌐 Open page</button>` : ''}
