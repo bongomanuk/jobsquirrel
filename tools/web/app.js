@@ -497,8 +497,7 @@ function collapseCode(html) {
     ? `<details class="c-code" data-k="c:${esc(c).slice(0, 80)}"><summary>code</summary><pre>${c}</pre></details>` : m);
 }
 function setSpin(v) {
-  document.body.classList.toggle('chat-busy', !!v);
-  const s = $('#chat-spin'); if (s) s.classList.toggle('hide', !v);
+  const s = $('#chat-spin'); if (s) s.classList.toggle('hide', !v);   // the single "agent working" indicator
 }
 function openKeys(el) { return new Set([...el.querySelectorAll('details[open]')].map(d => d.getAttribute('data-k')).filter(Boolean)); }
 function renderChat() {
@@ -521,7 +520,7 @@ function renderChat() {
     else h += `<div class="md">${collapseCode(md(s.body))}</div>`;
     i++;
   }
-  if (CHAT.running) h += `<div class="working"><span class="spin">🥜</span> <span class="muted">working…</span></div>`;
+  if (CHAT.running) h += `<div class="working"><span class="muted">▮ working…</span></div>`;
   el.innerHTML = h;
   el.querySelectorAll('details[data-k]').forEach(d => { if (keys.has(d.getAttribute('data-k'))) d.open = true; });
   if (nearBottom || CHAT.running) el.scrollTop = el.scrollHeight;

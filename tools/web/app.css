@@ -228,8 +228,6 @@ body[data-act="closed"] .act-body,body[data-act="closed"] #split-inner{display:n
 .spin{display:inline-block;animation:nuts 1.1s linear infinite}
 @keyframes nuts{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
 .working{display:flex;align-items:center;gap:6px;margin:8px 0;font-size:13px}
-body.chat-busy #a-drawer::after{content:' 🥜';display:inline-block;animation:nuts 1.1s linear infinite}
-body.chat-busy .dock-tab::after{content:'🥜';margin-left:6px;display:inline-block;animation:nuts 1.1s linear infinite}
 .c-tools{margin:6px 0;border:1px solid var(--line);border-radius:8px;background:#0a0c10}
 .c-tools>summary{cursor:pointer;padding:5px 9px;color:var(--muted);font-size:12px;list-style:none}
 .c-tools>summary::-webkit-details-marker{display:none}
