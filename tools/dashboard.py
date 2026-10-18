@@ -1404,23 +1404,38 @@ def pause_action(on):
 
 def prepare_roles(keys):
     """Run a REVIEW pass (generate + gate documents, never submit) over the given roles,
-    by handing run_queue.sh a temporary queue containing just those rows."""
+    by handing run_queue.sh a temporary queue containing just those rows.
+
+    Works for any role: queued rows are taken from the queue files; others are rebuilt
+    from the register / submissions so a role you opened (e.g. a done or blocked one) can
+    still be (re)prepared."""
     keys = [str(k).strip() for k in (keys or []) if str(k).strip()]
     if not keys:
         return {"error": "no roles selected"}
     want = set(keys)
-    rows = []
+    rows, found = [], set()
     for path in ("queue.tsv", "queue-human.tsv", "queue.retry"):
         for r in _queue_rows(os.path.join(STATE, path)):
-            if r["key"] in want:
+            if r["key"] in want and r["key"] not in found:
                 rows.append(r)
+                found.add(r["key"])
+    if want - found:                                   # not in a queue -> rebuild from the register
+        km, _ = _key_maps()
+        for r in _rows(os.path.join(STATE, "applications.csv")):
+            co, role = r["company"], r["role"]
+            k = km.get((co.lower(), role.lower())) or _slug(f"{co}-{role}")
+            if k in (want - found) and k not in found:
+                url, cv, ats, _ = _queue_fields(co, role)
+                rows.append({"company": co, "role": role, "url": url, "cv": cv, "ats": ats, "key": k})
+                found.add(k)
     if not rows:
-        return {"error": "those roles aren't in a queue (already applied, or never queued)"}
+        return {"error": "couldn't resolve those roles to a company/role"}
     os.makedirs(LOGS, exist_ok=True)
     tmp = os.path.join(LOGS, "queue-ui.tsv")
     with open(tmp, "w", encoding="utf-8") as fh:
         for r in rows:
-            fh.write("\t".join([r["company"], r["role"], r["url"], r["cv"], r["ats"], r["key"]]) + "\n")
+            fh.write("\t".join([r["company"], r["role"], r.get("url", ""), r.get("cv", ""),
+                                r.get("ats", ""), r["key"]]) + "\n")
     # a scoped run must NOT skip rows already marked done in the shared queue.done
     tmp_done = os.path.join(LOGS, "queue-ui.done")
     with open(tmp_done, "w", encoding="utf-8"):
