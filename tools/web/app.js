@@ -288,12 +288,7 @@ function renderRows() {
       `<td${T('Employer / recruiter')}>${(r.running || PENDING.has(r.key)) ? '<span class="spin" title="Being worked on now">🥜</span> ' : ''}${esc(r.company)}</td>` +
       `<td${T('Job title')}>${esc(r.role)}</td>` +
       `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
-      `<td>${chip(r.status)}${(() => {
-        if (r.status === 'PROCESSED') return '<div class="mini muted whycell">runner finished — no application recorded</div>';
-        if (!['BLOCKED', 'MANUAL', 'CLOSED', 'REJECTED'].includes(r.status) || !r.notes) return '';
-        const why = r.notes.split(/\s*\|\s*/)[0];
-        return `<div class="mini muted whycell"${T(r.notes)}>${esc(why.slice(0, 58))}</div>`;
-      })()}</td><td>${mbadge(r)}</td>` +
+      `<td>${chip(r.status)}${r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : ''}</td><td>${mbadge(r)}</td>` +
       `<td class="muted"${T(QUEUE_HELP[r.queue] || 'Not in any queue')}>${esc(r.queue)}</td>` +
       `<td${T(r.applied ? 'Provenance recorded — exact CV, letter and SHA-256 hashes on file' : 'No submission recorded (not applied, or not reconciled yet)')}>${r.applied ? '✓' : '<span class="muted">—</span>'}</td>` +
       `<td${T(r.spec ? 'A saved job description exists — open the row for the ad, ATS keywords and grounded context' : 'No saved job description')}>${r.spec ? '✓' : '<span class="muted">—</span>'}</td></tr>`;

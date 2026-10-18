@@ -584,6 +584,24 @@ def _key_maps():
     return km, cv
 
 
+def _hint(status, notes):
+    """A plain-language 'what this means / what to do' line for a row."""
+    reason = (notes or "").split(" | ")[0].strip()
+    if status in ("BLOCKED", "MANUAL"):
+        return reason or "needs you — open the row to get past the block"
+    if status in ("CLOSED", "REJECTED"):
+        return reason or ("closed — no action" if status == "CLOSED" else "rejected — no action")
+    return {
+        "QUEUED": "in the apply queue — applied when you run the queue",
+        "PROCESSED": "run finished with no application recorded — re-prepare it, or remove it",
+        "PREPARED": "documents ready and gated — safe to apply",
+        "SUBMITTED": "applied — waiting for a reply",
+        "IN_PROGRESS": "application in progress",
+        "INTERVIEW": "interview stage — prepare",
+        "OFFER": "offer — respond",
+    }.get(status, "")
+
+
 def grid():
     """One row per application: register ⋈ queue ⋈ in-flight running tasks ⋈ provenance."""
     apps = _rows(os.path.join(STATE, "applications.csv"))
@@ -632,7 +650,8 @@ def grid():
                     "spec": key in specs, "applied": ck in subm,
                     "match": cov, "alignment": align, "running": ck in running,
                     "notes": r.get("notes", ""), "letter": r.get("letter", ""),
-                    "url": qrow.get(ck, {}).get("url", "") or subm_url.get(ck, "")})
+                    "url": qrow.get(ck, {}).get("url", "") or subm_url.get(ck, ""),
+                    "hint": _hint((r.get("status") or "").upper(), r.get("notes", ""))})
     # queued but not yet in the register — show the work that's waiting / in flight
     for ck, r in qrow.items():
         if ck in seen:
@@ -651,7 +670,8 @@ def grid():
                     "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, "pending"),
                     "spec": key in specs, "applied": ck in subm,
                     "match": cov, "alignment": m.get("alignment", ""), "running": ck in running,
-                    "notes": "", "letter": "", "url": r.get("url", "")})
+                    "notes": "", "letter": "", "url": r.get("url", ""),
+                    "hint": _hint("PROCESSED" if f"{co}|{role}" in done else "QUEUED", "")})
     _save_cov()
     out.sort(key=lambda x: (x["date"] or ""), reverse=True)
     out.sort(key=lambda x: 0 if x["running"] else (1 if x["status"] == "QUEUED" else 2))
