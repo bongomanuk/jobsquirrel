@@ -7,9 +7,12 @@
   GitHub release.
 
 ## Naming
-- **Release titles must be funny.** A joke, a meme, a pun — never a serious codename.
-  Examples: *"Deez Nuts"*, *"Dem Nuts"*, *"Bofa"*, *"Ligma"*. If it isn't a laugh, rename it.
-- Title format: `vX.Y.Z "Funny Title"` (one emoji is fine).
+- **Release titles must be funny AND nut/squirrel themed** — a pun or gag that nods to
+  nuts, acorns, squirrels or caching. Examples: *"Deez Nuts"*, *"Dem Nuts"*, *"Acorny Joke"*,
+  *"Hazel Nutt"*, *"Nuts to You"*, *"Go Nuts"*, *"Squirrelled Away"*, *"Bussin' Nuts"*.
+  A funny name with no nut/squirrel angle (Rizz, Skibidi, Ohio…) does **not** qualify —
+  rename it.
+- Title format: `vX.Y.Z "Funny Nut Title"` (one emoji is fine).
 
 ## Cutting one
 ```bash
