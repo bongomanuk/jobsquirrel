@@ -57,6 +57,12 @@ function working(label) {                         // immediate "something is hap
   $('#peras-body').innerHTML = `<span class="muted">${esc(label || 'working…')}</span>`;
   $('#peras').classList.remove('hide');
 }
+async function busyBtn(el, label, fn) {              // visible "working" state on a button
+  const orig = el ? el.textContent : '';
+  if (el) { el.disabled = true; el.textContent = label; }
+  $('#live').textContent = '● ' + (label || 'working') + ' …';
+  try { return await fn(); } finally { if (el) { el.disabled = false; el.textContent = orig; } }
+}
 function warn(text) {
   return new Promise(res => {
     $('#warn-text').innerHTML = md(text);
@@ -213,8 +219,16 @@ const App = {
   },
   prepareThis: (key) => App.prepareRoles([key]),
   prepareShown: () => App.prepareRoles(VISIBLE),
-  matchShown: async () => { const d = await api('/api/match/recompute', { keys: VISIBLE }); toast(d.ok || d.error, !!d.error); if (!d.error) loadGrid(); },
-  matchThis: async (key) => { const d = await api('/api/match/recompute', { keys: [key] }); toast(d.ok || d.error, !!d.error); if (!d.error) loadGrid(); },
+  matchShown: async (el) => busyBtn(el, '⏳ recomputing match…', async () => {
+    const d = await api('/api/match/recompute', { keys: VISIBLE });
+    toast(d.error ? d.error : 'match recomputed for the rows shown', !!d.error);
+    if (!d.error) loadGrid();
+  }),
+  matchThis: async (key, el) => busyBtn(el, '⏳ recomputing…', async () => {
+    const d = await api('/api/match/recompute', { keys: [key] });
+    toast(d.error ? d.error : 'match recomputed', !!d.error);
+    if (!d.error) { await loadGrid(); if (CUR) openDetail(CUR); }
+  }),
   stop: async () => { const d = await api('/api/action/stop', {}); toast(d.ok || d.error, !!d.error); },
   togglePause: async (on) => { const d = await api('/api/action/pause', { on }); toast(d.ok || d.error, !!d.error); },
   queueAct: async (action, company, role) => {
@@ -365,7 +379,7 @@ function summary(r) {
       reg.map(x => `<option ${x === r.status ? 'selected' : ''}>${x}</option>`).join('') + '</select>' +
       `<button onclick="App.saveRow()">Save</button>
       <button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>Prepare this role</button>
-      <button data-act onclick='App.matchThis(${JSON.stringify(r.key)})'>Recompute match</button></div>` +
+      <button data-act onclick='App.matchThis(${JSON.stringify(r.key)}, this)'>Recompute match</button></div>` +
     `<div class="row">${m.alignment ? `<span class="badge ${m.alignment === 'PASS' ? 'good' : 'bad'}">alignment ${m.alignment}</span>` : ''}` +
     `${m.coverage != null ? `<span class="badge ${m.coverage >= 70 ? 'good' : 'mid'}">coverage ${m.coverage}%</span>` : ''}${known ? '' : '<span class="muted mini">(runner-derived state)</span>'}</div>` +
     (m.missing && m.missing.length ? `<div class="muted mini" style="margin-top:8px">missing skills — click one to add where you have it:
@@ -853,7 +867,7 @@ $('#q').oninput = renderRows;
 $('#fstatus').onchange = () => { SPECIAL = ''; ACTIVE_METRIC = ''; document.querySelectorAll('#metrics .metric').forEach(m => m.classList.remove('on')); renderRows(); };
 $('#fqueue').onchange = () => { SPECIAL = ''; ACTIVE_METRIC = ''; document.querySelectorAll('#metrics .metric').forEach(m => m.classList.remove('on')); renderRows(); };
 $('#a-prepare-shown').onclick = () => App.prepareShown();
-$('#a-match').onclick = () => App.matchShown();
+$('#a-match').onclick = () => App.matchShown($('#a-match'));
 $('#export').onclick = () => {
   const cs = ['date', 'company', 'role', 'ats', 'status', 'match', 'queue', 'applied', 'spec', 'key'];
   const body = GRID.map(r => cs.map(c => JSON.stringify(r[c] == null ? '' : r[c])).join(',')).join('\n');
