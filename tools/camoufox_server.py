@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Camoufox pipeline browser server — replaces pinchtab.
+"""Camoufox pipeline browser server (Camoufox/Firefox only — no Chromium anywhere).
 
 Wraps one Camoufox (patched Firefox) browser behind a tiny HTTP API so agents
 can drive a persistent session via tools/camoufox_browser.py.
@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
 import threading
@@ -25,7 +24,7 @@ HEADFUL = False
 CONSOLE_LOGS = []
 EXTRA_HEADERS = {
     "X-Request-Source": "camoufox-pipeline",
-    "X-Test-Owner": os.environ.get("CAMOUFOX_OWNER", "camoufox-pipeline"),
+    "X-Test-Owner": "peter-hollas",
 }
 
 INTERACTIVE_JS = """() => {
@@ -65,7 +64,7 @@ def _page():
 def _as_ref(target: str):
     """Return the integer ref if target is a ref, else None.
 
-    Agents routinely pass pinchtab-style refs ("ref 25", "ref:25", "ref25") to
+    Agents routinely pass legacy "ref" style handles ("ref 25", "ref:25", "ref25") to
     `click`; without normalising them they are handed to Playwright as CSS
     selectors and blow up with "Unexpected token ... parsing css selector".
     A leading '#' is deliberately NOT treated as a ref (it is a CSS id).
@@ -360,6 +359,34 @@ class Handler(BaseHTTPRequestHandler):
         self._send(out)
 
 
+def _proxy_opt(url):
+    """Playwright/Camoufox proxy dict from a URL (scheme://user:pass@host:port)."""
+    from urllib.parse import urlparse
+    if "://" not in url:
+        url = "http://" + url
+    p = urlparse(url)
+    opt = {"server": f"{p.scheme}://{p.hostname}:{p.port}"}
+    if p.username:
+        opt["username"] = p.username
+    if p.password:
+        opt["password"] = p.password
+    return opt
+
+
+def _resolve_proxy(explicit, path):
+    """[unhinged] Pick a proxy: --proxy > BROWSER_PROXY_FILE (rotate) > BROWSER_PROXY."""
+    import os
+    import random
+    if explicit:
+        return explicit
+    path = path or os.environ.get("BROWSER_PROXY_FILE", "")
+    if path and os.path.isfile(path):
+        lines = [l.strip() for l in open(path) if l.strip() and not l.startswith("#")]
+        if lines:
+            return random.choice(lines)
+    return os.environ.get("BROWSER_PROXY", "")
+
+
 def main() -> int:
     global PAGE, HEADFUL
     ap = argparse.ArgumentParser()
@@ -380,6 +407,10 @@ def main() -> int:
     ap.add_argument("--main-world-eval", action="store_true",
                     help="run page.evaluate in the page's own scope (needed to "
                          "touch the real DOM, e.g. set a captcha token)")
+    ap.add_argument("--proxy", default="",
+                    help="[unhinged] proxy URL for this session (scheme://user:pass@host:port)")
+    ap.add_argument("--proxy-file", default="",
+                    help="[unhinged] file of proxy URLs (one per line); one is picked per launch")
     args = ap.parse_args()
 
     try:
@@ -404,6 +435,10 @@ def main() -> int:
         launch["disable_coop"] = True
     if args.main_world_eval:
         launch["main_world_eval"] = True
+    proxy = _resolve_proxy(args.proxy, args.proxy_file)
+    if proxy:
+        launch["proxy"] = _proxy_opt(proxy)
+        print(f"proxy: {launch['proxy']['server']}  [unhinged/ip-rotation]", flush=True)
     if profile:
         cm = Camoufox(persistent_context=True, user_data_dir=profile,
                       extra_http_headers=EXTRA_HEADERS, **launch)

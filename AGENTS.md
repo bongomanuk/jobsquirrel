@@ -96,6 +96,13 @@ reports a clean config.
    read "skills" as coding-agent skill packages, plugins, MCP servers or IDE
    extensions unless the user explicitly says their *career* isn't the topic.
    Read their projects/sites through the gate (rule 9) to gather the facts.
+11. **The browser is Camoufox — never Chromium.** Every browser action goes through
+   `tools/camoufox_server.py` + `tools/camoufox_browser.py`. Do **not** use
+   Playwright, Chromium, Chrome, headless_shell or pinchtab anywhere in this
+   project (applying, verifying, screenshots, testing the dashboard). Playwright's
+   Chromium and pinchtab are banned outright; a stray Chromium both breaks the
+   stealth profile and hogs memory. Parallel applying = one camoufox server per
+   agent on its own port (see `state/pipeline-parallel.md`).
 
 ---
 

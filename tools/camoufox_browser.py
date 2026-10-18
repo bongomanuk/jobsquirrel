@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Agent-facing CLI for the Camoufox pipeline browser (replaces pinchtab CLI).
+"""Agent-facing CLI for the Camoufox pipeline browser (Camoufox/Firefox only — no Chromium).
 
-Mirrors the pinchtab command surface the agent prompts used:
+The command surface the agent prompts use:
   status | nav <url> | snap [path] | click <ref|selector> [--force] |
   fill <sel> <text> | type <sel> <text> | select <sel> <value> |
   pick <option text> [open-selector] | fillmap '<json steps>' | press <key> [sel] |
