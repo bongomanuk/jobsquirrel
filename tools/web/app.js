@@ -210,10 +210,15 @@ const App = {
       detail: $('#evid-detail').value, key: CUR ? CUR.key : '' });
     if (d.error) { toast(d.error, true); return; }
     $('#evid').classList.add('hide');
-    toast('saved to the knowledge base — rebuild the graph (and re-prepare the role) to apply it');
-    if (CUR) openDetail(CUR);            // refresh so the chip shows ✓
+    if (CUR) openDetail(CUR);
+    toast('saved — grounding includes it now; re-prepare the role to fold it into the CV (no graph rebuild needed)');
   },
-  rebuildKB: async () => { starting('rebuilding the knowledge graph'); const d = await api('/api/kb/rebuild', {}); toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true); },
+  updateKB: async () => {
+    starting('updating the knowledge graph'); working('Updating the knowledge graph (incremental — only the new source)…');
+    const d = await api('/api/action/run', { command: 'kb_update', approval_token: '' });
+    toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true); else { LIVE_RUNNING = false; $('#peras').classList.add('hide'); }
+  },
+  rebuildKB: async () => { starting('rebuilding the knowledge graph'); working('Rebuilding the knowledge graph (full re-index — slow)…'); const d = await api('/api/kb/rebuild', {}); toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true); },
   saveRow: async () => {
     const d = await api('/api/register/row', { company: CUR.company, role: CUR.role, status: $('#dt-status').value, notes: $('#dt-notes').value });
     toast(d.ok || d.error, !!d.error); if (!d.error) { loadGrid(); }
@@ -335,10 +340,10 @@ function summary(r) {
     (m.missing && m.missing.length ? `<div class="muted mini" style="margin-top:8px">missing skills — click one to add where you have it:
       <div style="margin-top:4px">${m.missing.map(x => {
         const ev = (m.evidenced || []).some(e => e.toLowerCase() === x.toLowerCase());
-        return `<a class="missk${ev ? ' evidenced' : ''}" title="${ev ? 'you have recorded evidence — rebuild the graph, then Prepare this role, to apply it' : 'click to record where you have this skill'}" onclick='App.addEvidence(${JSON.stringify(x)},${JSON.stringify(r.key)})'>${ev ? '✓ ' : ''}${esc(x)}</a>`;
+        return `<a class="missk${ev ? ' evidenced' : ''}" title="${ev ? 'you have recorded evidence — re-prepare this role to apply it (grounding already includes it)' : 'click to record where you have this skill'}" onclick='App.addEvidence(${JSON.stringify(x)},${JSON.stringify(r.key)})'>${ev ? '✓ ' : ''}${esc(x)}</a>`;
       }).join('')}</div></div>
-      ${(m.evidenced || []).length ? `<div class="row" style="margin-top:6px"><span class="muted mini">${m.evidenced.length} skill(s) have evidence but aren't in the graph/CV yet.</span>
-        <button class="small" onclick="App.rebuildKB()">↻ Rebuild knowledge graph</button></div>` : ''}` : '') +
+      ${(m.evidenced || []).length ? `<div class="row" style="margin-top:6px"><span class="muted mini">${m.evidenced.length} skill(s) have evidence — re-prepare this role to fold them into the CV (grounding includes them now).</span>
+        <button class="small" onclick='App.prepareThis(${JSON.stringify(r.key)})'>↻ Re-prepare with the new evidence</button></div>` : ''}` : '') +
     `<div class="muted" style="margin:12px 0 4px">notes (editable)</div><textarea id="dt-notes" style="min-height:14vh">${esc(r.notes || '')}</textarea>` +
     `<div class="row" style="margin-top:10px"><button onclick="App.saveRow()">Save</button>` +
     `<button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>Prepare this role</button>` +

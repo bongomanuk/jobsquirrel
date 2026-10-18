@@ -109,6 +109,19 @@ def main() -> int:
     pack = _clean(p.stdout)
     if not pack:
         pack = _clean(p.stderr[-2000:])
+
+    # Always include operator-recorded skill evidence (dashboard "add evidence"),
+    # so a newly-evidenced skill is grounded immediately, without a graph rebuild.
+    ev = os.path.join(ROOT, "kb", "sources", "personal", "skills_evidence.md")
+    try:
+        evidence = open(ev, encoding="utf-8").read().strip()
+    except OSError:
+        evidence = ""
+    if evidence:
+        pack += ("\n\n## Supplementary skill evidence (operator-provided; grounded)\n"
+                 "Attribute each of these to the named employer/project; use them when the role asks.\n\n"
+                 + evidence)
+
     header = f"<!-- GraphRAG {args.method} context; index: kb/graphrag. Grounding only. -->\n"
     if args.out:
         os.makedirs(os.path.dirname(args.out), exist_ok=True)

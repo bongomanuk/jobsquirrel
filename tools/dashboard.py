@@ -1337,6 +1337,8 @@ ACTIONS = {
                   "purpose": "reconcile the register with Gmail", "token": None},
     "build_archetypes": {"argv": [sys.executable, "tools/build_archetypes.py"], "env": {},
                          "purpose": "regenerate archetype CVs", "token": None},
+    "kb_update": {"argv": ["bash", "tools/kb_update.sh"], "env": {},
+                  "purpose": "update the knowledge graph (incremental)", "token": None},
 }
 
 
