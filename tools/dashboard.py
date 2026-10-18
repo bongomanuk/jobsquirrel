@@ -786,7 +786,13 @@ CHAT_PREAMBLE = (
     "state/submissions.csv; conversion is `python3 tools/outcomes.py`. Treat 'updates', 'status' and "
     "'how's it going' as job-search progress (applications, interviews, replies, queue) unless the "
     "operator explicitly asks about the code. Be concise; use the repo's tools; never take an "
-    "irreversible action (submitting applications, sending email, deleting mail) without explicit approval. ")
+    "irreversible action (submitting applications, sending email, deleting mail) without explicit approval. "
+    "IMPORTANT, this is a job-search tool: when the operator says 'skills', 'my experience', 'my background' "
+    "or 'add what I did at X', they mean their JOB/CAREER skills (technologies, competencies, roles, "
+    "achievements) for their CV — capture those in the knowledge base (kb/sources/*.md, grounded and "
+    "attributed) and config/cv.json so they flow into the tailored CVs and cover letters. They do NOT mean "
+    "coding-agent tooling (opencode skill packages, plugins, MCP servers, IDE extensions). If a request "
+    "could be read either way, assume career/job skills and ask only if still unclear. ")
 
 
 def _chat_echo(message):

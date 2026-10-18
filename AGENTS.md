@@ -88,6 +88,14 @@ reports a clean config.
    it (their policy lives in `config/agent-permissions.json`, editable in the
    dashboard's **Settings → Agent permissions**). Native access outside the repo
    is blocked, so this is the only way in; do not try to work around it.
+10. **"Skills" means the candidate's job/career skills, not tooling.** When the
+   user says they have skills, experience or achievements (from a job, project or
+   hobby), capture them as **knowledge-base source documents** in
+   `kb/sources/` (grounded, attributed to the employer/project, and honest about
+   level) so they flow into the tailored CVs and letters — then re-index. Never
+   read "skills" as coding-agent skill packages, plugins, MCP servers or IDE
+   extensions unless the user explicitly says their *career* isn't the topic.
+   Read their projects/sites through the gate (rule 9) to gather the facts.
 
 ---
 
