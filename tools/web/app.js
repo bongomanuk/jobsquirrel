@@ -3,8 +3,8 @@ const TOKEN = document.body.dataset.sessionToken;
 const $ = (s) => document.querySelector(s);
 const esc = (s) => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const STATUS_HELP = {
-  QUEUED: 'In the apply queue — not submitted yet (waiting or being worked on)',
-  DONE: 'Queued and already processed (no application recorded — the runner finished it)',
+  QUEUED: 'In the apply queue — waiting to be applied to',
+  PROCESSED: 'The runner already finished this queued role, but no application was recorded (nothing was submitted or logged). Safe to ignore, or re-prepare/re-queue it.',
   SUBMITTED: 'Application sent — awaiting a reply',
   IN_PROGRESS: 'Application in progress (multi-step form being completed)',
   INTERVIEW: 'Interview stage — an interview is scheduled or requested',
@@ -19,7 +19,7 @@ const QUEUE_HELP = {
   pending: 'Queued to apply (state/queue.tsv)',
   human: 'Handed to you for a human step (state/queue-human.tsv)',
   retry: 'Failed once — queued to retry',
-  done: 'Finished — moved to queue.done',
+  finished: 'Finished — the runner processed it (moved to queue.done)',
 };
 const T = (s) => ` title="${esc(s)}"`;
 const chip = (s) => `<span class="chip ${esc(s)}"${T(STATUS_HELP[s] || '')}>${esc(s || '')}</span>`;
@@ -289,6 +289,7 @@ function renderRows() {
       `<td${T('Job title')}>${esc(r.role)}</td>` +
       `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
       `<td>${chip(r.status)}${(() => {
+        if (r.status === 'PROCESSED') return '<div class="mini muted whycell">runner finished — no application recorded</div>';
         if (!['BLOCKED', 'MANUAL', 'CLOSED', 'REJECTED'].includes(r.status) || !r.notes) return '';
         const why = r.notes.split(/\s*\|\s*/)[0];
         return `<div class="mini muted whycell"${T(r.notes)}>${esc(why.slice(0, 58))}</div>`;

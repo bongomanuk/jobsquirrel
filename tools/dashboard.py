@@ -628,7 +628,7 @@ def grid():
         align = m.get("alignment") or (_COV.get(key, {}) or {}).get("align", "")
         out.append({"date": r.get("date", ""), "company": co, "role": role, "ats": r.get("ats", ""),
                     "status": (r.get("status") or "").upper(), "key": key,
-                    "queue": "done" if f"{co}|{role}" in done else qstate.get(ck, ""),
+                    "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, ""),
                     "spec": key in specs, "applied": ck in subm,
                     "match": cov, "alignment": align, "running": ck in running,
                     "notes": r.get("notes", ""), "letter": r.get("letter", ""),
@@ -647,8 +647,8 @@ def grid():
         stamp = _mtime(jd) or _mtime(os.path.join(STATE, "queue.tsv"))
         qdate = time.strftime("%Y-%m-%d", time.localtime(stamp)) if stamp else ""
         out.append({"date": qdate, "company": co, "role": role, "ats": r.get("ats", ""),
-                    "status": "DONE" if f"{co}|{role}" in done else "QUEUED", "key": key,
-                    "queue": "done" if f"{co}|{role}" in done else qstate.get(ck, "pending"),
+                    "status": "PROCESSED" if f"{co}|{role}" in done else "QUEUED", "key": key,
+                    "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, "pending"),
                     "spec": key in specs, "applied": ck in subm,
                     "match": cov, "alignment": m.get("alignment", ""), "running": ck in running,
                     "notes": "", "letter": "", "url": r.get("url", "")})
