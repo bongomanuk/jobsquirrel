@@ -42,6 +42,21 @@ const md = (s) => {
 };
 let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] }, CUR_PERM = null;
 let SPECIAL = '', ACTIVE_METRIC = '', VISIBLE = [];
+const PENDING = new Set();
+function starting(label, keys) {
+  LIVE_RUNNING = true;
+  (keys || []).forEach(k => PENDING.add(k));
+  const rc = $('#runctl'); if (rc) rc.classList.remove('hide');
+  const l = $('#live'); if (l) l.textContent = '● ' + (label || 'working') + ' — starting…';
+  document.querySelectorAll('#a-prepare,#a-submit,#a-reconcile,#a-prepare-shown,#a-match,#d-body [data-act]')
+    .forEach(b => { b.disabled = true; });
+  renderRows();
+}
+function working(label) {                         // immediate "something is happening" panel
+  $('#peras-body').innerHTML = `<span class="muted">${esc(label || 'working…')}</span>`;
+  $('#peras').classList.remove('hide');
+}
+window.perasClose = () => $('#peras').classList.add('hide');
 
 async function api(path, body) {
   const o = { headers: {} };
@@ -64,8 +79,9 @@ const App = {
       const ok = await approve('Run the apply queue — this SUBMITS applications and is irreversible.', 'APPROVE_RUN_QUEUE', command);
       if (!ok) return;
     }
+    starting(command);
     const d = await api('/api/action/run', { command, approval_token: command === 'submit_queue' ? 'APPROVE_RUN_QUEUE' : '' });
-    toast(d.ok || d.error, !!d.error); if (!d.error) { openDock(true); }
+    toast(d.ok || d.error, !!d.error); if (!d.error) { openDock(true); } else { LIVE_RUNNING = false; liveTick(); }
   },
   cf: async (target) => {
     document.querySelectorAll('#cf-tabs a').forEach(a => a.classList.toggle('on', a.dataset.t === target));
@@ -167,7 +183,12 @@ const App = {
     document.querySelectorAll('#metrics .metric').forEach(m => m.classList.toggle('on', m.dataset.metric === ACTIVE_METRIC));
     renderRows();
   },
-  prepareRoles: async (keys) => { const d = await api('/api/prepare', { keys }); toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true); },
+  prepareRoles: async (keys) => {
+    starting('preparing documents', keys); working('Preparing documents for ' + (keys || []).length + ' role(s)…');
+    const d = await api('/api/prepare', { keys });
+    toast(d.ok || d.error, !!d.error);
+    if (!d.error) { openDock(true); } else { PENDING.clear(); $('#peras').classList.add('hide'); }
+  },
   prepareThis: (key) => App.prepareRoles([key]),
   prepareShown: () => App.prepareRoles(VISIBLE),
   matchShown: async () => { const d = await api('/api/match/recompute', { keys: VISIBLE }); toast(d.ok || d.error, !!d.error); if (!d.error) loadGrid(); },
@@ -175,10 +196,22 @@ const App = {
   stop: async () => { const d = await api('/api/action/stop', {}); toast(d.ok || d.error, !!d.error); },
   togglePause: async (on) => { const d = await api('/api/action/pause', { on }); toast(d.ok || d.error, !!d.error); },
   queueAct: async (action, company, role) => {
+    if (action === 'human') { starting('opening a browser for you'); working('Opening a visible Camoufox browser — pre-filling the form…'); }
     const d = await api('/api/queue/action', { action, company, role });
-    toast(d.ok || d.error, !!d.error); if (!d.error) { loadGrid(); if (action !== 'human' && action !== 'delete') openDetail(CUR); }
+    toast(d.ok || d.error, !!d.error); if (!d.error) { loadGrid(); if (action !== 'human' && action !== 'delete') openDetail(CUR); } else { LIVE_RUNNING = false; }
   },
   openPage: async (company, role) => { const d = await api('/api/open', { company, role }); toast(d.ok || d.error, !!d.error); },
+  addEvidence: (skill, key) => {
+    $('#evid-skill').value = skill || ''; $('#evid-source').value = ''; $('#evid-detail').value = '';
+    $('#evid').classList.remove('hide'); $('#evid-source').focus();
+  },
+  saveEvidence: async () => {
+    const d = await api('/api/skills/evidence', { skill: $('#evid-skill').value, source: $('#evid-source').value,
+      detail: $('#evid-detail').value, key: CUR ? CUR.key : '' });
+    if (d.error) { toast(d.error, true); return; }
+    $('#evid').classList.add('hide');
+    toast(d.ok + ' — ' + (d.hint || ''), false);
+  },
   saveRow: async () => {
     const d = await api('/api/register/row', { company: CUR.company, role: CUR.role, status: $('#dt-status').value, notes: $('#dt-notes').value });
     toast(d.ok || d.error, !!d.error); if (!d.error) { loadGrid(); }
@@ -199,7 +232,7 @@ function approve(purpose, token, command) {
 }
 
 /* ---------- grid ---------- */
-let GRID_TIMER = null, LIVE_RUNNING = false;
+let GRID_TIMER = null, LIVE_RUNNING = false, IDLE_TICKS = 0;
 async function loadGrid() {
   const sc = document.querySelector('.scroll'), y = sc ? sc.scrollTop : 0;
   const [g, s] = await Promise.all([api('/api/grid'), api('/api/state')]);
@@ -244,7 +277,7 @@ function renderRows() {
     const i = GRID.indexOf(r);
     return `<tr class="click" onclick="App.open(${i})">` +
       `<td class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet — queued, not applied')}>${r.date ? esc(r.date) : '—'}</td>` +
-      `<td${T('Employer / recruiter')}>${r.running ? '<span class="spin" title="Being worked on now">🥜</span> ' : ''}${esc(r.company)}</td>` +
+      `<td${T('Employer / recruiter')}>${(r.running || PENDING.has(r.key)) ? '<span class="spin" title="Being worked on now">🥜</span> ' : ''}${esc(r.company)}</td>` +
       `<td${T('Job title')}>${esc(r.role)}</td>` +
       `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
       `<td>${chip(r.status)}${(() => {
@@ -297,24 +330,25 @@ function summary(r) {
     `<span class="muted">key</span><span class="mini mono">${esc(r.key)}</span></div>` +
     `<div class="row">${m.alignment ? `<span class="badge ${m.alignment === 'PASS' ? 'good' : 'bad'}">alignment ${m.alignment}</span>` : ''}` +
     `${m.coverage != null ? `<span class="badge ${m.coverage >= 70 ? 'good' : 'mid'}">coverage ${m.coverage}%</span>` : ''}</div>` +
-    (m.missing && m.missing.length ? `<div class="muted mini" style="margin-top:6px">missing: ${m.missing.map(esc).join(', ')}</div>` : '') +
+    (m.missing && m.missing.length ? `<div class="muted mini" style="margin-top:8px">missing skills — click one to add where you have it:
+      <div style="margin-top:4px">${m.missing.map(x => `<a class="missk" onclick='App.addEvidence(${JSON.stringify(x)},${JSON.stringify(r.key)})'>${esc(x)}</a>`).join('')}</div></div>` : '') +
     `<div class="muted" style="margin:12px 0 4px">notes (editable)</div><textarea id="dt-notes" style="min-height:14vh">${esc(r.notes || '')}</textarea>` +
     `<div class="row" style="margin-top:10px"><button onclick="App.saveRow()">Save</button>` +
-    `<button onclick="App.prepareThis(${JSON.stringify(r.key)})">Prepare this role</button>` +
-    `<button onclick="App.matchThis(${JSON.stringify(r.key)})">Recompute match</button></div>` +
+    `<button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>Prepare this role</button>` +
+    `<button data-act onclick='App.matchThis(${JSON.stringify(r.key)})'>Recompute match</button></div>` +
     (['BLOCKED', 'MANUAL'].includes(r.status) ? `<div class="why resolve">
       <div class="why-h"><span class="muted mini">GET PAST THE BLOCK</span></div>
       ${r.url ? `<a class="mini" href="${esc(r.url)}" target="_blank">${esc(r.url.slice(0, 70))}</a>` : '<span class="muted mini">no apply URL recorded</span>'}
       <div class="row" style="margin-top:8px">
-        <button onclick="App.queueAct('human',${JSON.stringify(r.company)},${JSON.stringify(r.role)})" title="Open a visible Camoufox browser, pre-fill, and pause so you solve the CAPTCHA/2FA/login">🖐 Solve it (human assist)</button>
-        <button onclick="App.queueAct('retry',${JSON.stringify(r.company)},${JSON.stringify(r.role)})" title="Re-queue this role for another automated attempt">↻ Retry</button>
-        <button onclick="App.queueAct('unblock',${JSON.stringify(r.company)},${JSON.stringify(r.role)})" title="Clear the blocked status and re-queue">✓ Unblock</button>
-        ${r.url ? `<button onclick="App.openPage(${JSON.stringify(r.company)},${JSON.stringify(r.role)})" title="Open the apply page in your own browser">🌐 Open page</button>` : ''}
+        <button onclick='App.queueAct("human",${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Open a visible Camoufox browser, pre-fill, and pause so you solve the CAPTCHA/2FA/login">🖐 Solve it (human assist)</button>
+        <button onclick='App.queueAct("retry",${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Re-queue this role for another automated attempt">↻ Retry</button>
+        <button onclick='App.queueAct("unblock",${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Clear the blocked status and re-queue">✓ Unblock</button>
+        ${r.url ? `<button onclick='App.openPage(${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Open the apply page in your own browser">🌐 Open page</button>` : ''}
       </div></div>` : '');
 }
 function prov() {
   if (!Object.keys(P).length) return '<span class="muted">no provenance recorded yet</span>';
-  const sha = (s) => s ? `<span class="sha" title="copy" onclick="navigator.clipboard.writeText('${esc(s)}')">${esc(s.slice(0, 16))}…</span>` : '—';
+  const sha = (s) => s ? `<span class="sha" title="copy" onclick='navigator.clipboard.writeText(${JSON.stringify(s)})'>${esc(s.slice(0, 16))}…</span>` : '—';
   return `<table><tbody>` +
     `<tr><td class="muted">CV</td><td>${esc(P.cv_file || '—')} ${sha(P.cv_sha256)}${vbtn(P.cv_file, 'CV')}</td></tr>` +
     `<tr><td class="muted">letter</td><td>${esc(P.letter_file || '—')} ${sha(P.letter_sha256)}${vbtn(P.letter_file, 'Cover letter')}</td></tr>` +
@@ -385,10 +419,24 @@ async function liveTick() {
   const t = (d.tail || []).slice(-1)[0];
   if (t) s += '   ' + t.t;
   $('#live').textContent = s;
-  const busy = !!a.running || d.active;                       // don't allow piling up duplicate runs
-  document.querySelectorAll('#a-prepare,#a-submit,#a-reconcile').forEach(b => { b.disabled = busy; });
-  LIVE_RUNNING = !!(d.active || (d.running || []).length);
-  const rc = $('#runctl'); if (rc) { rc.classList.toggle('hide', !busy); $('#btn-pause').textContent = d.paused ? '▶ Resume' : '⏸ Pause'; }
+  const busy = !!a.running || d.active;
+  LIVE_RUNNING = busy || LIVE_RUNNING;                 // stay optimistic until confirmed idle
+  document.querySelectorAll('#a-prepare,#a-submit,#a-reconcile,#a-prepare-shown,#a-match,#d-body [data-act]')
+    .forEach(b => { b.disabled = LIVE_RUNNING; });
+  const rc = $('#runctl'); if (rc) { rc.classList.toggle('hide', !LIVE_RUNNING); $('#btn-pause').textContent = d.paused ? '▶ Resume' : '⏸ Pause'; }
+  if (LIVE_RUNNING && !busy) $('#live').textContent = '● starting… (the run takes a few minutes — see the monitor)';
+  if (busy) { IDLE_TICKS = 0; } else if (LIVE_RUNNING && ++IDLE_TICKS >= 3) {
+    LIVE_RUNNING = false; PENDING.clear(); $('#peras').classList.add('hide'); renderRows();
+  }
+  if (!$('#peras').classList.contains('hide')) {         // background-run monitor
+    const sm = a.summary || {};
+    let h = `<div class="act-h">${a.running ? '●' : '✓'} ${esc(a.name || 'working…')} <span class="muted">${a.running ? 'running…' : 'finished'}</span></div>`;
+    if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
+    if ((sm.notable || []).length) h += '<ul class="act-list">' + sm.notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
+    h += (d.running || []).length ? `<div class="act-h" style="margin-top:6px">▶ ${(d.running || []).map(esc).join(' · ')}</div>` : '';
+    (d.tail || []).slice(-6).forEach(x => h += `<div class="mini muted">${esc(x.t)}</div>`);
+    $('#peras-body').innerHTML = h;
+  }
   const sm = a.summary || {};
   $('#act-sum').textContent = a.name ? ((a.running ? '● ' : '✓ ') + a.name) : (d.active ? 'runner active' : 'idle');
   if (document.body.dataset.act === 'open') {
@@ -637,9 +685,10 @@ async function setKB(b) {
   let list = '';
   for (const [g, files] of Object.entries(d.sources || {})) {
     if (!files.length) continue;
+    const p = `kb/sources/${g === '(root)' ? '' : g + '/'}${f.name}`;
     list += `<div class="kb-group"><b>${esc(g)}</b> <span class="muted mini">${files.length} file(s)</span><ul>` +
       files.map(f => `<li><span class="mini">${esc(f.name)}</span> <span class="muted mini">${fmtSize(f.size)}</span>
-        <button class="small" title="delete" onclick="App.kbDel('kb/sources/${g === '(root)' ? '' : g + '/'}${esc(f.name)}')">✕</button></li>`).join('') +
+        <button class="small" title="delete" onclick='App.kbDel(${JSON.stringify(p)})'>✕</button></li>`).join('') +
       '</ul></div>';
   }
   const s = d.stats || {};
@@ -741,6 +790,9 @@ $('#legend').onclick = () => {
 $('#a-drawer').onclick = () => openDock(!PANELS.agent.open);
 $('#updpill').onclick = () => updateDialog();
 $('#btn-stop').onclick = () => App.stop();
+window.evidClose = () => $('#evid').classList.add('hide');
+$('#evid-save').onclick = () => App.saveEvidence();
+$('#peras-stop').onclick = () => App.stop();
 $('#btn-pause').onclick = () => App.togglePause($('#btn-pause').textContent.includes('Pause'));
 $('#perm-once').onclick = () => permAnswer('allow', false);
 $('#perm-always').onclick = () => permAnswer('allow', true);

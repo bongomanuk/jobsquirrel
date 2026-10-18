@@ -461,6 +461,27 @@ def role_docs(key):
     return out
 
 
+def match_info(key):
+    """Cheap match for the detail drawer: keyword coverage + missing terms, no subprocess.
+    (The alignment gate runs only when you explicitly prepare/recompute.)"""
+    kws = [l.strip() for l in _lines(os.path.join(STATE, "ats", key + ".txt")) if l.strip()]
+    content = _read(os.path.join(STATE, "cv-content", key + ".json"))
+    letters = _read(os.path.join(STATE, "letters-content", key + ".json"))
+    hay = (content + " " + letters).lower()
+    if not hay.strip():
+        cv = _archetype_for(key)
+        if cv:
+            hay = _doc_text(cv if os.path.isabs(cv) else os.path.join(ROOT, cv)).lower()
+    cov, missing = None, []
+    if kws and hay.strip():
+        miss = [k for k in kws if k.lower() not in hay]
+        cov = round(100 * (len(kws) - len(miss)) / len(kws))
+        missing = miss[:24]
+    return {"key": key, "coverage": cov, "missing": missing,
+            "alignment": (_COV.get(key, {}) or {}).get("align", ""),
+            "archetype": os.path.basename(_archetype_for(key) or "")}
+
+
 def role_detail(key):
     key = os.path.basename(key)[:120]
     return {"key": key,
@@ -470,7 +491,7 @@ def role_detail(key):
             "tailored_cv": _read(os.path.join(STATE, "cv-content", key + ".json"))[:12000],
             "letter": _read(os.path.join(STATE, "letters-content", key + ".json"))[:12000],
             "docs": role_docs(key),
-            "match": match_score(key)}
+            "match": match_info(key)}
 
 
 def discover(url):
@@ -1602,6 +1623,33 @@ def account_auth(kind):
     return {"ok": f"started {kind} authorisation - finish it in the browser / Activity pane"}
 
 
+SKILLS_FILE = os.path.join(ROOT, "kb", "sources", "personal", "skills_evidence.md")
+
+
+def add_skill_evidence(skill, source="", detail="", key=""):
+    """Record evidence that the candidate has a skill (for a missing ATS keyword),
+    as a grounded knowledge-base source so it flows into future tailored documents."""
+    skill = (skill or "").strip()[:160]
+    source = (source or "").strip()[:200]
+    detail = (detail or "").strip()[:1000]
+    if not skill:
+        return {"error": "skill is required"}
+    os.makedirs(os.path.dirname(SKILLS_FILE), exist_ok=True)
+    if not os.path.isfile(SKILLS_FILE):
+        with open(SKILLS_FILE, "w", encoding="utf-8") as fh:
+            fh.write("# Skill evidence (added via the dashboard)\n\n"
+                     "Provenance: first-hand account provided by the candidate. Attribute each fact to the\n"
+                     "named employer/project; do not inflate level.\n")
+    where = f" — {source}" if source else ""
+    extra = f": {detail}" if detail else ""
+    role = f" [for {key}]" if key else ""
+    line = f"- **{skill}**{where}{extra} (added {time.strftime('%Y-%m-%d')}{role})"
+    with open(SKILLS_FILE, "a", encoding="utf-8") as fh:
+        fh.write(line + "\n")
+    return {"ok": f"evidence recorded for “{skill}”", "file": os.path.relpath(SKILLS_FILE, ROOT),
+            "hint": "Rebuild the knowledge graph (Settings → Knowledge base → Rebuild) to fold it into CVs."}
+
+
 def role_grounding(key):
     """The GraphRAG context pack for a role + the entities/sources it cites, resolved."""
     key = os.path.basename(key)[:120]
@@ -1809,6 +1857,9 @@ class H(BaseHTTPRequestHandler):
             return self._json(stop_action())
         if p == "/api/action/pause":
             return self._json(pause_action(bool(data.get("on"))))
+        if p == "/api/skills/evidence":
+            return self._json(add_skill_evidence(data.get("skill", ""), data.get("source", ""),
+                                                 data.get("detail", ""), data.get("key", "")))
         self._json({"error": "not found"}, 404)
 
 

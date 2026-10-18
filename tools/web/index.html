@@ -166,6 +166,28 @@
   </div>
 </div></div>
 
+<div id="evid" class="modal hide"><div class="modal-box">
+  <div class="row"><b style="flex:1">Add evidence for a skill</b><button onclick="evidClose()">✕</button></div>
+  <p class="muted mini">Record where you <i>actually</i> have this skill. It's saved to the knowledge base
+    and will show up in future tailored CVs (rebuild the graph to apply it now).</p>
+  <div class="row"><span class="muted" style="min-width:86px">Skill</span><input id="evid-skill" style="flex:1"></div>
+  <div class="row" style="margin-top:6px"><span class="muted" style="min-width:86px">Where from</span>
+    <input id="evid-source" placeholder="employer / project / cert (e.g. HAUD AB, EuroCompliant, spare time)" style="flex:1"></div>
+  <textarea id="evid-detail" placeholder="one line of specifics — what you did, tools, outcome" style="min-height:12vh;margin-top:8px"></textarea>
+  <div class="row" style="justify-content:flex-end;margin-top:12px">
+    <button onclick="evidClose()">Cancel</button><button id="evid-save" class="risky">Save evidence</button></div>
+</div></div>
+
+<div id="peras" class="modal hide"><div class="modal-box" style="width:min(720px,94vw)">
+  <div class="row"><b style="flex:1">Preparing documents</b><span id="peras-spin" class="spin">🥜</span></div>
+  <p class="muted">Generating the tailored CV and cover letter, then running the gates — <b>nothing is submitted</b>.
+    This takes a few minutes and runs in the background.</p>
+  <div id="peras-body" class="term" style="max-height:40vh">starting…</div>
+  <div class="row" style="justify-content:flex-end;margin-top:12px">
+    <button onclick="perasClose()">Hide</button>
+    <button id="peras-stop" class="risky">⏹ Stop</button></div>
+</div></div>
+
 <div id="legend-modal" class="modal hide"><div class="modal-box" style="width:min(760px,94vw)">
   <div class="row"><b style="flex:1">What the columns and marks mean</b><button onclick="window.legendClose()">✕</button></div>
   <div class="legend">
