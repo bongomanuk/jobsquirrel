@@ -205,36 +205,78 @@ def queue_files():
             "done": [l.replace("|", " — ") for l in _lines(os.path.join(STATE, "queue.done"))]}
 
 
+def _drop_key(path, key):
+    keep, n = [], 0
+    for ln in _read(path).splitlines():
+        p = (ln.split("\t") + [""] * 6)[:6]
+        if (p[0] + "|" + p[1]).lower() == key.lower():
+            n += 1
+            continue
+        keep.append(ln)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(keep).rstrip("\n") + ("\n" if keep else ""))
+    return n
+
+
+def _queue_fields(company, role):
+    """Recover url/cv/ats/key so a re-queued row is complete."""
+    for path in ("queue.tsv", "queue-human.tsv", "queue.retry",
+                 "queue-prepared-linkedin.tsv", "queue-linkedin.tsv"):
+        for r in _queue_rows(os.path.join(STATE, path)):
+            if r["company"].lower() == company.lower() and r["role"].lower() == role.lower():
+                if r["url"] or r["key"]:
+                    return r["url"], r["cv"], r["ats"], r["key"]
+    for r in _rows(os.path.join(STATE, "submissions.csv")):
+        if r["company"].lower() == company.lower() and r["role"].lower() == role.lower():
+            return r.get("apply_url", ""), r.get("cv_file", ""), r.get("ats", ""), _slug(f"{company}-{role}")
+    return "", "", "", _slug(f"{company}-{role}")
+
+
 def queue_action(action, company, role):
-    files = {"pending": "queue.tsv", "human": "queue-human.tsv", "retry": "queue.retry"}
-    q, h = os.path.join(STATE, "queue.tsv"), os.path.join(STATE, "queue-human.tsv")
+    if not (company and role):
+        return {"error": "company and role required"}
     key = f"{company}|{role}"
-
-    def drop(path):
-        keep, n = [], 0
-        for ln in _read(path).splitlines():
-            p = (ln.split("\t") + [""] * 6)[:6]
-            if (p[0] + "|" + p[1]) == key or (p[0] + "|" + p[1]).lower() == key.lower():
-                n += 1
-                continue
-            keep.append(ln)
-        open(path, "w", encoding="utf-8").write("\n".join(keep).rstrip("\n") + "\n" if keep else "")
-        return n
-
+    q = os.path.join(STATE, "queue.tsv")
     if action == "delete":
-        n = sum(drop(os.path.join(STATE, f)) for f in files.values())
+        n = sum(_drop_key(os.path.join(STATE, f), key) for f in ("queue.tsv", "queue-human.tsv", "queue.retry"))
         return {"ok": f"removed {n} row(s)"}
-    if action == "retry":
-        drop(os.path.join(STATE, "queue.done"))
+    if action in ("retry", "unblock"):
+        url, cv, ats, k = _queue_fields(company, role)
+        for f in ("queue.tsv", "queue-human.tsv", "queue.retry", "queue.done"):
+            _drop_key(os.path.join(STATE, f), key)
         with open(q, "a", encoding="utf-8") as fh:
-            fh.write(f"{company}\t{role}\t\t\t\t\n")
-        return {"ok": f"re-queued {company} / {role}"}
-    if action == "unblock":
-        drop(h)
-        with open(q, "a", encoding="utf-8") as fh:
-            fh.write(f"{company}\t{role}\t\t\t\t\n")
-        return {"ok": f"moved to pending: {company} / {role}"}
+            fh.write("\t".join([company, role, url, cv, ats, k]) + "\n")
+        try:
+            sys.path.insert(0, os.path.join(ROOT, "tools"))
+            import register as REG
+            REG.set_row(company, role, status="QUEUED",
+                        note=("unblocked via dashboard" if action == "unblock" else "retry via dashboard"))
+        except Exception:
+            pass
+        return {"ok": f"{'unblocked' if action == 'unblock' else 're-queued'} {company} / {role}"}
+    if action == "human":
+        url, cv, ats, k = _queue_fields(company, role)
+        os.makedirs(LOGS, exist_ok=True)
+        tmp = os.path.join(LOGS, "queue-human-ui.tsv")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write("\t".join([company, role, url, cv, ats, k]) + "\n")
+        _spawn(f"human assist: {company} / {role}",
+               ["bash", os.path.join(ROOT, "tools", "human_assist.sh")], {"QUEUE": tmp})
+        return {"ok": f"opening a visible Camoufox browser for {company} / {role} — solve the block there, then submit"}
     return {"error": "unknown action"}
+
+
+def open_apply(company, role):
+    """Open the employer's apply page in the operator's own browser."""
+    import shutil
+    url, _, _, _ = _queue_fields(company, role)
+    if not url:
+        return {"error": "no apply URL recorded for this row"}
+    opener = "open" if sys.platform == "darwin" else "xdg-open"
+    if not shutil.which(opener):
+        return {"error": f"{opener} not available"}
+    subprocess.Popen([opener, url], start_new_session=True)
+    return {"ok": f"opened {url}"}
 
 
 # ---------------------------------------------------------------- roles
@@ -515,6 +557,8 @@ def grid():
             for r in _rows(os.path.join(STATE, "submissions.csv"))}
     subm_cv = {(r["company"].lower(), r["role"].lower()): r.get("cv_file", "")
                for r in _rows(os.path.join(STATE, "submissions.csv")) if r.get("cv_file")}
+    subm_url = {(r["company"].lower(), r["role"].lower()): r.get("apply_url", "")
+                for r in _rows(os.path.join(STATE, "submissions.csv")) if r.get("apply_url")}
     try:
         specs = {f[:-3] for f in os.listdir(os.path.join(STATE, "job-descriptions")) if f.endswith(".md")}
     except OSError:
@@ -544,7 +588,8 @@ def grid():
                     "queue": qstate.get(ck, "done" if f"{co}|{role}" in done else ""),
                     "spec": key in specs, "applied": ck in subm,
                     "match": cov, "alignment": align, "running": ck in running,
-                    "notes": r.get("notes", ""), "letter": r.get("letter", "")})
+                    "notes": r.get("notes", ""), "letter": r.get("letter", ""),
+                    "url": qrow.get(ck, {}).get("url", "") or subm_url.get(ck, "")})
     # queued but not yet in the register — show the work that's waiting / in flight
     for ck, r in qrow.items():
         if ck in seen:
@@ -562,7 +607,7 @@ def grid():
                     "status": "QUEUED", "key": key, "queue": qstate.get(ck, "pending"),
                     "spec": key in specs, "applied": ck in subm,
                     "match": cov, "alignment": m.get("alignment", ""), "running": ck in running,
-                    "notes": "", "letter": ""})
+                    "notes": "", "letter": "", "url": r.get("url", "")})
     _save_cov()
     out.sort(key=lambda x: (x["date"] or ""), reverse=True)
     out.sort(key=lambda x: 0 if x["running"] else (1 if x["status"] == "QUEUED" else 2))
@@ -1578,6 +1623,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(prepare_roles(data.get("keys") or []))
         if p == "/api/match/recompute":
             return self._json(recompute_match(data.get("keys")))
+        if p == "/api/open":
+            return self._json(open_apply(data.get("company", ""), data.get("role", "")))
         self._json({"error": "not found"}, 404)
 
 

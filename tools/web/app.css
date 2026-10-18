@@ -297,6 +297,8 @@ body[data-act="closed"] .act-body,body[data-act="closed"] #split-inner{display:n
 .hist{margin:4px 0 0;padding-left:18px}
 .hist li{margin:3px 0;line-height:1.45}
 .hist li p{margin:0}
+.whycell{max-width:190px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.why.resolve{margin-top:12px;border-color:var(--accent)}
 
 /* single notification */
 .toast{position:fixed;right:16px;bottom:16px;z-index:60;border-radius:10px;padding:10px 14px;font-size:13px;

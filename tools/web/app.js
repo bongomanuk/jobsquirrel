@@ -150,6 +150,11 @@ const App = {
   prepareShown: () => App.prepareRoles(VISIBLE),
   matchShown: async () => { const d = await api('/api/match/recompute', { keys: VISIBLE }); toast(d.ok || d.error, !!d.error); if (!d.error) loadGrid(); },
   matchThis: async (key) => { const d = await api('/api/match/recompute', { keys: [key] }); toast(d.ok || d.error, !!d.error); if (!d.error) loadGrid(); },
+  queueAct: async (action, company, role) => {
+    const d = await api('/api/queue/action', { action, company, role });
+    toast(d.ok || d.error, !!d.error); if (!d.error) { loadGrid(); if (action !== 'human' && action !== 'delete') openDetail(CUR); }
+  },
+  openPage: async (company, role) => { const d = await api('/api/open', { company, role }); toast(d.ok || d.error, !!d.error); },
   saveRow: async () => {
     const d = await api('/api/register/row', { company: CUR.company, role: CUR.role, status: $('#dt-status').value, notes: $('#dt-notes').value });
     toast(d.ok || d.error, !!d.error); if (!d.error) { loadGrid(); }
@@ -218,7 +223,11 @@ function renderRows() {
       `<td${T('Employer / recruiter')}>${r.running ? '<span class="spin" title="Being worked on now">🥜</span> ' : ''}${esc(r.company)}</td>` +
       `<td${T('Job title')}>${esc(r.role)}</td>` +
       `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
-      `<td>${chip(r.status)}</td><td>${mbadge(r)}</td>` +
+      `<td>${chip(r.status)}${(() => {
+        if (!['BLOCKED', 'MANUAL', 'CLOSED', 'REJECTED'].includes(r.status) || !r.notes) return '';
+        const why = r.notes.split(/\s*\|\s*/)[0];
+        return `<div class="mini muted whycell"${T(r.notes)}>${esc(why.slice(0, 58))}</div>`;
+      })()}</td><td>${mbadge(r)}</td>` +
       `<td class="muted"${T(QUEUE_HELP[r.queue] || 'Not in any queue')}>${esc(r.queue)}</td>` +
       `<td${T(r.applied ? 'Provenance recorded — exact CV, letter and SHA-256 hashes on file' : 'No submission recorded (not applied, or not reconciled yet)')}>${r.applied ? '✓' : '<span class="muted">—</span>'}</td>` +
       `<td${T(r.spec ? 'A saved job description exists — open the row for the ad, ATS keywords and grounded context' : 'No saved job description')}>${r.spec ? '✓' : '<span class="muted">—</span>'}</td></tr>`;
@@ -268,7 +277,16 @@ function summary(r) {
     `<div class="muted" style="margin:12px 0 4px">notes (editable)</div><textarea id="dt-notes" style="min-height:14vh">${esc(r.notes || '')}</textarea>` +
     `<div class="row" style="margin-top:10px"><button onclick="App.saveRow()">Save</button>` +
     `<button onclick="App.prepareThis(${JSON.stringify(r.key)})">Prepare this role</button>` +
-    `<button onclick="App.matchThis(${JSON.stringify(r.key)})">Recompute match</button></div>`;
+    `<button onclick="App.matchThis(${JSON.stringify(r.key)})">Recompute match</button></div>` +
+    (['BLOCKED', 'MANUAL'].includes(r.status) ? `<div class="why resolve">
+      <div class="why-h"><span class="muted mini">GET PAST THE BLOCK</span></div>
+      ${r.url ? `<a class="mini" href="${esc(r.url)}" target="_blank">${esc(r.url.slice(0, 70))}</a>` : '<span class="muted mini">no apply URL recorded</span>'}
+      <div class="row" style="margin-top:8px">
+        <button onclick="App.queueAct('human',${JSON.stringify(r.company)},${JSON.stringify(r.role)})" title="Open a visible Camoufox browser, pre-fill, and pause so you solve the CAPTCHA/2FA/login">🖐 Solve it (human assist)</button>
+        <button onclick="App.queueAct('retry',${JSON.stringify(r.company)},${JSON.stringify(r.role)})" title="Re-queue this role for another automated attempt">↻ Retry</button>
+        <button onclick="App.queueAct('unblock',${JSON.stringify(r.company)},${JSON.stringify(r.role)})" title="Clear the blocked status and re-queue">✓ Unblock</button>
+        ${r.url ? `<button onclick="App.openPage(${JSON.stringify(r.company)},${JSON.stringify(r.role)})" title="Open the apply page in your own browser">🌐 Open page</button>` : ''}
+      </div></div>` : '');
 }
 function prov() {
   if (!Object.keys(P).length) return '<span class="muted">no provenance recorded yet</span>';

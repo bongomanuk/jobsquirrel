@@ -29,12 +29,13 @@ CSV_PATH = os.environ.get("APPLICATIONS_CSV", os.path.join(ROOT, "state", "appli
 MD_PATH = os.environ.get("APPLICATIONS_MD", os.path.join(ROOT, "state", "applications-register.md"))
 LOCK_PATH = CSV_PATH + ".lock"
 FIELDS = ["date", "company", "role", "ats", "status", "letter", "notes"]
-STATUSES = ["SUBMITTED", "INTERVIEW", "OFFER", "REJECTED", "BLOCKED", "MANUAL",
+STATUSES = ["QUEUED", "SUBMITTED", "INTERVIEW", "OFFER", "REJECTED", "BLOCKED", "MANUAL",
             "PREPARED", "IN_PROGRESS", "CLOSED"]
 # Statuses that count as a live process - an application we have sent and are
 # still awaiting an outcome on (not yet rejected/closed, not merely prepared).
 PROCESS_STATUSES = ["SUBMITTED", "IN_PROGRESS", "INTERVIEW", "OFFER"]
 GROUP_TITLES = {
+    "QUEUED": "Queued - waiting to be applied",
     "SUBMITTED": "Submitted - confirmed",
     "INTERVIEW": "Interview in progress",
     "OFFER": "Offer",
