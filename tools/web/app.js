@@ -210,8 +210,9 @@ const App = {
       detail: $('#evid-detail').value, key: CUR ? CUR.key : '' });
     if (d.error) { toast(d.error, true); return; }
     $('#evid').classList.add('hide');
+    loadGrid();                                       // fit updates immediately
     if (CUR) openDetail(CUR);
-    toast('saved — grounding includes it now; re-prepare the role to fold it into the CV (no graph rebuild needed)');
+    toast('saved — the fit across roles now counts it (no re-prepare needed)');
   },
   updateKB: async () => {
     starting('updating the knowledge graph'); working('Updating the knowledge graph (incremental — only the new source)…');

@@ -380,16 +380,24 @@ def _mtime(path):
         return 0
 
 
+def _skills_text():
+    """The candidate's recorded skills/evidence — so the fit reflects skills the moment
+    they're added, without waiting for a CV to be regenerated."""
+    return (_read(os.path.join(ROOT, "config", "cv.json")) + " " + _read(SKILLS_FILE)).lower()
+
+
 def _cov_sig(key, cvrel):
     cvp = cvrel if os.path.isabs(cvrel or "") else os.path.join(ROOT, cvrel or "")
     return ":".join(str(_mtime(p)) for p in (
         os.path.join(STATE, "ats", key + ".txt"),
         os.path.join(STATE, "cv-content", key + ".json"),
-        os.path.join(STATE, "letters-content", key + ".json"), cvp))
+        os.path.join(STATE, "letters-content", key + ".json"), cvp,
+        os.path.join(ROOT, "config", "cv.json"), SKILLS_FILE))
 
 
 def coverage_for(key, cvrel=""):
-    """ATS-keyword coverage %: the tailored content packs if present, else the archetype CV text."""
+    """ATS-keyword coverage %: the tailored content packs + the candidate's recorded skills
+    (and the archetype CV text as a fallback)."""
     global _cov_dirty
     kws = [l.strip() for l in _lines(os.path.join(STATE, "ats", key + ".txt"))]
     if not kws:
@@ -403,6 +411,7 @@ def coverage_for(key, cvrel=""):
     if not hay.strip() and cvrel:
         cvp = cvrel if os.path.isabs(cvrel) else os.path.join(ROOT, cvrel)
         hay = _doc_text(cvp).lower()
+    hay += " " + _skills_text()
     cov = None
     if hay.strip():
         cov = round(100 * sum(1 for k in kws if k.lower() in hay) / len(kws))
@@ -482,6 +491,7 @@ def match_info(key):
         cv = _archetype_for(key)
         if cv:
             hay = _doc_text(cv if os.path.isabs(cv) else os.path.join(ROOT, cv)).lower()
+    hay += " " + _skills_text()                     # recorded skills count toward the fit
     cov, missing, evidenced = None, [], []
     if kws and hay.strip():
         miss = [k for k in kws if k.lower() not in hay]
