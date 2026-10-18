@@ -461,6 +461,16 @@ def role_docs(key):
     return out
 
 
+def _evidenced_skills():
+    """Skill names that have recorded evidence in kb/sources/personal/skills_evidence.md."""
+    out = set()
+    for ln in _read(SKILLS_FILE).splitlines():
+        m = re.match(r"- \*\*(.+?)\*\*", ln.strip())
+        if m:
+            out.add(m.group(1).strip().lower())
+    return out
+
+
 def match_info(key):
     """Cheap match for the detail drawer: keyword coverage + missing terms, no subprocess.
     (The alignment gate runs only when you explicitly prepare/recompute.)"""
@@ -472,12 +482,14 @@ def match_info(key):
         cv = _archetype_for(key)
         if cv:
             hay = _doc_text(cv if os.path.isabs(cv) else os.path.join(ROOT, cv)).lower()
-    cov, missing = None, []
+    cov, missing, evidenced = None, [], []
     if kws and hay.strip():
         miss = [k for k in kws if k.lower() not in hay]
         cov = round(100 * (len(kws) - len(miss)) / len(kws))
         missing = miss[:24]
-    return {"key": key, "coverage": cov, "missing": missing,
+        ev = _evidenced_skills()
+        evidenced = [k for k in missing if k.strip().lower() in ev]
+    return {"key": key, "coverage": cov, "missing": missing, "evidenced": evidenced,
             "alignment": (_COV.get(key, {}) or {}).get("align", ""),
             "archetype": os.path.basename(_archetype_for(key) or "")}
 

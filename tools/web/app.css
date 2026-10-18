@@ -303,6 +303,7 @@ body[data-act="closed"] .act-body,body[data-act="closed"] #split-inner{display:n
 .why.resolve{margin-top:12px;border-color:var(--accent)}
 .missk{cursor:pointer;display:inline-block;border:1px solid var(--line);border-radius:6px;padding:1px 7px;margin:2px;background:#0a0c10}
 .missk:hover{border-color:var(--accent);color:var(--fg)}
+.missk.evidenced{border-color:var(--offer);color:#8ce99a}
 
 /* single notification */
 .toast{position:fixed;right:16px;bottom:16px;z-index:60;border-radius:10px;padding:10px 14px;font-size:13px;

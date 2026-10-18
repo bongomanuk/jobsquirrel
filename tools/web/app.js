@@ -210,8 +210,10 @@ const App = {
       detail: $('#evid-detail').value, key: CUR ? CUR.key : '' });
     if (d.error) { toast(d.error, true); return; }
     $('#evid').classList.add('hide');
-    toast(d.ok + ' — ' + (d.hint || ''), false);
+    toast('saved to the knowledge base — rebuild the graph (and re-prepare the role) to apply it');
+    if (CUR) openDetail(CUR);            // refresh so the chip shows ✓
   },
+  rebuildKB: async () => { starting('rebuilding the knowledge graph'); const d = await api('/api/kb/rebuild', {}); toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true); },
   saveRow: async () => {
     const d = await api('/api/register/row', { company: CUR.company, role: CUR.role, status: $('#dt-status').value, notes: $('#dt-notes').value });
     toast(d.ok || d.error, !!d.error); if (!d.error) { loadGrid(); }
@@ -331,7 +333,12 @@ function summary(r) {
     `<div class="row">${m.alignment ? `<span class="badge ${m.alignment === 'PASS' ? 'good' : 'bad'}">alignment ${m.alignment}</span>` : ''}` +
     `${m.coverage != null ? `<span class="badge ${m.coverage >= 70 ? 'good' : 'mid'}">coverage ${m.coverage}%</span>` : ''}</div>` +
     (m.missing && m.missing.length ? `<div class="muted mini" style="margin-top:8px">missing skills — click one to add where you have it:
-      <div style="margin-top:4px">${m.missing.map(x => `<a class="missk" onclick='App.addEvidence(${JSON.stringify(x)},${JSON.stringify(r.key)})'>${esc(x)}</a>`).join('')}</div></div>` : '') +
+      <div style="margin-top:4px">${m.missing.map(x => {
+        const ev = (m.evidenced || []).some(e => e.toLowerCase() === x.toLowerCase());
+        return `<a class="missk${ev ? ' evidenced' : ''}" title="${ev ? 'you have recorded evidence — rebuild the graph, then Prepare this role, to apply it' : 'click to record where you have this skill'}" onclick='App.addEvidence(${JSON.stringify(x)},${JSON.stringify(r.key)})'>${ev ? '✓ ' : ''}${esc(x)}</a>`;
+      }).join('')}</div></div>
+      ${(m.evidenced || []).length ? `<div class="row" style="margin-top:6px"><span class="muted mini">${m.evidenced.length} skill(s) have evidence but aren't in the graph/CV yet.</span>
+        <button class="small" onclick="App.rebuildKB()">↻ Rebuild knowledge graph</button></div>` : ''}` : '') +
     `<div class="muted" style="margin:12px 0 4px">notes (editable)</div><textarea id="dt-notes" style="min-height:14vh">${esc(r.notes || '')}</textarea>` +
     `<div class="row" style="margin-top:10px"><button onclick="App.saveRow()">Save</button>` +
     `<button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>Prepare this role</button>` +
