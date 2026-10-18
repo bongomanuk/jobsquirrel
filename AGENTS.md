@@ -156,12 +156,13 @@ LIGHT=1 FIXED_CV=documents/archetypes/<Prefix>_CV_<Archetype>.docx PARALLEL=3 ba
 
 **F. Submit what's already prepared** (reuse the gated CV/letter, no re-generation)
 The dashboard's **🚀 Submit prepared** (grid) / **Submit this application** (a `PREPARED`
-row's drawer) build a scoped queue and run `run_queue.sh` over just those rows: the runner
-reuses the existing artifacts (§0d), re-runs the gates and applies. Requires
-`APPROVE_RUN_QUEUE`. Equivalent CLI:
+row's drawer) build a scoped queue and run `run_queue.sh` in **submit-prepared mode**
+(`PREPARED=1`) over just those rows: no GraphRAG, no CV/letter generation, no alignment
+gate — only the pre-submit gate (to re-stamp the receipt) and then the browser apply.
+Requires `APPROVE_RUN_QUEUE`. Equivalent CLI:
 
 ```bash
-QUEUE=<tmp-queue> DONE=<tmp.done> bash tools/run_queue.sh
+QUEUE=<tmp-queue> DONE=<tmp.done> PREPARED=1 bash tools/run_queue.sh
 ```
 
 Common to batch modes:

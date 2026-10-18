@@ -34,6 +34,7 @@ RETRY_LIMIT="${RETRY_LIMIT:-1}"
 LIGHT="${LIGHT:-0}"                 # 1 = cheap run: one fixed CV, no per-role CV/letter
 FIXED_CV="${FIXED_CV:-}"            # CV file to upload when LIGHT=1
 REVIEW="${REVIEW:-0}"               # 1 = prepare documents only (gate PASS, record PREPARED, do NOT submit)
+PREPARED="${PREPARED:-0}"           # 1 = submit documents that a REVIEW pass already generated (no re-generation)
 ELIGIBILITY_OVERRIDE="${ELIGIBILITY_OVERRIDE:-}"
 PROFILE="${PROFILE:-$ROOT/config/profile.md}"   # identity / eligibility config
 # The coding agent that applies to each role: opencode | claude | any command.
@@ -98,7 +99,15 @@ ensure_server() {
   local url="$1" port="$2"
   curl -s -m 3 "$url/health" >/dev/null 2>&1 && return 0
   echo "starting camoufox server on port $port ..." >> "$LOGS/run_queue.out"
-  setsid nohup python3 "$ROOT/tools/camoufox_server.py" --port "$port" \
+  # The project venv may not have camoufox (it can live in the system/user
+  # site-packages), so start the server with an interpreter that can import it.
+  local py=""
+  for _p in python3 /usr/bin/python3 "$ROOT/.venv/bin/python3"; do
+    command -v "$_p" >/dev/null 2>&1 || continue
+    "$_p" -c 'import camoufox' >/dev/null 2>&1 && { py="$_p"; break; }
+  done
+  py="${py:-python3}"
+  setsid nohup "$py" "$ROOT/tools/camoufox_server.py" --port "$port" \
     >> "$LOGS/camoufox_server_$port.log" 2>&1 < /dev/null &
   disown
   local _t
@@ -147,6 +156,36 @@ Steps:
 5. Record ONLY with real confirmation: \`python3 tools/record_submission.py --company "$company" --role "$role" --ats "$ats" --url "$url" --cv $FIXED_CV --status SUBMITTED --evidence "<the exact thank-you text or the confirmation email you received>"\`. The evidence MUST be real - never "confirmed"/"ok"/a placeholder (the recorder rejects those). If a verification link or code is still pending and you cannot complete it, record \`--status BLOCKED --evidence "submitted but pending email verification: <what>" --force\` instead and STOP. If a CAPTCHA/anti-bot wall persists, record BLOCKED as in step 3. Never fabricate.
 
 Return exactly one line: STATUS <Company> | $role | SUBMITTED|BLOCKED|CLOSED | <reason>
+EOF
+    return
+  fi
+  if [ "${PREPARED:-0}" = "1" ]; then
+    cat <<EOF
+You are SUBMITTING an application whose documents are ALREADY PREPARED on behalf of the candidate in config/profile.md. Repo: $ROOT (cwd). Do not touch other jobs.
+Company/tag: $company
+Role: $role
+ATS: $ats
+Apply URL: $url
+CV to upload (ALREADY GENERATED - do NOT regenerate): documents/applications/${CV_PREFIX}_CV_$key.docx
+Cover letter (ALREADY GENERATED - do NOT regenerate): documents/applications/${CV_PREFIX}_Motivation_$key.docx
+  Browser: run every command as \`python3 tools/camoufox_browser.py --server $server <cmd>\` (nav/snap/click/fill/type/select/pick/fillmap/press/check/upload/value/eval/wait). Prefix \`$TIMEOUT_CMD 30\`. Refs renumber after every snap - re-snap before using refs; prefer CSS selectors with \`fill '<sel>' '<text>'\`. To cut tokens, BATCH form fields with \`fillmap '<json steps>'\` (steps: [{"selector":"#x","value":"...","op":"fill|check|select|upload|press"}]) instead of one call per field.
+  Custom ATS widgets (Workday, Greenhouse/react-select, Ashby): options in a listbox/dropdown are NOT clickable via eval-dispatched events - use \`pick '<option text>' ['<opener selector>']\` (it scrolls virtualised lists and clicks with real input). Use \`press Enter '<sel>'\` to commit type-aheads, \`press Escape\` to close a popup. \`click\` retries with a forced click automatically when an overlay blocks it; add \`--force\` yourself if you already know something is in the way. CSS ids starting with a digit need \`[id="53683"]\`, not \`#53683\`.
+
+SUBMIT-PREPARED RUN: these files were generated, written and gated in an earlier REVIEW pass and are FINAL. Do NOT re-do any preparation. Specifically: do NOT run kb_graphrag.py, ats_keywords.py, cv_target.py, render_motivation/render_cv, and do NOT rewrite, re-render, edit or "improve" the CV or letter. Do NOT run check_alignment.py. Do not call GraphRAG. If the CV or letter is missing, STOP and record BLOCKED with the missing path (the operator must re-prepare) - never generate a replacement.
+
+FIRST, before anything else: read config/profile.md and apply it - identity (name, email, phone, location, links), work authorisation, languages, availability, pay/rate, eligibility/exclusions, accuracy rules and the standard diversity/EEO answers. Use those exact values wherever a form asks; never invent or substitute personal data.
+
+Steps:
+0. DUPLICATE GUARD (mandatory, do this FIRST): run \`python3 tools/register.py --show "$company"\` and read state/applications.csv. If this company already has a row with status SUBMITTED, INTERVIEW or IN_PROGRESS for the SAME role - or a near-identical/renamed variant of it - this is a DUPLICATE: record \`python3 tools/register.py --set --company "$company" --role "$role" --status CLOSED --notes "duplicate of existing <status> role: <existing role>"\` and STOP; do NOT open the form or submit.
+0b. ELIGIBILITY CHECK (quick): confirm from profile.md that the role's location/work model, languages and authorisation still fit. If it is clearly excluded (or the posting is no longer live and cannot be found), record CLOSED with the reason and STOP. Do not redo any analysis beyond that.
+1. PRE-SUBMIT GATE (the only gate to run): \`python3 tools/check_documents.py --letter documents/applications/${CV_PREFIX}_Motivation_$key.docx --cv documents/applications/${CV_PREFIX}_CV_$key.docx --company "<Company>" --jd state/job-descriptions/$key.md --ats-keywords state/ats/$key.txt --engagement $ENGAGEMENT --record\` - it must print RESULT: PASS (it re-stamps the receipt for the exact files you upload). If it FAILS, STOP: do not submit; record BLOCKED with the gate's reason.
+2. Apply via the Camoufox browser: fill fields with profile.md values, upload the prepared CV (and the prepared letter where a letter field exists), answer questions honestly, submit. Verify a success/thank-you page.
+   Multi-step forms (Workday etc): the footer button is [data-automation-id="pageFooterNextButton"] (Save and Continue). If a save is rejected, read the Error-* text and fix exactly the field it names (usually a custom dropdown - use \`pick\`).
+2b. EMAIL VERIFICATION (mandatory): after submit, wait ~45s, then read the candidate's Gmail (\`.venv/bin/python tools/email_verify.py --query 'newer_than:2h (from:teamtailor-mail.com OR from:join.com OR "Complete the application" OR "Security code for your application" OR "verify your email" OR "Activate your account")'\`) and COMPLETE it in THIS browser. Do NOT record SUBMITTED until a real confirmation is seen. If verification remains pending, record BLOCKED.
+2c. BLOCKER RECOVERY: re-read the page and retry once; on a login wall use stored credentials from ~/.config/job-search/accounts.json; if the apply URL is dead, resolve the employer's own ATS. Never evade a genuine CAPTCHA/anti-bot wall - record BLOCKED with what you tried.
+3. On success: \`python3 tools/record_submission.py --company "<Company>" --role "$role" --ats "$ats" --url "$url" --cv documents/applications/${CV_PREFIX}_CV_$key.docx --letter documents/applications/${CV_PREFIX}_Motivation_$key.docx --status SUBMITTED --evidence "<the exact thank-you text or the confirmation email>"\`. The evidence MUST be real - never "confirmed"/"ok"/a placeholder.
+
+Return exactly one line: STATUS <Company> | $role | SUBMITTED|BLOCKED|CLOSED | <reason> | CV: documents/applications/${CV_PREFIX}_CV_$key.docx | letter: documents/applications/${CV_PREFIX}_Motivation_$key.docx
 EOF
     return
   fi

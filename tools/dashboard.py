@@ -1572,7 +1572,7 @@ def submit_roles(keys, approval_token=""):
         pass
     _spawn(f"submit {len(rows)} prepared role(s)",
            ["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
-           {"PARALLEL": "1", "QUEUE": tmp, "DONE": tmp_done})
+           {"PARALLEL": "1", "QUEUE": tmp, "DONE": tmp_done, "PREPARED": "1"})
     return {"ok": f"submitting {len(rows)} application(s) — watch the Activity pane (this sends them)"}
 
 
