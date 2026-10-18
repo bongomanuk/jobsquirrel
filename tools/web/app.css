@@ -269,8 +269,20 @@ body[data-act="closed"] .act-body,body[data-act="closed"] #split-inner{display:n
 .runctl{display:flex;gap:6px;flex:0 0 auto}
 .toolbar{display:flex;gap:8px;align-items:center;margin:14px 0 10px;flex-wrap:wrap}
 .gridwrap{overflow:visible;border:1px solid var(--line);border-radius:var(--radius)}
+/* the grid shrinks with the pane but never wraps: fixed layout + ellipsis */
+#grid{table-layout:fixed}
+#grid th,#grid td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:8px 8px}
+#grid th{font-size:12px}
+#grid th:nth-child(1),#grid td:nth-child(1){width:8%}
+#grid th:nth-child(4),#grid td:nth-child(4){width:9%}
+#grid th:nth-child(5),#grid td:nth-child(5){width:14%}
+#grid th:nth-child(6),#grid td:nth-child(6){width:9%}
+#grid th:nth-child(7),#grid td:nth-child(7){width:8%}
+#grid th:nth-child(8),#grid td:nth-child(8){width:6%}
+#grid th:nth-child(9),#grid td:nth-child(9){width:4%}
+#grid td:nth-child(1){font-size:12px;color:var(--muted)}
+#grid .badge{padding:2px 8px}
 #grid thead th{position:sticky;top:0;z-index:2}
-#grid th:nth-child(5),#grid td:nth-child(5){min-width:210px}
 #grid th[data-s]{cursor:pointer}
 #grid tbody tr.click{cursor:pointer}
 #detail .tabs2{padding:0 12px}

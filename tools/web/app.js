@@ -304,6 +304,8 @@ async function gridTick() {                 // keep the grid live (faster while 
 }
 function renderRows() {
   const q = $('#q').value.toLowerCase(), st = $('#fstatus').value, qq = $('#fqueue').value;
+  const cy = String(new Date().getFullYear());
+  const shortDate = (d) => { const [y, m, dd] = d.split('-'); return y === cy ? `${m}-${dd}` : `${y.slice(2)}-${m}-${dd}`; };
   let rows = GRID.filter(r => (!st || r.status === st) && (!qq || r.queue === qq) &&
     (!q || (r.company + ' ' + r.role + ' ' + (r.ats || '')).toLowerCase().includes(q)));
   if (SPECIAL === 'in_process') rows = rows.filter(r => ['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER'].includes(r.status));
@@ -321,13 +323,13 @@ function renderRows() {
   $('#count').textContent = `${rows.length} / ${GRID.length} rows`;
   const mbadge = (r) => r.match == null ? '<span class="muted"' + T('No score — this role has no saved job ad (ATS keywords) and/or no CV to compare') + '>—</span>'
     : `<span class="badge ${r.match >= 70 ? 'good' : r.match >= 40 ? 'mid' : 'bad'}"${T("CV-to-job fit: this % of the ad's ATS keywords are covered by the tailored CV")}>${r.match}%</span>`
-      + (r.alignment === 'FAIL' ? ' <span class="badge bad"' + T('Pre-submit alignment gate FAILED for this role') + '>align✗</span>' : '');
+      + (r.alignment === 'FAIL' ? ' <span class="badge bad"' + T('Pre-submit alignment gate FAILED for this role — open the row to see why') + '>✗</span>' : '');
   $('#rows').innerHTML = rows.map((r) => {
     const i = GRID.indexOf(r);
     return `<tr class="click" onclick="App.open(${i})">` +
-      `<td class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet — queued, not applied')}>${r.date ? esc(r.date) : '—'}</td>` +
-      `<td${T('Employer / recruiter')}>${(r.running || PENDING.has(r.key)) ? '<span class="spin" title="Being worked on now">🥜</span> ' : ''}${esc(r.company)}</td>` +
-      `<td${T('Job title')}>${esc(r.role)}</td>` +
+      `<td class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet — queued, not applied')}>${r.date ? esc(shortDate(r.date)) : '—'}</td>` +
+      `<td${T(r.company + '  ·  employer / recruiter')}>${(r.running || PENDING.has(r.key)) ? '<span class="spin" title="Being worked on now">🥜</span> ' : ''}${esc(r.company)}</td>` +
+      `<td${T(r.role + '  ·  job title')}>${esc(r.role)}</td>` +
       `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
       `<td>${chip(r.status)}${r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : ''}</td><td>${mbadge(r)}</td>` +
       `<td${T(QUEUE_HELP[r.queue] || 'Not in any queue')}>${['pending', 'human', 'retry'].includes(r.queue)
