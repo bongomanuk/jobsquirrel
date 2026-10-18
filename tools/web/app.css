@@ -67,7 +67,8 @@ tbody tr.click{cursor:pointer}
 .chip{display:inline-block;padding:1px 9px;border-radius:999px;font-size:11px;font-weight:800}
 .SUBMITTED,.IN_PROGRESS{background:#0e2a3a;color:var(--sub)}
 .QUEUED{background:#242938;color:#cbd5e1}
-.PROCESSED{background:#161b24;color:#94a3b8}
+.DRAFTING{background:#0e2a3a;color:var(--sub)}
+.NO_RESULT{background:#161b24;color:#94a3b8}
 .INTERVIEW{background:#27143a;color:var(--interview)}
 .OFFER{background:#10351f;color:var(--offer)}
 .REJECTED,.CLOSED{background:#1c2230;color:var(--closed)}
@@ -323,3 +324,7 @@ body[data-act="closed"] .act-body,body[data-act="closed"] #split-inner{display:n
 .legend dt{font-weight:700;white-space:nowrap}
 .legend dd{margin:0;color:var(--muted);font-size:13px}
 .legend code{background:#0a0c10;border:1px solid var(--line);border-radius:4px;padding:0 5px;font:12px var(--mono)}
+
+.stages{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.stage{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 8px}
+.stage.on{color:#8ce99a;border-color:#2b6b45;background:#0f2a1c}

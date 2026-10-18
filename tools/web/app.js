@@ -3,8 +3,9 @@ const TOKEN = document.body.dataset.sessionToken;
 const $ = (s) => document.querySelector(s);
 const esc = (s) => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const STATUS_HELP = {
-  QUEUED: 'In the apply queue — waiting to be applied to',
-  PROCESSED: 'The runner already finished this queued role, but no application was recorded (nothing was submitted or logged). Safe to ignore, or re-prepare/re-queue it.',
+  QUEUED: 'In the apply queue — nothing done yet; applied when you run the queue',
+  DRAFTING: 'In progress — the ad/keywords are saved but no finished documents yet',
+  'NO RESULT': 'A run finished but produced nothing (no ad, no documents, no application) — re-prepare it, or remove it',
   SUBMITTED: 'Application sent — awaiting a reply',
   IN_PROGRESS: 'Application in progress (multi-step form being completed)',
   INTERVIEW: 'Interview stage — an interview is scheduled or requested',
@@ -22,7 +23,7 @@ const QUEUE_HELP = {
   finished: 'Finished — the runner processed it (moved to queue.done)',
 };
 const T = (s) => ` title="${esc(s)}"`;
-const chip = (s) => `<span class="chip ${esc(s)}"${T(STATUS_HELP[s] || '')}>${esc(s || '')}</span>`;
+const chip = (s) => `<span class="chip ${esc((s || '').replace(/\s+/g, '_'))}"${T(STATUS_HELP[s] || '')}>${esc(s || '')}</span>`;
 const md = (s) => {
   let t = esc(s || '');
   t = t.replace(/```(?:\w+)?\n?([\s\S]*?)```/g, (m, c) => `<pre>${c.replace(/\n$/, '')}</pre>`);
@@ -351,6 +352,11 @@ function summary(r) {
   const hist = notes ? notes.split(/\s*\|\s*/).filter(Boolean).map(x => `<li>${md(x)}</li>`).join('') : '';
   return `<div class="statebox">
       <div class="row">${chip(r.status)}${r.hint ? `<span class="statehint">${esc(r.hint)}</span>` : ''}</div>
+      <div class="stages">${(() => {
+        const st = r.stages || {};
+        const cell = (k, label) => `<span class="stage ${st[k] ? 'on' : ''}" title="${st[k] ? 'done' : 'not yet'}">${st[k] ? '✓' : '○'} ${label}</span>`;
+        return cell('ad', 'Ad saved') + cell('keywords', 'Keywords') + cell('grounding', 'Grounded') + cell('documents', 'Documents') + cell('applied', 'Applied');
+      })()}</div>
       <div class="state-meta mini muted">ATS: ${esc(r.ats || '—')} · Queue: ${esc(r.queue || 'not queued')}${r.date ? ' · updated ' + esc(r.date) : ''} · <span class="mono">${esc(r.key)}</span></div>
       ${r.running ? '<div class="working"><span class="spin">🥜</span> being worked on right now</div>' : ''}
     </div>` +

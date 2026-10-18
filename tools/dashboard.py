@@ -592,9 +592,10 @@ def _hint(status, notes):
     if status in ("CLOSED", "REJECTED"):
         return reason or ("closed — no action" if status == "CLOSED" else "rejected — no action")
     return {
-        "QUEUED": "in the apply queue — applied when you run the queue",
-        "PROCESSED": "run finished with no application recorded — re-prepare it, or remove it",
-        "PREPARED": "documents ready and gated — safe to apply",
+        "QUEUED": "in the apply queue — nothing done yet; applied when you run the queue",
+        "DRAFTING": "in progress — ad/keywords saved, but no finished documents yet",
+        "PREPARED": "documents generated and gated — ready to apply",
+        "NO RESULT": "a run finished but produced nothing (no ad, no documents, no application) — re-prepare it, or remove it",
         "SUBMITTED": "applied — waiting for a reply",
         "IN_PROGRESS": "application in progress",
         "INTERVIEW": "interview stage — prepare",
@@ -624,6 +625,18 @@ def grid():
         specs = {f[:-3] for f in os.listdir(os.path.join(STATE, "job-descriptions")) if f.endswith(".md")}
     except OSError:
         specs = set()
+
+    def _keyset(folder, ext):
+        try:
+            return {f[:-len(ext)] for f in os.listdir(os.path.join(STATE, folder)) if f.endswith(ext)}
+        except OSError:
+            return set()
+    ats_set, kb_set, cv_set = _keyset("ats", ".txt"), _keyset("kb-context", ".md"), _keyset("cv-content", ".json")
+
+    def stages_for(key, applied):
+        """What has actually happened to this job so far."""
+        return {"ad": key in specs, "keywords": key in ats_set, "grounding": key in kb_set,
+                "documents": key in cv_set, "applied": bool(applied)}
     running = set()
     if WQ:
         try:
@@ -651,6 +664,7 @@ def grid():
                     "match": cov, "alignment": align, "running": ck in running,
                     "notes": r.get("notes", ""), "letter": r.get("letter", ""),
                     "url": qrow.get(ck, {}).get("url", "") or subm_url.get(ck, ""),
+                    "stages": stages_for(key, ck in subm),
                     "hint": _hint((r.get("status") or "").upper(), r.get("notes", ""))})
     # queued but not yet in the register — show the work that's waiting / in flight
     for ck, r in qrow.items():
@@ -665,13 +679,24 @@ def grid():
         jd = os.path.join(STATE, "job-descriptions", key + ".md")
         stamp = _mtime(jd) or _mtime(os.path.join(STATE, "queue.tsv"))
         qdate = time.strftime("%Y-%m-%d", time.localtime(stamp)) if stamp else ""
+        st = stages_for(key, ck in subm)
+        if st["applied"]:
+            stg = "SUBMITTED"
+        elif st["documents"]:
+            stg = "PREPARED"
+        elif st["ad"] or st["keywords"] or st["grounding"]:
+            stg = "DRAFTING"
+        elif f"{co}|{role}" in done:
+            stg = "NO RESULT"
+        else:
+            stg = "QUEUED"
         out.append({"date": qdate, "company": co, "role": role, "ats": r.get("ats", ""),
-                    "status": "PROCESSED" if f"{co}|{role}" in done else "QUEUED", "key": key,
+                    "status": stg, "key": key,
                     "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, "pending"),
                     "spec": key in specs, "applied": ck in subm,
                     "match": cov, "alignment": m.get("alignment", ""), "running": ck in running,
-                    "notes": "", "letter": "", "url": r.get("url", ""),
-                    "hint": _hint("PROCESSED" if f"{co}|{role}" in done else "QUEUED", "")})
+                    "notes": "", "letter": "", "url": r.get("url", ""), "stages": st,
+                    "hint": _hint(stg, "")})
     _save_cov()
     out.sort(key=lambda x: (x["date"] or ""), reverse=True)
     out.sort(key=lambda x: 0 if x["running"] else (1 if x["status"] == "QUEUED" else 2))
