@@ -4,6 +4,7 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const STATUS_HELP = {
   QUEUED: 'In the apply queue — not submitted yet (waiting or being worked on)',
+  DONE: 'Queued and already processed (no application recorded — the runner finished it)',
   SUBMITTED: 'Application sent — awaiting a reply',
   IN_PROGRESS: 'Application in progress (multi-step form being completed)',
   INTERVIEW: 'Interview stage — an interview is scheduled or requested',

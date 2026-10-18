@@ -585,7 +585,7 @@ def grid():
         align = m.get("alignment") or (_COV.get(key, {}) or {}).get("align", "")
         out.append({"date": r.get("date", ""), "company": co, "role": role, "ats": r.get("ats", ""),
                     "status": (r.get("status") or "").upper(), "key": key,
-                    "queue": qstate.get(ck, "done" if f"{co}|{role}" in done else ""),
+                    "queue": "done" if f"{co}|{role}" in done else qstate.get(ck, ""),
                     "spec": key in specs, "applied": ck in subm,
                     "match": cov, "alignment": align, "running": ck in running,
                     "notes": r.get("notes", ""), "letter": r.get("letter", ""),
@@ -604,7 +604,8 @@ def grid():
         stamp = _mtime(jd) or _mtime(os.path.join(STATE, "queue.tsv"))
         qdate = time.strftime("%Y-%m-%d", time.localtime(stamp)) if stamp else ""
         out.append({"date": qdate, "company": co, "role": role, "ats": r.get("ats", ""),
-                    "status": "QUEUED", "key": key, "queue": qstate.get(ck, "pending"),
+                    "status": "DONE" if f"{co}|{role}" in done else "QUEUED", "key": key,
+                    "queue": "done" if f"{co}|{role}" in done else qstate.get(ck, "pending"),
                     "spec": key in specs, "applied": ck in subm,
                     "match": cov, "alignment": m.get("alignment", ""), "running": ck in running,
                     "notes": "", "letter": "", "url": r.get("url", "")})
@@ -1420,9 +1421,13 @@ def prepare_roles(keys):
     with open(tmp, "w", encoding="utf-8") as fh:
         for r in rows:
             fh.write("\t".join([r["company"], r["role"], r["url"], r["cv"], r["ats"], r["key"]]) + "\n")
+    # a scoped run must NOT skip rows already marked done in the shared queue.done
+    tmp_done = os.path.join(LOGS, "queue-ui.done")
+    with open(tmp_done, "w", encoding="utf-8"):
+        pass
     _spawn(f"prepare {len(rows)} role(s) (review)",
            ["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
-           {"REVIEW": "1", "PARALLEL": "1", "QUEUE": tmp})
+           {"REVIEW": "1", "PARALLEL": "1", "QUEUE": tmp, "DONE": tmp_done})
     return {"ok": f"generating documents for {len(rows)} role(s) — watch the Activity pane (nothing is submitted)"}
 
 
