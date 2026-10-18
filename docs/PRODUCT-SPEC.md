@@ -174,7 +174,16 @@ Clicking a row opens a drawer with tabs:
 ### 9.5 Settings panel (⚙ Config)
 - Sections: **Accounts** (status + Gmail/Calendar authorisation), **Knowledge base** (list / upload /
   delete sources, rebuild the index), **GraphRAG** (browse entities / relationships / communities /
-  documents), **Profile & CV** (edit `cv.json` / `archetypes.json` / `profile.md`, regenerate archetypes).
+  documents), **Agent permissions** (per-category allow/ask/deny), **Profile & CV** (edit files, regenerate).
+
+### 9.5b Agent permission gate (agent-agnostic)
+- Policy in `config/agent-permissions.json`: `read_repo`/`write_repo` (default **allow**),
+  `read_external`/`write_external`/`bash`/`task` (default **ask**), `web` (allow).
+- Any agent reaches outside the repo via `tools/agent_access.py read|write|run …`, which
+  **asks the operator** (unless the category is allow/deny) and blocks until they answer.
+- The dashboard shows a **permission prompt** (Allow once / Always allow / Deny) and the policy is
+  editable under **Settings → Agent permissions**. Native external access is denied so the gate can't
+  be bypassed; it works for opencode, Claude Code and any `AGENT=` command.
 
 ### 9.6 Agent console (dockable)
 - Dockable pullout (left by default; drag its header to any edge; splitters resize it and its panes;

@@ -22,6 +22,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, quote
@@ -784,7 +785,7 @@ CHAT_PREAMBLE = (
     "state/submissions.csv; conversion is `python3 tools/outcomes.py`. Treat 'updates', 'status' and "
     "'how's it going' as job-search progress (applications, interviews, replies, queue) unless the "
     "operator explicitly asks about the code. Be concise; use the repo's tools; never take an "
-    "irreversible action (submitting applications, sending email, deleting mail) without explicit approval.")
+    "irreversible action (submitting applications, sending email, deleting mail) without explicit approval. ")
 
 
 def _chat_echo(message):
@@ -793,32 +794,88 @@ def _chat_echo(message):
         fh.write(f"\n> {message}\n")
 
 
-# Let the embedded agent read the operator's own project folders (opencode denies
-# anything outside the repo by default, which silently stalls "look at my projects"
-# requests). Scoped to common project roots; secrets stay denied.
-AGENT_PERMISSIONS = {
-    "permission": {
-        "external_directory": {
-            "*": "ask",
-            "~/vscode/**": "allow",
-            "~/Documents/**": "allow",
-            "~/projects/**": "allow",
-            "~/src/**": "allow",
-            "~/.ssh/**": "deny",
-            "~/.gnupg/**": "deny",
-            "~/.config/**": "deny",
-            "~/.local/share/keyrings/**": "deny",
-        },
-        "task": "allow",          # the agent may spawn subagents to survey several folders
-    }
-}
+# The agent reaches outside the repo only through the gate (tools/agent_access.py),
+# which asks the operator; native external access is denied so it can't bypass it.
+AGENT_PERMISSIONS = {"permission": {"external_directory": {"*": "deny"}, "task": "allow"}}
+GATE_NOTE = ("Before reading files outside this repo, writing files, or running shell commands, use the "
+             "gate so the operator can approve: `python3 tools/agent_access.py read|write|run ...`. "
+             "It asks the operator and only proceeds if they allow it.")
+
+
+DASH = {"url": ""}          # set in main(); handed to the embedded agent so it can ask for approval
 
 
 def agent_env(**extra):
     env = dict(os.environ)
     env.update(extra)
     env.setdefault("OPENCODE_CONFIG_CONTENT", json.dumps(AGENT_PERMISSIONS))
+    if DASH["url"]:
+        env.setdefault("JOBSQUIRREL_URL", DASH["url"])
+    env.setdefault("JOBSQUIRREL_TOKEN", SESSION_TOKEN)
     return env
+
+
+# ---------------------------------------------------------------- agent permissions
+PERMS_FILE = os.path.join(ROOT, "config", "agent-permissions.json")
+DEFAULT_PERMS = {
+    "read_repo": "allow", "write_repo": "allow",      # its normal work in this repo
+    "read_external": "ask", "write_external": "ask",  # outside the repo -> ask
+    "bash": "ask", "web": "allow", "task": "ask",
+}
+_PERM_LOCK = threading.Lock()
+_PERM = {}                  # request id -> {category, detail, event, decision, ts}
+
+
+def load_perms():
+    try:
+        with open(PERMS_FILE, encoding="utf-8") as fh:
+            return {**DEFAULT_PERMS, **json.load(fh)}
+    except (OSError, ValueError):
+        return dict(DEFAULT_PERMS)
+
+
+def save_perms(d):
+    d = {k: v for k, v in d.items() if k in DEFAULT_PERMS and v in ("allow", "ask", "deny")}
+    merged = {**DEFAULT_PERMS, **d}
+    os.makedirs(os.path.dirname(PERMS_FILE), exist_ok=True)
+    with open(PERMS_FILE, "w", encoding="utf-8") as fh:
+        json.dump(merged, fh, indent=2)
+    return merged
+
+
+def permission_request(category, detail, timeout=300):
+    """The agent asks to do something; honour allow/deny, or block until the operator answers."""
+    pol = load_perms().get(category, "ask")
+    if pol in ("allow", "deny"):
+        return {"decision": pol, "category": category}
+    rid = uuid.uuid4().hex[:8]
+    ev = threading.Event()
+    with _PERM_LOCK:
+        _PERM[rid] = {"id": rid, "category": category, "detail": detail, "event": ev, "decision": None, "ts": time.time()}
+    ev.wait(timeout)
+    with _PERM_LOCK:
+        rec = _PERM.pop(rid, {})
+    return {"decision": rec.get("decision") or "deny", "id": rid, "category": category}
+
+
+def permission_pending():
+    with _PERM_LOCK:
+        return [{"id": r["id"], "category": r["category"], "detail": r["detail"]}
+                for r in _PERM.values() if r["decision"] is None]
+
+
+def permission_decide(rid, decision, remember=False):
+    with _PERM_LOCK:
+        r = _PERM.get(rid)
+    if not r:
+        return {"error": "unknown or expired request"}
+    r["decision"] = "allow" if decision == "allow" else "deny"
+    if remember:
+        p = load_perms()
+        p[r["category"]] = r["decision"]
+        save_perms(p)
+    r["event"].set()
+    return {"ok": f"{r['decision']} {r['category']}"}
 
 
 def _chat_spawn(message):
@@ -826,7 +883,8 @@ def _chat_spawn(message):
     sid = _chat_session()
     if not os.path.exists(CHAT_LOG):
         sid = ""                                    # transcript gone -> start fresh
-    prompt = message if sid else (CHAT_PREAMBLE + "\n\n---\n" + message)
+    base = message if sid else (CHAT_PREAMBLE + "\n\n---\n" + message)
+    prompt = GATE_NOTE + "\n\n" + base
     f = open(CHAT_LOG, "a", encoding="utf-8")
     env = agent_env(AGENT_JSON="1")
     if sid:
@@ -1304,6 +1362,10 @@ class H(BaseHTTPRequestHandler):
             return self._json(config_get(qs.get("target", ["profile"])[0]))
         if p == "/api/accounts":
             return self._json(accounts())
+        if p == "/api/permissions":
+            return self._json({"policy": load_perms(), "defaults": DEFAULT_PERMS})
+        if p == "/api/agent/pending":
+            return self._json({"pending": permission_pending()})
         if p == "/api/kb":
             return self._json(kb_info())
         if p == "/api/graph":
@@ -1405,6 +1467,14 @@ class H(BaseHTTPRequestHandler):
             return self._json(kb_rebuild())
         if p == "/api/accounts/auth":
             return self._json(account_auth(data.get("kind", "")))
+        if p == "/api/permissions":
+            return self._json({"policy": save_perms(data.get("policy") or {})})
+        if p == "/api/agent/permission":
+            return self._json(permission_request(str(data.get("category", "?"))[:60],
+                                                 str(data.get("detail", ""))[:400]))
+        if p == "/api/agent/decide":
+            return self._json(permission_decide(str(data.get("id", "")), str(data.get("decision", "deny")),
+                                                bool(data.get("remember"))))
         self._json({"error": "not found"}, 404)
 
 
@@ -1418,6 +1488,7 @@ def main():
         print(f"missing frontend: {WEB}/index.html", file=sys.stderr)
         return 2
     url = f"http://{args.host}:{args.port}/"
+    DASH["url"] = f"http://{args.host}:{args.port}"       # handed to the agent so it can ask for approval
     srv = ThreadingHTTPServer((args.host, args.port), H)
     print(f"🐿️  Jobsquirrel WebUI  ->  {url}   (Ctrl-C to stop)")
     if args.open:

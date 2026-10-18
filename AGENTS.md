@@ -81,6 +81,13 @@ reports a clean config.
    not mass-apply, and if the user hasn't explicitly enabled it, don't use it.
    Never post, message or interact on social sites unless the user asked in that
    session (and it complies with the site's terms).
+9. **Reach outside the repo through the gate.** To read a file outside this repo,
+   write a file, or run a shell command, use the gate so the operator can approve
+   it — `python3 tools/agent_access.py read <path>` / `write <path>` (content on
+   stdin) / `run -- <cmd>`. It asks the operator and only proceeds if they allow
+   it (their policy lives in `config/agent-permissions.json`, editable in the
+   dashboard's **Settings → Agent permissions**). Native access outside the repo
+   is blocked, so this is the only way in; do not try to work around it.
 
 ---
 
