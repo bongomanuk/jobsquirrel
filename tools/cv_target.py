@@ -155,9 +155,15 @@ def render_ats(data, path):
         h("Selected work")
         for b in data["selected_work"]:
             bullet(b)
-    if data.get("education") or True:
+    education = []
+    for item in ((data.get("education") or [])
+                 + (data.get("certifications") or B.SIDEBAR["certificates"])
+                 + (data.get("languages") or B.SIDEBAR["languages"])):
+        if item and item not in education:
+            education.append(item)
+    if education:
         h("Education and certifications")
-        for b in (data.get("education", []) + B.SIDEBAR["certificates"] + data.get("languages", [])):
+        for b in education:
             bullet(b)
     doc.save(path)
     scrub_metadata(path, title=f"{B.CVD_NAME} — {data.get('role','CV')}")
@@ -185,29 +191,48 @@ def render_styled(data, path):
             ph.add_run().add_picture(B.HEADSHOT, width=B.Cm(3.3))
         except Exception:
             pass
-    B.s_head(left, "Contact")
-    for line in (B._PHONE, B._EMAIL, B._LOCATION, B._WEBSITE, B._LINKEDIN, *B._OTHER_SITES):
-        if line:
+    contact = [x for x in (B._PHONE, B._EMAIL, B._LOCATION, B._WEBSITE, B._LINKEDIN, *B._OTHER_SITES) if x]
+    education = data.get("education") or B.SIDEBAR["education"]
+    certifications = data.get("certifications") or B.SIDEBAR["certificates"]
+    languages = data.get("languages") or B.SIDEBAR["languages"]
+    # Never print a heading with nothing under it, and don't repeat a line twice.
+    seen = set()
+
+    def uniq(lines):
+        out = []
+        for line in lines or []:
+            if line and line not in seen:
+                seen.add(line); out.append(line)
+        return out
+
+    if contact:
+        B.s_head(left, "Contact")
+        for line in contact:
             B.s_text(left, line)
-    B.s_head(left, "Education")
-    for line in data.get("education") or B.SIDEBAR["education"]:
-        B.s_text(left, line)
-    B.s_head(left, "Certificates")
-    for line in B.SIDEBAR["certificates"]:
-        B.s_text(left, line)
-    B.s_head(left, "Leadership")
-    for line in B.SIDEBAR["leadership"]:
-        B.s_text(left, line, bullet=True)
-    B.s_head(left, "Languages")
-    for line in data.get("languages") or B.SIDEBAR["languages"]:
-        B.s_text(left, line)
+    if education:
+        B.s_head(left, "Education")
+        for line in uniq(education):
+            B.s_text(left, line)
+    if certifications:
+        B.s_head(left, "Certificates")
+        for line in uniq(certifications):
+            B.s_text(left, line)
+    if B.SIDEBAR["leadership"]:
+        B.s_head(left, "Leadership")
+        for line in uniq(B.SIDEBAR["leadership"]):
+            B.s_text(left, line, bullet=True)
+    if languages:
+        B.s_head(left, "Languages")
+        for line in uniq(languages):
+            B.s_text(left, line)
     if data.get("skills"):
         B.s_head(left, "Core skills")
         for s in data["skills"][:8]:
             B.s_text(left, s, bullet=True)
-    B.s_head(left, "Additional strengths")
-    for line in B.SIDEBAR["strengths"]:
-        B.s_text(left, line, bullet=True)
+    if B.SIDEBAR["strengths"]:
+        B.s_head(left, "Additional strengths")
+        for line in B.SIDEBAR["strengths"]:
+            B.s_text(left, line, bullet=True)
 
     p = right.paragraphs[0]; p.paragraph_format.space_after = B.Pt(0)
     r = p.add_run(B.CVD_NAME.upper()); r.bold = True; r.font.size = B.Pt(24); r.font.color.rgb = B.NAVY; B._tracking(r, 20)

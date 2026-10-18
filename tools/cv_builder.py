@@ -267,13 +267,17 @@ NAVY = RGBColor(0x17, 0x3D, 0x56)
 WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 
 def _load_sidebar():
-    """Sidebar content from config/cv.json (languages live at the top level)."""
+    """Sidebar content from config/cv.json.
+
+    A `sidebar` block is optional; older configs keep education, certifications
+    and languages at the top level, so use those as the fallback.
+    """
     sb = _CV.get("sidebar", {}) or {}
     return {
-        "education": list(sb.get("education", []) or []),
-        "certificates": list(sb.get("certificates", []) or []),
+        "education": list(sb.get("education") or _CV.get("education", []) or []),
+        "certificates": list(sb.get("certificates") or _CV.get("certifications", []) or []),
         "leadership": list(sb.get("leadership", []) or []),
-        "languages": list(_CV.get("languages", []) or []),
+        "languages": list(sb.get("languages") or _CV.get("languages", []) or []),
         "strengths": list(sb.get("strengths", []) or []),
         "ai_ml": list(sb.get("ai_ml", []) or []),
     }
@@ -453,7 +457,7 @@ def render_cv(role):
     _cell_margins(right, top=150, left=300, bottom=120, right=200)
     _row_at_least(tbl.rows[0], 58.0)
 
-    # --- sidebar ---
+    # --- sidebar (never render a heading with nothing under it) ---
     if os.path.exists(HEADSHOT):
         try:
             ph = left.paragraphs[0]; ph.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -461,30 +465,36 @@ def render_cv(role):
             ph.add_run().add_picture(HEADSHOT, width=Cm(3.3))
         except Exception:
             pass
-    s_head(left, "Contact")
-    for line in [_PHONE, _EMAIL, _LOCATION, _WEBSITE, _LINKEDIN, *_OTHER_SITES]:
-        if line:
+    contact = [x for x in (_PHONE, _EMAIL, _LOCATION, _WEBSITE, _LINKEDIN, *_OTHER_SITES) if x]
+    if contact:
+        s_head(left, "Contact")
+        for line in contact:
             s_text(left, line)
-    s_head(left, "Education")
-    for line in SIDEBAR["education"]:
-        s_text(left, line)
-    s_head(left, "Certificates")
-    for line in SIDEBAR["certificates"]:
-        s_text(left, line)
-    s_head(left, "Leadership")
-    for line in SIDEBAR["leadership"]:
-        s_text(left, line, bullet=True)
-    s_head(left, "Languages")
-    for line in SIDEBAR["languages"]:
-        s_text(left, line)
+    if SIDEBAR["education"]:
+        s_head(left, "Education")
+        for line in SIDEBAR["education"]:
+            s_text(left, line)
+    if SIDEBAR["certificates"]:
+        s_head(left, "Certificates")
+        for line in SIDEBAR["certificates"]:
+            s_text(left, line)
+    if SIDEBAR["leadership"]:
+        s_head(left, "Leadership")
+        for line in SIDEBAR["leadership"]:
+            s_text(left, line, bullet=True)
+    if SIDEBAR["languages"]:
+        s_head(left, "Languages")
+        for line in SIDEBAR["languages"]:
+            s_text(left, line)
     tags = set(role.get("tags", []))
-    if {"ai", "ml", "data"} & tags:
+    if {"ai", "ml", "data"} & tags and SIDEBAR["ai_ml"]:
         s_head(left, "AI / ML")
         for line in SIDEBAR["ai_ml"]:
             s_text(left, line)
-    s_head(left, "Additional strengths")
-    for line in SIDEBAR["strengths"]:
-        s_text(left, line, bullet=True)
+    if SIDEBAR["strengths"]:
+        s_head(left, "Additional strengths")
+        for line in SIDEBAR["strengths"]:
+            s_text(left, line, bullet=True)
     tech = next((t for c, t in role["skills"] if c.lower().startswith("tools")), "")
     if tech:
         s_head(left, "Tech")
