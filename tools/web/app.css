@@ -23,6 +23,8 @@ header.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:
 .brand h1{font-size:16px;margin:0;letter-spacing:.2px}
 .pill{padding:2px 10px;border-radius:999px;font-size:11px;font-weight:800;background:var(--surface2);color:var(--muted)}
 .pill.PASS{background:#12351f;color:#8ce99a}.pill.FAIL{background:#3a1414;color:#ffb4b4}.pill.unknown{background:#3a2c07;color:#ffd479}
+.pill.upd{background:#3a2c07;color:#ffd479;border:1px solid var(--accent);cursor:pointer}
+.pill.upd:hover{background:#4a3a09;color:#fff}
 nav.tabs{display:flex;gap:2px;margin-left:8px}
 nav.tabs a{padding:8px 12px;border-radius:8px;color:var(--muted);font-weight:600;font-size:13px}
 nav.tabs a.on{color:var(--fg);background:var(--surface)}

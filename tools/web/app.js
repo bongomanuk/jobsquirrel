@@ -39,7 +39,7 @@ const md = (s) => {
   t = t.replace(/^(?!<h\d|<ul|<li|<\/?ul|<pre|<\/?pre|<blockquote|<hr|\s*$)(.+)$/gm, '<p>$1</p>');
   return t;
 };
-let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] };
+let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] }, CUR_PERM = null;
 
 async function api(path, body) {
   const o = { headers: {} };
@@ -77,9 +77,14 @@ const App = {
     if (CF_SEC === 'accounts') return setAccounts(b);
     if (CF_SEC === 'kb') return setKB(b);
     if (CF_SEC === 'graph') return setGraph(b);
+    if (CF_SEC === 'perms') return setPerms(b);
     return setProfile(b);
   },
   auth: async (kind) => { const d = await api('/api/accounts/auth', { kind }); toast(d.ok || d.error, !!d.error); },
+  savePerms: async () => {
+    const policy = {}; document.querySelectorAll('#set-body select[data-cat]').forEach(s => policy[s.dataset.cat] = s.value);
+    const d = await api('/api/permissions', { policy }); toast(d.error ? d.error : 'permissions saved', !!d.error);
+  },
   kbRebuild: async () => { const d = await api('/api/kb/rebuild', {}); toast(d.ok || d.error, !!d.error); },
   kbDel: async (path) => { const d = await api('/api/kb/delete', { path }); toast(d.ok || d.error, !!d.error); if (!d.error) App.settings('kb'); },
   kbUpload: async () => {
@@ -334,6 +339,24 @@ async function liveTick() {
     $('#liveterm').innerHTML = h;
   }
   setTimeout(liveTick, 2500);
+  permTick();
+}
+/* the embedded agent asks before doing something risky (agent_access.py -> here) */
+async function permTick() {
+  if (CUR_PERM) return;
+  const d = await api('/api/agent/pending');
+  const q = (d && d.pending) || [];
+  if (!q.length) return;
+  CUR_PERM = q[0];
+  $('#perm-text').textContent = `${CUR_PERM.category}: ${CUR_PERM.detail}`;
+  $('#perm-always').textContent = `Always allow ${CUR_PERM.category}`;
+  $('#perm').classList.remove('hide');
+}
+async function permAnswer(decision, remember) {
+  if (!CUR_PERM) return;
+  const id = CUR_PERM.id; CUR_PERM = null; $('#perm').classList.add('hide');
+  await api('/api/agent/decide', { id, decision, remember: !!remember });
+  permTick();
 }
 
 /* ---------- shared dockable panels (edges) ---------- */
@@ -574,6 +597,20 @@ async function setGraph(b) {
     <div id="g-res" class="g-res"><span class="muted">loading…</span></div>`;
   App.graphLoad();
 }
+async function setPerms(b) {
+  const d = await api('/api/permissions');
+  const cats = Object.keys(d.defaults || {});
+  const help = { read_repo: 'read files in this repo', read_external: 'read files outside the repo',
+    write_repo: 'write files in this repo', write_external: 'write files outside the repo',
+    bash: 'run shell commands', web: 'fetch web pages', task: 'launch subagents' };
+  b.innerHTML = `<p class="muted">What the embedded agent may do <b>without asking</b>. <b>ask</b> shows you a
+      prompt (Allow once / Always allow / Deny) the moment the agent tries it — the agent waits for your answer.</p>
+    <table><tbody>${cats.map(c => `<tr><td><code>${esc(c)}</code><div class="muted mini">${esc(help[c] || '')}</div></td>
+      <td><select data-cat="${esc(c)}">${['allow', 'ask', 'deny'].map(v =>
+        `<option value="${v}" ${(d.policy[c] === v) ? 'selected' : ''}>${v}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table>
+    <div class="row" style="margin-top:10px"><button onclick="App.savePerms()">Save</button>
+      <span class="muted mini">Applies to every agent (opencode, Claude Code, any <code>AGENT=</code>).</span></div>`;
+}
 function setProfile(b) {
   b.innerHTML = `<p class="muted">Your ground-truth CV, role-family templates and rules. JSON is validated before saving; a <code>.bak</code> is kept.</p>
     <div class="row"><div class="tabs2" id="cf-tabs" style="margin:0;border:0">
@@ -600,6 +637,10 @@ $('#legend').onclick = () => {
   $('#legend-modal').classList.remove('hide');
 };
 $('#a-drawer').onclick = () => openDock(!PANELS.agent.open);
+$('#updpill').onclick = () => updateDialog();
+$('#perm-once').onclick = () => permAnswer('allow', false);
+$('#perm-always').onclick = () => permAnswer('allow', true);
+$('#perm-deny').onclick = () => permAnswer('deny', false);
 $('#act-toggle').onclick = () => {
   const open = document.body.dataset.act !== 'open';
   document.body.dataset.act = open ? 'open' : 'closed';
@@ -618,4 +659,30 @@ $('#export').onclick = () => {
 window.App = App;
 async function healthPill() { const s = await api('/api/health'); const h = $('#health');
   h.textContent = 'health: ' + (s.v || '?'); h.className = 'pill ' + (s.v || 'unknown'); h.title = s.detail || ''; setTimeout(healthPill, 60000); }
-initPanels(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll();
+/* ---------- software updates ---------- */
+let UPD = {};
+async function updateCheck(refresh) {
+  const d = await api('/api/update' + (refresh ? '?refresh=1' : ''));
+  UPD = d || {};
+  if ($('#ver')) $('#ver').textContent = d.current || '?';
+  const pill = $('#updpill');
+  if (pill) { pill.classList.toggle('hide', !d.available); if (d.available) pill.textContent = `⬆ ${d.latest}`; }
+  setTimeout(updateCheck, 6 * 3600 * 1000);                        // re-check every 6h
+}
+window.updClose = () => $('#upd').classList.add('hide');
+function updateDialog() {
+  if (!UPD.available) { updateCheck(true); return; }
+  $('#upd-title').textContent = `Update available: ${UPD.latest}`;
+  $('#upd-lead').textContent = `You are on v${UPD.current}. ${UPD.name || ''}`;
+  $('#upd-notes').innerHTML = md(UPD.notes || '');
+  $('#upd-link').href = UPD.url || '#';
+  $('#upd').classList.remove('hide');
+}
+$('#upd-go').onclick = async () => {
+  const ok = await approve(`Update Jobsquirrel to ${UPD.latest} (runs git pull; restart after)`, 'APPROVE_UPDATE', 'update');
+  if (!ok) return;
+  $('#upd').classList.add('hide');
+  const d = await api('/api/update/apply', { approval_token: 'APPROVE_UPDATE' });
+  toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true);
+};
+initPanels(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck();

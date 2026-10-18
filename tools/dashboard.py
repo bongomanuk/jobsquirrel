@@ -22,6 +22,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
 import uuid
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -815,6 +816,53 @@ def agent_env(**extra):
     return env
 
 
+# ---------------------------------------------------------------- updates
+VERSION_FILE = os.path.join(ROOT, "VERSION")
+GITHUB_REPO = os.environ.get("JOBSQUIRREL_REPO", "bongomanuk/jobsquirrel")
+_UPDATE = {"t": 0.0, "data": {}}
+
+
+def current_version():
+    try:
+        with open(VERSION_FILE, encoding="utf-8") as fh:
+            return fh.read().strip() or "0"
+    except OSError:
+        return "0"
+
+
+def _vtup(v):
+    return tuple(int(x) for x in re.findall(r"\d+", v or "")[:3]) or (0,)
+
+
+def check_update(refresh=False):
+    """Latest GitHub release vs the VERSION file (cached an hour)."""
+    if not refresh and _UPDATE["data"] and time.time() - _UPDATE["t"] < 3600:
+        return _UPDATE["data"]
+    cur = current_version()
+    d = {"current": cur, "latest": "", "available": False, "name": "", "notes": "", "error": "",
+         "url": f"https://github.com/{GITHUB_REPO}/releases"}
+    try:
+        req = urllib.request.Request(f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
+                                     headers={"Accept": "application/vnd.github+json",
+                                              "User-Agent": "jobsquirrel"})
+        with urllib.request.urlopen(req, timeout=12) as r:
+            rel = json.load(r)
+        tag = (rel.get("tag_name") or "").strip()
+        d.update(latest=tag, name=rel.get("name", ""), notes=(rel.get("body") or "")[:4000],
+                 url=rel.get("html_url") or d["url"], available=_vtup(tag) > _vtup(cur))
+    except Exception as e:
+        d["error"] = f"{type(e).__name__}: {e}"
+    _UPDATE.update(t=time.time(), data=d)
+    return d
+
+
+def apply_update(approval_token=""):
+    if approval_token != "APPROVE_UPDATE":
+        return {"error": "refused: confirm to update"}
+    _spawn("update (git pull)", ["git", "-C", ROOT, "pull", "--ff-only"])
+    return {"ok": "updating — watch the Activity pane, then restart the dashboard"}
+
+
 # ---------------------------------------------------------------- agent permissions
 PERMS_FILE = os.path.join(ROOT, "config", "agent-permissions.json")
 DEFAULT_PERMS = {
@@ -1366,6 +1414,8 @@ class H(BaseHTTPRequestHandler):
             return self._json({"policy": load_perms(), "defaults": DEFAULT_PERMS})
         if p == "/api/agent/pending":
             return self._json({"pending": permission_pending()})
+        if p == "/api/update":
+            return self._json(check_update(refresh=qs.get("refresh", ["0"])[0] in ("1", "true")))
         if p == "/api/kb":
             return self._json(kb_info())
         if p == "/api/graph":
@@ -1475,6 +1525,8 @@ class H(BaseHTTPRequestHandler):
         if p == "/api/agent/decide":
             return self._json(permission_decide(str(data.get("id", "")), str(data.get("decision", "deny")),
                                                 bool(data.get("remember"))))
+        if p == "/api/update/apply":
+            return self._json(apply_update(str(data.get("approval_token", ""))))
         self._json({"error": "not found"}, 404)
 
 

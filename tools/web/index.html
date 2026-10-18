@@ -9,7 +9,9 @@
 <body data-session-token="{{TOKEN}}" data-act="closed">
 <header class="top">
   <div class="brand"><span class="mascot">🐿️</span><h1>Jobsquirrel</h1>
-    <span id="health" class="pill unknown">health…</span><span class="pill" title="UI build marker">WebUI v6</span></div>
+    <span id="health" class="pill unknown">health…</span><span class="pill">v<span id="ver">…</span></span>
+    <button id="updpill" class="pill upd hide" title="A new version is available">⬆ update</button>
+    <span class="pill" title="UI build marker">WebUI v6</span></div>
   <div class="actions">
     <button id="a-prepare" title="Safe: build tailored documents + run gates (REVIEW=1). Never submits.">⚡ Prepare</button>
     <button id="a-submit" class="risky" title="Applies to queued roles (submits). Requires approval.">🚀 Run Submissions</button>
@@ -118,6 +120,7 @@
       <a data-s="accounts" onclick="App.settings('accounts')">Accounts</a>
       <a data-s="kb" onclick="App.settings('kb')">Knowledge base</a>
       <a data-s="graph" onclick="App.settings('graph')">GraphRAG</a>
+      <a data-s="perms" onclick="App.settings('perms')">Agent permissions</a>
       <a data-s="profile" onclick="App.settings('profile')">Profile &amp; CV</a>
     </nav>
     <div id="set-body" class="set-body"><span class="muted">loading…</span></div>
@@ -132,6 +135,28 @@
     <span>I have reviewed this and authorise it to proceed.</span></label>
   <div class="row" style="justify-content:flex-end;margin-top:14px">
     <button id="ap-cancel">Cancel</button><button id="ap-confirm" class="risky" disabled>Confirm &amp; Authorize</button></div>
+</div></div>
+
+<div id="upd" class="modal hide"><div class="modal-box" style="width:min(720px,94vw)">
+  <div class="row"><b style="flex:1" id="upd-title">Software update</b><button onclick="window.updClose()">✕</button></div>
+  <p id="upd-lead" class="muted"></p>
+  <div id="upd-notes" class="md" style="max-height:46vh;overflow:auto"></div>
+  <div class="row" style="justify-content:flex-end;margin-top:14px">
+    <a id="upd-link" href="#" target="_blank" class="mini muted" style="align-self:center;margin-right:auto">release notes ↗</a>
+    <button onclick="window.updClose()">Later</button>
+    <button id="upd-go" class="risky">Update now</button>
+  </div>
+</div></div>
+
+<div id="perm" class="modal hide"><div class="modal-box">
+  <h2 style="text-transform:none;letter-spacing:0;color:var(--fg)">Agent requests permission</h2>
+  <p class="muted">The agent wants to do something that needs your approval.</p>
+  <div id="perm-text" class="term" style="max-height:20vh"></div>
+  <div class="row" style="justify-content:flex-end;margin-top:14px">
+    <button id="perm-deny">Deny</button>
+    <button id="perm-once">Allow once</button>
+    <button id="perm-always" class="risky">Always allow</button>
+  </div>
 </div></div>
 
 <div id="legend-modal" class="modal hide"><div class="modal-box" style="width:min(760px,94vw)">

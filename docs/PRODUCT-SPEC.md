@@ -248,6 +248,10 @@ All POSTs require header `X-Session: <token>` (else 403); the token is injected 
 
 ### 9.10 Theming & UX
 - Dark, high-contrast; amber accent; colour-coded status chips; squirrel mascot animates; empty-state-safe.
+- **Software update:** the header shows the running **version**; when `/api/update`
+  (GitHub `releases/latest` vs the `VERSION` file, cached 1h) reports a newer
+  release, an **⬆ update** pill appears. Clicking it shows the release notes with
+  **Update now** (`git pull --ff-only`, approval-gated) — restart to apply.
 - Degrades to empty state with no local data (safe on the public base).
 - **One notification surface:** toasts replace in place (never stack), and the
   Prepare / Run Submissions / Reconcile buttons are disabled while a run is active.
