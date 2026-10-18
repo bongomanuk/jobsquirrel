@@ -793,6 +793,34 @@ def _chat_echo(message):
         fh.write(f"\n> {message}\n")
 
 
+# Let the embedded agent read the operator's own project folders (opencode denies
+# anything outside the repo by default, which silently stalls "look at my projects"
+# requests). Scoped to common project roots; secrets stay denied.
+AGENT_PERMISSIONS = {
+    "permission": {
+        "external_directory": {
+            "*": "ask",
+            "~/vscode/**": "allow",
+            "~/Documents/**": "allow",
+            "~/projects/**": "allow",
+            "~/src/**": "allow",
+            "~/.ssh/**": "deny",
+            "~/.gnupg/**": "deny",
+            "~/.config/**": "deny",
+            "~/.local/share/keyrings/**": "deny",
+        },
+        "task": "allow",          # the agent may spawn subagents to survey several folders
+    }
+}
+
+
+def agent_env(**extra):
+    env = dict(os.environ)
+    env.update(extra)
+    env.setdefault("OPENCODE_CONFIG_CONTENT", json.dumps(AGENT_PERMISSIONS))
+    return env
+
+
 def _chat_spawn(message):
     """Run one turn for `message` (the echo is written by the caller)."""
     sid = _chat_session()
@@ -800,7 +828,7 @@ def _chat_spawn(message):
         sid = ""                                    # transcript gone -> start fresh
     prompt = message if sid else (CHAT_PREAMBLE + "\n\n---\n" + message)
     f = open(CHAT_LOG, "a", encoding="utf-8")
-    env = dict(os.environ, AGENT_JSON="1")
+    env = agent_env(AGENT_JSON="1")
     if sid:
         env["AGENT_SESSION"] = sid                  # continue the same agent session
     _CHAT["proc"] = subprocess.Popen(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), prompt],
@@ -1057,7 +1085,7 @@ def _spawn(purpose, argv, env=None):
     logf = open(os.path.join(LOGS, "dashboard-action.log"), "a", encoding="utf-8")
     logf.write(f"\n=== {time.strftime('%Y-%m-%dT%H:%M:%S')} {purpose} ===\n")
     logf.flush()
-    proc = subprocess.Popen(argv, cwd=ROOT, env=dict(os.environ, ROOT=ROOT, **(env or {})),
+    proc = subprocess.Popen(argv, cwd=ROOT, env=agent_env(ROOT=ROOT, **(env or {})),
                             stdout=logf, stderr=subprocess.STDOUT, start_new_session=True)
     _ACT.update(name=purpose, proc=proc, offset=logf.tell(), t0=time.time())
     _act_save()

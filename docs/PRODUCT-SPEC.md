@@ -184,6 +184,10 @@ Clicking a row opens a drawer with tabs:
   the conversation persists across messages (session pinned; `＋ New` resets), tool runs collapse,
   and a spinner shows while working. A message sent while the agent is busy is **queued** (never
   rejected) and runs in order; the UI keeps polling while messages wait.
+- The embedded agent is granted **scoped read access** to the operator's project folders
+  (`~/vscode`, `~/Documents`, `~/projects`, `~/src`) and may spawn subagents, so "look at my
+  projects" requests don't silently stall on `external_directory` denials; secrets
+  (`~/.ssh`, `~/.gnupg`, `~/.config`, keyrings) stay denied.
 
 ### 9.8 HTTP API
 
