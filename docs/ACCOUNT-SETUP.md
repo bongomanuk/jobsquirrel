@@ -43,9 +43,11 @@ python3 tools/camoufox_browser.py --server http://127.0.0.1:9872 nav https://exa
 
 ## 2. Gmail (recommended, reply tracking + verification)
 
-Read-only access lets the pipeline classify confirmations/interviews/rejections
-and surface **verification links/codes** for you to act on. It uses the single
-`gmail.readonly` scope and can never send, modify or delete mail by itself.
+Gmail access lets the pipeline classify confirmations/interviews/rejections,
+surface **verification links/codes** for you to act on, and (opt-in) send replies
+with attachments. The token requests `gmail.readonly`, `gmail.send` and
+`calendar.events`; sending mail and writing to the calendar are still gated on
+your explicit approval for each action, and the pipeline never deletes mail.
 
 1. **Google Cloud project**: https://console.cloud.google.com → create a project
    (e.g. `job-pipeline`). **APIs & Services → Library → enable Gmail API.**
@@ -69,21 +71,63 @@ and surface **verification links/codes** for you to act on. It uses the single
 > tip: create a Gmail filter that labels application mail and set
 > `GMAIL_QUERY=label:applications`.
 
-### Sending mail (opt-in)
+### Sending mail (opt-in, attachments supported)
 
-`tools/gmail_send.py` can send replies, but only with your **explicit approval**
-of recipient, subject and content each time. To enable it, re-authorise including
-`gmail.send` (the tool's `--auth` uses the scopes in `gmail_readonly.py`).
+`tools/gmail_send.py` can send replies **with attachments**, but only with your
+**explicit approval** of recipient, subject, content and attachments each time —
+answer `y` at the terminal, or approve the prompt the dashboard shows when the
+agent is running inside Jobsquirrel.
+To enable it, re-authorise including `gmail.send` (the tool's `--auth` uses the
+scopes in `gmail_readonly.py`).
 
-## 3. Google Calendar (optional, interview tracking)
+```bash
+python3 tools/gmail_send.py --to recruiter@example.com --subject "Application: X" \
+    --body-file state/draft.txt --signature \
+    --attach documents/applications/Peter_Hollas_CV_x.docx \
+    --attach documents/applications/Peter_Hollas_Motivation_x.docx
+```
 
-To have the agent list (and add) interview events, re-authorise with
-`calendar.events` (read+write):
+`--attach` is repeatable; a bare filename is also looked up in the configured
+`attachment_dir`. `--draft state/letters-content/<name>.txt` reads the
+`To:`/`Subject:`/`Attachment:` header and body straight from a saved draft (CLI
+flags still override). `--cc`/`--bcc` are supported, and `--dry-run` prints the
+recipients, attachment names and body without sending. Behaviour lives in
+`config/email.json` (see `config/email.example.json`):
+
+| key | meaning |
+| --- | --- |
+| `from` | your address (for reference; Gmail always sends as the token's account) |
+| `signature` | appended when you pass `--signature` |
+| `attachment_dir` | fallback directory for relative attachment names |
+| `max_attachment_mb` | refuse oversized mail before approval (Gmail's limit is 25 MB) |
+
+## 3. Google Calendar (interview booking + tracking)
+
+The token includes `calendar.events` (read+write), so the agent can list
+upcoming interviews, **create/update events** (and invite the interviewer), and
+**import an `.ics` invite straight from Gmail**:
 
 ```bash
 python3 tools/gmail_calendar_auth.py            # requests gmail.readonly + gmail.send + calendar.events
 python3 tools/gmail_calendar_auth.py --check --days 14
+python3 tools/calendar_event.py list --days 14
+python3 tools/calendar_event.py create --title "Interview: Acme" \
+    --start "2026-10-22 14:00" --duration 45 --attendees recruiter@acme.com \
+    --location "Teams" --description "Interview with the platform team"
+python3 tools/calendar_event.py from-message <gmail-message-id>   # "Add to calendar" for you
+python3 tools/calendar_event.py slots --days 5                    # free slots around your diary
 ```
+
+`slots` is read-only and proposes interview times inside your working hours
+without overlapping existing events — pick one, then `create` the event.
+
+Writes are approval-gated exactly like sending mail: answer `y` at the prompt,
+approve the dashboard prompt, or set `APPROVE_CALENDAR_WRITE=1` for that one
+command. `--dry-run` shows the event
+without writing. `config/calendar.json` (see `config/calendar.example.json`)
+sets your timezone, default duration, calendar and working hours (the tool warns
+when a slot falls outside them); `invite_attendees` controls whether attendees
+also receive an invitation email.
 
 ## 4. LinkedIn (optional, Easy Apply only)
 

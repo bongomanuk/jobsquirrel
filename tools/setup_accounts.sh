@@ -48,6 +48,12 @@ EOF
 else
   todo "Gmail token missing (not authorised yet)" "python3 tools/gmail_readonly.py --auth"
 fi
+if [ -f "$ROOT/config/email.json" ]; then ok "Email config (config/email.json)"; else
+  echo "  --    No config/email.json (defaults apply); copy config/email.example.json"
+fi
+if [ -f "$ROOT/config/calendar.json" ]; then ok "Calendar config (config/calendar.json)"; else
+  echo "  --    No config/calendar.json (defaults apply); copy config/calendar.example.json"
+fi
 
 # 3. LinkedIn persistent profile
 if [ -d "$CFG/linkedin-profile" ]; then

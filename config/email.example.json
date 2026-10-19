@@ -1,0 +1,6 @@
+{
+  "from": "you@example.com",
+  "signature": "",
+  "attachment_dir": "documents/applications",
+  "max_attachment_mb": 20
+}

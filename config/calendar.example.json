@@ -1,0 +1,10 @@
+{
+  "calendar_id": "primary",
+  "timezone": "Europe/Stockholm",
+  "default_duration_minutes": 45,
+  "invite_attendees": true,
+  "working_hours": {
+    "start": "08:00",
+    "end": "18:00"
+  }
+}

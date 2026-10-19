@@ -69,8 +69,12 @@ reports a clean config.
 3. **Eligibility first.** Only apply to roles compatible with the candidate's
    rules in `config/profile.md` (location/work-model, languages, stack). If
    unclear or excluded, record `CLOSED`/`BLOCKED` with the reason and stop.
-4. **Never send email without explicit human approval** of recipient, subject and
-   content (`gmail_send.py`). Reply drafts are fine; sending needs a "yes".
+4. **Never send email without explicit human approval** of recipient, subject,
+   content and attachments (`gmail_send.py` supports `--attach`). Reply drafts are
+   fine; sending needs a "yes". Calendar writes (`calendar_event.py`) are
+   approval-gated the same way (answer the dashboard prompt, set
+   `APPROVE_CALENDAR_WRITE=1`, or answer y); reading the calendar and importing an
+   `.ics` with `--dry-run` need no approval.
 5. **Stop on CAPTCHA / 2FA / bot checks.** Do not evade. Record `BLOCKED` (or
    `MANUAL`) with what you tried and move on.
 6. **Record only with real evidence.** `record_submission.py --evidence` must
@@ -269,9 +273,11 @@ bash tools/reconcile_loop.sh                # continuous reconcile + counts
   upgrades `PREPARED`→`SUBMITTED` on confirmation, and prints verification
   links/codes for the **human** to act on (never click/enter them yourself).
 - For interviews: `tools/gmail_calendar_auth.py --check --days N` lists upcoming
-  events; with the `calendar.events` scope you may add/update interview events.
-  Self-schedule links (e.g. Ashby `you.ashbyhq.com/meeting/<id>`) are booked by
-  driving the browser like an ATS form.
+  events; `tools/calendar_event.py` creates/updates them (with the interviewer as
+  an attendee), imports an `.ics` from a Gmail message and suggests free slots
+  (`calendar_event.py slots`) from the real diary. Self-schedule links
+  (e.g. Ashby `you.ashbyhq.com/meeting/<id>`) are booked by driving the browser
+  like an ATS form. Never guess the candidate's availability: ask, then book.
 - **Email**: draft replies; send only with the human's explicit approval.
 
 ---

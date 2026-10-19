@@ -16,9 +16,11 @@ Usage:
     if not approval.approved("send email to alice@x", "SEND-EMAIL"):
         sys.exit("refused: not approved")
 """
+import json
 import os
 import sys
 import time
+import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG = os.environ.get("APPROVALS_LOG", os.path.join(ROOT, "state", "approvals.log"))
@@ -31,6 +33,22 @@ def _record(purpose, how):
             fh.write(f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\t{how}\t{purpose}\n")
     except OSError:
         pass
+
+
+def _ask_dashboard(purpose, token, timeout=320):
+    """Ask the running dashboard to show the operator a yes/no prompt; blocks until they answer."""
+    url, sess = os.environ.get("JOBSQUIRREL_URL"), os.environ.get("JOBSQUIRREL_TOKEN")
+    if not url or not sess:
+        return None
+    req = urllib.request.Request(
+        url.rstrip("/") + "/api/approval/ask",
+        data=json.dumps({"purpose": purpose, "token": token}).encode(),
+        headers={"Content-Type": "application/json", "X-Session": sess}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.load(resp).get("decision")
+    except Exception:
+        return None
 
 
 def approved(purpose, token, prompt=True):
@@ -47,5 +65,11 @@ def approved(purpose, token, prompt=True):
         if ans in ("y", "yes"):
             _record(purpose, "prompt")
             return True
-    _record(purpose, "REFUSED")
+        _record(purpose, "REFUSED")
+        return False
+    decision = _ask_dashboard(purpose, token)
+    if decision == "allow":
+        _record(purpose, "dashboard")
+        return True
+    _record(purpose, "REFUSED" if decision else "REFUSED (no dashboard)")
     return False

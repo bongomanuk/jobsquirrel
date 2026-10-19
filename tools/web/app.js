@@ -661,7 +661,10 @@ async function permTick() {
   if (!q.length) return;
   CUR_PERM = q[0];
   $('#perm-text').textContent = `${CUR_PERM.category}: ${CUR_PERM.detail}`;
-  $('#perm-always').textContent = `Always allow ${CUR_PERM.category}`;
+  const always = CUR_PERM.rememberable !== false;
+  $('#perm-always').textContent = always ? `Always allow ${CUR_PERM.category}` : 'Allow once';
+  $('#perm-always').style.display = always ? '' : 'none';
+  $('#perm-once').textContent = always ? 'Allow once' : 'Approve';
   $('#perm').classList.remove('hide');
 }
 async function permAnswer(decision, remember) {
@@ -873,7 +876,10 @@ async function setAccounts(b) {
   const d = await api('/api/accounts');
   b.innerHTML = `<p class="muted">Connect your accounts. Authorisation opens in your browser - finish it there, then re-check.
       Per-site logins: <b>${d.sites}</b> stored.</p>
-    <div class="row" style="margin:8px 0"><button onclick="App.auth('gmail')">Authorise Gmail (read-only)</button>
+    <p class="muted mini">Gmail can read, send and attach files; Calendar can read and book events.
+      Sending mail and writing to the calendar still ask for your approval every time.
+      Settings live in <code>config/email.json</code> and <code>config/calendar.json</code>.</p>
+    <div class="row" style="margin:8px 0"><button onclick="App.auth('gmail')">Authorise Gmail</button>
       <button onclick="App.auth('calendar')">Authorise Calendar</button>
       <button onclick="viewDoc('docs/ACCOUNT-SETUP.md','Account setup guide')">Open setup guide</button>
       <button onclick="App.settings('accounts')">Re-check</button></div>

@@ -102,7 +102,8 @@ Components:
 | `kb_graphrag.py` | Build the cited context pack for a role. |
 | `discover.py` / `email_opportunities.py` | Find roles from LinkedIn alerts / recruiter mail. |
 | `gmail_readonly.py` / `gmail_reconcile.py` | Read-only inbox sync + reconcile the register. |
-| `gmail_send.py` | Send email — **approval-gated**. |
+| `gmail_send.py` | Send email with attachments — **approval-gated**. |
+| `calendar_event.py` | List/create/update events and import `.ics` invites — writes **approval-gated**. |
 | `approval.py` | Reusable human-approval gate (interactive y/N or `APPROVE_<TOKEN>=1`). |
 | `camoufox_server.py` / `camoufox_browser.py` | Stealth browser API + CLI. |
 | `agent_run.sh` | Resolve + run the configured agent for one task. |

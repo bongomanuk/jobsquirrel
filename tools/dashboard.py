@@ -1415,9 +1415,23 @@ def permission_request(category, detail, timeout=300):
     return {"decision": rec.get("decision") or "deny", "id": rid, "category": category}
 
 
+def consent_request(purpose, token, timeout=300):
+    """A one-off approval (send mail, write the calendar): always asks, never remembered."""
+    rid = uuid.uuid4().hex[:8]
+    ev = threading.Event()
+    with _PERM_LOCK:
+        _PERM[rid] = {"id": rid, "category": token, "detail": purpose, "event": ev,
+                      "decision": None, "ts": time.time(), "rememberable": False}
+    ev.wait(timeout)
+    with _PERM_LOCK:
+        rec = _PERM.pop(rid, {})
+    return {"decision": rec.get("decision") or "deny", "id": rid}
+
+
 def permission_pending():
     with _PERM_LOCK:
-        return [{"id": r["id"], "category": r["category"], "detail": r["detail"]}
+        return [{"id": r["id"], "category": r["category"], "detail": r["detail"],
+                 "rememberable": r.get("rememberable", True)}
                 for r in _PERM.values() if r["decision"] is None]
 
 
@@ -1427,7 +1441,7 @@ def permission_decide(rid, decision, remember=False):
     if not r:
         return {"error": "unknown or expired request"}
     r["decision"] = "allow" if decision == "allow" else "deny"
-    if remember:
+    if remember and r.get("rememberable", True):
         p = load_perms()
         p[r["category"]] = r["decision"]
         save_perms(p)
@@ -2215,6 +2229,9 @@ class H(BaseHTTPRequestHandler):
             return self._json({"ok": "saved", "config": save_agent_cfg(data)})
         if p == "/api/graphrag/env":
             return self._json({"ok": "saved", "env": save_graphrag_env(data.get("vars") or {})})
+        if p == "/api/approval/ask":
+            return self._json(consent_request(str(data.get("purpose", "risky action"))[:500],
+                                              str(data.get("token", "ACTION"))[:40]))
         if p == "/api/agent/permission":
             return self._json(permission_request(str(data.get("category", "?"))[:60],
                                                  str(data.get("detail", ""))[:400]))
