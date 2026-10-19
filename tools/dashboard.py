@@ -1530,6 +1530,21 @@ CHAT_TOOL = re.compile(r"^\$\s?(.*)$")
 CHAT_STATUS = re.compile(r"^>\s*build\b.*$", re.I)
 
 
+CHAT_TOOL_BODY_MAX = 900        # tool output kept per step (the UI collapses it; keep the payload small)
+CHAT_TOOL_CMD_MAX = 400
+
+
+def _compress_tool(seg):
+    """Keep tool segments small so the chat never fills with scripts and raw output."""
+    cmd = str(seg.get("cmd") or "")
+    if len(cmd) > CHAT_TOOL_CMD_MAX:
+        seg["cmd"] = cmd[:CHAT_TOOL_CMD_MAX].rstrip() + "\n… (command truncated)"
+    body = str(seg.get("body") or "")
+    if len(body) > CHAT_TOOL_BODY_MAX:
+        seg["body"] = body[:CHAT_TOOL_BODY_MAX].rstrip() + f"\n… ({len(body) - CHAT_TOOL_BODY_MAX} more chars)"
+    return seg
+
+
 def chat_parse(text):
     """Split an agent transcript into typed segments so the UI can collapse tool noise."""
     segs, cur, fence = [], None, False
@@ -1562,8 +1577,8 @@ def chat_parse(text):
     push(cur)
     for s in segs:
         s["body"] = s.get("body", "").strip("\n")
-        if s["t"] == "tool" and len(s["body"]) > 6000:
-            s["body"] = s["body"][:6000] + "\n… (truncated)"
+        if s["t"] == "tool":
+            _compress_tool(s)
     return segs
 
 
@@ -1602,8 +1617,8 @@ def chat_parse_json(text):
     if tokens is not None:
         segs.append({"t": "status", "body": f"{tokens} tokens" + (f" · ${cost:.4f}" if isinstance(cost, (int, float)) else "")})
     for s in segs:
-        if s["t"] == "tool" and len(s.get("body", "")) > 6000:
-            s["body"] = s["body"][:6000] + "\n… (truncated)"
+        if s["t"] == "tool":
+            _compress_tool(s)
     return segs
 
 
@@ -1650,8 +1665,8 @@ def chat_parse_claude(text):
         if parts:
             segs.append({"t": "status", "body": " · ".join(parts)})
     for s in segs:
-        if s["t"] == "tool" and len(s.get("body", "")) > 6000:
-            s["body"] = s["body"][:6000] + "\n… (truncated)"
+        if s["t"] == "tool":
+            _compress_tool(s)
     return segs
 
 
@@ -1691,6 +1706,8 @@ def chat_stream(run_id, since):
         segs = chat_parse_claude(text)
     else:
         segs = chat_parse(text)
+    if len(segs) > 400:
+        segs = segs[-400:]
     pending = len(_CHAT.get("queue") or [])
     return {"segments": segs, "offset": size, "running": running, "pending": pending,
             "done": not running and not pending}

@@ -835,13 +835,30 @@ async function chatPoll() {
   if (active && !CHAT_TIMER) CHAT_TIMER = setInterval(chatPoll, 1200);
   else if (!active && CHAT_TIMER) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; renderChat(); }
 }
+function cmdLine(cmd) {
+  let first = String(cmd || '').split('\n')[0].replace(/\s+/g, ' ').trim();
+  if (/<<-?\s*['"]?(PY|SH|BASH|EOF)\b/i.test(first)) first = first.split(/<<-?\s*/)[0].trim().replace(/[\s-]+$/, '') + ' (inline script)';
+  return first.length > 110 ? first.slice(0, 110) + '…' : first;
+}
 function toolBlock(s) {
   const tag = (s.tool && s.tool !== 'bash') ? esc(s.tool) + ' · ' : '$ ';
-  return `<details class="c-tool" data-k="t:${esc(s.cmd).slice(0, 90)}"><summary><code>${tag}${esc(s.cmd)}</code></summary>${s.body ? `<pre>${esc(s.body)}</pre>` : ''}</details>`;
+  const full = String(s.cmd || '');
+  const multi = full.includes('\n') ? ' <span class="muted mini">+ more</span>' : '';
+  return `<details class="c-tool" data-k="t:${esc(full).slice(0, 90)}"><summary title="${esc(full.slice(0, 1200))}"><code>${tag}${esc(cmdLine(full))}</code>${multi}</summary>${s.body ? `<pre>${esc(s.body)}</pre>` : ''}</details>`;
 }
 function collapseCode(html) {
-  return html.replace(/<pre>([\s\S]*?)<\/pre>/g, (m, c) => ((c.match(/\n/g) || []).length >= 2)
-    ? `<details class="c-code" data-k="c:${esc(c).slice(0, 80)}"><summary>code</summary><pre>${c}</pre></details>` : m);
+  return html.replace(/<pre>([\s\S]*?)<\/pre>/g, (m, c) => {
+    const n = (c.match(/\n/g) || []).length + 1;
+    return `<details class="c-code" data-k="c:${esc(c).slice(0, 80)}"><summary>code <span class="muted mini">· ${n} line${n === 1 ? '' : 's'}</span></summary><pre>${c}</pre></details>`;
+  });
+}
+/* A wall of script/output that slipped through as prose: keep one line, hide the rest. */
+function looksLikeDump(s) {
+  const t = String(s || ''); if (t.length < 700) return false;
+  const lines = t.split('\n').filter(l => l.trim()); if (lines.length < 6) return false;
+  const codey = lines.filter(l => /^[\s>{}\[\]()#]|^\s*(def |class |import |from |curl |python|npm |git |SELECT |<\/?[a-z]+)/i.test(l)).length;
+  const prose = lines.filter(l => /[.!?]\s*$/.test(l.trim())).length;
+  return codey / lines.length > 0.6 && prose < lines.length * 0.2;
 }
 function setSpin(v) {
   const s = $('#chat-spin'); if (s) s.classList.toggle('hide', !v);   // the single "agent working" indicator
@@ -866,6 +883,7 @@ function renderChat() {
     }
     if (s.t === 'user') h += `<div class="c-user"><div class="md">${md(s.body)}</div></div>`;
     else if (s.t === 'status') h += `<div class="c-status">${esc(s.body)}</div>`;
+    else if (looksLikeDump(s.body)) h += `<details class="c-code" data-k="d:${esc(s.body).slice(0, 80)}"><summary>output <span class="muted mini">· ${s.body.split('\n').length} lines</span></summary><pre>${esc(s.body)}</pre></details>`;
     else h += `<div class="md">${collapseCode(md(s.body))}</div>`;
     i++;
   }

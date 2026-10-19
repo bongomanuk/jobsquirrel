@@ -118,7 +118,7 @@ pre.doc{background:#07090c;border:1px solid var(--line);border-radius:var(--radi
 .c-user .md p:last-child{margin-bottom:0}
 .c-status{color:var(--muted);font-size:11px;margin:2px 0 6px;letter-spacing:.02em}
 .c-tool{margin:6px 0;border:1px solid var(--line);border-radius:6px;background:#0a0c10}
-.c-tool>summary{cursor:pointer;padding:4px 9px;color:var(--muted);font-size:12px;list-style:none}
+.c-tool>summary{cursor:pointer;padding:4px 9px;color:var(--muted);font-size:12px;list-style:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .c-tool>summary::-webkit-details-marker{display:none}
 .c-tool>summary::before{content:'▸ ';color:var(--accent)}
 .c-tool[open]>summary::before{content:'▾ '}
@@ -235,14 +235,14 @@ body[data-act="closed"] .act-body,body[data-act="closed"] #split-inner{display:n
 @keyframes nuts{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
 .working{display:flex;align-items:center;gap:6px;margin:8px 0;font-size:13px}
 .c-tools{margin:6px 0;border:1px solid var(--line);border-radius:8px;background:#0a0c10}
-.c-tools>summary{cursor:pointer;padding:5px 9px;color:var(--muted);font-size:12px;list-style:none}
+.c-tools>summary{cursor:pointer;padding:5px 9px;color:var(--muted);font-size:12px;list-style:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .c-tools>summary::-webkit-details-marker{display:none}
 .c-tools>summary::before{content:'▸ ';color:var(--accent)}
 .c-tools[open]>summary::before{content:'▾ '}
 .c-tools .c-tool{margin:0;border:0;border-top:1px solid var(--line);border-radius:0}
 .c-code{margin:6px 0;border:1px solid var(--line);border-radius:6px;background:#07090c}
 .c-code>summary{cursor:pointer;padding:4px 9px;color:var(--muted);font-size:12px}
-.c-code>pre{margin:0;border:0;border-top:1px solid var(--line);border-radius:0}
+.c-code>pre{margin:0;border:0;border-top:1px solid var(--line);border-radius:0;max-height:34vh;overflow:auto}
 
 /* detail drawer head (shared) */
 .drawer-head{display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line);
