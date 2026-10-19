@@ -15,7 +15,7 @@ Files live in `state/drafts/<company-role>/<timestamp>.txt`:
     body text
 
 CLI:
-  python3 tools/draft_email.py --company "Acme Corp" --role "AI Solutions..." \
+  python3 tools/draft_email.py --company "Acme Corp" --role "Senior AI Engineer" \
       --to recruiter@example.com --subject "Re: ..." --body-file /tmp/reply.txt
   python3 tools/draft_email.py --list [--company ...] [--role ...]
   python3 tools/draft_email.py --show state/drafts/...
