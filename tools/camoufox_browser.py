@@ -51,7 +51,7 @@ def post(server: str, payload: dict, timeout: float = 45.0) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Camoufox pipeline browser CLI")
     ap.add_argument("--server", default=DEFAULT_SERVER)
-    ap.add_argument("cmd", help="status|nav|snap|click|fill|type|select|pick|fillmap|press|check|value|eval|wait|upload|download|headers")
+    ap.add_argument("cmd", help="status|nav|snap|click|fill|type|select|pick|fillmap|press|check|value|eval|wait|upload|download|headers|dialog")
     ap.add_argument("args", nargs="*", help="command arguments")
     ap.add_argument("--force", action="store_true", help="click: skip actionability checks")
     ns = ap.parse_args()
@@ -120,6 +120,8 @@ def main() -> int:
         except Exception as e:
             print(f"fillmap: invalid JSON: {e}", file=sys.stderr)
             return 1
+    elif cmd == "dialog":
+        payload["mode"] = a[0] if a else "accept"
     elif cmd == "check":
         if not a:
             print("usage: check <selector>", file=sys.stderr)

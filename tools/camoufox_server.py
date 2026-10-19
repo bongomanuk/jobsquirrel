@@ -22,6 +22,21 @@ LOCK = threading.Lock()
 PAGE = None
 HEADFUL = False
 CONSOLE_LOGS = []
+DIALOG = {"mode": None}      # None=dismiss (Playwright default), "accept", "once", "dismiss"
+
+
+def _on_dialog(d):
+    """Answer JS confirm()/alert()/prompt() like a human clicking OK/Cancel."""
+    mode = DIALOG.get("mode")
+    try:
+        if mode in ("accept", "once"):
+            d.accept()
+        else:
+            d.dismiss()
+    except Exception:
+        pass
+    if mode == "once":
+        DIALOG["mode"] = None
 EXTRA_HEADERS = {
     "X-Request-Source": "camoufox-pipeline",
     "X-Test-Owner": "peter-hollas",
@@ -312,6 +327,11 @@ def dispatch(cmd: str, body: dict) -> dict:
         return {"ok": True, "clicked": {"x": body.get("x"), "y": body.get("y")},
                 "url": page.url, "title": page.title()}
 
+    if cmd == "dialog":
+        mode = (body.get("mode") or "accept").strip().lower()
+        DIALOG["mode"] = mode if mode in ("accept", "dismiss", "once") else "accept"
+        return {"ok": True, "mode": DIALOG["mode"]}
+
     if cmd == "console":
         return {"ok": True, "logs": CONSOLE_LOGS[-300:]}
 
@@ -466,6 +486,7 @@ def main() -> int:
         try:
             PAGE.on("console", lambda m: CONSOLE_LOGS.append(f"[{m.type}] {m.text}"))
             PAGE.on("pageerror", lambda e: CONSOLE_LOGS.append(f"[pageerror] {e}"))
+            PAGE.on("dialog", _on_dialog)
         except Exception:
             pass
         server = HTTPServer(("127.0.0.1", args.port), Handler)
