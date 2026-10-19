@@ -51,29 +51,49 @@ def fetch_full(service, mid, attempts=5):
     raise RuntimeError(f"Gmail quota exceeded fetching {mid}")
 
 
-def list_ids(service, query, max_results=300, attempts=6):
-    for i in range(attempts):
-        try:
-            resp = service.users().messages().list(userId="me", q=query, maxResults=max_results).execute()
-            return resp.get("messages", [])
-        except Exception as exc:
-            msg = str(exc)
-            if "Quota exceeded" in msg or "rateLimitExceeded" in msg or "403" in msg:
-                print(f"  (gmail quota; waiting {15*(i+1)}s)")
-                time.sleep(15 * (i + 1))
-                continue
-            raise
-    raise RuntimeError("Gmail quota exceeded listing messages")
+def list_ids(service, query, max_results=3000, page_size=500, attempts=6):
+    """List EVERY matching message, following nextPageToken (no silent 300 cap)."""
+    found, token = [], None
+    while len(found) < max_results:
+        for i in range(attempts):
+            try:
+                params = {"userId": "me", "q": query,
+                          "maxResults": min(page_size, max_results - len(found))}
+                if token:
+                    params["pageToken"] = token
+                resp = service.users().messages().list(**params).execute()
+                break
+            except Exception as exc:
+                msg = str(exc)
+                if "Quota exceeded" in msg or "rateLimitExceeded" in msg or "403" in msg:
+                    print(f"  (gmail quota; waiting {15*(i+1)}s)")
+                    time.sleep(15 * (i + 1))
+                    continue
+                raise
+        else:
+            raise RuntimeError("Gmail quota exceeded listing messages")
+        found.extend(resp.get("messages", []))
+        token = resp.get("nextPageToken")
+        if not token:
+            break
+    return found[:max_results]
 
+# Sweep the whole recent mailbox, not just known ATS domains: recruiters write
+# from ordinary addresses (e.g. example.com for Acme Corp) and a narrow
+# allow-list silently missed their mail. The two halves are OR-ed:
+#   - every recent message (14 days) outside promotions/social/forums, so a
+#     brand-new recruiter email is inspected regardless of sender/subject;
+#   - the known ATS senders + the `applications` label for 180 days, so older
+#     confirmations/rejections still land.
+# Pagination means no silent 300-message cap; the message cache keeps later runs fast.
 DEFAULT_QUERY = os.environ.get(
     "GMAIL_RECONCILE_QUERY",
-    'newer_than:180d (from:ashbyhq.com OR from:teamtailor.com OR from:teamtailor-mail.com OR '
-    'from:greenhouse.io OR from:greenhouse-mail.io OR from:lever.co OR from:hire.lever.co OR '
-    'from:myworkday.com OR from:successfactors.eu OR from:workable.com OR from:pinpoint.email OR '
-    'from:join.com OR from:deel.com OR from:jobylon.com OR label:applications OR '
-    '(interview OR "next steps" OR "next step" OR "first chat" OR "intro call" OR "phone screen" OR '
-    '"screening" OR unfortunately OR "not moving forward" OR "move forward with" OR "other candidates" OR '
-    '"application update" OR "application status" OR "not able to offer" OR "decided to" OR offer OR rejection))')
+    "(newer_than:14d -in:sent -in:spam -in:trash "
+    "-category:promotions -category:social -category:forums) OR "
+    "(newer_than:180d (from:ashbyhq.com OR from:teamtailor.com OR from:teamtailor-mail.com OR "
+    "from:greenhouse.io OR from:greenhouse-mail.io OR from:lever.co OR from:hire.lever.co OR "
+    "from:myworkday.com OR from:successfactors.eu OR from:workable.com OR from:pinpoint.email OR "
+    "from:join.com OR from:zerolime.se OR from:deel.com OR from:jobylon.com OR label:applications))")
 
 COMMON = {"group", "labs", "health", "studios", "studio", "recruiting", "recruitment",
           "hiring", "team", "the", "ab", "inc", "ltd", "technologies", "technology"}
@@ -85,7 +105,7 @@ GENERIC_WORD = {"sound", "international", "solutions", "systems", "digital", "me
 ATS_VENDORS = {"ashby", "ashbyhq", "teamtailor", "greenhouse", "lever", "hire",
                "workday", "myworkday", "successfactors", "join", "pinpoint", "workable",
                "zerolime", "deel", "recruitee", "jobvite", "smartrecruiters", "noreply",
-               "no", "reply", "system"}
+               "no", "reply", "system", "danaher"}
 
 
 def sender_display(sender):
@@ -95,7 +115,7 @@ def sender_display(sender):
 
 def sender_domain(sender):
     """First label of the sender's email domain, e.g. 'acme' from
-    'Acme Corp <interview@jobs.acme.example>'."""
+    'Acme <interview@jobs.acme.com>'."""
     m = re.search(r"@([A-Za-z0-9.-]+)", sender or "")
     return m.group(1).lower().split(".")[0] if m else ""
 
@@ -119,8 +139,12 @@ def terms(value):
 
 
 # Sender/display names that differ from the register's company name.
-# Fill in your own mappings, e.g. {"ats-sender-label": "Register Company Name"}.
-SENDER_ALIASES = {}
+SENDER_ALIASES = {
+    "breakmark": "AcmeHR",
+    "recruitment agency": "Acme Client",
+    "publisher": "Acme",
+    "publisher ": "Acme",
+}
 
 # Single-word company terms that are also ordinary hiring-email vocabulary.
 BODY_WORD_STOP = {"recruiter", "recruiters", "recruiting", "future", "candidate",
@@ -237,9 +261,10 @@ def propose(current, category):
     if category == "INTERVIEW":
         return current if current in ("OFFER", "REJECTED") else "INTERVIEW"
     if category == "CONFIRMATION":
-        # Only upgrade a role we had not recorded as submitted. MANUAL/BLOCKED are
-        # left for a human (a single confirmation may not cover a grouped row).
-        return "SUBMITTED" if current in ("PREPARED", "IN_PROGRESS") else ""
+        # Only upgrade a prepared role. IN_PROGRESS means it is already further
+        # along (assessment/interview stage); a generic confirmation must never
+        # move it backwards. MANUAL/BLOCKED are left for a human too.
+        return "SUBMITTED" if current == "PREPARED" else ""
     return ""
 
 
@@ -273,8 +298,8 @@ def save_cache(cache):
 
 
 def cached_message(service, mid, cache):
-    """Return (decoded message dict, was_fetched). Message bodies are immutable,
-    so they are fetched once and reused; only new ids hit the Gmail API."""
+    """Return (date, sender, subject, body) for a message, fetching it once and
+    caching the decoded body. Returns the cache dict too so callers can prune."""
     hit = cache.get(mid)
     if hit is None:
         msg = fetch_full(service, mid)
@@ -282,7 +307,7 @@ def cached_message(service, mid, cache):
         hit = {"date": headers.get("date", ""), "from": headers.get("from", ""),
                "subject": headers.get("subject", ""), "body": G._decode(msg["payload"])}
         cache[mid] = hit
-        time.sleep(0.2)
+        time.sleep(0.05)
         return hit, True
     return hit, False
 
@@ -291,6 +316,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="write changes (default: dry run)")
     ap.add_argument("--query", default=DEFAULT_QUERY)
+    ap.add_argument("--max", type=int, default=3000, help="hard cap on messages inspected")
     ap.add_argument("--ack", help="substring of a verification link to mark as already handled")
     ap.add_argument("--no-cache", action="store_true", help="ignore the message cache and re-fetch everything")
     args = ap.parse_args()
@@ -301,17 +327,19 @@ def main():
 
     rows = R.load()
     service = G.authenticate()
-    messages = list_ids(service, args.query)
-    print(f"{len(messages)} application messages over the query\n")
+    messages = list_ids(service, args.query, max_results=args.max)
+    print(f"{len(messages)} messages inspected (window: {args.query[:80]})\n")
     acks = load_acks()
     cache = {} if args.no_cache else load_cache()
 
     changes, unmatched, verifications, ambiguous = [], [], [], []
     fetched = 0
-    for m in messages:
+    for idx, m in enumerate(messages, 1):
+        if idx % 100 == 0:
+            print(f"  inspected {idx}/{len(messages)} …", flush=True)
         hit, was_fetched = cached_message(service, m["id"], cache)
         fetched += was_fetched
-        subject, sender, date, body = hit["subject"], hit["from"], hit["date"], hit["body"]
+        date, sender, subject, body = hit["date"], hit["from"], hit["subject"], hit["body"]
         category = G.classify(subject, body)
         # plain, truncated body text so generic ATS senders still resolve to a
         # company - drop <style>/<script> first so inline CSS (fonts.googleapis.com
@@ -327,7 +355,7 @@ def main():
         # An invite/rejection for a company with several applications whose
         # subject names none of the roles is NOT guessed: it is reported under
         # "role ambiguous" for manual review. Guessing the most recent row made
-        # past runs reject the wrong role.
+        # past runs reject the wrong role (see the ambiguous matches notes).
         if not row:
             if category != "OTHER":
                 (ambiguous if company else unmatched).append((date, category, company or sender, subject))
