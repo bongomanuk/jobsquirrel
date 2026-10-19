@@ -271,6 +271,7 @@ tools/                      # the pipeline (language/library-free CLI tools)
   gmail_calendar_auth.py    #   (optional) Google Calendar auth (same token)
   calendar_event.py         #   create/update events, import .ics, suggest free slots
   gmail_send.py             #   send email via Gmail, with attachments (needs your approval)
+  draft_email.py            #   drafted replies per role (reviewed/sent in the row drawer)
   discover.py               #   discover roles from LinkedIn Job Alert emails
   email_opportunities.py    #   surface recruiter/contract leads from your inbox
   email_verify.py           #   read the newest verification email for a site

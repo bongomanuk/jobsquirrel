@@ -195,6 +195,20 @@
     <button onclick="evidClose()">Cancel</button><button id="evid-save" class="risky">Save evidence</button></div>
 </div></div>
 
+<div id="draftm" class="modal hide"><div class="modal-box" style="width:min(820px,96vw);display:flex;flex-direction:column;max-height:92vh">
+  <div class="row"><b style="flex:1" id="draftm-title">Draft reply</b><button class="small" onclick="draftClose()">✕</button></div>
+  <div class="row" style="margin-top:6px"><span class="muted" style="min-width:70px">To</span><input id="dr-to" style="flex:1" placeholder="recipient@example.com"></div>
+  <div class="row"><span class="muted" style="min-width:70px">Cc</span><input id="dr-cc" style="flex:1"></div>
+  <div class="row"><span class="muted" style="min-width:70px">Subject</span><input id="dr-subject" style="flex:1"></div>
+  <div class="row"><span class="muted" style="min-width:70px">Attach</span><input id="dr-attach" style="flex:1" placeholder="comma-separated paths, e.g. documents/applications/Peter_Hollas_CV_x.docx"></div>
+  <textarea id="dr-body" style="min-height:34vh;margin-top:8px" placeholder="Write the reply…"></textarea>
+  <label class="row mini" style="margin-top:8px"><input type="checkbox" id="dr-clear" checked> clear the ⚑ action flag after sending</label>
+  <div class="row" style="justify-content:flex-end;margin-top:10px">
+    <button onclick="draftClose()">Cancel</button>
+    <button onclick="App.draftSave(false)">Save draft</button>
+    <button class="risky" onclick="App.draftSave(true)" title="Sends the email — the dashboard asks you to approve it first">Send with approval</button></div>
+</div></div>
+
 <div id="peras" class="modal hide"><div class="modal-box" style="width:min(720px,94vw)">
   <div class="row"><b style="flex:1">Preparing documents</b><span id="peras-spin" class="spin">🥜</span></div>
   <p class="muted">Generating the tailored CV and cover letter, then running the gates — <b>nothing is submitted</b>.

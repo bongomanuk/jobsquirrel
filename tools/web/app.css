@@ -373,3 +373,8 @@ mark.kw{background:#24405a;color:#bfe3ff;border-radius:3px;padding:0 2px}
 .actflag{color:#f59e0b;font-weight:700}
 .actionbox{margin:6px 0 10px;padding:8px 10px;border:1px solid rgba(245,158,11,.55);background:rgba(245,158,11,.09);border-radius:6px;font-size:13px}
 #faction-wrap{cursor:pointer;gap:5px;margin:0;white-space:nowrap}
+
+/* drafted replies */
+.drafts{margin:6px 0 12px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#0c0f14}
+.draftrow{padding:7px 0;border-top:1px solid var(--line)}
+.draftrow:first-child{border-top:0}

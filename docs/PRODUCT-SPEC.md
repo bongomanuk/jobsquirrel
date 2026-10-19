@@ -79,7 +79,8 @@ Components:
 `SUBMITTED | IN_PROGRESS | INTERVIEW | OFFER | REJECTED | BLOCKED | MANUAL | PREPARED | CLOSED`.
 
 - **Follow-up flags** (`action` in the register; ⚑ in the grid, a toolbar filter, and editable
-  in the row drawer). Reconcile sets one on an interview invite (`Reply to <sender> — <subject>`) and
+  in the row drawer). Each row also lists its **drafted replies** (write one, or ask the agent; then
+  review and send with approval). Reconcile sets an action on an interview invite (`Reply to <sender> — <subject>`) and
   clears it on a rejection; anything manual (assessment, booking) can be flagged/cleared in the UI.
 - **Engagement type** (`employment` in the register; shown as a per-row badge, editable in
   the drawer, filterable in the toolbar): `full-time | part-time | contract | consultant |
@@ -108,6 +109,7 @@ Components:
 | `discover.py` / `email_opportunities.py` | Find roles from LinkedIn alerts / recruiter mail. |
 | `gmail_readonly.py` / `gmail_reconcile.py` | Read-only inbox sync + reconcile the register. |
 | `gmail_send.py` | Send email with attachments — **approval-gated**. |
+| `draft_email.py` | Draft replies tied to a role (`state/drafts/<company-role>/`); listed, edited and sent from the row drawer. |
 | `google_config.py` | Resolve/write the Google OAuth client + token paths (`--status`, `--paths`, `--write-credentials`). |
 | `calendar_event.py` | List/create/update events, import `.ics` invites, suggest free slots — writes **approval-gated**. |
 | `approval.py` | Reusable human-approval gate (interactive y/N or `APPROVE_<TOKEN>=1`). |
@@ -240,6 +242,11 @@ Clicking a row opens a drawer with tabs:
 | GET | `/api/runs` · `/api/log` · `/api/live` · `/api/tasks` · `/api/logs/tail` · `/api/agent` · `/api/chat/stream` | — | as named |
 | POST | `/api/register/row` | `{company,role,status,notes}` | update a register row |
 | POST | `/api/queue/action` | `{action,company,role}` | `delete` / `retry` / `unblock` |
+| GET | `/api/drafts?company=&role=` | — | drafts for a role |
+| GET | `/api/draft?path=` | — | one draft (headers + body) |
+| POST | `/api/draft/save` | `{path?,company,role,to,cc,subject,attachments,body}` | save/update a draft |
+| POST | `/api/draft/delete` | `{path}` | delete a draft |
+| POST | `/api/draft/send` | `{path,clear_action?}` | send it (asks you to approve first) |
 | POST | `/api/roles/discover` | `{url}` | save a job spec from a URL |
 | POST | `/api/config` | `{target,content}` | save config (JSON validated, `.bak`) |
 | POST | `/api/action/run` | `{command, approval_token}` | `prepare` / `submit_queue` / `reconcile` / `build_archetypes` |

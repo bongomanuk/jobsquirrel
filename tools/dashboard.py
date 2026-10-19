@@ -191,6 +191,81 @@ def update_row(company, role, status, note, employment=None, action=None):
     return {"ok": f"updated {company} / {role}"}
 
 
+# ---------------------------------------------------------------- drafted replies
+def drafts_list(company="", role=""):
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import draft_email as DE
+    return {"drafts": DE.list_drafts(company, role)}
+
+
+def draft_get(path):
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import draft_email as DE
+    try:
+        return {"draft": DE.load_draft(path)}
+    except (OSError, ValueError) as e:
+        return {"error": str(e)}
+
+
+def draft_save(data):
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import draft_email as DE
+    path = data.get("path") or ""
+    try:
+        if path:
+            saved = DE.update_draft(path, data.get("to", ""), data.get("cc", ""),
+                                    data.get("subject", ""), data.get("body", ""),
+                                    data.get("attachments") or [], data.get("company", ""),
+                                    data.get("role", ""))
+        else:
+            if not (data.get("company") and data.get("role")):
+                return {"error": "company and role required"}
+            saved = DE.save_draft(data.get("company", ""), data.get("role", ""),
+                                  data.get("to", ""), data.get("cc", ""),
+                                  data.get("subject", ""), data.get("body", ""),
+                                  data.get("attachments") or [])
+        return {"ok": "saved", "path": saved, "draft": DE.load_draft(saved)}
+    except (OSError, ValueError) as e:
+        return {"error": str(e)}
+
+
+def draft_delete(path):
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import draft_email as DE
+    return {"ok": "deleted"} if DE.delete_draft(path) else {"error": "draft not found"}
+
+
+def draft_send(path, clear_action=False):
+    """Send exactly one saved draft. gmail_send.py asks the dashboard for approval."""
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import draft_email as DE
+    try:
+        d = DE.load_draft(path)
+    except (OSError, ValueError) as e:
+        return {"error": str(e)}
+    env = agent_env()
+    try:
+        r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "gmail_send.py"),
+                            "--draft", d["path"]],
+                           cwd=ROOT, env=env, capture_output=True, text=True, timeout=380)
+    except subprocess.TimeoutExpired:
+        return {"error": "timed out (approval unanswered?)"}
+    out = (r.stdout + "\n" + r.stderr).strip()
+    if r.returncode != 0 or "sent " not in out:
+        return {"error": out or f"gmail_send exited {r.returncode}", "output": out}
+    mid = out.split("sent ", 1)[1].split()[0]
+    DE.mark_sent(d["path"], mid)
+    note = f"replied {time.strftime('%Y-%m-%d')}: {d['subject'][:90] or '(no subject)'}"
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import register as REG
+        REG.set_row(d.get("company") or "", d.get("role") or "", note=note,
+                    action="" if clear_action else None)
+    except Exception:
+        pass
+    return {"ok": f"sent {mid}", "message_id": mid, "output": out}
+
+
 # ---------------------------------------------------------------- queue
 def _queue_rows(path):
     out = []
@@ -2166,6 +2241,10 @@ class H(BaseHTTPRequestHandler):
             return self._json(accounts())
         if p == "/api/google":
             return self._json(google_info())
+        if p == "/api/drafts":
+            return self._json(drafts_list(qs.get("company", [""])[0], qs.get("role", [""])[0]))
+        if p == "/api/draft":
+            return self._json(draft_get(qs.get("path", [""])[0]))
         if p == "/api/permissions":
             return self._json({"policy": load_perms(), "defaults": DEFAULT_PERMS})
         if p == "/api/agent/config":
@@ -2282,6 +2361,12 @@ class H(BaseHTTPRequestHandler):
             return self._json(account_auth(data.get("kind", "")))
         if p == "/api/google":
             return self._json(google_save(data))
+        if p == "/api/draft/save":
+            return self._json(draft_save(data))
+        if p == "/api/draft/delete":
+            return self._json(draft_delete(data.get("path", "")))
+        if p == "/api/draft/send":
+            return self._json(draft_send(data.get("path", ""), bool(data.get("clear_action"))))
         if p == "/api/permissions":
             return self._json({"policy": save_perms(data.get("policy") or {})})
         if p == "/api/agent/config":

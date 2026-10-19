@@ -278,7 +278,9 @@ bash tools/reconcile_loop.sh                # continuous reconcile + counts
   (`calendar_event.py slots`) from the real diary. Self-schedule links
   (e.g. Ashby `you.ashbyhq.com/meeting/<id>`) are booked by driving the browser
   like an ATS form. Never guess the candidate's availability: ask, then book.
-- **Email**: draft replies; send only with the human's explicit approval.
+- **Email**: draft replies with `tools/draft_email.py` (never paste a whole email into chat);
+  the dashboard lists them under the role, where the human edits and sends with approval.
+  Send only with the human's explicit approval.
 
 ---
 

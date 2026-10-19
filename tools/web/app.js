@@ -302,8 +302,61 @@ const App = {
     toast(d.ok || d.error, !!d.error);
     if (!d.error) { CUR.action = ''; if (DTAB === 0) dt(0); loadGrid(); }
   },
+  loadDrafts: async () => {
+    if (!CUR) return;
+    const d = await api(`/api/drafts?company=${encodeURIComponent(CUR.company)}&role=${encodeURIComponent(CUR.role)}`);
+    const el = $('#dt-draft-list'); if (!el) return;
+    const items = (d && d.drafts) || [];
+    el.innerHTML = items.length ? items.map(x => {
+      const sent = x.sent_at ? ` <span class="badge good" title="Sent ${esc(x.message_id || '')}">sent ${esc(x.sent_at.slice(0, 10))}</span>` : '';
+      return `<div class="draftrow"><div class="row"><b>${esc(x.subject || '(no subject)')}</b>${sent}<span style="flex:1"></span>
+        <button class="mini" onclick='App.draftEdit(${JSON.stringify(x.path)})'>Edit</button>
+        <button class="mini" onclick='App.draftEdit(${JSON.stringify(x.path)})' title="Open it to review, then send">Send…</button>
+        <button class="mini" onclick='App.draftDelete(${JSON.stringify(x.path)})'>Delete</button></div>
+        <div class="muted mini">${esc(x.to || 'no recipient')} · updated ${esc((x.modified || '').slice(0, 16))}</div></div>`;
+    }).join('') : '<span class="muted">no drafts yet — write one, or ask the agent.</span>';
+  },
+  draftNew: () => { DRAFT = null; openDraft({}); },
+  draftEdit: async (path) => {
+    const d = await api('/api/draft?path=' + encodeURIComponent(path));
+    if (d.error) return toast(d.error, true);
+    DRAFT = d.draft; openDraft(d.draft);
+  },
+  draftSave: async (send) => {
+    if (!CUR) return;
+    const payload = { path: DRAFT && DRAFT.path || '', company: CUR.company, role: CUR.role,
+      to: $('#dr-to').value, cc: $('#dr-cc').value, subject: $('#dr-subject').value,
+      attachments: $('#dr-attach').value, body: $('#dr-body').value };
+    const d = await api('/api/draft/save', payload);
+    if (d.error) return toast(d.error, true);
+    DRAFT = d.draft;
+    if (!send) { toast('draft saved'); App.loadDrafts(); return; }
+    if (!(d.draft.to || '').trim()) return toast('add a recipient before sending', true);
+    if (!$('#dr-subject').value.trim()) return toast('add a subject before sending', true);
+    toast('sending — approve the prompt when it appears');
+    const s = await api('/api/draft/send', { path: DRAFT.path, clear_action: $('#dr-clear').checked });
+    if (s.error) return toast(s.error, true);
+    draftClose(); toast(s.ok || 'sent'); App.loadDrafts(); loadGrid();
+  },
+  draftDelete: async (path) => {
+    if (!confirm('Delete this draft?')) return;
+    const d = await api('/api/draft/delete', { path });
+    toast(d.ok || d.error, !!d.error); if (!d.error) App.loadDrafts();
+  },
+  draftAsk: () => {
+    if (!CUR) return;
+    const act = (CUR.action || '').trim(), notes = (CUR.notes || '').trim().slice(0, 1500);
+    const msg = ['Draft a reply for this application and save it as a draft (do NOT send it).',
+      `Company: ${CUR.company}`, `Role: ${CUR.role}`,
+      act ? `What is needed: ${act}` : '', notes ? `Context: ${notes}` : '',
+      'Read the latest relevant email in Gmail for this role (search the sender/subject), write a concise reply in my voice, then save it with:',
+      `  python3 tools/draft_email.py --company "${CUR.company}" --role "${CUR.role}" --to "<recipient>" --subject "Re: <subject>" --body-file /tmp/reply.txt`,
+      'Then tell me the saved path. I will review and send it from the row drawer.'].filter(Boolean).join('\n');
+    setPanel('agent', { open: true });
+    $('#chatmsg').value = msg; App.chat();
+  },
 };
-let CF = 'cv.json', CUR = null, CF_SEC = 'accounts';
+let CF = 'cv.json', CUR = null, CF_SEC = 'accounts', DRAFT = null;
 
 /* ---------- approval ---------- */
 function approve(purpose, callText) {
@@ -406,6 +459,7 @@ window.dt = (i) => {
   DTAB = i;
   document.querySelectorAll('#dtabs a').forEach((a, n) => a.classList.toggle('on', n === i));
   $('#d-body').innerHTML = map[i](r) || '<span class="muted">—</span>';
+  if (i === 0) App.loadDrafts();
 };
 const sec = (s, raw) => s ? (raw ? `<pre class="doc">${esc(s)}</pre>` : `<div class="doc md">${md(s)}</div>`) : '<span class="muted">(nothing yet)</span>';
 const vbtn = (f, t) => f ? ` <button class="mini" onclick='viewDoc(${JSON.stringify(f)},"${t}")'>view</button>` : '';
@@ -420,6 +474,11 @@ function summary(r) {
     `<div class="row" style="margin:6px 0 10px"><input id="dt-action" placeholder="needs a reply or follow-up? describe it…" value="${esc(act)}" style="flex:1">
       <button onclick="App.saveAction()">${act ? 'Update flag' : '⚑ Flag action'}</button>
       ${act ? '<button onclick="App.clearAction()">Clear</button>' : ''}</div>` +
+    `<div class="drafts"><div class="row"><b>Drafted replies</b><span class="muted mini">review before sending</span><span style="flex:1"></span>
+        <button class="small" onclick="App.draftAsk()" title="Ask the agent to read the latest email and save a draft for this role">🤖 Draft with agent</button>
+        <button class="small" onclick="App.draftNew()">＋ New</button>
+        <button class="small" onclick="App.loadDrafts()" title="Refresh drafts (the agent may have just saved one)">↻</button></div>
+      <div id="dt-draft-list" class="muted mini">loading…</div></div>` +
     `<div class="statebox">
       <div class="row">${chip(r.label || r.status)}${r.hint ? `<span class="statehint">${esc(r.hint)}</span>` : ''}</div>
       <div class="stages">${(() => {
@@ -464,6 +523,18 @@ function summary(r) {
         ${r.url ? `<button onclick='App.openPage(${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Open the apply page in your own browser">🌐 Open page</button>` : ''}
       </div></div>` : '');
 }
+function openDraft(d) {
+  DRAFT = d && d.path ? d : null;
+  $('#draftm-title').textContent = 'Draft reply' + (CUR ? ` — ${CUR.company} · ${CUR.role}` : '');
+  $('#dr-to').value = d.to || '';
+  $('#dr-cc').value = d.cc || '';
+  $('#dr-subject').value = d.subject || '';
+  $('#dr-attach').value = (d.attachments || []).join(', ');
+  $('#dr-body').value = d.body || '';
+  $('#draftm').classList.remove('hide');
+  setTimeout(() => $('#dr-body').focus(), 50);
+}
+window.draftClose = () => $('#draftm').classList.add('hide');
 function prov(r) {
   const st = ((r && r.status) || '').toUpperCase();
   if (!Object.keys(P).length) {
