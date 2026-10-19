@@ -28,9 +28,10 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CONFIG_DIR = os.environ.get("GMAIL_CONFIG_DIR", os.path.expanduser("~/.config/job-search"))
-CREDENTIALS = os.environ.get("GMAIL_CREDENTIALS", os.path.join(CONFIG_DIR, "credentials.json"))
-TOKEN = os.environ.get("GMAIL_TOKEN", os.path.join(CONFIG_DIR, "token.json"))
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+import google_config as GC          # noqa: E402  (paths are configurable: config/google.json)
+
+CONFIG_DIR, CREDENTIALS, TOKEN = GC.paths()
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly",
           "https://www.googleapis.com/auth/gmail.send",
           # keep calendar in the SAME token so a refresh here cannot drop it.

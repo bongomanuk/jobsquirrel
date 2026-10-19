@@ -28,9 +28,17 @@ FILES = {
     "archetypes.json": "archetypes.example.json",
 }
 
+# Written when missing, but never required: sensible defaults apply without them.
+OPTIONAL = {
+    "google.json": "google.example.json",
+    "email.json": "email.example.json",
+    "calendar.json": "calendar.example.json",
+}
+
 PLACEHOLDER_STRINGS = (
-    "your name", "you@example.com", "+00 000 000 000", "city, country",
+    "your name", "you@example.com", "+00 000 000 000",
     "https://linkedin.com/in/you", "https://yoursite.com", "your_",
+    "your city", "your country",
     "most recent employer", "earlier employer", "example employer",
 )
 
@@ -88,7 +96,7 @@ def check() -> int:
 
 def scaffold() -> int:
     os.makedirs(CFG, exist_ok=True)
-    for name, example in FILES.items():
+    for name, example in {**FILES, **OPTIONAL}.items():
         dst = os.path.join(CFG, name)
         src = os.path.join(CFG, example)
         if os.path.exists(dst):
@@ -100,7 +108,9 @@ def scaffold() -> int:
         shutil.copyfile(src, dst)
         print(f"  wrote config/{name} (from {example})")
     print("\nNext: edit config/profile.md, config/cv.json, config/archetypes.json "
-          "(see BOOTSTRAP.md), then: python3 tools/build_archetypes.py")
+          "(see BOOTSTRAP.md), then: python3 tools/build_archetypes.py\n"
+          "Optional: config/google.json, config/email.json, config/calendar.json "
+          "(defaults are fine; edit them in the dashboard Settings).")
     return 0
 
 
@@ -114,7 +124,12 @@ def explain() -> int:
         "This is the ground truth the gate checks every claim against.\n"
         "config/archetypes.json Your role-family CV templates: a headline, summary, "
         "skills and tags per family. One 2-page CV + base letter is built per entry, "
-        "and the alignment gate maps each job to a family."
+        "and the alignment gate maps each job to a family.\n"
+        "config/google.json     (optional) Where your Google OAuth client lives and, if you "
+        "paste a client id/secret, lets the pipeline write credentials.json for you. "
+        "Editable in the dashboard under Settings -> Accounts.\n"
+        "config/email.json      (optional) Sender signature, attachment folder, size cap.\n"
+        "config/calendar.json   (optional) Timezone, default meeting length, working hours."
     )
     return 0
 

@@ -6,9 +6,15 @@
 #   bash tools/setup_accounts.sh --check    # same (alias)
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CFG="${GMAIL_CONFIG_DIR:-$HOME/.config/job-search}"
-ACCOUNTS="${ACCOUNTS_FILE:-$CFG/accounts.json}"
 PY="${PYTHON:-python3}"
+CONFIG_DIR="$HOME/.config/job-search"
+if [ -f "$ROOT/tools/google_config.py" ]; then
+  eval "$("$PY" "$ROOT/tools/google_config.py" --paths 2>/dev/null)" || true
+fi
+CFG="${GMAIL_CONFIG_DIR:-$CONFIG_DIR}"
+CREDS="${CREDENTIALS:-$CFG/credentials.json}"
+TOKENP="${TOKEN:-$CFG/token.json}"
+ACCOUNTS="${ACCOUNTS_FILE:-$CFG/accounts.json}"
 
 echo "Account / credential status"
 echo "  config dir: $CFG"
@@ -24,13 +30,16 @@ else
   todo "Camoufox browser not installed" "pip install 'camoufox[geoip]' && python3 -m camoufox fetch"
 fi
 
-# 2. Gmail OAuth credentials + token
-if [ -f "$CFG/credentials.json" ]; then ok "Gmail OAuth client (credentials.json)"; else
-  todo "Gmail OAuth client missing" "docs/ACCOUNT-SETUP.md §2 (Google Cloud -> Desktop OAuth client) -> save to $CFG/credentials.json"
+# 2. Google OAuth credentials + token (paths from config/google.json)
+if [ -f "$ROOT/config/google.json" ]; then ok "Google config (config/google.json)"; else
+  echo "  --    No config/google.json (defaults apply); copy config/google.example.json or use Settings -> Accounts"
 fi
-if [ -f "$CFG/token.json" ]; then
-  ok "Gmail token (token.json)"
-  scopes="$("$PY" - "$CFG/token.json" <<'EOF' 2>/dev/null
+if [ -f "$CREDS" ]; then ok "Google OAuth client ($CREDS)"; else
+  todo "Google OAuth client missing" "Settings -> Accounts (paste client id/secret), or docs/ACCOUNT-SETUP.md §2 -> $CREDS"
+fi
+if [ -f "$TOKENP" ]; then
+  ok "Google token ($TOKENP)"
+  scopes="$("$PY" - "$TOKENP" <<'EOF' 2>/dev/null
 import json,sys
 try: print(" ".join(json.load(open(sys.argv[1])).get("scopes",[])))
 except Exception: pass

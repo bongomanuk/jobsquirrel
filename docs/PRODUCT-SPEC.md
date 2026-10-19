@@ -43,7 +43,7 @@ discover  ->  queue  ->  per-role: JD + keywords + GraphRAG context
 Components:
 - **CLI tools** (`tools/*.py`, `tools/*.sh`) — one concern each; the contract for the agent.
 - **Agent harness** (`tools/agent_run.sh`, `tools/run_queue.sh`) — resolves the agent and runs one headless task per role.
-- **Browser** (`tools/camoufox_server.py` + `camoufox_browser.py`) — stealth browser for real ATS forms.
+- **Browser** (`tools/camoufox_server.py` + `camoufox_browser.py`) — Camoufox browser for real ATS forms.
 - **Knowledge base** — GraphRAG over `kb/sources/` (grounding for generated documents).
 - **State** — plain files under `state/` (the source of truth).
 - **Dashboard** (`tools/dashboard.py`) — web UI (this spec, §9).
@@ -68,6 +68,8 @@ Components:
 | `config/profile.md` | Identity, eligibility, pay, EEO, accuracy rules (key: value). |
 | `config/cv.json` | Ground-truth CV (experience/projects/education/skills/sidebar). |
 | `config/archetypes.json` | Role-family CV templates (one per family) + base letter. |
+| `config/google.json` | Where the Google OAuth client/token live; optional client id/secret. Editable in Settings → Accounts. |
+| `config/email.json` / `config/calendar.json` | Sender signature + attachments; calendar timezone, meeting length, working hours. |
 | `kb/sources/` | Private knowledge corpus (CVs, own sites, contracts…). |
 | `kb/graphrag/` | Index + settings. |
 | `documents/archetypes/`, `documents/applications/`, `documents/submitted/` | Reusable CVs, per-role letters, byte snapshots. |
@@ -103,9 +105,10 @@ Components:
 | `discover.py` / `email_opportunities.py` | Find roles from LinkedIn alerts / recruiter mail. |
 | `gmail_readonly.py` / `gmail_reconcile.py` | Read-only inbox sync + reconcile the register. |
 | `gmail_send.py` | Send email with attachments — **approval-gated**. |
-| `calendar_event.py` | List/create/update events and import `.ics` invites — writes **approval-gated**. |
+| `google_config.py` | Resolve/write the Google OAuth client + token paths (`--status`, `--paths`, `--write-credentials`). |
+| `calendar_event.py` | List/create/update events, import `.ics` invites, suggest free slots — writes **approval-gated**. |
 | `approval.py` | Reusable human-approval gate (interactive y/N or `APPROVE_<TOKEN>=1`). |
-| `camoufox_server.py` / `camoufox_browser.py` | Stealth browser API + CLI. |
+| `camoufox_server.py` / `camoufox_browser.py` | Camoufox browser API + CLI. |
 | `agent_run.sh` | Resolve + run the configured agent for one task. |
 | `run_queue.sh` / `run_linkedin.sh` / `human_assist.sh` | Runners (queue / LinkedIn / human). |
 | `doctor.py` | Health check (config, KB, browser, register, git). |

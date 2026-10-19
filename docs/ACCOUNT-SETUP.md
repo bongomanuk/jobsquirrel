@@ -32,7 +32,7 @@ those keys in the agent's environment and in `kb/graphrag/.env`; never commit th
 
 ## 1. Camoufox browser (required to apply)
 
-The submission step drives a stealth browser (patched Firefox).
+The submission step drives Camoufox, a Firefox-based browser.
 
 ```bash
 pip install camoufox[geoip]
@@ -49,22 +49,50 @@ with attachments. The token requests `gmail.readonly`, `gmail.send` and
 `calendar.events`; sending mail and writing to the calendar are still gated on
 your explicit approval for each action, and the pipeline never deletes mail.
 
+Everything here is done from the dashboard: **Settings → Accounts → Google**.
+
 1. **Google Cloud project**: https://console.cloud.google.com → create a project
-   (e.g. `job-pipeline`). **APIs & Services → Library → enable Gmail API.**
-2. **OAuth consent screen**: User type **External** → Create. App name/support
-   email = your details. **Scopes** → add `https://www.googleapis.com/auth/gmail.readonly`.
+   (e.g. `job-pipeline`). **APIs & Services → Library → enable Gmail API** (and
+   Calendar API if you want interview booking). **OAuth consent screen**:
+   User type **External** → Create; app name/support email = your details;
+   **Scopes** → add `gmail.readonly`, `gmail.send` and `calendar.events`;
    **Test users** → add your own email. Leave it in **Testing** (no Google
    verification needed for personal use).
-3. **OAuth client**: Credentials → Create credentials → **OAuth client ID** →
-   **Desktop app** → Create → **Download JSON** → save as
-   `~/.config/job-search/credentials.json`.
-4. **Authorise once**:
-   ```bash
-   pip install google-auth google-auth-oauthlib google-api-python-client
-   python3 tools/gmail_readonly.py --auth        # a browser opens; consent to the scope
-   ```
-   A `token.json` is written next to `credentials.json` (mode 0600).
-5. **Verify**: `python3 tools/gmail_readonly.py --sync` (classifies recent mail).
+2. **OAuth client**: Credentials → Create credentials → **OAuth client ID** →
+   **Desktop app** → Create.
+3. **Configure it, then authorise** — either:
+   - paste the **Client ID** and **Client secret** into Settings → Accounts and
+     press **Save Google settings**; the pipeline writes `credentials.json` for
+     you; or
+   - download the JSON and point **credentials** at it in the same panel; or
+   - drop it at the default `~/.config/job-search/credentials.json`.
+   Then press **Authorise Gmail**. A browser opens for consent (first run:
+   `pip install google-auth google-auth-oauthlib google-api-python-client`).
+   The token is saved next to the client (mode 0600) and it also carries the
+   Calendar scope, so one consent covers Gmail **and** Calendar.
+4. **Verify**: `python3 tools/gmail_readonly.py --sync` (classifies recent mail),
+   or just **Re-check** in the panel.
+
+### Where the files live (all configurable)
+
+Defaults suit most people, but a new user (or a second account) can point the
+pipeline anywhere. `config/google.json` (see `config/google.example.json`):
+
+| key | meaning |
+| --- | --- |
+| `config_dir` | folder holding the client/token (default `~/.config/job-search`) |
+| `credentials` | `credentials.json`, absolute or relative to `config_dir` |
+| `token` | `token.json`, absolute or relative to `config_dir` |
+| `client_id` / `client_secret` | paste these here (Settings → Accounts) and the pipeline writes `credentials.json` |
+
+Environment overrides win over the file: `GMAIL_CONFIG_DIR`, `GMAIL_CREDENTIALS`,
+`GMAIL_TOKEN` (and `JOBSQUIRREL_GOOGLE_CONFIG` to relocate `google.json` itself).
+Check the resolved paths any time:
+
+```bash
+python3 tools/google_config.py --status     # paths, what exists, scopes, account
+python3 tools/google_config.py --paths      # shell-friendly CONFIG_DIR/CREDENTIALS/TOKEN
+```
 
 > **Testing-mode tokens expire ~weekly**: re-run `--auth` when that happens. A
 > Google Workspace account with an *Internal* app avoids it. Optional least-data
@@ -119,7 +147,9 @@ python3 tools/calendar_event.py slots --days 5                    # free slots a
 ```
 
 `slots` is read-only and proposes interview times inside your working hours
-without overlapping existing events — pick one, then `create` the event.
+without overlapping existing events — pick one, then `create` the event. The
+same consent as Gmail is all it needs; timezone, default length and working
+hours come from `config/calendar.json`, editable in Settings → Accounts.
 
 Writes are approval-gated exactly like sending mail: answer `y` at the prompt,
 approve the dashboard prompt, or set `APPROVE_CALENDAR_WRITE=1` for that one

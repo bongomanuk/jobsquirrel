@@ -105,7 +105,7 @@ reports a clean config.
    Playwright, Chromium, Chrome, headless_shell or pinchtab anywhere in this
    project (applying, verifying, screenshots, testing the dashboard). Playwright's
    Chromium and pinchtab are banned outright; a stray Chromium both breaks the
-   stealth profile and hogs memory. Parallel applying = one camoufox server per
+   browser profile and hogs memory. Parallel applying = one camoufox server per
    agent on its own port (see `state/pipeline-parallel.md`).
 
 ---
@@ -229,7 +229,7 @@ python3 tools/check_documents.py --letter documents/applications/<Prefix>_Motiva
     --cv documents/applications/<Prefix>_CV_<key>.docx --company "<Company>" \
     --ats-keywords state/ats/<key>.txt [--engagement contract] --record
 
-# (7) Apply via the stealth browser through the employer's own ATS
+# (7) Apply via Camoufox through the employer's own ATS
 python3 tools/camoufox_server.py --port 9872 &                       # once per session
 python3 tools/camoufox_browser.py --server http://127.0.0.1:9872 nav "<apply-url>"
 #   ... snap / fill / pick / upload / submit ... (recipes: docs/ATS-RECIPES.md)

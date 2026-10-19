@@ -35,7 +35,7 @@ python3 tools/check_documents.py --letter documents/applications/<letter>.docx \
     --ats-keywords state/ats/<key>.txt --record
 #    (add --engagement contract only for genuine contract/consulting roles)
 
-# 6. Apply through the employer's own ATS with the stealth browser
+# 6. Apply through the employer's own ATS with the Camoufox browser
 python3 tools/camoufox_server.py --port 9872 &
 python3 tools/camoufox_browser.py --server http://127.0.0.1:9872 nav "<apply-url>"
 #    fill, upload, answer questions honestly, submit (see docs/ATS-RECIPES.md)

@@ -12,7 +12,7 @@
 - **Python 3.10+**
 - **LibreOffice** (`soffice`), renders the styled PDF CV/letter.
   `sudo apt-get install libreoffice` (Debian/Ubuntu) or your distro's equivalent.
-- **A stealth browser** for the submission step: Camoufox (patched Firefox).
+- **A dedicated browser** for the submission step: Camoufox (patched Firefox).
   `pip install camoufox[geoip]` then `python3 -m camoufox fetch`.
 
 ## 2. Clone and install

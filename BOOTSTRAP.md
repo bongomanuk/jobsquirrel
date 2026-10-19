@@ -35,7 +35,7 @@ bash tools/install.sh          # or: ./install.sh
 ```
 
 This creates a local virtualenv and installs the Python dependencies, **fetches
-the Camoufox stealth browser**, installs **GraphRAG** (required for document generation),
+the Camoufox browser**, installs **GraphRAG** (required for document generation),
 and checks for **LibreOffice** (which renders the styled PDF), telling the user
 how to install it if missing. Use `bash tools/install.sh --check` any time to see
 what is present. Confirm it finished before continuing.
@@ -159,12 +159,16 @@ bash tools/setup_accounts.sh --check
 
 Guide, in order (skip any the user declines):
 1. **Camoufox browser** (required to apply), install + fetch; verify it launches.
-2. **Gmail, read-only** (recommended), Google Cloud project, enable the Gmail
-   API, OAuth consent + Desktop client → `~/.config/job-search/credentials.json`,
-   then `python3 tools/gmail_readonly.py --auth`; verify with `--sync`. Explain it
-   only ever **reads** mail and surfaces verification links for them to act on.
-3. **Google Calendar** (optional), `python3 tools/gmail_calendar_auth.py` so the
-   agent can list/add interview events.
+2. **Google (Gmail + Calendar)** (recommended), Google Cloud project, enable the
+   Gmail API (and Calendar API), OAuth consent + Desktop client. Then open
+   **Settings → Accounts** in the dashboard: paste the client id/secret (the
+   pipeline writes `credentials.json` for you, or point at a downloaded one) and
+   press **Authorise**. One consent covers Gmail read/send and Calendar
+   read/write; paths and client details live in `config/google.json`
+   (`python3 tools/google_config.py --status`). Explain it only ever **reads**
+   mail on its own and surfaces verification links for them to act on.
+3. **Google Calendar** (optional, same consent): `python3 tools/calendar_event.py
+   list --days 14` so the agent can list/add interview events.
 4. **LinkedIn** (optional; Easy Apply only), log in once in the dedicated
    persistent profile (headful). Explain the runner is serialised, paced and
    never mass-applies, and stops on any CAPTCHA/checkpoint.

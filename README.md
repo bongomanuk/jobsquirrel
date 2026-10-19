@@ -119,7 +119,7 @@ gates* rather than good intentions.
 | **Truthfulness** | Claims "never fabricates" (unchecked) | **Enforced**: no claim without a source; unsupported lines are blocked |
 | **Quality gate** | none | **Pre-submit gate**: real identity, no placeholders, no AI-slop, ATS coverage, correct engagement |
 | **Targeting** | keyword match | **Alignment gate** maps the role family to the right CV archetype; a mismatched CV cannot be submitted |
-| **CAPTCHA / anti-bot** | solved / bypassed (stealth hacks) | **stops and hands to you**: no evasion, so no tool-driven ToS or ban risk |
+| **CAPTCHA / anti-bot** | often handled with workarounds | **stops and hands to you**: no evasion, so no tool-driven ToS or ban risk |
 | **Who runs it** | locked to one vendor or cloud | **any agent** (opencode, Claude Code, Cursor, …) via `AGENTS.md` |
 | **Cost** | metered API per run | runs on cheap **DeepSeek Flash** (~cents/application); everything else is local |
 | **Record** | a log line, if any | **audit trail**: one row per company+role, exact files hashed & snapshotted, inbox reconciled |
@@ -267,14 +267,16 @@ tools/                      # the pipeline (language/library-free CLI tools)
   outcomes.py               #   conversion by source/CV, what's actually working
   gmail_readonly.py         #   read-only inbox sync + classification
   gmail_reconcile.py        #   reconcile the register with your inbox
-  gmail_calendar_auth.py    #   (optional) Google Calendar read/write for interviews
-  gmail_send.py             #   send email via Gmail (requires your explicit approval)
+  google_config.py          #   where the Google OAuth client/token live (configurable)
+  gmail_calendar_auth.py    #   (optional) Google Calendar auth (same token)
+  calendar_event.py         #   create/update events, import .ics, suggest free slots
+  gmail_send.py             #   send email via Gmail, with attachments (needs your approval)
   discover.py               #   discover roles from LinkedIn Job Alert emails
   email_opportunities.py    #   surface recruiter/contract leads from your inbox
   email_verify.py           #   read the newest verification email for a site
   accounts.py               #   per-site credentials (stored outside the repo)
   identity.py               #   print your standard form answers (JSON)
-  camoufox_server.py        #   one stealth browser behind a small HTTP API
+  camoufox_server.py        #   one Camoufox browser behind a small HTTP API
   camoufox_browser.py       #   the agent-facing browser CLI (nav/snap/click/fill/...)
   run_queue.sh              #   the queue runner: applies to each queued role end-to-end
   agent_run.sh              #   runs one headless task with opencode, Claude Code or any CLI agent

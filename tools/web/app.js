@@ -130,6 +130,11 @@ const App = {
     return setProfile(b);
   },
   auth: async (kind) => { const d = await api('/api/accounts/auth', { kind }); toast(d.ok || d.error, !!d.error); },
+  googleSave: async () => {
+    const d = await api('/api/google', { config_dir: $('#g-dir').value, credentials: $('#g-cred').value,
+      token: $('#g-token').value, client_id: $('#g-id').value, client_secret: $('#g-secret').value });
+    toast(d.ok || d.error, !!d.error); if (!d.error) App.settings('accounts');
+  },
   savePerms: async () => {
     const policy = {}; document.querySelectorAll('#set-body select[data-cat]').forEach(s => policy[s.dataset.cat] = s.value);
     const d = await api('/api/permissions', { policy }); toast(d.error ? d.error : 'permissions saved', !!d.error);
@@ -873,16 +878,34 @@ function renderChat() {
 /* ---------- settings sections ---------- */
 const fmtSize = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n > 1024 ? (n / 1024).toFixed(0) + ' KB' : n + ' B';
 async function setAccounts(b) {
-  const d = await api('/api/accounts');
+  const [d, g] = await Promise.all([api('/api/accounts'), api('/api/google')]);
+  const sc = g.scopes || [];
+  const dot = (ok) => `<span class="pill" style="background:${ok ? '#1f6f43' : '#7a2e2e'}">${ok ? '✓' : '✗'}</span>`;
+  const scopeName = (s) => s.split('/').pop();
   b.innerHTML = `<p class="muted">Connect your accounts. Authorisation opens in your browser - finish it there, then re-check.
       Per-site logins: <b>${d.sites}</b> stored.</p>
-    <p class="muted mini">Gmail can read, send and attach files; Calendar can read and book events.
-      Sending mail and writing to the calendar still ask for your approval every time.
-      Settings live in <code>config/email.json</code> and <code>config/calendar.json</code>.</p>
-    <div class="row" style="margin:8px 0"><button onclick="App.auth('gmail')">Authorise Gmail</button>
+    <h4 style="margin:10px 0 4px">Google (Gmail + Calendar)</h4>
+    <p class="muted mini">Create a <b>Desktop</b> OAuth client in Google Cloud, then paste its client id and secret here and press
+      <b>Save Google settings</b> - the pipeline writes <code>credentials.json</code> for you (or drop a downloaded one at the path below).
+      Gmail can read, send and attach files; Calendar can read and book events. Sending mail and writing to the calendar
+      still ask for your approval every time. Timezone and meeting defaults live in <code>config/calendar.json</code>, mail
+      signature and attachments in <code>config/email.json</code>.</p>
+    <div class="row" style="margin:6px 0"><span class="muted" style="min-width:118px">Client ID</span>
+      <input id="g-id" placeholder="${esc(g.client_id || '…apps.googleusercontent.com')}" style="flex:1"></div>
+    <div class="row" style="margin:6px 0"><span class="muted" style="min-width:118px">Client secret</span>
+      <input id="g-secret" type="password" placeholder="${g.has_client_secret ? '•••• stored — leave blank to keep' : ''}" style="flex:1"></div>
+    <div class="row" style="margin:6px 0"><span class="muted" style="min-width:118px">Config dir</span>
+      <input id="g-dir" value="${esc(g.config_dir)}" style="flex:1">
+      <span class="muted mini">credentials ${dot(g.credentials_exists)} · token ${dot(g.token_exists)}</span></div>
+    <div class="row" style="margin:6px 0"><span class="muted" style="min-width:118px">Files</span>
+      <input id="g-cred" value="${esc(g.credentials)}" style="flex:1" title="credentials.json path">
+      <input id="g-token" value="${esc(g.token)}" style="flex:1" title="token.json path"></div>
+    <div class="row" style="margin:8px 0"><button onclick="App.googleSave()">Save Google settings</button>
+      <button onclick="App.auth('gmail')">Authorise Gmail</button>
       <button onclick="App.auth('calendar')">Authorise Calendar</button>
-      <button onclick="viewDoc('docs/ACCOUNT-SETUP.md','Account setup guide')">Open setup guide</button>
+      <button onclick="viewDoc('docs/ACCOUNT-SETUP.md','Account setup guide')">Setup guide</button>
       <button onclick="App.settings('accounts')">Re-check</button></div>
+    <div class="muted mini">scopes: ${sc.length ? sc.map(scopeName).map(esc).join(' · ') : 'none yet'}${g.account ? ` · ${esc(g.account)}` : ''}</div>
     <pre class="doc">${esc(d.text || '(no output)')}</pre>`;
 }
 async function setKB(b) {

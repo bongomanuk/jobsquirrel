@@ -1,0 +1,7 @@
+{
+  "config_dir": "~/.config/job-search",
+  "credentials": "credentials.json",
+  "token": "token.json",
+  "client_id": "",
+  "client_secret": ""
+}

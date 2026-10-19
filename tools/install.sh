@@ -2,7 +2,7 @@
 # Install everything the pipeline needs, into a local virtualenv. Idempotent.
 # Nothing is bundled with the repo; this fetches it:
 #   - Python deps (python-docx, google auth/api, camoufox, graphrag)
-#   - the Camoufox stealth browser (a one-off download)
+#   - the Camoufox browser (a one-off download)
 #   - a check for LibreOffice (renders the styled PDF)
 #
 #   bash tools/install.sh            # install (creates ./​.venv)

@@ -1372,6 +1372,42 @@ def apply_update(approval_token=""):
     return {"ok": "updating — watch the Activity pane, then restart the dashboard"}
 
 
+# ---------------------------------------------------------------- Google accounts (Gmail + Calendar)
+def google_info():
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import google_config as GC
+    st = GC.status()
+
+    def mask(v):
+        v = v or ""
+        return v if len(v) < 14 else v[:8] + "\u2026" + v[-6:]
+
+    return {"config_file": st["config_file"], "config_dir": st["config_dir"],
+            "credentials": st["credentials"], "token": st["token"],
+            "credentials_exists": st["credentials_exists"], "token_exists": st["token_exists"],
+            "client_id": mask(st["client_id"]), "has_client_secret": st["has_client_secret"],
+            "account": st["account"], "scopes": st["scopes"]}
+
+
+def google_save(data):
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import google_config as GC
+    upd = {}
+    for k in ("config_dir", "credentials", "token", "client_id", "client_secret"):
+        v = data.get(k)
+        if isinstance(v, str) and v.strip():
+            upd[k] = v.strip()
+    if not upd:
+        return {"error": "nothing to save"}
+    GC.save(upd)
+    msg = "saved config/google.json"
+    if GC.load().get("client_id") and GC.load().get("client_secret"):
+        written = GC.write_credentials()
+        if written:
+            msg += f"; wrote {written}"
+    return {"ok": msg}
+
+
 # ---------------------------------------------------------------- agent permissions
 PERMS_FILE = os.path.join(ROOT, "config", "agent-permissions.json")
 DEFAULT_PERMS = {
@@ -2109,6 +2145,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(config_get(qs.get("target", ["profile"])[0]))
         if p == "/api/accounts":
             return self._json(accounts())
+        if p == "/api/google":
+            return self._json(google_info())
         if p == "/api/permissions":
             return self._json({"policy": load_perms(), "defaults": DEFAULT_PERMS})
         if p == "/api/agent/config":
@@ -2223,6 +2261,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(kb_rebuild())
         if p == "/api/accounts/auth":
             return self._json(account_auth(data.get("kind", "")))
+        if p == "/api/google":
+            return self._json(google_save(data))
         if p == "/api/permissions":
             return self._json({"policy": save_perms(data.get("policy") or {})})
         if p == "/api/agent/config":

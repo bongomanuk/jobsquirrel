@@ -28,7 +28,7 @@ replies. You give it your CV and a few rules; it does the repetitive work.
    placeholders, no AI-slop, only supported claims, the right engagement (a
    contract rate only in contract applications), and good keyword coverage
    against the ad. **Nothing is submitted unless it passes.**
-6. **Apply**: a stealth browser fills in and submits the employer's own
+6. **Apply**: Camoufox fills in and submits the employer's own
    application (Teamtailor, Greenhouse, Lever, Ashby, Workday, …), answering
    questions honestly from your rules.
 7. **Record**: it stores exactly what was sent (the files, their hashes and a
