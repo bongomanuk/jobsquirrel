@@ -407,6 +407,9 @@ def main() -> int:
     ap.add_argument("--main-world-eval", action="store_true",
                     help="run page.evaluate in the page's own scope (needed to "
                          "touch the real DOM, e.g. set a captcha token)")
+    ap.add_argument("--window", default="",
+                    help="spoofed window size WxH in CSS px (e.g. 1440x900); also sets "
+                         "the viewport so screenshots come out that size")
     ap.add_argument("--proxy", default="",
                     help="[unhinged] proxy URL for this session (scheme://user:pass@host:port)")
     ap.add_argument("--proxy-file", default="",
@@ -431,6 +434,13 @@ def main() -> int:
     launch = dict(headless=not HEADFUL, humanize=True)
     if args.os and args.os != "none":
         launch["os"] = args.os
+    if args.window:
+        try:
+            w, h = (int(x) for x in re.split(r"[x,]", args.window))
+            launch["window"] = (w, h)
+        except ValueError:
+            print(f"bad --window {args.window!r}; expected WxH", file=sys.stderr)
+            return 2
     if args.disable_coop:
         launch["disable_coop"] = True
     if args.main_world_eval:

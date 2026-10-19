@@ -51,6 +51,26 @@ keep it cheap with opencode + DeepSeek Flash, and **what it costs to run**.
 
 ---
 
+## Screenshots
+
+A local, single-page dashboard over the whole pipeline. Every action is
+auditable, and nothing is sent without the gates passing. (Company names are
+blurred in these shots.)
+
+| The grid — every role, its stage and its fit | Role drawer — pipeline stage, gates, type, one-click action |
+|---|---|
+| ![Application grid](docs/screenshots/grid.png) | ![Role detail drawer](docs/screenshots/drawer.png) |
+
+| Documents — the rendered, gated CV in place | Agent console — chat and live activity |
+|---|---|
+| ![Documents tab with the embedded CV](docs/screenshots/documents.png) | ![Agent console](docs/screenshots/agent.png) |
+
+| Legend — what every status and queue state means | Settings — accounts, knowledge base, agent permissions |
+|---|---|
+| ![Status and queue legend](docs/screenshots/legend.png) | ![Settings](docs/screenshots/settings.png) |
+
+---
+
 ## Why it exists
 
 Applying well is repetitive but not mechanical: every role needs a CV that
