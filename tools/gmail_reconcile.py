@@ -149,7 +149,7 @@ def _load_aliases():
     try:
         with open(ALIAS_FILE, encoding="utf-8") as fh:
             data = json.load(fh)
-        return {str(k).strip().lower(): str(v).strip() for k, v in data.items() if v}
+        return {str(k).lower(): str(v).strip() for k, v in data.items() if str(k).strip() and v}
     except (OSError, ValueError):
         return {}
 
