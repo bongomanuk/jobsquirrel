@@ -287,6 +287,8 @@ body[data-act="closed"] .act-body,body[data-act="closed"] #split-inner{display:n
 #grid thead th{position:sticky;top:0;z-index:2}
 #grid th[data-s]{cursor:pointer}
 #grid tbody tr.click{cursor:pointer}
+#grid tbody tr.sel{background:rgba(96,165,250,.12);box-shadow:inset 3px 0 0 #60a5fa}
+#grid tbody tr.sel:hover{background:rgba(96,165,250,.18)}
 #detail .tabs2{padding:0 12px}
 .d-body{padding:14px;overflow:auto;flex:1}
 .mini{font-size:12px}

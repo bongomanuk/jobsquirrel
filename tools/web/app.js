@@ -350,7 +350,9 @@ function renderRows() {
       + (r.alignment === 'FAIL' ? ' <span class="badge bad"' + T('Pre-submit alignment gate FAILED for this role — open the row to see why') + '>✗</span>' : '');
   $('#rows').innerHTML = rows.map((r) => {
     const i = GRID.indexOf(r);
-    return `<tr class="click" onclick="App.open(${i})">` +
+    const sel = (CUR && (r.key === CUR.key || (r.company === CUR.company && r.role === CUR.role))
+      && PANELS.detail && PANELS.detail.open) ? ' sel' : '';
+    return `<tr class="click${sel}" onclick="App.open(${i})">` +
       `<td class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet — queued, not applied')}>${r.date ? esc(shortDate(r.date)) : '—'}</td>` +
       `<td${T(r.company + '  ·  employer / recruiter')}>${(r.running || PENDING.has(r.key)) ? '<span class="spin" title="Being worked on now">🥜</span> ' : ''}${esc(r.company)}</td>` +
       `<td${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}</td>` +
@@ -369,7 +371,7 @@ document.querySelectorAll('#grid th[data-s]').forEach(th => th.onclick = () => {
 async function openDetail(r) {
   if (!r) return;
   CUR = r; D = {}; P = {};
-  setPanel('detail', { open: true });
+  setPanel('detail', { open: true });            // also re-renders the grid, marking this row
   $('#d-title').textContent = `${r.company} — ${r.role}`;
   const tabs = ['Summary', 'Provenance', 'Job spec', 'ATS', 'Grounding', 'Documents'];
   $('#dtabs').innerHTML = tabs.map((t, i) => `<a class="${i === DTAB ? 'on' : ''}" onclick="dt(${i})">${t}</a>`).join('');
@@ -751,6 +753,7 @@ function initEdgeSplit(split) {
 }
 function setPanel(key, props) {
   Object.assign(PANELS[key], props);
+  if (key === 'detail') renderRows();             // keep the row highlight in sync with the drawer
   localStorage.setItem(key + '.pos', PANELS[key].pos);
   localStorage.setItem(key + '.open', PANELS[key].open ? '1' : '0');
   layoutPanels();
