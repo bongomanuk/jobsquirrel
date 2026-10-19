@@ -432,14 +432,20 @@ function summary(r) {
         ${r.url ? `<button onclick='App.openPage(${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Open the apply page in your own browser">🌐 Open page</button>` : ''}
       </div></div>` : '');
 }
-function prov() {
-  if (!Object.keys(P).length) return '<span class="muted">no provenance recorded yet</span>';
+function prov(r) {
+  const st = ((r && r.status) || '').toUpperCase();
+  if (!Object.keys(P).length) {
+    if (['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER'].includes(st))
+      return `<span class="muted">This row is <b>${esc(st)}</b> but has no provenance entry — it predates the ledger, or was recorded by hand. Provenance is written automatically by <code>record_submission.py</code>; backfill an old one with <code>--inferred</code>.</span>`;
+    return `<span class="muted">No submission recorded for this role${st ? ' (status ' + esc(st) + ')' : ''}. The provenance ledger is written by <code>record_submission.py</code> the moment an application is sent, so rows that were never applied to are empty by design.</span>`;
+  }
   const sha = (s) => s ? `<span class="sha" title="copy" onclick='navigator.clipboard.writeText(${JSON.stringify(s)})'>${esc(s.slice(0, 16))}…</span>` : '—';
   return `<table><tbody>` +
     `<tr><td class="muted">CV</td><td>${esc(P.cv_file || '—')} ${sha(P.cv_sha256)}${vbtn(P.cv_file, 'CV')}</td></tr>` +
     `<tr><td class="muted">letter</td><td>${esc(P.letter_file || '—')} ${sha(P.letter_sha256)}${vbtn(P.letter_file, 'Cover letter')}</td></tr>` +
     `<tr><td class="muted">confidence</td><td>${chip((P.confidence || '').toUpperCase())}</td></tr>` +
     `<tr><td class="muted">evidence</td><td class="md">${P.evidence ? md(P.evidence) : '—'}</td></tr>` +
+    `<tr><td class="muted">recorded</td><td class="mini muted">${esc(P.date || '—')}</td></tr>` +
     `<tr><td class="muted">snapshot</td><td class="mini mono">${esc(P.snapshot_dir || '—')}</td></tr>` +
     `<tr><td class="muted">screenshots</td><td class="mini mono">${(P.screenshots || []).map(esc).join('<br>') || '—'}</td></tr></tbody></table>`;
 }
