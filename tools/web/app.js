@@ -185,12 +185,17 @@ const App = {
   },
   chat: async () => {
     const inp = $('#chatmsg'), m = inp.value.trim(); if (!m) return;
-    CHAT.running = true; setSpin(true); renderChat();
+    CHAT.running = true; CHAT_STICK = true; setSpin(true); renderChat();
     const d = await api('/api/chat', { message: m });
     if (d.error) { toast(d.error, true); CHAT.running = false; setSpin(false); renderChat(); return; }  // keep your text
     inp.value = '';
     if (d.queued) toast(`queued — the agent is busy (${d.pending} waiting)`);
     chatOffset = 0; clearInterval(CHAT_TIMER); CHAT_TIMER = setInterval(chatPoll, 1200);
+  },
+  chatStop: async () => {
+    const d = await api('/api/chat/stop', {});
+    toast(d.ok || d.error, !!d.error);
+    CHAT.running = false; setSpin(false); chatPoll();
   },
   newChat: async () => {
     const d = await api('/api/chat/new', {});
@@ -450,6 +455,70 @@ function prov(r) {
     `<tr><td class="muted">screenshots</td><td class="mini mono">${(P.screenshots || []).map(esc).join('<br>') || '—'}</td></tr></tbody></table>`;
 }
 const spec = () => sec(D.jd), ats = () => sec(D.ats, true), kb = () => sec(D.kb);
+
+/* Evidence overlay: the generated CV, colour-coded by the evidence behind each line. */
+function evKws() {
+  return (D.ats || '').split('\n').map(s => s.trim()).filter(s => s && s[0] !== '#');
+}
+function evMark(text, kws) {
+  let out = esc(text);
+  [...kws].sort((a, b) => b.length - a.length).forEach(k => {
+    const re = new RegExp('(' + k.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&') + ')', 'gi');
+    out = out.replace(re, '<mark class="kw">$1</mark>');
+  });
+  return out;
+}
+function evRow(text, kws, kbText, sec) {
+  const low = String(text || '').toLowerCase();
+  const matched = kws.filter(k => low.includes(k.toLowerCase()));
+  const grounded = matched.filter(k => kbText.includes(k.toLowerCase()));
+  const s = matched.length && grounded.length ? 'good' : matched.length ? 'warn' : 'plain';
+  const icon = s === 'good' ? '✓' : s === 'warn' ? '~' : '·';
+  const tip = s === 'good' ? 'evidence-backed: names a requirement the knowledge base supports'
+    : s === 'warn' ? 'names a requirement the knowledge base does not confirm — see the Grounding tab'
+      : 'supporting detail: no job requirement keyword';
+  const chips = matched.map(k => `<span class="missk${grounded.includes(k) ? ' evidenced' : ''}">${esc(k)}</span>`).join(' ');
+  return `<div class="claim ${s}" data-sec="${esc(sec)}" data-kws="${esc(matched.join(', '))}" title="${esc(tip)}">`
+    + `<span class="cl-mark">${icon}</span><span class="cl-text">${evMark(text, kws)}</span>`
+    + (chips ? `<div class="cl-kws">${chips}</div>` : '') + '</div>';
+}
+function evSec(title, inner) { return `<div class="evsec"><div class="evsec-h">${esc(title)}</div>${inner}</div>`; }
+function renderEvidence() {
+  const view = $('#evview'); if (!view) return;
+  if (!D.tailored_cv) { view.innerHTML = '<span class="muted">no content pack for this role yet</span>'; return; }
+  let pack; try { pack = JSON.parse(D.tailored_cv); } catch (e) { pack = null; }
+  if (!pack || typeof pack !== 'object') { view.innerHTML = '<span class="muted">could not parse the content pack</span>'; return; }
+  const kws = evKws(), kbText = (D.kb || '').toLowerCase();
+  const whole = JSON.stringify(pack).toLowerCase();
+  const covered = kws.filter(k => whole.includes(k.toLowerCase()));
+  const pct = kws.length ? Math.round(100 * covered.length / kws.length) : 0;
+  const list = (arr, sec) => (arr || []).map((b, i) => evRow(b, kws, kbText, sec + ' #' + (i + 1))).join('');
+  const exp = (pack.experience || []).map(e => {
+    const hdr = `<div class="evjob">${esc(e.employer || '')}${e.title ? ' — ' + esc(e.title) : ''}<span class="muted">${e.dates ? ' · ' + esc(e.dates) : ''}</span></div>`;
+    const bs = list(e.bullets, e.employer || 'role');
+    const gs = (e.groups || []).map(g => list(g.bullets, g.label || e.employer || 'role')).join('');
+    return hdr + bs + gs;
+  }).join('');
+  view.innerHTML =
+    `<div class="evintro mini muted">Every line of the generated CV, scored against the job's `
+    + `<b>${kws.length}</b> ATS requirement(s) and the knowledge base. `
+    + `<span style="color:#8ce99a">green</span> = evidence-backed · `
+    + `<span style="color:#ffd479">amber</span> = requirement not confirmed by the grounding · grey = supporting detail.</div>`
+    + (pack.profile ? evSec('Profile', evRow(pack.profile, kws, kbText, 'profile')) : '')
+    + (exp ? evSec('Experience', exp) : '')
+    + ((pack.skills || []).length ? evSec('Skills', list(pack.skills, 'skills')) : '')
+    + ((pack.selected_work || []).length ? evSec('Selected work', list(pack.selected_work, 'selected work')) : '');
+  let g = 0, w = 0, n = 0;
+  view.querySelectorAll('.claim').forEach(el => {
+    if (el.classList.contains('good')) g++; else if (el.classList.contains('warn')) w++; else n++;
+    el.onclick = () => toast((el.dataset.kws ? el.dataset.sec + ' → ' + el.dataset.kws
+      : el.dataset.sec + ' → no requirement keyword (supporting detail)'));
+  });
+  const bar = $('#evbar'), sum = $('#evsum');
+  if (bar) bar.style.width = pct + '%';
+  if (sum) sum.innerHTML = `<b>${covered.length}/${kws.length}</b> requirements named · `
+    + `<span style="color:#8ce99a">${g} backed</span> · <span style="color:#ffd479">${w} unconfirmed</span> · ${n} neutral`;
+}
 function tailored() {
   const d = D.docs || {};
   if (!d.cv && !d.cv_pdf && !d.letter && !d.letter_pdf) {
@@ -457,6 +526,13 @@ function tailored() {
   }
   const raw = (p) => '/raw?path=' + encodeURIComponent(p);
   setTimeout(async () => {
+    renderEvidence();
+    const btn = $('#ev-toggle');
+    if (btn) btn.onclick = () => {
+      const shown = $('#evview').classList.toggle('hide') === false;
+      $('#tpre').classList.toggle('hide', shown);
+      btn.classList.toggle('on', shown);
+    };
     const el = $('#tpre'); if (!el) return;
     if (d.cv_pdf) {                                       // embedded PDF viewer (the real rendered CV)
       el.innerHTML = `<embed src="${raw(d.cv_pdf)}#view=FitH" type="application/pdf"
@@ -477,7 +553,13 @@ function tailored() {
       ${d.letter_pdf ? `<button onclick='viewDoc(${JSON.stringify(d.letter_pdf)},"Cover letter (PDF)")'>Open cover letter PDF</button>` : ''}
       ${d.letter ? `<button onclick='viewDoc(${JSON.stringify(d.letter)},"Cover letter (Word)")'>Cover letter (Word)</button>` : ''}
       ${d.cv_pdf ? `<a class="mini" style="align-self:center" href="${raw(d.cv_pdf)}" target="_blank">open in a tab ↗</a>` : ''}</div>` +
-    `<div class="muted mini" style="margin-bottom:4px">CV${d.cv_pdf ? ' (PDF)' : ''}</div><div id="tpre">loading…</div>` +
+    `<div class="evhead">
+      <button id="ev-toggle" class="small" title="Colour every line of the generated CV by the evidence behind it">◧ Evidence overlay</button>
+      <span class="muted mini" id="evsum"></span>
+    </div>
+    <span class="evbar" title="share of the job's ATS requirements named somewhere in the CV"><i id="evbar"></i></span>
+    <div id="evview" class="hide"></div>` +
+    `<div class="muted mini" style="margin:10px 0 4px">CV${d.cv_pdf ? ' (PDF)' : ''}</div><div id="tpre">loading…</div>` +
     `<details style="margin-top:12px"><summary class="muted mini">content pack (JSON)</summary>` +
     `<pre class="doc">${esc((D.tailored_cv || '') + (D.letter ? '\n\n---\n' + D.letter : ''))}</pre></details>`;
 }
@@ -752,13 +834,15 @@ function collapseCode(html) {
 }
 function setSpin(v) {
   const s = $('#chat-spin'); if (s) s.classList.toggle('hide', !v);   // the single "agent working" indicator
+  const b = $('#chat-stop'); if (b) b.classList.toggle('hide', !v);   // Stop is only meaningful mid-turn
 }
 function openKeys(el) { return new Set([...el.querySelectorAll('details[open]')].map(d => d.getAttribute('data-k')).filter(Boolean)); }
+let CHAT_STICK = true;                                        // follow new output only if the reader is at the bottom
+function chatAtBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 60; }
 function renderChat() {
   const el = $('#chat'), segs = (CHAT && CHAT.segments) || [];
   if (!segs.length && !CHAT.running) { el.innerHTML = '<span class="muted">ask the agent anything…</span>'; return; }
   const keys = openKeys(el);                                  // keep expanded steps open across re-renders
-  const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
   let h = '', i = 0;
   while (i < segs.length) {
     const s = segs[i];
@@ -777,7 +861,7 @@ function renderChat() {
   if (CHAT.running) h += `<div class="working"><span class="muted">▮ working…</span></div>`;
   el.innerHTML = h;
   el.querySelectorAll('details[data-k]').forEach(d => { if (keys.has(d.getAttribute('data-k'))) d.open = true; });
-  if (nearBottom || CHAT.running) el.scrollTop = el.scrollHeight;
+  if (CHAT_STICK) el.scrollTop = el.scrollHeight;             // never yank the reader back down
 }
 
 /* ---------- settings sections ---------- */
@@ -915,7 +999,11 @@ $('#act-toggle').onclick = () => {
   localStorage.setItem('dock.actOpen', open ? '1' : '0');
   if (open) liveTick();
 };
+$('#chat').addEventListener('scroll', () => {                 // remember whether the reader is following along
+  const el = $('#chat'); CHAT_STICK = chatAtBottom(el);
+}, { passive: true });
 $('#chat-send').onclick = () => App.chat();
+$('#chat-stop').onclick = () => App.chatStop();
 $('#chat-new').onclick = () => App.newChat();
 $('#q').oninput = renderRows;
 $('#fstatus').onchange = () => { SPECIAL = ''; ACTIVE_METRIC = ''; document.querySelectorAll('#metrics .metric').forEach(m => m.classList.remove('on')); renderRows(); };

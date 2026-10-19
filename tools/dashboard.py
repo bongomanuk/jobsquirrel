@@ -1062,6 +1062,36 @@ def raw_file(rel):
 CHAT_LOG = os.path.join(LOGS, "dashboard-chat.log")
 CHAT_SESSION = os.path.join(LOGS, "dashboard-chat.session")
 _CHAT = {"proc": None, "queue": []}
+CHAT_PID = os.path.join(LOGS, "dashboard-chat.pid")
+
+
+def _chat_pid_write(pid):
+    try:
+        os.makedirs(LOGS, exist_ok=True)
+        with open(CHAT_PID, "w") as fh:
+            fh.write(str(pid))
+    except OSError:
+        pass
+
+
+def _chat_pid_read():
+    """pid of the running chat turn, even if this dashboard process didn't spawn it."""
+    try:
+        pid = int(open(CHAT_PID).read().strip())
+    except (OSError, ValueError):
+        return 0
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return 0
+    return pid
+
+
+def _chat_running():
+    p = _CHAT.get("proc")
+    if p is not None:
+        return p.poll() is None
+    return bool(_chat_pid_read())
 
 
 def chat_agent():
@@ -1098,16 +1128,45 @@ def _record_chat_session(text):
             pass
 
 
+def chat_stop():
+    """Stop the current turn (and drop queued messages) but KEEP the transcript."""
+    _CHAT["queue"] = []
+    pid = (_CHAT["proc"].pid if _CHAT.get("proc") and _CHAT["proc"].poll() is None
+           else _chat_pid_read())
+    killed = False
+    if pid:
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+            killed = True
+        except OSError:
+            try:
+                os.kill(pid, signal.SIGTERM)
+                killed = True
+            except OSError:
+                pass
+    _CHAT["proc"] = None
+    try:
+        os.remove(CHAT_PID)
+    except OSError:
+        pass
+    return {"ok": "stopped the current turn" if killed else "nothing was running"}
+
+
 def chat_new():
     """Clear the chat history: stop any running turn, drop the queue, transcript + session."""
     _CHAT["queue"] = []
-    p = _CHAT.get("proc")
-    if p and p.poll() is None:
+    pid = (_CHAT["proc"].pid if _CHAT.get("proc") and _CHAT["proc"].poll() is None
+           else _chat_pid_read())
+    if pid:
         try:
-            os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
         except OSError:
             pass
         _CHAT["proc"] = None
+    try:
+        os.remove(CHAT_PID)
+    except OSError:
+        pass
     for path in (CHAT_LOG, CHAT_SESSION):
         try:
             os.remove(path)
@@ -1387,15 +1446,16 @@ def _chat_spawn(message):
     env = agent_env(AGENT_JSON="1")
     if sid:
         env["AGENT_SESSION"] = sid                  # continue the same agent session
-    _CHAT["proc"] = subprocess.Popen(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), prompt],
-                                     cwd=ROOT, env=env, stdout=f, stderr=subprocess.STDOUT,
-                                     start_new_session=True)
+    p = subprocess.Popen(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), prompt],
+                         cwd=ROOT, env=env, stdout=f, stderr=subprocess.STDOUT,
+                         start_new_session=True)
+    _CHAT["proc"] = p
+    _chat_pid_write(p.pid)
 
 
 def _chat_pump():
     """Start the next queued message if the agent is free."""
-    proc = _CHAT.get("proc")
-    if proc and proc.poll() is None:
+    if _chat_running():
         return
     q = _CHAT.get("queue") or []
     if q:
@@ -1406,7 +1466,7 @@ def chat_start(message):
     message = (message or "").strip()[:8000]
     if not message:
         return {"error": "empty message"}
-    if _CHAT.get("proc") and _CHAT["proc"].poll() is None:
+    if _chat_running():
         _CHAT.setdefault("queue", []).append(message)      # queue it — never lose the message
         _chat_echo(message)
         return {"status": "queued", "queued": True, "pending": len(_CHAT["queue"])}
@@ -1573,7 +1633,7 @@ def chat_stream(run_id, since):
     except OSError:
         size, text = 0, ""                          # transcript cleared/not created yet
     _record_chat_session(text)
-    running = bool(_CHAT["proc"] and _CHAT["proc"].poll() is None)
+    running = _chat_running()
     kind = _json_kind(text)
     if kind == "opencode":
         segs = chat_parse_json(text)
@@ -2139,6 +2199,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(start_action(data.get("command", ""), data.get("approval_token", "")))
         if p == "/api/chat":
             return self._json(chat_start(data.get("message", "")))
+        if p == "/api/chat/stop":
+            return self._json(chat_stop())
         if p == "/api/chat/new":
             return self._json(chat_new())
         if p == "/api/kb/delete":

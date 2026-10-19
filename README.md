@@ -65,6 +65,10 @@ blurred in these shots.)
 |---|---|
 | ![Documents tab with the embedded CV](docs/screenshots/documents.png) | ![Agent console](docs/screenshots/agent.png) |
 
+| Evidence overlay — every CV line scored against the job's requirements and the knowledge base |
+|---|
+| ![Evidence overlay: green lines are backed by the knowledge base, amber lines name a requirement it cannot confirm](docs/screenshots/evidence.png) |
+
 | Legend — what every status and queue state means | Settings — accounts, knowledge base, agent permissions |
 |---|---|
 | ![Status and queue legend](docs/screenshots/legend.png) | ![Settings](docs/screenshots/settings.png) |

@@ -142,7 +142,7 @@ pre.doc{background:#07090c;border:1px solid var(--line);border-radius:var(--radi
 .edge{display:none;flex-direction:row;flex:0 0 auto;min-width:0;min-height:0;background:var(--surface)}
 .edge.has{display:flex}
 #app>.edge[data-edge="left"]{width:var(--edge-left,380px);border-right:1px solid var(--line)}
-#app>.edge[data-edge="right"]{width:var(--edge-right,380px);border-left:1px solid var(--line)}
+#app>.edge[data-edge="right"]{width:var(--edge-right,470px);border-left:1px solid var(--line)}
 #main>.edge[data-edge="top"]{height:var(--edge-top,300px);border-bottom:1px solid var(--line)}
 #main>.edge[data-edge="bottom"]{height:var(--edge-bottom,300px);border-top:1px solid var(--line)}
 .edge[data-edge="top"],.edge[data-edge="bottom"]{flex-direction:column}
@@ -290,6 +290,28 @@ body[data-act="closed"] .act-body,body[data-act="closed"] #split-inner{display:n
 #detail .tabs2{padding:0 12px}
 .d-body{padding:14px;overflow:auto;flex:1}
 .mini{font-size:12px}
+
+/* evidence overlay: the generated CV scored against the job's requirements */
+.evhead{display:flex;align-items:center;gap:8px;margin:2px 0 4px;flex-wrap:wrap}
+.evhead #ev-toggle{flex:0 0 auto}
+.evbar{display:block;height:6px;margin:0 0 8px;background:var(--surface2);border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.evbar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,#1f8a4c,#5eead4)}
+#ev-toggle.on{border-color:var(--accent);color:var(--fg);background:var(--surface2)}
+.evintro{margin:2px 0 8px}
+.evsec{margin:8px 0 10px}
+.evsec-h{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:4px}
+.evjob{font-weight:700;color:var(--fg);margin:8px 0 2px;font-size:13px}
+.evjob .muted{font-weight:400}
+.claim{display:grid;grid-template-columns:16px 1fr;gap:6px;border-left:3px solid #2a303c;padding:3px 0 3px 8px;margin:3px 0;cursor:pointer;border-radius:0 6px 6px 0}
+.claim:hover{background:var(--surface2)}
+.claim.good{border-left-color:#1f8a4c;background:rgba(31,138,76,.07)}
+.claim.warn{border-left-color:#b8860b;background:rgba(184,134,11,.08)}
+.claim.plain{border-left-color:#2a303c}
+.cl-mark{font-weight:800;color:var(--muted)}
+.claim.good .cl-mark{color:#8ce99a}.claim.warn .cl-mark{color:#ffd479}
+.cl-text{font-size:12.5px;line-height:1.5}
+.cl-kws{grid-column:2;margin-top:2px}
+mark.kw{background:#24405a;color:#bfe3ff;border-radius:3px;padding:0 2px}
 .etag{font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:0 5px;margin-left:4px;vertical-align:1px}
 
 /* settings */
