@@ -255,6 +255,14 @@ def match_row(company, subject, rows):
     return None
 
 
+def follow_up(category, sender, subject):
+    """A short, human follow-up line for statuses that usually need a reply."""
+    if category == "INTERVIEW":
+        who = sender_display(sender) or "the recruiter"
+        return f"Reply to {who} — {subject[:90]}"
+    return None
+
+
 def propose(current, category):
     if category == "REJECTION":
         return current if current == "OFFER" else "REJECTED"
@@ -362,7 +370,7 @@ def main():
             continue
         proposed = propose(row["status"], category)
         if proposed and proposed != row["status"]:
-            changes.append((row, proposed, category, date, subject, amb))
+            changes.append((row, proposed, category, date, subject, amb, sender))
 
     # keep the cache bounded to the current window and persist it
     live = {m["id"] for m in messages}
@@ -390,7 +398,7 @@ def main():
     print("== proposed register changes ==")
     if not changes:
         print("  (none)")
-    for row, proposed, category, date, subject, amb in changes:
+    for row, proposed, category, date, subject, amb, _sender in changes:
         flag = "  (role ambiguous - best guess)" if amb else ""
         print(f"  {row['company']:<24} {row['role'][:38]:<38} {row['status']:<10} -> {proposed:<10} [{category}]{flag}")
 
@@ -414,9 +422,12 @@ def main():
             print(f"  [{category}] {company:<24} {subject[:60]}")
 
     if args.apply and changes:
-        for row, proposed, category, date, subject, amb in changes:
+        for row, proposed, category, date, subject, amb, sender in changes:
             note = f"gmail: {category} {date}" + (" (role ambiguous - best guess)" if amb else "")
-            R.set_row(row["company"], row["role"], status=proposed, note=note)
+            action = follow_up(category, sender, subject) if proposed == "INTERVIEW" else None
+            if proposed in ("REJECTED", "CLOSED"):
+                action = ""                      # nothing to do on a dead application
+            R.set_row(row["company"], row["role"], status=proposed, note=note, action=action)
         print(f"\napplied {len(changes)} change(s); register regenerated")
     elif changes:
         print("\n(dry run - re-run with --apply to write these)")

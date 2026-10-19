@@ -48,6 +48,8 @@
             <option value="contract">contract</option><option value="consultant">consultant</option>
             <option value="freelance">freelance</option><option value="internship">internship</option>
             <option value="temporary">temporary</option><option value="__none">unknown</option></select>
+          <label class="row mini" id="faction-wrap" title="Only rows that need a reply or other follow-up">
+            <input type="checkbox" id="faction"> ⚑ action <span id="fact-count" class="muted"></span></label>
           <button id="export">Export CSV</button>
           <button id="a-prepare-shown" title="Generate documents for the rows shown — runs the agent per role (a few minutes each); nothing is submitted">⚡ Prepare shown</button>
           <button id="a-submit-shown" class="risky" title="Submit the PREPARED rows shown, with the documents already generated — sends applications; needs approval">🚀 Submit prepared</button>
@@ -212,6 +214,7 @@
         <dt>Date</dt><dd>When the register row was last updated.</dd>
         <dt>ATS</dt><dd>The applicant-tracking system the application went through.</dd>
         <dt>Status</dt><dd>Where the application currently stands (list below).</dd>
+        <dt>⚑ action</dt><dd>A reply or follow-up is needed (e.g. answer an interview email, complete an assessment). Tick the toolbar box to show only those; set or clear the flag in the row's drawer.</dd>
         <dt>Match</dt><dd>How much of the ad's ATS keyword list the tailored CV covers. <b>align✗</b> = the pre-submit alignment gate failed.</dd>
         <dt>Queue</dt><dd>Where the role sits in the apply queue (list below).</dd>
         <dt>Files (✓)</dt><dd>Provenance on file — the exact CV + letter and their SHA-256 hashes. <span class="muted">—</span> = none recorded.</dd>

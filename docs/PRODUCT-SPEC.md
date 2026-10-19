@@ -52,7 +52,7 @@ Components:
 
 | Path | Contents |
 |---|---|
-| `state/applications.csv` | Canonical register: `date,company,role,ats,status,letter,notes`. One row per company+role. |
+| `state/applications.csv` | Canonical register: `date,company,role,ats,status,letter,notes,employment,action`. One row per company+role. `action` is a short follow-up flag (reply/assessment/booking) surfaced as ⚑ in the grid and filterable. |
 | `state/submissions.csv` | Provenance ledger: paths + sha256 + snapshot dir + evidence + confidence (`verified`/`forced`/`inferred`). |
 | `state/queue.tsv` | Pending roles: `company␉role␉url␉cv-archetype␉ats␉key`. |
 | `state/queue.done` / `queue.retry` / `queue-human.tsv` | Completion, retry, human-assist queues. |
@@ -78,6 +78,9 @@ Components:
 
 `SUBMITTED | IN_PROGRESS | INTERVIEW | OFFER | REJECTED | BLOCKED | MANUAL | PREPARED | CLOSED`.
 
+- **Follow-up flags** (`action` in the register; ⚑ in the grid, a toolbar filter, and editable
+  in the row drawer). Reconcile sets one on an interview invite (`Reply to <sender> — <subject>`) and
+  clears it on a rejection; anything manual (assessment, booking) can be flagged/cleared in the UI.
 - **Engagement type** (`employment` in the register; shown as a per-row badge, editable in
   the drawer, filterable in the toolbar): `full-time | part-time | contract | consultant |
   freelance | internship | temporary`. Set explicitly on the row; otherwise guessed from the

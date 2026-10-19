@@ -290,6 +290,18 @@ const App = {
     const d = await api('/api/register/row', { company: CUR.company, role: CUR.role, status: $('#dt-status').value, notes: $('#dt-notes').value, employment: $('#dt-emp') ? $('#dt-emp').value : undefined });
     toast(d.ok || d.error, !!d.error); if (!d.error) { loadGrid(); }
   },
+  saveAction: async () => {
+    const v = ($('#dt-action') && $('#dt-action').value || '').trim();
+    if (!v) return App.clearAction();
+    const d = await api('/api/register/row', { company: CUR.company, role: CUR.role, action: v });
+    toast(d.ok || d.error, !!d.error);
+    if (!d.error) { CUR.action = v; if (DTAB === 0) dt(0); loadGrid(); }
+  },
+  clearAction: async () => {
+    const d = await api('/api/register/row', { company: CUR.company, role: CUR.role, action: '' });
+    toast(d.ok || d.error, !!d.error);
+    if (!d.error) { CUR.action = ''; if (DTAB === 0) dt(0); loadGrid(); }
+  },
 };
 let CF = 'cv.json', CUR = null, CF_SEC = 'accounts';
 
@@ -330,13 +342,15 @@ async function gridTick() {                 // keep the grid live (faster while 
 function renderRows() {
   const q = $('#q').value.toLowerCase(), st = $('#fstatus').value, qq = $('#fqueue').value;
   const ft = $('#ftype') ? $('#ftype').value : '';
+  const fa = $('#faction') && $('#faction').checked;
   const cy = String(new Date().getFullYear());
   const shortDate = (d) => { const [y, m, dd] = d.split('-'); return y === cy ? `${m}-${dd}` : `${y.slice(2)}-${m}-${dd}`; };
   const disp = (r) => r.label || r.status;               // INTERVIEW rows show SCHEDULED when an interview is still ahead
   const statusMatch = (r) => !st || (st === 'INTERVIEW' ? ['INTERVIEW', 'SCHEDULED', 'INVITED'].includes(disp(r)) : disp(r) === st);
   const typeMatch = (r) => !ft || (ft === '__none' ? !r.employment : (r.employment || '') === ft);
-  let rows = GRID.filter(r => statusMatch(r) && typeMatch(r) && (!qq || r.queue === qq) &&
-    (!q || (r.company + ' ' + r.role + ' ' + (r.ats || '')).toLowerCase().includes(q)));
+  const actMatch = (r) => !fa || !!r.action;
+  let rows = GRID.filter(r => statusMatch(r) && typeMatch(r) && actMatch(r) && (!qq || r.queue === qq) &&
+    (!q || (r.company + ' ' + r.role + ' ' + (r.ats || '') + ' ' + (r.action || '')).toLowerCase().includes(q)));
   if (SPECIAL === 'in_process') rows = rows.filter(r => ['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER'].includes(r.status));
   else if (SPECIAL === 'blocked') rows = rows.filter(r => ['BLOCKED', 'MANUAL'].includes(r.status));
   else if (SPECIAL === 'applied') rows = rows.filter(r => r.applied);
@@ -350,6 +364,7 @@ function renderRows() {
     return av < bv ? -SORT.dir : av > bv ? SORT.dir : 0;
   });
   $('#count').textContent = `${rows.length} / ${GRID.length} rows`;
+  if ($('#fact-count')) { const n = GRID.filter(r => r.action).length; $('#fact-count').textContent = n ? `(${n})` : ''; }
   const mbadge = (r) => r.match == null ? '<span class="muted"' + T('No score — this role has no saved job ad (ATS keywords) and/or no CV to compare') + '>—</span>'
     : `<span class="badge ${r.match >= 70 ? 'good' : r.match >= 40 ? 'mid' : 'bad'}"${T("CV-to-job fit: this % of the ad's ATS keywords are covered by the tailored CV")}>${r.match}%</span>`
       + (r.alignment === 'FAIL' ? ' <span class="badge bad"' + T('Pre-submit alignment gate FAILED for this role — open the row to see why') + '>✗</span>' : '');
@@ -359,7 +374,7 @@ function renderRows() {
       && PANELS.detail && PANELS.detail.open) ? ' sel' : '';
     return `<tr class="click${sel}" onclick="App.open(${i})">` +
       `<td class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet — queued, not applied')}>${r.date ? esc(shortDate(r.date)) : '—'}</td>` +
-      `<td${T(r.company + '  ·  employer / recruiter')}>${(r.running || PENDING.has(r.key)) ? '<span class="spin" title="Being worked on now">🥜</span> ' : ''}${esc(r.company)}</td>` +
+      `<td${T(r.company + '  ·  employer / recruiter')}>${(r.running || PENDING.has(r.key)) ? '<span class="spin" title="Being worked on now">🥜</span> ' : ''}${r.action ? `<span class="actflag"${T(r.action)}>⚑</span> ` : ''}${esc(r.company)}</td>` +
       `<td${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}</td>` +
       `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
       `<td>${chip(r.label || r.status)}${r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : ''}</td><td>${mbadge(r)}</td>` +
@@ -400,7 +415,12 @@ function summary(r) {
   const known = reg.includes(r.status);
   const notes = (r.notes || '').trim();
   const hist = notes ? notes.split(/\s*\|\s*/).filter(Boolean).map(x => `<li>${md(x)}</li>`).join('') : '';
-  return `<div class="statebox">
+  const act = (r.action || '').trim();
+  return (act ? `<div class="actionbox"><span class="actflag">⚑</span> <b>Action:</b> ${esc(act)}</div>` : '') +
+    `<div class="row" style="margin:6px 0 10px"><input id="dt-action" placeholder="needs a reply or follow-up? describe it…" value="${esc(act)}" style="flex:1">
+      <button onclick="App.saveAction()">${act ? 'Update flag' : '⚑ Flag action'}</button>
+      ${act ? '<button onclick="App.clearAction()">Clear</button>' : ''}</div>` +
+    `<div class="statebox">
       <div class="row">${chip(r.label || r.status)}${r.hint ? `<span class="statehint">${esc(r.hint)}</span>` : ''}</div>
       <div class="stages">${(() => {
         const st = r.stages || {};
@@ -1059,11 +1079,12 @@ $('#q').oninput = renderRows;
 $('#fstatus').onchange = () => { SPECIAL = ''; ACTIVE_METRIC = ''; document.querySelectorAll('#metrics .metric').forEach(m => m.classList.remove('on')); renderRows(); };
 $('#fqueue').onchange = () => { SPECIAL = ''; ACTIVE_METRIC = ''; document.querySelectorAll('#metrics .metric').forEach(m => m.classList.remove('on')); renderRows(); };
 $('#ftype').onchange = () => renderRows();
+if ($('#faction')) $('#faction').onchange = () => renderRows();
 $('#a-prepare-shown').onclick = () => App.prepareShown();
 $('#a-submit-shown').onclick = () => App.submitPrepared();
 $('#a-match').onclick = () => App.matchShown($('#a-match'));
 $('#export').onclick = () => {
-  const cs = ['date', 'company', 'role', 'employment', 'ats', 'status', 'match', 'queue', 'applied', 'spec', 'key'];
+  const cs = ['date', 'company', 'role', 'employment', 'ats', 'status', 'action', 'match', 'queue', 'applied', 'spec', 'key'];
   const body = GRID.map(r => cs.map(c => JSON.stringify(r[c] == null ? '' : r[c])).join(',')).join('\n');
   const url = URL.createObjectURL(new Blob([cs.join(',') + '\n' + body], { type: 'text/csv' }));
   const a = document.createElement('a'); a.href = url; a.download = 'jobsquirrel.csv'; a.click(); URL.revokeObjectURL(url);

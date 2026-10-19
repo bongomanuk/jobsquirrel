@@ -174,18 +174,20 @@ def provenance(company, role):
                 pass
             return {"company": r["company"], "role": r["role"], "date": r.get("date"),
                     "status": r.get("status"), "confidence": r.get("confidence"),
+                    "action": (r.get("action") or "").strip(),
                     "cv_file": r.get("cv_file"), "cv_sha256": r.get("cv_sha256"),
                     "letter_file": r.get("letter_file"), "letter_sha256": r.get("letter_sha256"),
                     "evidence": r.get("evidence"),"snapshot_dir": snap, "screenshots": shots}
     return {}
 
 
-def update_row(company, role, status, note, employment=None):
+def update_row(company, role, status, note, employment=None, action=None):
     if not (company and role):
         return {"error": "company and role required"}
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import register as REG
-    REG.set_row(company, role, status=(status or "").upper(), note=note or "", employment=employment)
+    REG.set_row(company, role, status=(status or "").upper(), note=note or "",
+                employment=employment, action=action)
     return {"ok": f"updated {company} / {role}"}
 
 
@@ -865,7 +867,7 @@ def grid():
                     "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, ""),
                     "spec": key in specs, "applied": ck in subm,
                     "match": cov, "alignment": align, "running": ck in running,
-                    "notes": notes, "letter": r.get("letter", ""),
+                    "notes": notes, "letter": r.get("letter", ""), "action": (r.get("action") or "").strip(),
                     "url": qrow.get(ck, {}).get("url", "") or subm_url.get(ck, ""),
                     "stages": stages_for(key, ck in subm),
                     "hint": hint})
@@ -899,7 +901,7 @@ def grid():
                     "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, "pending"),
                     "spec": key in specs, "applied": ck in subm,
                     "match": cov, "alignment": m.get("alignment", ""), "running": ck in running,
-                    "notes": "", "letter": "", "url": r.get("url", ""), "stages": st,
+                    "notes": "", "letter": "", "action": "", "url": r.get("url", ""), "stages": st,
                     "hint": _hint(stg, "")})
     _save_cov(); _save_emp()
     out.sort(key=lambda x: (x["date"] or ""), reverse=True)
@@ -2257,7 +2259,7 @@ class H(BaseHTTPRequestHandler):
         if p == "/api/register/row":
             return self._json(update_row(data.get("company", ""), data.get("role", ""),
                                          data.get("status", ""), data.get("notes", ""),
-                                         data.get("employment")))
+                                         data.get("employment"), data.get("action")))
         if p == "/api/queue/action":
             return self._json(queue_action(data.get("action", ""), data.get("company", ""), data.get("role", "")))
         if p == "/api/roles/discover":
