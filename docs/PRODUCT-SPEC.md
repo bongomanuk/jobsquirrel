@@ -69,6 +69,7 @@ Components:
 | `config/cv.json` | Ground-truth CV (experience/projects/education/skills/sidebar). |
 | `config/archetypes.json` | Role-family CV templates (one per family) + base letter. |
 | `config/google.json` | Where the Google OAuth client/token live; optional client id/secret. Editable in Settings → Accounts. |
+| `config/recruiter-aliases.json` | Optional sender/agency name → register company map (kept out of the code, and out of the public mirror). |
 | `config/email.json` / `config/calendar.json` | Sender signature + attachments; calendar timezone, meeting length, working hours. |
 | `kb/sources/` | Private knowledge corpus (CVs, own sites, contracts…). |
 | `kb/graphrag/` | Index + settings. |

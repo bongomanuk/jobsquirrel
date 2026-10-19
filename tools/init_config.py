@@ -33,6 +33,7 @@ OPTIONAL = {
     "google.json": "google.example.json",
     "email.json": "email.example.json",
     "calendar.json": "calendar.example.json",
+    "recruiter-aliases.json": "recruiter-aliases.example.json",
 }
 
 PLACEHOLDER_STRINGS = (

@@ -138,13 +138,23 @@ def terms(value):
     return list(dict.fromkeys(out))
 
 
-# Sender/display names that differ from the register's company name.
-SENDER_ALIASES = {
-    "breakmark": "AcmeHR",
-    "recruitment agency": "Acme Client",
-    "publisher": "Acme",
-    "publisher ": "Acme",
-}
+# Sender/display names that differ from the register's company name. Kept in
+# config/recruiter-aliases.json (private, optional) so real employer/agency names
+# never end up in the code or the public mirror.
+ALIAS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "config", "recruiter-aliases.json")
+
+
+def _load_aliases():
+    try:
+        with open(ALIAS_FILE, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return {str(k).strip().lower(): str(v).strip() for k, v in data.items() if v}
+    except (OSError, ValueError):
+        return {}
+
+
+SENDER_ALIASES = _load_aliases()
 
 # Single-word company terms that are also ordinary hiring-email vocabulary.
 BODY_WORD_STOP = {"recruiter", "recruiters", "recruiting", "future", "candidate",
@@ -185,8 +195,8 @@ def match_company(text, rows, body="", sender=""):
 
     Matching is deterministic: the longest matching term wins; ties are broken in
     favour of a company whose name matches the sender's domain, then the shorter
-    (more exact) company name. This stops 'Acme' vs 'a parent/subsidiary pair' and
-    'Alpha Ltd' vs 'Beta Ltd' from flipping between runs on set-iteration order.
+    (more exact) company name. This stops a parent/subsidiary pair, or two
+    near-identical names, from flipping between runs on set-iteration order.
     """
     low = text.lower()
     dom = sender_domain(sender)
@@ -363,7 +373,7 @@ def main():
         # An invite/rejection for a company with several applications whose
         # subject names none of the roles is NOT guessed: it is reported under
         # "role ambiguous" for manual review. Guessing the most recent row made
-        # past runs reject the wrong role (see the ambiguous matches notes).
+        # past runs rejected the wrong role (see the notes on ambiguous matches).
         if not row:
             if category != "OTHER":
                 (ambiguous if company else unmatched).append((date, category, company or sender, subject))
