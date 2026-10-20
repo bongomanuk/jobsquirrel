@@ -108,7 +108,7 @@ Components:
 | `cv_builder.py` / `build_archetypes.py` / `cv_target.py` / `make_letter.py` | Render CVs (docx+pdf) and letters from config. |
 | `kb_graphrag.py` | Build the cited context pack for a role. |
 | `discover.py` / `email_opportunities.py` | Find roles from LinkedIn alerts / recruiter mail. |
-| `gmail_readonly.py` / `gmail_reconcile.py` | Read-only inbox sync + reconcile the register. |
+| `gmail_readonly.py` / `gmail_reconcile.py` | Read-only inbox sync + reconcile the register (inbound status changes; outbound Sent mail adds dated notes only). |
 | `gmail_send.py` | Send a **saved draft** with attachments — requires a human dashboard receipt; no env bypass. |
 | `send_receipt.py` | One-time receipts bound to a draft's SHA-256 (issued by the dashboard after approval). |
 | `draft_email.py` | Draft replies tied to a role (`state/drafts/<company-role>/`); listed, edited and sent from the row drawer. |

@@ -106,7 +106,9 @@ review it in the role drawer and press **Send with approval**. Only then does th
 dashboard issue a one-time receipt for that exact draft and `gmail_send.py` send
 it (attachments supported). A human at a terminal can still get an explicit
 preview + y/N prompt. There is no environment-variable bypass: an agent setting
-`APPROVE_SEND_EMAIL=1` cannot send.
+`APPROVE_SEND_EMAIL=1` cannot send. Every send is recorded on the role as a
+dated note with the Gmail message id (use a `draft_email.py` draft or pass
+`--company/--role`); `gmail_reconcile.py` also scans Sent as a backstop.
 To enable it, re-authorise including `gmail.send` (the tool's `--auth` uses the
 scopes in `gmail_readonly.py`).
 

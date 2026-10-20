@@ -90,6 +90,8 @@ def main():
     ap.add_argument("--signature", action="store_true",
                     help="append the signature from config/email.json")
     ap.add_argument("--max-attachment-mb", type=float, default=None)
+    ap.add_argument("--company", default="", help="register company (or Company: in the draft)")
+    ap.add_argument("--role", default="", help="register role (or Role: in the draft)")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -111,6 +113,8 @@ def main():
         print("--to and --subject are required (or provide them in --draft)", file=sys.stderr)
         sys.exit(2)
     args.attach = list(args.attach) + draft_attaches
+    company = (args.company or meta.get("company") or "").strip()
+    role = (args.role or meta.get("role") or "").strip()
 
     body = args.body
     if args.body_file:
@@ -212,7 +216,18 @@ def main():
     import gmail_readonly as G
     svc = G.authenticate()
     sent = svc.users().messages().send(userId="me", body={"raw": raw}).execute()
-    print("sent", sent.get("id"))
+    mid = sent.get("id", "")
+    print("sent", mid)
+    if company and role:
+        try:
+            import register as R
+            if R.log_outbound(company, role, args.to, args.subject, mid):
+                print(f"register: recorded outbound email on {company} — {role}")
+        except Exception as exc:
+            print(f"warning: email sent but register update failed: {exc}", file=sys.stderr)
+    else:
+        print("note: no Company:/Role: on the draft and no --company/--role; "
+              "email not linked to a register row", file=sys.stderr)
 
 
 if __name__ == "__main__":

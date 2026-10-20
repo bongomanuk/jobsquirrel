@@ -158,6 +158,35 @@ def set_row(company, role, status="", note="", employment=None, action=None):
         return n
 
 
+def log_outbound(company, role, to, subject, message_id="", when="", action=None):
+    """Record an email we sent on the role: dated note + Gmail message id.
+
+    Idempotent: a message id already present in the row's notes is not added
+    again, so reconcile can safely re-scan the Sent folder. `action=None` leaves
+    the follow-up flag alone; `action=""` clears it.
+    """
+    mid = (message_id or "").strip()
+    note = f"{when or date.today().isoformat()}: email sent to {to or '(unknown recipient)'}"
+    if subject:
+        note += f" — {subject.strip()[:140]}"
+    if mid:
+        note += f" (message id {mid})"
+    with locked():
+        rows = load()
+        k = _key(company, role)
+        for r in rows:
+            if _key(r["company"], r["role"]) == k:
+                if mid and mid in r["notes"]:
+                    return False
+                r["notes"] = (r["notes"] + " | " if r["notes"] else "") + note
+                if action is not None:
+                    r["action"] = action.strip()
+                save(rows)
+                render(silent=True)
+                return True
+    return False
+
+
 def add_note(needle, text, status=""):
     """Append a note (and optionally set status) on every row matching needle."""
     with locked():

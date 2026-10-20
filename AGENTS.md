@@ -73,7 +73,11 @@ reports a clean config.
    the human reviews it in the role drawer and presses **Send with approval**. Never
    call `gmail_send.py` to send a new email, never send `--to/--body` directly, and
    never set `APPROVE_SEND_EMAIL`, and never call the Gmail API directly — `gmail_send.py`
-   requires a saved draft plus a one-time human receipt and refuses otherwise. Calendar writes (`calendar_event.py`) are
+   requires a saved draft plus a one-time human receipt and refuses otherwise.
+   Every send records a dated outbound note with the Gmail message id on the role:
+   use a canonical `draft_email.py` draft (`Company:`/`Role:` headers) or pass
+   `--company/--role`. `gmail_reconcile.py` also scans Sent as a backstop (notes
+   only; it never derives a status from our own email). Calendar writes (`calendar_event.py`) are
    approval-gated the same way (answer the dashboard prompt, set
    `APPROVE_CALENDAR_WRITE=1`, or answer y); reading the calendar and importing an
    `.ics` with `--dry-run` need no approval.

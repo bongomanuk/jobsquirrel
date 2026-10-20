@@ -23,6 +23,8 @@ import os
 import re
 import sys
 import time
+from datetime import date
+from email.utils import parsedate_to_datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import register as R
@@ -94,6 +96,11 @@ DEFAULT_QUERY = os.environ.get(
     "from:greenhouse.io OR from:greenhouse-mail.io OR from:lever.co OR from:hire.lever.co OR "
     "from:myworkday.com OR from:successfactors.eu OR from:workable.com OR from:pinpoint.email OR "
     "from:join.com OR from:zerolime.se OR from:deel.com OR from:jobylon.com OR label:applications))")
+
+# Outbound mail: what WE sent (follow-ups, replies). Notes only - never a status.
+OUTBOUND_QUERY = os.environ.get(
+    "GMAIL_OUTBOUND_QUERY",
+    "in:sent newer_than:14d -in:spam -in:trash")
 
 COMMON = {"group", "labs", "health", "studios", "studio", "recruiting", "recruitment",
           "hiring", "team", "the", "ab", "inc", "ltd", "technologies", "technology"}
@@ -260,7 +267,7 @@ def match_row(company, subject, rows):
         key = (full, word)
         if best is None or key > best_key:
             best, best_key = r, key
-    if best_key and (best_key[0] or best_key[1]):
+    if best_key is not None and (best_key[0] or best_key[1]):
         return best
     return None
 
@@ -330,6 +337,43 @@ def cached_message(service, mid, cache):
     return hit, False
 
 
+def _msg_date(header):
+    try:
+        return parsedate_to_datetime(header).date().isoformat()
+    except (TypeError, ValueError):
+        return date.today().isoformat()
+
+
+def scan_outbound(service, rows, max_results=1000):
+    """Sent mail from the last 14 days, matched to register rows.
+
+    Outbound mail can only add a note (with the Gmail message id); it must never
+    change status - our own email is not an outcome. Skipped when the id is
+    already in the row's notes, so repeated runs are idempotent.
+    """
+    found, ambiguous = [], []
+    for m in list_ids(service, OUTBOUND_QUERY, max_results=max_results):
+        msg = fetch_full(service, m["id"])
+        headers = {h["name"].lower(): h["value"] for h in msg["payload"].get("headers", [])}
+        to = ", ".join(x for x in (headers.get("to", ""), headers.get("cc", "")) if x)
+        subject = headers.get("subject", "")
+        # Outbound matching is deliberately conservative: recipient + subject
+        # only, never the body (our own prose mentions many companies).
+        company = match_company(f"{subject} {sender_display(to)}", rows, sender=to)
+        row = match_row(company, subject, rows)
+        if not row:
+            if company:
+                ambiguous.append((subject, company, to))
+            continue
+        mid = m["id"]
+        if mid in row["notes"]:
+            continue
+        found.append((_msg_date(headers.get("date", "")), row["company"], row["role"],
+                      sender_display(to) or to, subject, mid))
+        time.sleep(0.05)
+    return found, ambiguous
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="write changes (default: dry run)")
@@ -382,6 +426,8 @@ def main():
         if proposed and proposed != row["status"]:
             changes.append((row, proposed, category, date, subject, amb, sender))
 
+    outbound, outbound_ambiguous = scan_outbound(service, rows)
+
     # keep the cache bounded to the current window and persist it
     live = {m["id"] for m in messages}
     cache = {k: v for k, v in cache.items() if k in live}
@@ -405,7 +451,17 @@ def main():
             if not any(any(a in link for a in acks) for link in e[3])
         ]
 
-    print("== proposed register changes ==")
+    print("== outbound email to record (notes only) ==")
+    if not outbound:
+        print("  (none)")
+    for odate, company, role, to, subject, mid in outbound:
+        print(f"  {odate}  {company:<24} {role[:38]:<38} -> {to[:40]}  [{subject[:50]}]")
+    if outbound_ambiguous:
+        print("\n== outbound company matched but role ambiguous (not recorded) ==")
+        for subject, company, to in outbound_ambiguous:
+            print(f"  {company:<24} -> {to[:40]}  {subject[:60]}")
+
+    print("\n== proposed register changes ==")
     if not changes:
         print("  (none)")
     for row, proposed, category, date, subject, amb, _sender in changes:
@@ -430,6 +486,11 @@ def main():
         print("\n== company matched but role ambiguous (review manually) ==")
         for date, category, company, subject in ambiguous:
             print(f"  [{category}] {company:<24} {subject[:60]}")
+
+    if args.apply and outbound:
+        for odate, company, role, to, subject, mid in outbound:
+            R.log_outbound(company, role, to, subject, mid, when=odate)
+        print(f"\nrecorded {len(outbound)} outbound email(s) in the register")
 
     if args.apply and changes:
         for row, proposed, category, date, subject, amb, sender in changes:
