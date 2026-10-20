@@ -109,7 +109,8 @@ Components:
 | `kb_graphrag.py` | Build the cited context pack for a role. |
 | `discover.py` / `email_opportunities.py` | Find roles from LinkedIn alerts / recruiter mail. |
 | `gmail_readonly.py` / `gmail_reconcile.py` | Read-only inbox sync + reconcile the register. |
-| `gmail_send.py` | Send email with attachments — **approval-gated**. |
+| `gmail_send.py` | Send a **saved draft** with attachments — requires a human dashboard receipt; no env bypass. |
+| `send_receipt.py` | One-time receipts bound to a draft's SHA-256 (issued by the dashboard after approval). |
 | `draft_email.py` | Draft replies tied to a role (`state/drafts/<company-role>/`); listed, edited and sent from the row drawer. |
 | `google_config.py` | Resolve/write the Google OAuth client + token paths (`--status`, `--paths`, `--write-credentials`). |
 | `calendar_event.py` | List/create/update events, import `.ics` invites, suggest free slots — writes **approval-gated**. |
@@ -133,7 +134,8 @@ Components:
    Every decision (granted/refused) is appended to `state/approvals.log`. Default is
    **ask-or-refuse, never silent**.
 4. **CAPTCHA/2FA.** Stop, record `BLOCKED`, never evade.
-5. **Email.** All outbound mail is approval-gated (`gmail_send.py`, and follow-ups).
+5. **Email.** Draft-first: the agent saves a reply (`draft_email.py`), the human presses **Send with approval**
+   in the drawer, and only then does `gmail_send.py` send that exact draft (one-time receipt; no env bypass).
    Mailbox deletion uses a separate `gmail.modify` token and `gmail_delete.py --authorize AUTHORIZE-DELETE`.
 6. **Web UI.** Binds `127.0.0.1`; every write needs a per-session token (anti-CSRF); risky
    actions also gated (see §9).

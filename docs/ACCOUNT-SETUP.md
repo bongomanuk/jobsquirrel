@@ -101,10 +101,12 @@ python3 tools/google_config.py --paths      # shell-friendly CONFIG_DIR/CREDENTI
 
 ### Sending mail (opt-in, attachments supported)
 
-`tools/gmail_send.py` can send replies **with attachments**, but only with your
-**explicit approval** of recipient, subject, content and attachments each time —
-answer `y` at the terminal, or approve the prompt the dashboard shows when the
-agent is running inside Jobsquirrel.
+Email is **draft-first**. The agent saves a reply with `tools/draft_email.py`; you
+review it in the role drawer and press **Send with approval**. Only then does the
+dashboard issue a one-time receipt for that exact draft and `gmail_send.py` send
+it (attachments supported). A human at a terminal can still get an explicit
+preview + y/N prompt. There is no environment-variable bypass: an agent setting
+`APPROVE_SEND_EMAIL=1` cannot send.
 To enable it, re-authorise including `gmail.send` (the tool's `--auth` uses the
 scopes in `gmail_readonly.py`).
 
@@ -151,7 +153,7 @@ without overlapping existing events — pick one, then `create` the event. The
 same consent as Gmail is all it needs; timezone, default length and working
 hours come from `config/calendar.json`, editable in Settings → Accounts.
 
-Writes are approval-gated exactly like sending mail: answer `y` at the prompt,
+Calendar writes are approval-gated: answer `y` at the prompt,
 approve the dashboard prompt, or set `APPROVE_CALENDAR_WRITE=1` for that one
 command. `--dry-run` shows the event
 without writing. `config/calendar.json` (see `config/calendar.example.json`)

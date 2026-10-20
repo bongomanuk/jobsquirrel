@@ -58,3 +58,6 @@ kb/graphrag/
 
 # runtime agent permission policy (machine-local)
 config/agent-permissions.json
+
+# one-time email send receipts (human approvals)
+state/send-receipts/

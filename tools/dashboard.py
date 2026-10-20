@@ -243,7 +243,18 @@ def draft_send(path, clear_action=False):
         d = DE.load_draft(path)
     except (OSError, ValueError) as e:
         return {"error": str(e)}
+    # A human must approve this exact draft, every time. No env bypass.
+    who = d.get("to") or "(no recipient)"
+    purpose = f"sending draft to {who} — {d.get('subject') or '(no subject)'}"
+    if d.get("attachments"):
+        purpose += f" (attachments: {', '.join(os.path.basename(a) for a in d['attachments'])})"
+    if consent_request(purpose, "SEND-EMAIL", timeout=300).get("decision") != "allow":
+        return {"error": "refused: the email was not approved"}
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import send_receipt as SRE
+    SRE.issue(d["path"], "dashboard")
     env = agent_env()
+    env.pop("APPROVE_SEND_EMAIL", None)
     try:
         r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "gmail_send.py"),
                             "--draft", d["path"]],
@@ -1360,7 +1371,8 @@ def _role_context(company, role, key):
             + "\n".join(bits) + "\n\n"
             "Answer questions about this role and help with next steps: reply wording, interview "
             "preparation, follow-ups, gaps and positioning. Be concise and practical. If email is "
-            "needed, save a draft with tools/draft_email.py (never send). Never submit an application "
+            "needed, save a draft with tools/draft_email.py and ask the candidate to press Send with "
+            "approval in the drawer (never send; gmail_send.py refuses unapproved drafts). Never submit an application "
             "or change the register without explicit approval. Read the job ad/CV files above when useful.")
 
 
@@ -1478,6 +1490,10 @@ CHAT_PREAMBLE = (
     "'how's it going' as job-search progress (applications, interviews, replies, queue) unless the "
     "operator explicitly asks about the code. Be concise; use the repo's tools; never take an "
     "irreversible action (submitting applications, sending email, deleting mail) without explicit approval. "
+    "NEVER send email yourself: save a draft with tools/draft_email.py and ask the candidate to press "
+    "Send with approval in the role drawer. gmail_send.py refuses non-draft sends and drafts without a "
+    "human dashboard receipt; do not try to set APPROVE_SEND_EMAIL, call the Gmail API directly, "
+    "or work around it. "
     "IMPORTANT, this is a job-search tool: when the operator says 'skills', 'my experience', 'my background' "
     "or 'add what I did at X', they mean their JOB/CAREER skills (technologies, competencies, roles, "
     "achievements) for their CV — capture those in the knowledge base (kb/sources/*.md, grounded and "

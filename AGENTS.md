@@ -69,9 +69,11 @@ reports a clean config.
 3. **Eligibility first.** Only apply to roles compatible with the candidate's
    rules in `config/profile.md` (location/work-model, languages, stack). If
    unclear or excluded, record `CLOSED`/`BLOCKED` with the reason and stop.
-4. **Never send email without explicit human approval** of recipient, subject,
-   content and attachments (`gmail_send.py` supports `--attach`). Reply drafts are
-   fine; sending needs a "yes". Calendar writes (`calendar_event.py`) are
+4. **Email is draft-first and human-sent.** Save a reply with `tools/draft_email.py`;
+   the human reviews it in the role drawer and presses **Send with approval**. Never
+   call `gmail_send.py` to send a new email, never send `--to/--body` directly, and
+   never set `APPROVE_SEND_EMAIL`, and never call the Gmail API directly — `gmail_send.py`
+   requires a saved draft plus a one-time human receipt and refuses otherwise. Calendar writes (`calendar_event.py`) are
    approval-gated the same way (answer the dashboard prompt, set
    `APPROVE_CALENDAR_WRITE=1`, or answer y); reading the calendar and importing an
    `.ics` with `--dry-run` need no approval.

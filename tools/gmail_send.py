@@ -6,11 +6,14 @@ only has gmail.readonly, re-consent once:
 
   .venv/bin/python tools/gmail_readonly.py --auth
 
+Sending is draft-first: save a reply with tools/draft_email.py, then a human
+approves it in the role drawer (Send with approval). This tool refuses to send
+anything that is not a saved draft with a valid dashboard receipt; there is no
+environment-variable bypass. A human at a terminal gets an explicit y/N preview.
+
 Usage:
-  .venv/bin/python tools/gmail_send.py --to a@b.com --subject "Hi" --body-file state/draft.txt
-  .venv/bin/python tools/gmail_send.py --to a@b.com --subject "Hi" --body "..." \
-      --attach documents/applications/Peter_Hollas_CV_x.docx --dry-run
-  .venv/bin/python tools/gmail_send.py ... --attach cv.pdf --attach letter.pdf --signature
+  .venv/bin/python tools/gmail_send.py --draft state/drafts/... --dry-run
+  .venv/bin/python tools/gmail_send.py --draft state/drafts/...   # human-approved / TTY
 
 Config (optional): config/email.json
   {"from": "...", "signature": "...", "attachment_dir": "documents/applications",
@@ -92,6 +95,8 @@ def main():
 
     meta = {}
     draft_attaches = []
+    cli_overrides = bool(args.to or args.cc or args.bcc or args.subject or args.attach
+                         or args.body or args.body_file or args.signature)
     if args.draft:
         meta, draft_body, draft_attaches = _parse_draft(args.draft)
         if not args.body and not args.body_file:
@@ -170,17 +175,38 @@ def main():
         print(body)
         return
 
-    # Sending email is risky and irreversible: require explicit human approval
-    # (interactive y/N, or APPROVE_SEND_EMAIL=1 for this one command).
-    import approval
-    detail = f"sending email to {args.to} (subject: {args.subject!r}"
-    if attached:
-        detail += f", attachments: {', '.join(n for n, _ in attached)}"
-    detail += ")"
-    if not approval.approved(detail, "SEND-EMAIL"):
-        print("refused: sending email needs explicit approval "
-              "(answer y at the prompt, or set APPROVE_SEND_EMAIL=1 for this command).", file=sys.stderr)
+    # Draft-first + human confirmation. A dashboard receipt is tied to this exact
+    # draft's SHA-256; the agent cannot self-approve with an env variable.
+    if args.draft and cli_overrides:
+        print("refused: a saved draft cannot be overridden on send (edit the draft and re-approve)",
+              file=sys.stderr)
         sys.exit(4)
+    if not args.draft:
+        print("refused: save the email as a draft first (tools/draft_email.py) and send it "
+              "from the role drawer; direct --to/--body sends are disabled.", file=sys.stderr)
+        sys.exit(4)
+    import send_receipt as SR
+    receipt = SR.valid(args.draft)
+    if not receipt:
+        if not sys.stdin.isatty():
+            print("refused: this draft has not been approved by a human in the dashboard. "
+                  "Open the role drawer and press Send with approval.", file=sys.stderr)
+            sys.exit(4)
+        print("\n--- email preview ---")
+        print(f"To: {args.to}")
+        print(f"Subject: {args.subject}")
+        for name, size in attached:
+            print(f"Attachment: {name} ({size} bytes)")
+        print("\n" + body[:3000] + ("\n…" if len(body) > 3000 else ""))
+        try:
+            ans = input("\nSend this email now? [y/N] ").strip().lower()
+        except EOFError:
+            ans = ""
+        if ans not in ("y", "yes"):
+            print("refused: not confirmed", file=sys.stderr)
+            sys.exit(4)
+    else:
+        SR.consume(args.draft)
 
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import gmail_readonly as G

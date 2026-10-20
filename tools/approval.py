@@ -6,7 +6,7 @@ time they are about to happen. Two ways to approve:
 
   - interactive (a terminal): a "Approve ...? [y/N]" prompt;
   - non-interactive: set APPROVE_<TOKEN> = 1 for that one command
-    (e.g. APPROVE_SEND_EMAIL=1 ...), which is itself a deliberate act.
+    (e.g. APPROVE_CALENDAR_WRITE=1 ...), which is itself a deliberate act.
 
 Every approval is appended to state/approvals.log. Callers must refuse the
 action when `approved(...)` returns False.
