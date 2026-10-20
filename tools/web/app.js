@@ -156,9 +156,7 @@ const App = {
     try { m = await api('/api/agent/models?agent=' + encodeURIComponent(who)); } catch (e) { return; }
     const cur = (a && a.model) || '';
     const list = m.models || [];
-    sel.innerHTML = '<option value="">agent default</option>' +
-      list.map(x => `<option${x === cur ? ' selected' : ''}>${esc(x)}</option>`).join('') +
-      (cur && !list.includes(cur) ? `<option selected>${esc(cur)}</option>` : '');
+    sel.innerHTML = modelOptionsHTML(m.groups || [], cur, list);
     const custom = $('#ai-model-custom');
     if (custom) custom.value = (cur && !list.includes(cur)) ? cur : '';
     sel.title = m.source ? `models from ${m.source}` : 'type a model id instead';
@@ -1267,6 +1265,21 @@ $('#export').onclick = () => {
   const url = URL.createObjectURL(new Blob([cs.join(',') + '\n' + body], { type: 'text/csv' }));
   const a = document.createElement('a'); a.href = url; a.download = 'jobsquirrel.csv'; a.click(); URL.revokeObjectURL(url);
 };
+function modelShort(m) {
+  const s = String(m || '');
+  return s.includes('/') ? s.split('/').slice(1).join('/') : s;
+}
+function modelOptionsHTML(groups, cur, flat) {
+  const list = flat || (groups || []).reduce((a, g) => a.concat(g.models || []), []);
+  let h = '<option value="">agent default</option>';
+  if (cur && !list.includes(cur)) h += `<option value="${esc(cur)}" selected>${esc(cur)} (current)</option>`;
+  for (const g of groups || []) {
+    if (!g.models || !g.models.length) continue;
+    h += `<optgroup label="${esc(g.label)}">` + g.models.map(m =>
+      `<option value="${esc(m)}"${m === cur ? ' selected' : ''} title="${esc(m)}">${esc(modelShort(m))}</option>`).join('') + '</optgroup>';
+  }
+  return h;
+}
 async function loadChatModel() {
   const sel = $('#chat-model'); if (!sel) return;
   try {
@@ -1274,10 +1287,7 @@ async function loadChatModel() {
     const who = c.which || c.agent || '';
     const m = await api('/api/agent/models?agent=' + encodeURIComponent(who));
     const cur = c.model || '';
-    const list = m.models || [];
-    sel.innerHTML = '<option value="">agent default</option>' +
-      list.map(x => `<option${x === cur ? ' selected' : ''}>${esc(x)}</option>`).join('') +
-      (cur && !list.includes(cur) ? `<option selected>${esc(cur)}</option>` : '');
+    sel.innerHTML = modelOptionsHTML(m.groups || [], cur, m.models || []);
     sel.dataset.agent = who; sel.dataset.configured = c.agent || '';
     sel.title = 'Model for chat, role chats and queue/API runs' + (m.source ? ` (${m.source})` : '');
   } catch (e) { /* leave the picker empty */ }

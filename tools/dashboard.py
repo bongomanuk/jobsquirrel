@@ -1595,11 +1595,37 @@ def agent_models(agent=""):
     elif base == "claude" and shutil.which("claude"):
         models = ["sonnet", "opus", "haiku", "sonnet[1m]", "opus[1m]"]
         source = "Claude Code aliases"
+    models = list(dict.fromkeys(models))
+    groups = _model_groups(base, models)
     cfg = load_agent_cfg()
-    data = {"agent": agent or base, "models": list(dict.fromkeys(models)), "source": source,
+    data = {"agent": agent or base, "models": models, "groups": groups, "source": source,
             "current": cfg.get("model", ""), "saved": (cfg.get("models") or {}).get(base, "")}
     _MODEL_CACHE.update(t=now, key=base, data=data)
     return data
+
+
+def _model_groups(base, models):
+    """Group model ids for the pickers: Free, products (Zen/Go/...), contributor."""
+    def short(m):
+        return m.split("/", 1)[1] if "/" in m else m
+    free = [m for m in models if short(m).lower().endswith("-free")]
+    contributor = [m for m in models if short(m).lower().endswith("-contributor")]
+    rest = [m for m in models if m not in free and m not in contributor]
+    groups = []
+    if free:
+        groups.append({"label": "Free models", "models": free})
+    by_product = {}
+    for m in rest:
+        key = m.split("/", 1)[0] if "/" in m else (base or "other")
+        by_product.setdefault(key, []).append(m)
+    labels = {"opencode": "OpenCode Zen", "opencode-go": "OpenCode Go",
+              "claude": "Claude Code", "anthropic": "Anthropic"}
+    for key in sorted(by_product):
+        groups.append({"label": labels.get(key, key.replace("-", " ").title() or "Other"),
+                       "models": by_product[key]})
+    if contributor:
+        groups.append({"label": "Contributor / preview", "models": contributor})
+    return groups
 
 
 def agent_config():

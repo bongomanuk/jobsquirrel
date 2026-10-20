@@ -84,8 +84,10 @@ root so the agent always starts on a cheap model:
 
 The **Agent console header** has a model picker (the same idea as opencode's
 `/model`), and **Settings → AI & agent** has the same list. The list comes from
-the selected CLI (`opencode models`, or Claude Code's aliases); anything else can
-be typed in the free-text box.
+the selected CLI (`opencode models`, or Claude Code's aliases), grouped by product
+(**Free models**, **OpenCode Zen**, **OpenCode Go**, **Contributor / preview**, or
+**Claude Code**); the group is the provider prefix, and free models are pulled out
+so they are easy to find. Anything else can be typed in the free-text box.
 
 Both write `~/.config/job-search/agent.json`:
 
