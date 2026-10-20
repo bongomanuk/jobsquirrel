@@ -343,6 +343,36 @@ const App = {
     const d = await api('/api/draft/delete', { path });
     toast(d.ok || d.error, !!d.error); if (!d.error) App.loadDrafts();
   },
+  roleChatLoad: async () => {
+    if (!CUR) return;
+    const d = await api('/api/role-chat?key=' + encodeURIComponent(CUR.key));
+    ROLE_DATA = d || { segments: [], running: false, pending: 0 };
+    const el = $('#rc-log'); if (!el) return;
+    const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    el.innerHTML = (d.segments && d.segments.length) ? roleSegsHTML(d.segments, d.running)
+      : '<span class="muted">Ask anything about this role — e.g. “what should I say back?”, “what will they probe?”, “draft a follow-up”.</span>';
+    if (stick) el.scrollTop = el.scrollHeight;
+    const st = $('#rc-stop'); if (st) st.classList.toggle('hide', !d.running);
+  },
+  roleChatSend: async () => {
+    if (!CUR) return;
+    const inp = $('#rc-in'), m = (inp.value || '').trim(); if (!m) return;
+    inp.value = '';
+    await api('/api/role-chat', { key: CUR.key, company: CUR.company, role: CUR.role, message: m });
+    App.roleChatLoad();
+    if (!ROLE_TIMER && DTAB === 1) ROLE_TIMER = setInterval(rolePoll, 1500);
+  },
+  roleChatStop: async () => {
+    if (!CUR) return;
+    const d = await api('/api/role-chat/stop', { key: CUR.key });
+    toast(d.ok || d.error, !!d.error); App.roleChatLoad();
+  },
+  roleChatNew: async () => {
+    if (!CUR) return;
+    if (!confirm('Clear this role\'s chat history?')) return;
+    const d = await api('/api/role-chat/new', { key: CUR.key });
+    toast(d.ok || d.error, !!d.error); ROLE_DATA = { segments: [], running: false, pending: 0 }; App.roleChatLoad();
+  },
   draftAsk: () => {
     if (!CUR) return;
     const act = (CUR.action || '').trim(), notes = (CUR.notes || '').trim().slice(0, 1500);
@@ -357,6 +387,7 @@ const App = {
   },
 };
 let CF = 'cv.json', CUR = null, CF_SEC = 'accounts', DRAFT = null;
+let ROLE_DATA = { segments: [], running: false, pending: 0 }, ROLE_TIMER = null;
 
 /* ---------- approval ---------- */
 function approve(purpose, callText) {
@@ -444,9 +475,11 @@ document.querySelectorAll('#grid th[data-s]').forEach(th => th.onclick = () => {
 async function openDetail(r) {
   if (!r) return;
   CUR = r; D = {}; P = {};
+  if (ROLE_TIMER) { clearInterval(ROLE_TIMER); ROLE_TIMER = null; }
+  ROLE_DATA = { segments: [], running: false, pending: 0 };
   setPanel('detail', { open: true });            // also re-renders the grid, marking this row
   $('#d-title').textContent = `${r.company} — ${r.role}`;
-  const tabs = ['Summary', 'Provenance', 'Job spec', 'ATS', 'Grounding', 'Documents'];
+  const tabs = ['Summary', 'Discuss', 'Provenance', 'Job spec', 'ATS', 'Grounding', 'Documents'];
   $('#dtabs').innerHTML = tabs.map((t, i) => `<a class="${i === DTAB ? 'on' : ''}" onclick="dt(${i})">${t}</a>`).join('');
   $('#d-body').innerHTML = '<span class="muted">loading…</span>';
   const jobs = [api(`/api/provenance?company=${encodeURIComponent(r.company)}&role=${encodeURIComponent(r.role)}`)];
@@ -455,11 +488,15 @@ async function openDetail(r) {
   dt(DTAB);
 }
 window.dt = (i) => {
-  const r = CUR, map = [summary, prov, spec, ats, grounding, tailored];
+  const r = CUR, map = [summary, discuss, prov, spec, ats, grounding, tailored];
   DTAB = i;
   document.querySelectorAll('#dtabs a').forEach((a, n) => a.classList.toggle('on', n === i));
   $('#d-body').innerHTML = map[i](r) || '<span class="muted">—</span>';
   if (i === 0) App.loadDrafts();
+  if (i === 1) {
+    if (!ROLE_TIMER) ROLE_TIMER = setInterval(rolePoll, 1500);
+    App.roleChatLoad();
+  } else if (ROLE_TIMER) { clearInterval(ROLE_TIMER); ROLE_TIMER = null; }
 };
 const sec = (s, raw) => s ? (raw ? `<pre class="doc">${esc(s)}</pre>` : `<div class="doc md">${md(s)}</div>`) : '<span class="muted">(nothing yet)</span>';
 const vbtn = (f, t) => f ? ` <button class="mini" onclick='viewDoc(${JSON.stringify(f)},"${t}")'>view</button>` : '';
@@ -851,6 +888,7 @@ function initEdgeSplit(split) {
   });
 }
 function setPanel(key, props) {
+  if (key === 'detail' && props.open === false && ROLE_TIMER) { clearInterval(ROLE_TIMER); ROLE_TIMER = null; }
   Object.assign(PANELS[key], props);
   if (key === 'detail') renderRows();             // keep the row highlight in sync with the drawer
   localStorage.setItem(key + '.pos', PANELS[key].pos);
@@ -982,6 +1020,42 @@ function renderChat() {
   el.innerHTML = h;
   el.querySelectorAll('details[data-k]').forEach(d => { if (keys.has(d.getAttribute('data-k'))) d.open = true; });
   if (CHAT_STICK) el.scrollTop = el.scrollHeight;             // never yank the reader back down
+}
+
+/* ---------- per-role chat (drawer → Discuss) ---------- */
+function roleSegsHTML(segs, running) {
+  let h = '', i = 0;
+  while (i < segs.length) {
+    const s = segs[i];
+    if (s.t === 'tool') {
+      const grp = [];
+      while (i < segs.length && segs[i].t === 'tool') { grp.push(segs[i]); i++; }
+      h += grp.length === 1 ? toolBlock(grp[0])
+        : `<details class="c-tools"><summary>🔧 ${grp.length} steps</summary>${grp.map(toolBlock).join('')}</details>`;
+      continue;
+    }
+    if (s.t === 'user') h += `<div class="c-user"><div class="md">${md(s.body)}</div></div>`;
+    else if (s.t === 'status') h += `<div class="c-status">${esc(s.body)}</div>`;
+    else if (looksLikeDump(s.body)) h += `<details class="c-code"><summary>output <span class="muted mini">· ${s.body.split('\n').length} lines</span></summary><pre>${esc(s.body)}</pre></details>`;
+    else h += `<div class="md">${collapseCode(md(s.body))}</div>`;
+    i++;
+  }
+  if (running) h += `<div class="working"><span class="muted">▮ working…</span></div>`;
+  return h;
+}
+function rolePoll() {
+  if (!CUR || DTAB !== 1) { if (ROLE_TIMER) { clearInterval(ROLE_TIMER); ROLE_TIMER = null; } return; }
+  App.roleChatLoad();
+}
+function discuss(r) {
+  return `<div class="rolechat">
+    <div class="row"><b>Discuss this role with the agent</b><span class="muted mini">it knows this row, its notes, the ad and your documents</span>
+      <span style="flex:1"></span>
+      <button class="small" id="rc-stop" onclick="App.roleChatStop()">⏹ Stop</button>
+      <button class="small" onclick="App.roleChatNew()">🗑 Clear</button></div>
+    <div id="rc-log" class="term role-log"><span class="muted">Ask anything about this role — e.g. “what should I say back?”, “what will they probe?”, “draft a follow-up”.</span></div>
+    <div class="row chat-in"><input id="rc-in" placeholder="ask about this role…" onkeydown="if(event.key==='Enter')App.roleChatSend()" style="flex:1"><button onclick="App.roleChatSend()">Send</button></div>
+  </div>`;
 }
 
 /* ---------- settings sections ---------- */

@@ -188,6 +188,9 @@ Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files �
 Clicking a row opens a drawer with tabs:
 - **Summary** — a **Why / history** block first (the register's reason/notes, status, last-updated),
   then status (editable, writes back), ATS, queue, key, match, notes, and actions (Prepare).
+- **Discuss** — a chat box scoped to this role. The first turn carries the row, status, ⚑ action,
+  notes, the saved job ad and CV pack; each role keeps its own agent session and transcript
+  (`state/logs/role-chat/<key>.log`), with Stop and Clear. Tool calls stay collapsed like the main console.
 - **Provenance** — CV/letter paths + sha256 (click to copy), confidence, evidence, snapshot, screenshots.
 - **Job spec · ATS · Grounding** — the ad text, keywords, and the GraphRAG context pack
   **plus the entities and source documents it cited** (resolved from the index).
@@ -248,6 +251,10 @@ Clicking a row opens a drawer with tabs:
 | POST | `/api/draft/save` | `{path?,company,role,to,cc,subject,attachments,body}` | save/update a draft |
 | POST | `/api/draft/delete` | `{path}` | delete a draft |
 | POST | `/api/draft/send` | `{path,clear_action?}` | send it (asks you to approve first) |
+| GET | `/api/role-chat?key=` | — | that role's transcript segments + running state |
+| POST | `/api/role-chat` | `{key,company,role,message}` | start/queue a role-scoped agent turn |
+| POST | `/api/role-chat/stop` | `{key}` | stop that role's turn |
+| POST | `/api/role-chat/new` | `{key}` | clear that role's transcript/session |
 | POST | `/api/roles/discover` | `{url}` | save a job spec from a URL |
 | POST | `/api/config` | `{target,content}` | save config (JSON validated, `.bak`) |
 | POST | `/api/action/run` | `{command, approval_token}` | `prepare` / `submit_queue` / `reconcile` / `build_archetypes` |

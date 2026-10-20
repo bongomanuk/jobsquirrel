@@ -1252,6 +1252,221 @@ def chat_new():
     return {"ok": "history cleared"}
 
 
+# ---------------------------------------------------------------- per-role chat (drawer → Discuss)
+ROLE_CHAT_DIR = os.path.join(LOGS, "role-chat")
+_ROLE = {}                      # key -> {"proc": Popen, "queue": [(message, company, role)]}
+
+
+def _role_key(key):
+    k = re.sub(r"[^a-z0-9._-]+", "-", (key or "").lower()).strip("-")[:120]
+    if not k:
+        raise ValueError("role key required")
+    os.makedirs(ROLE_CHAT_DIR, exist_ok=True)
+    return k
+
+
+def _role_paths(key):
+    k = _role_key(key)
+    return (os.path.join(ROLE_CHAT_DIR, k + ".log"),
+            os.path.join(ROLE_CHAT_DIR, k + ".session"),
+            os.path.join(ROLE_CHAT_DIR, k + ".pid"))
+
+
+def _role_pid(key):
+    _, _, pidf = _role_paths(key)
+    try:
+        pid = int(open(pidf).read().strip())
+    except (OSError, ValueError):
+        return 0
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return 0
+    return pid
+
+
+def _role_running(key):
+    k = _role_key(key)
+    st = _ROLE.get(k) or {}
+    p = st.get("proc")
+    if p is not None:
+        return p.poll() is None
+    return bool(_role_pid(k))
+
+
+def _role_session(key):
+    _, sess, _ = _role_paths(key)
+    try:
+        with open(sess, encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
+def _role_find_session(text):
+    sid = ""
+    for ln in text.splitlines():
+        i = ln.find('"sessionID"')
+        if i != -1:
+            j = ln.find(':"', i + 11)
+            if j != -1:
+                sid = ln[j + 2:].split('"', 1)[0]
+    return sid
+
+
+def _role_record_session(key, text):
+    _, sess, _ = _role_paths(key)
+    sid = _role_find_session(text)
+    if sid and sid != _role_session(key):
+        try:
+            with open(sess, "w", encoding="utf-8") as fh:
+                fh.write(sid)
+        except OSError:
+            pass
+
+
+def _role_echo(key, message):
+    log, _, _ = _role_paths(key)
+    os.makedirs(LOGS, exist_ok=True)
+    with open(log, "a", encoding="utf-8") as fh:
+        fh.write(f"\n> {message}\n")
+
+
+def _role_context(company, role, key):
+    import register as REG
+    row = None
+    for r in REG.load():
+        if r["company"].strip().lower() == company.strip().lower() and \
+                r["role"].strip().lower() == role.strip().lower():
+            row = r
+            break
+    bits = [f"- Company: {company}", f"- Role: {role}"]
+    if row:
+        bits += [f"- Status: {row.get('status','')}",
+                 f"- Follow-up flag: {row.get('action','') or '(none)'}",
+                 f"- Engagement: {row.get('employment','') or '(unknown)'}"]
+        notes = (row.get("notes") or "").strip()
+        if notes:
+            bits.append(f"- Notes: {notes[:1400]}")
+        if row.get("letter"):
+            bits.append(f"- Cover letter: {row['letter']}")
+    jd = os.path.join(STATE, "job-descriptions", key + ".md")
+    if os.path.isfile(jd):
+        bits.append(f"- Job ad file: {os.path.relpath(jd, ROOT)}")
+    cv = os.path.join(STATE, "cv-content", key + ".json")
+    if os.path.isfile(cv):
+        bits.append(f"- Tailored CV content: {os.path.relpath(cv, ROOT)}")
+    return ("You are discussing ONE application with the candidate. Stay on this role.\n"
+            + "\n".join(bits) + "\n\n"
+            "Answer questions about this role and help with next steps: reply wording, interview "
+            "preparation, follow-ups, gaps and positioning. Be concise and practical. If email is "
+            "needed, save a draft with tools/draft_email.py (never send). Never submit an application "
+            "or change the register without explicit approval. Read the job ad/CV files above when useful.")
+
+
+def _role_spawn(key, message, company, role):
+    log, _, pidf = _role_paths(key)
+    sid = _role_session(key)
+    base = message if sid else (CHAT_PREAMBLE + "\n\n" + _role_context(company, role, key) + "\n\n---\n" + message)
+    prompt = GATE_NOTE + "\n\n" + base
+    f = open(log, "a", encoding="utf-8")
+    env = agent_env(AGENT_JSON="1")
+    if sid:
+        env["AGENT_SESSION"] = sid
+    p = subprocess.Popen(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), prompt],
+                         cwd=ROOT, env=env, stdout=f, stderr=subprocess.STDOUT,
+                         start_new_session=True)
+    st = _ROLE.setdefault(_role_key(key), {"proc": None, "queue": []})
+    st["proc"] = p
+    try:
+        with open(pidf, "w") as fh:
+            fh.write(str(p.pid))
+    except OSError:
+        pass
+
+
+def _role_pump(key):
+    k = _role_key(key)
+    if _role_running(k):
+        return
+    q = _ROLE.get(k, {}).get("queue") or []
+    if q:
+        message, company, role = q.pop(0)
+        _role_spawn(k, message, company, role)
+
+
+def role_chat_start(key, company, role, message):
+    message = (message or "").strip()[:6000]
+    if not message:
+        return {"error": "empty message"}
+    k = _role_key(key)
+    if _role_running(k):
+        _ROLE.setdefault(k, {"proc": None, "queue": []})["queue"].append((message, company, role))
+        _role_echo(k, message)
+        return {"status": "queued", "queued": True}
+    _role_echo(k, message)
+    _role_spawn(k, message, company, role)
+    return {"status": "started"}
+
+
+def role_chat_stream(key):
+    k = _role_key(key)
+    _role_pump(k)
+    log, _, _ = _role_paths(k)
+    try:
+        text = ANSI.sub("", open(log, encoding="utf-8", errors="ignore").read())
+    except OSError:
+        text = ""
+    _role_record_session(k, text)
+    kind = _json_kind(text)
+    if kind == "opencode":
+        segs = chat_parse_json(text)
+    elif kind == "claude":
+        segs = chat_parse_claude(text)
+    else:
+        segs = chat_parse(text)
+    if len(segs) > 300:
+        segs = segs[-300:]
+    q = _ROLE.get(k, {}).get("queue") or []
+    return {"segments": segs, "running": _role_running(k), "pending": len(q),
+            "done": not _role_running(k) and not q}
+
+
+def role_chat_stop(key):
+    k = _role_key(key)
+    _ROLE.setdefault(k, {"proc": None, "queue": []})["queue"] = []
+    pid = (_ROLE.get(k, {}).get("proc").pid if _ROLE.get(k, {}).get("proc")
+           and _ROLE[k]["proc"].poll() is None else _role_pid(k))
+    killed = False
+    if pid:
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+            killed = True
+        except OSError:
+            try:
+                os.kill(pid, signal.SIGTERM)
+                killed = True
+            except OSError:
+                pass
+    _ROLE.setdefault(k, {"proc": None, "queue": []})["proc"] = None
+    try:
+        os.remove(_role_paths(k)[2])
+    except OSError:
+        pass
+    return {"ok": "stopped this role's turn" if killed else "nothing was running"}
+
+
+def role_chat_new(key):
+    k = _role_key(key)
+    role_chat_stop(k)
+    for path in (_role_paths(k)[0], _role_paths(k)[1]):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    return {"ok": "role chat cleared"}
+
+
 CHAT_PREAMBLE = (
     "You are the operator assistant for THIS repository: the Jobsquirrel job-search pipeline. "
     "The repo root is your cwd. Read AGENTS.md at the repo root first; it is your operating manual, "
@@ -1748,21 +1963,26 @@ def chat_parse_claude(text):
 
 
 def _json_kind(text):
-    for ln in text.splitlines():
+    """Best-effort: is this an opencode or Claude Code JSON stream?
+
+    Skip runner diagnostics (e.g. "agent_run: ... falling back") instead of
+    treating them as proof of a plain-text transcript: otherwise the raw JSON
+    events leak into the chat as text.
+    """
+    for ln in text.splitlines()[:200]:
         s = ln.strip()
         if not s or s.startswith(">") or s.startswith("build "):
             continue
         if not s.startswith("{"):
-            return None
+            continue
         try:
             e = json.loads(s)
         except ValueError:
-            return None
+            continue
         if "part" in e:
             return "opencode"
         if "message" in e or e.get("type") in ("system", "assistant", "user", "result"):
             return "claude"
-        return None
     return None
 
 
@@ -2245,6 +2465,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(drafts_list(qs.get("company", [""])[0], qs.get("role", [""])[0]))
         if p == "/api/draft":
             return self._json(draft_get(qs.get("path", [""])[0]))
+        if p == "/api/role-chat":
+            return self._json(role_chat_stream(qs.get("key", [""])[0]))
         if p == "/api/permissions":
             return self._json({"policy": load_perms(), "defaults": DEFAULT_PERMS})
         if p == "/api/agent/config":
@@ -2367,6 +2589,13 @@ class H(BaseHTTPRequestHandler):
             return self._json(draft_delete(data.get("path", "")))
         if p == "/api/draft/send":
             return self._json(draft_send(data.get("path", ""), bool(data.get("clear_action"))))
+        if p == "/api/role-chat":
+            return self._json(role_chat_start(data.get("key", ""), data.get("company", ""),
+                                              data.get("role", ""), data.get("message", "")))
+        if p == "/api/role-chat/stop":
+            return self._json(role_chat_stop(data.get("key", "")))
+        if p == "/api/role-chat/new":
+            return self._json(role_chat_new(data.get("key", "")))
         if p == "/api/permissions":
             return self._json({"policy": save_perms(data.get("policy") or {})})
         if p == "/api/agent/config":
