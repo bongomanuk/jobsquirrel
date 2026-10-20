@@ -80,6 +80,36 @@ root so the agent always starts on a cheap model:
 
 ---
 
+## 1b. Choose the model (works for every agent)
+
+The **Agent console header** has a model picker (the same idea as opencode's
+`/model`), and **Settings → AI & agent** has the same list. The list comes from
+the selected CLI (`opencode models`, or Claude Code's aliases); anything else can
+be typed in the free-text box.
+
+Both write `~/.config/job-search/agent.json`:
+
+```jsonc
+{
+  "agent": "",                    // "" = auto-detect (opencode, else claude)
+  "model": "opencode/claude-haiku-4-5",
+  "models": {                     // remembered choice per agent
+    "opencode": "opencode/claude-haiku-4-5",
+    "claude": "sonnet"
+  },
+  "env": { "OPENCODE_API_KEY": "..." }
+}
+```
+
+- `tools/agent_run.sh` reads this file itself, so the selection applies to **chat,
+  role chats, queue/apply runs and every API/CLI-invoked task** that goes through
+  the runner.
+- Environment overrides win for one run: `MODEL=... AGENT=... bash tools/run_queue.sh`.
+- A custom agent command receives the chosen model in `$MODEL` (it decides how to
+  pass it on). opencode gets `--model`, Claude Code gets `--model`.
+- The **GraphRAG LLM is separate** (`kb/graphrag/.env`, same Settings page): the
+  knowledge-graph builder does not use the coding-agent model.
+
 ## 2. Run it with Claude Code, Cursor, or any other agent
 
 The contract is `AGENTS.md`. Any agent that can read files and run shell

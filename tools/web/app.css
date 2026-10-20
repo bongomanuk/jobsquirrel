@@ -382,3 +382,6 @@ mark.kw{background:#24405a;color:#bfe3ff;border-radius:3px;padding:0 2px}
 /* per-role chat (drawer) */
 .rolechat{margin:8px 0 4px}
 .role-log{min-height:230px;max-height:38vh;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px;background:#07090c;margin:8px 0}
+
+/* model picker in the agent console header */
+#chat-model{max-width:230px;font-size:11px;padding:2px 4px}

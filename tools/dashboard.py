@@ -1512,16 +1512,36 @@ def load_agent_cfg():
     try:
         with open(AGENT_CFG_FILE, encoding="utf-8") as fh:
             d = json.load(fh)
-        return {"agent": d.get("agent", "") or "", "model": d.get("model", "") or "",
+        models = d.get("models") if isinstance(d.get("models"), dict) else {}
+        models = {str(k)[:200]: str(v)[:200] for k, v in models.items() if v}
+        agent = d.get("agent", "") or ""
+        model = (d.get("model", "") or "").strip() or models.get(agent, "")
+        return {"agent": agent, "model": model, "models": models,
                 "env": d.get("env", {}) or {}}
     except (OSError, ValueError):
-        return {"agent": "", "model": "", "env": {}}
+        return {"agent": "", "model": "", "models": {}, "env": {}}
 
 
 def save_agent_cfg(d):
     prev = load_agent_cfg()
     agent = str(d.get("agent", prev["agent"]) or "").strip()[:200]
-    model = str(d.get("model", prev["model"]) or "").strip()[:200]
+    models = dict(prev.get("models") or {})
+    if isinstance(d.get("models"), dict):
+        for k, v in d["models"].items():
+            k, v = str(k).strip()[:200], str(v).strip()[:200]
+            if k and v:
+                models[k] = v
+    if "model" in d:
+        model = str(d.get("model") or "").strip()[:200]
+        if agent:
+            if model:
+                models[agent] = model
+            else:
+                models.pop(agent, None)
+    else:
+        model = prev["model"]
+        if agent and not model:
+            model = models.get(agent, "")
     env = dict(prev["env"])
     for k, v in (d.get("env") or {}).items():
         k = re.sub(r"[^A-Za-z0-9_]", "", str(k))[:80]
@@ -1531,7 +1551,7 @@ def save_agent_cfg(d):
             env.pop(k, None)                      # blank clears
         else:
             env[k] = str(v)[:1000]
-    out = {"agent": agent, "model": model, "env": env}
+    out = {"agent": agent, "model": model, "models": models, "env": env}
     os.makedirs(os.path.dirname(AGENT_CFG_FILE), exist_ok=True)
     fd = os.open(AGENT_CFG_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -1542,6 +1562,44 @@ def save_agent_cfg(d):
 def _mask(v):
     v = v or ""
     return ("…" + v[-4:]) if len(v) > 4 else ("set" if v else "")
+
+
+_MODEL_CACHE = {"t": 0.0, "key": "", "data": {}}
+
+
+def agent_models(agent=""):
+    """Models the chosen CLI can run, when it can tell us (opencode models)."""
+    import shutil
+    agent = (agent or "").strip()
+    if not agent:
+        try:
+            r = subprocess.run(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), "--which"],
+                               cwd=ROOT, capture_output=True, text=True, timeout=10)
+            agent = (r.stdout or "").strip()
+        except (OSError, subprocess.SubprocessError):
+            agent = ""
+    base = (agent.split() or [""])[0]
+    now = time.time()
+    cache = _MODEL_CACHE
+    if cache["key"] == base and now - cache["t"] < 300:
+        return cache["data"]
+    models, source = [], ""
+    if base == "opencode" and shutil.which("opencode"):
+        try:
+            r = subprocess.run(["opencode", "models"], capture_output=True, text=True, timeout=40)
+            models = [ln.strip() for ln in ANSI.sub("", r.stdout or "").splitlines()
+                      if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]*", ln.strip() or "")]
+            source = "opencode models"
+        except (OSError, subprocess.SubprocessError):
+            models, source = [], "opencode models (failed)"
+    elif base == "claude" and shutil.which("claude"):
+        models = ["sonnet", "opus", "haiku", "sonnet[1m]", "opus[1m]"]
+        source = "Claude Code aliases"
+    cfg = load_agent_cfg()
+    data = {"agent": agent or base, "models": list(dict.fromkeys(models)), "source": source,
+            "current": cfg.get("model", ""), "saved": (cfg.get("models") or {}).get(base, "")}
+    _MODEL_CACHE.update(t=now, key=base, data=data)
+    return data
 
 
 def agent_config():
@@ -1555,7 +1613,7 @@ def agent_config():
         which = (r.stdout or "").strip()
     except (OSError, subprocess.SubprocessError):
         pass
-    return {"agent": cfg["agent"], "model": cfg["model"],
+    return {"agent": cfg["agent"], "model": cfg["model"], "models": cfg.get("models", {}),
             "env": {k: _mask(v) for k, v in cfg["env"].items()},
             "env_keys": sorted(cfg["env"]), "detected": detected, "which": which,
             "config_path": AGENT_CFG_FILE,
@@ -1609,9 +1667,9 @@ def agent_env(**extra):
     env.setdefault("JOBSQUIRREL_TOKEN", SESSION_TOKEN)
     cfg = load_agent_cfg()                        # user-configured agent/model/token
     if cfg.get("agent"):
-        env.setdefault("AGENT", cfg["agent"])
+        env["AGENT"] = cfg["agent"]               # the dashboard choice wins over a stray AGENT=1
     if cfg.get("model"):
-        env.setdefault("MODEL", cfg["model"])
+        env["MODEL"] = cfg["model"]               # chat + role chats use the selected model
     for k, v in cfg.get("env", {}).items():
         env.setdefault(k, v)
     return env
@@ -2471,6 +2529,8 @@ class H(BaseHTTPRequestHandler):
             return self._json({"policy": load_perms(), "defaults": DEFAULT_PERMS})
         if p == "/api/agent/config":
             return self._json(agent_config())
+        if p == "/api/agent/models":
+            return self._json(agent_models(qs.get("agent", [""])[0]))
         if p == "/api/graphrag/env":
             return self._json(graphrag_env())
         if p == "/api/agent/pending":

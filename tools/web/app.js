@@ -149,10 +149,28 @@ const App = {
     box.appendChild(row); $('#ai-env-k').value = ''; $('#ai-env-v').value = '';
   },
   aiDel: (k) => { const el = document.querySelector(`#ai-env input[data-env="${k}"]`); if (el) el.closest('.row').remove(); },
+  aiFillModels: async (a) => {
+    const sel = $('#ai-model-sel'); if (!sel) return;
+    const who = (a && (a.which || a.agent)) || '';
+    let m = { models: [], source: '' };
+    try { m = await api('/api/agent/models?agent=' + encodeURIComponent(who)); } catch (e) { return; }
+    const cur = (a && a.model) || '';
+    const list = m.models || [];
+    sel.innerHTML = '<option value="">agent default</option>' +
+      list.map(x => `<option${x === cur ? ' selected' : ''}>${esc(x)}</option>`).join('') +
+      (cur && !list.includes(cur) ? `<option selected>${esc(cur)}</option>` : '');
+    const custom = $('#ai-model-custom');
+    if (custom) custom.value = (cur && !list.includes(cur)) ? cur : '';
+    sel.title = m.source ? `models from ${m.source}` : 'type a model id instead';
+  },
   saveAI: async () => {
     const env = {}; document.querySelectorAll('#ai-env input[data-env]').forEach(i => { if (i.value) env[i.dataset.env] = i.value; });
-    const d = await api('/api/agent/config', { agent: $('#ai-agent').value, model: $('#ai-model').value, env });
-    toast(d.ok || d.error, !!d.error); if (!d.error) App.settings('ai');
+    const model = (($('#ai-model-custom') && $('#ai-model-custom').value.trim()) || ($('#ai-model-sel') && $('#ai-model-sel').value) || '');
+    const agent = $('#ai-agent').value.trim();
+    const models = agent && model ? { [agent]: model } : {};
+    const d = await api('/api/agent/config', { agent, model, models, env });
+    toast(d.ok || d.error, !!d.error);
+    if (!d.error) { loadChatModel(); App.settings('ai'); }
   },
   saveGR: async () => {
     const vars = {}; document.querySelectorAll('#ai-gr input[data-gr]').forEach(i => { if (i.value) vars[i.dataset.gr] = i.value; });
@@ -1160,18 +1178,26 @@ async function setAI(b) {
       or set a custom command.</div>`}
     <div class="row" style="margin-top:8px"><span class="muted">Agent</span>
       <input id="ai-agent" value="${esc(a.agent)}" placeholder="auto (opencode, else claude)" style="flex:1">
-      <span class="muted">Model</span><input id="ai-model" value="${esc(a.model)}" placeholder="agent default" style="flex:1"></div>
+      <span class="muted">Model</span>
+      <select id="ai-model-sel" style="min-width:220px"></select>
+      <input id="ai-model-custom" placeholder="or type a model id" style="flex:1"></div>
+    <div class="muted mini">The list comes from the selected agent (<code>opencode models</code>); anything else can be typed.
+      Applies to chat, role chats and queue/API runs; <code>MODEL=...</code> overrides for one run.</div>
     <h4 style="margin:14px 0 4px">API keys / env</h4>
     <div id="ai-env">${envRows || '<span class="muted mini">none set</span>'}</div>
     <div class="row" style="margin-top:6px">
       <input id="ai-env-k" list="ai-known" placeholder="KEY name" style="max-width:220px">
       <datalist id="ai-known">${(a.known_keys || []).map(k => `<option>${esc(k)}</option>`).join('')}</datalist>
       <input id="ai-env-v" placeholder="value" style="flex:1"><button onclick="App.aiAdd()">＋ Add</button></div>
-    <div class="row" style="margin-top:10px"><button onclick="App.saveAI()">Save agent config</button></div>
+    <div class="row" style="margin-top:10px"><button onclick="App.saveAI()">Save agent config</button>
+      <span class="muted mini">Agent/model are read by every runner via tools/agent_run.sh.</span></div>
     <h4 style="margin:18px 0 4px">GraphRAG LLM (<code>kb/graphrag/.env</code>)</h4>
     <div id="ai-gr">${grRows || '<span class="muted mini">no .env yet</span>'}</div>
     <div class="row" style="margin-top:8px"><button onclick="App.saveGR()">Save GraphRAG env</button>
       <span class="muted mini">Used by the knowledge graph (same OPENCODE_API_KEY works for both).</span></div>`;
+  App.aiFillModels(a);
+  const ag = $('#ai-agent');
+  if (ag) ag.onchange = () => App.aiFillModels({ which: ag.value, model: (a.models || {})[ag.value] || '', models: a.models || {} });
 }
 function setProfile(b) {
   b.innerHTML = `<p class="muted">Your ground-truth CV, role-family templates and rules. JSON is validated before saving; a <code>.bak</code> is kept.</p>
@@ -1199,6 +1225,13 @@ $('#legend').onclick = () => {
   $('#legend-modal').classList.remove('hide');
 };
 $('#a-drawer').onclick = () => openDock(!PANELS.agent.open);
+if ($('#chat-model')) $('#chat-model').onchange = async (e) => {
+  const val = e.target.value, who = e.target.dataset.agent || '', cfg = e.target.dataset.configured || '';
+  const models = {}; if (who && val) models[who] = val;
+  const d = await api('/api/agent/config', { agent: cfg, model: val, models });
+  toast(d.error ? d.error : `model: ${val || '(agent default)'} — applies to chat, role chats and queue/API runs`, !!d.error);
+  loadChatModel();
+};
 $('#updpill').onclick = () => updateDialog();
 $('#btn-stop').onclick = () => App.stop();
 window.evidClose = () => $('#evid').classList.add('hide');
@@ -1234,6 +1267,21 @@ $('#export').onclick = () => {
   const url = URL.createObjectURL(new Blob([cs.join(',') + '\n' + body], { type: 'text/csv' }));
   const a = document.createElement('a'); a.href = url; a.download = 'jobsquirrel.csv'; a.click(); URL.revokeObjectURL(url);
 };
+async function loadChatModel() {
+  const sel = $('#chat-model'); if (!sel) return;
+  try {
+    const c = await api('/api/agent/config');
+    const who = c.which || c.agent || '';
+    const m = await api('/api/agent/models?agent=' + encodeURIComponent(who));
+    const cur = c.model || '';
+    const list = m.models || [];
+    sel.innerHTML = '<option value="">agent default</option>' +
+      list.map(x => `<option${x === cur ? ' selected' : ''}>${esc(x)}</option>`).join('') +
+      (cur && !list.includes(cur) ? `<option selected>${esc(cur)}</option>` : '');
+    sel.dataset.agent = who; sel.dataset.configured = c.agent || '';
+    sel.title = 'Model for chat, role chats and queue/API runs' + (m.source ? ` (${m.source})` : '');
+  } catch (e) { /* leave the picker empty */ }
+}
 window.App = App;
 async function healthPill() { const s = await api('/api/health'); const h = $('#health');
   h.textContent = 'health: ' + (s.v || '?'); h.className = 'pill ' + (s.v || 'unknown'); h.title = s.detail || ''; setTimeout(healthPill, 60000); }
@@ -1263,4 +1311,4 @@ $('#upd-go').onclick = async () => {
   const d = await api('/api/update/apply', { approval_token: 'APPROVE_UPDATE' });
   toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true);
 };
-initPanels(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck();
+initPanels(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel();

@@ -18,6 +18,36 @@
 #   CLAUDE_ARGS             extra flags, e.g. "--max-turns 80 --no-session-persistence"
 set -u
 
+# Agent + model defaults come from the dashboard config (Settings -> AI & agent).
+# Environment variables still win, so a runner/CI can override either one.
+AGENT_CFG_FILE="${AGENT_CFG:-$HOME/.config/job-search/agent.json}"
+if [ -f "$AGENT_CFG_FILE" ]; then
+  eval "$(python3 - "$AGENT_CFG_FILE" <<'PY' 2>/dev/null
+import json, shlex, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    d = {}
+agent = str(d.get("agent") or "").strip()
+model = str(d.get("model") or "").strip()
+models = d.get("models") if isinstance(d.get("models"), dict) else {}
+if agent and not model:
+    model = str(models.get(agent) or "").strip()
+if agent:
+    print("CFG_AGENT=" + shlex.quote(agent))
+if model:
+    print("CFG_MODEL=" + shlex.quote(model))
+PY
+)"
+fi
+# A stray AGENT=1 (or similar) must not shadow a configured agent.
+if [ -n "${AGENT:-}" ] && ! command -v "${AGENT%% *}" >/dev/null 2>&1 && [ -n "${CFG_AGENT:-}" ]; then
+  AGENT="$CFG_AGENT"
+fi
+[ -n "${AGENT:-}" ] || AGENT="${CFG_AGENT:-}"
+[ -n "${MODEL:-}" ] || MODEL="${CFG_MODEL:-}"
+export MODEL
+
 resolve_agent() {
   if [ -n "${AGENT:-}" ]; then
     if command -v "${AGENT%% *}" >/dev/null 2>&1; then printf '%s' "$AGENT"; return 0; fi

@@ -39,15 +39,9 @@ ELIGIBILITY_OVERRIDE="${ELIGIBILITY_OVERRIDE:-}"
 PROFILE="${PROFILE:-$ROOT/config/profile.md}"   # identity / eligibility config
 # The coding agent that applies to each role: opencode | claude | any command.
 AGENT="$(bash "$ROOT/tools/agent_run.sh" --which)" || exit 1
-# opencode: default to a paid, working model. Free/contributor models rate-limit
-# ("Rate limit exceeded") and are silently dropped from the run, so never let
-# the queue fall back to them. Other agents use their own default model.
-# Override with MODEL=... if a different one is needed.
-if [ "$AGENT" = "opencode" ]; then
-  MODEL="${MODEL:-opencode-go/deepseek-v4.1-flash}"
-else
-  MODEL="${MODEL:-}"
-fi
+# The model comes from Settings -> AI & agent (agent.json), resolved inside
+# tools/agent_run.sh for every task. MODEL=... still overrides for one run.
+MODEL="${MODEL:-}"
 ENGAGEMENT="${ENGAGEMENT:-fulltime}"   # fulltime | contract (uses the contract CV/letter rules)
 CAMOUFOX_SERVER="${CAMOUFOX_SERVER:-http://127.0.0.1:9872}"
 CAMOUFOX_PORT="${CAMOUFOX_PORT:-9872}"

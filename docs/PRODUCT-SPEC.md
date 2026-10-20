@@ -199,7 +199,7 @@ Clicking a row opens a drawer with tabs:
 
 ### 9.5 Settings panel (⚙ Config)
 - Sections: **Accounts** (status + Gmail/Calendar authorisation), **AI & agent** (which agent CLI +
-  model + API-token env, and the GraphRAG LLM `.env`), **Knowledge base** (list / upload /
+  model picker + API-token env, and the GraphRAG LLM `.env`), **Knowledge base** (list / upload /
   delete sources, rebuild the index), **GraphRAG** (browse entities / relationships / communities /
   documents), **Agent permissions** (per-category allow/ask/deny), **Profile & CV** (edit files, regenerate).
 
@@ -255,6 +255,7 @@ Clicking a row opens a drawer with tabs:
 | POST | `/api/role-chat` | `{key,company,role,message}` | start/queue a role-scoped agent turn |
 | POST | `/api/role-chat/stop` | `{key}` | stop that role's turn |
 | POST | `/api/role-chat/new` | `{key}` | clear that role's transcript/session |
+| GET | `/api/agent/models?agent=` | — | models the chosen CLI can run (opencode/Claude) for the picker |
 | POST | `/api/roles/discover` | `{url}` | save a job spec from a URL |
 | POST | `/api/config` | `{target,content}` | save config (JSON validated, `.bak`) |
 | POST | `/api/action/run` | `{command, approval_token}` | `prepare` / `submit_queue` / `reconcile` / `build_archetypes` |
