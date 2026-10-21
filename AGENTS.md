@@ -70,7 +70,9 @@ reports a clean config.
    rules in `config/profile.md` (location/work-model, languages, stack). If
    unclear or excluded, record `CLOSED`/`BLOCKED` with the reason and stop.
 4. **Email is draft-first and human-sent.** Save a reply with `tools/draft_email.py`;
-   the human reviews it in the role drawer and presses **Send with approval**. Never
+   the human reviews it in the role drawer and presses **Send with approval**. That
+   opens the exact email (To/Cc/Subject/body) in an editable dialog: the human can
+   amend it before approving, or save changes without sending. Never
    call `gmail_send.py` to send a new email, never send `--to/--body` directly, and
    never set `APPROVE_SEND_EMAIL`, and never call the Gmail API directly — `gmail_send.py`
    requires a saved draft plus a one-time human receipt and refuses otherwise.

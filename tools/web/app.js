@@ -809,17 +809,49 @@ async function permTick() {
   const q = (d && d.pending) || [];
   if (!q.length) return;
   CUR_PERM = q[0];
-  $('#perm-text').textContent = `${CUR_PERM.category}: ${CUR_PERM.detail}`;
+  const email = CUR_PERM.email && typeof CUR_PERM.email === 'object' ? CUR_PERM.email : null;
   const always = CUR_PERM.rememberable !== false;
+  $('#perm-title').textContent = email ? 'Review email before sending' : 'Agent requests permission';
+  $('#perm-sub').textContent = email
+    ? 'This is the exact email that will be sent. Edit anything below before approving.'
+    : 'The agent wants to do something that needs your approval.';
+  $('#perm-text').textContent = `${CUR_PERM.category}: ${CUR_PERM.detail}`;
+  $('#perm-text').style.display = email ? 'none' : '';
+  $('#perm-email').classList.toggle('hide', !email);
+  $('#perm-save').classList.toggle('hide', !email);
+  if (email) {
+    $('#pe-to').value = email.to || '';
+    $('#pe-cc').value = email.cc || '';
+    $('#pe-subject').value = email.subject || '';
+    $('#pe-body').value = email.body || '';
+    const atts = email.attachments || [];
+    $('#pe-attach').textContent = atts.length
+      ? 'Attachments (edit in the draft): ' + atts.map(a => String(a).split('/').pop()).join(', ')
+      : 'No attachments';
+  }
   $('#perm-always').textContent = always ? `Always allow ${CUR_PERM.category}` : 'Allow once';
   $('#perm-always').style.display = always ? '' : 'none';
-  $('#perm-once').textContent = always ? 'Allow once' : 'Approve';
+  $('#perm-once').textContent = email ? 'Approve & send' : (always ? 'Allow once' : 'Approve');
   $('#perm').classList.remove('hide');
 }
-async function permAnswer(decision, remember) {
+async function permAnswer(decision, remember, save) {
   if (!CUR_PERM) return;
+  const email = CUR_PERM.email && typeof CUR_PERM.email === 'object' ? CUR_PERM.email : null;
+  let edits;
+  if (email) {
+    const to = $('#pe-to').value.trim();
+    const cc = $('#pe-cc').value.trim();
+    const subject = $('#pe-subject').value.trim();
+    const body = $('#pe-body').value;
+    if (decision === 'allow') {
+      if (!to) return toast('add a recipient before sending', true);
+      if (!subject) return toast('add a subject before sending', true);
+      if (!body.trim()) return toast('the email body is empty', true);
+    }
+    edits = { to: $('#pe-to').value, cc: $('#pe-cc').value, subject: $('#pe-subject').value, body };
+  }
   const id = CUR_PERM.id; CUR_PERM = null; $('#perm').classList.add('hide');
-  await api('/api/agent/decide', { id, decision, remember: !!remember });
+  await api('/api/agent/decide', { id, decision, remember: !!remember, edits, save: !!save });
   permTick();
 }
 
@@ -1239,6 +1271,7 @@ $('#btn-pause').onclick = () => App.togglePause($('#btn-pause').textContent.incl
 $('#perm-once').onclick = () => permAnswer('allow', false);
 $('#perm-always').onclick = () => permAnswer('allow', true);
 $('#perm-deny').onclick = () => permAnswer('deny', false);
+$('#perm-save').onclick = () => permAnswer('deny', false, true);
 $('#act-toggle').onclick = () => {
   const open = document.body.dataset.act !== 'open';
   document.body.dataset.act = open ? 'open' : 'closed';

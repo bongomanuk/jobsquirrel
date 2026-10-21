@@ -103,8 +103,10 @@ python3 tools/google_config.py --paths      # shell-friendly CONFIG_DIR/CREDENTI
 
 Email is **draft-first**. The agent saves a reply with `tools/draft_email.py`; you
 review it in the role drawer and press **Send with approval**. Only then does the
-dashboard issue a one-time receipt for that exact draft and `gmail_send.py` send
-it (attachments supported). A human at a terminal can still get an explicit
+dashboard opens the exact email (To/Cc/Subject/body) in an editable approval
+dialog. Amend anything, then choose **Approve & send** (a one-time receipt is
+issued for the edited draft) or **Save changes, don't send**. Attachments are
+edited in the draft itself. A human at a terminal can still get an explicit
 preview + y/N prompt. There is no environment-variable bypass: an agent setting
 `APPROVE_SEND_EMAIL=1` cannot send. Every send is recorded on the role as a
 dated note with the Gmail message id (use a `draft_email.py` draft or pass

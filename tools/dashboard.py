@@ -235,21 +235,65 @@ def draft_delete(path):
     return {"ok": "deleted"} if DE.delete_draft(path) else {"error": "draft not found"}
 
 
+def _apply_draft_edits(d, edits, validate=True):
+    """Apply edits from the approval dialog to the saved draft (headers sanitised)."""
+    def pick(key, default, header=False, limit=200000):
+        v = edits.get(key)
+        if v is None:
+            return default
+        v = str(v)
+        if header:
+            v = re.sub(r"[\r\n]+", " ", v).strip()
+        return v[:limit]
+    to = pick("to", d.get("to", ""), header=True, limit=2000)
+    cc = pick("cc", d.get("cc", ""), header=True, limit=2000)
+    subject = pick("subject", d.get("subject", ""), header=True, limit=500)
+    body = pick("body", d.get("body", ""))
+    if validate:
+        if not to.strip():
+            return {"error": "add a recipient before sending"}
+        if not subject.strip():
+            return {"error": "add a subject before sending"}
+        if not body.strip():
+            return {"error": "the email body is empty — not sent"}
+    try:
+        import draft_email as DE
+        DE.update_draft(d["path"], to=to, cc=cc, subject=subject, body=body,
+                        attachments=d.get("attachments") or [],
+                        company=d.get("company") or "", role=d.get("role") or "")
+    except (OSError, ValueError) as e:
+        return {"error": f"could not save the edited draft: {e}"}
+    return {}
+
+
 def draft_send(path, clear_action=False):
-    """Send exactly one saved draft. gmail_send.py asks the dashboard for approval."""
+    """Send exactly one saved draft, after a human approves (and may edit) it."""
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import draft_email as DE
     try:
         d = DE.load_draft(path)
     except (OSError, ValueError) as e:
         return {"error": str(e)}
-    # A human must approve this exact draft, every time. No env bypass.
+    # A human must approve this exact draft, every time. The dialog shows the
+    # whole email and can edit it; the receipt is issued AFTER those edits.
     who = d.get("to") or "(no recipient)"
     purpose = f"sending draft to {who} — {d.get('subject') or '(no subject)'}"
-    if d.get("attachments"):
-        purpose += f" (attachments: {', '.join(os.path.basename(a) for a in d['attachments'])})"
-    if consent_request(purpose, "SEND-EMAIL", timeout=300).get("decision") != "allow":
+    email = {"to": d.get("to", ""), "cc": d.get("cc", ""), "subject": d.get("subject", ""),
+             "body": d.get("body", ""), "attachments": d.get("attachments") or []}
+    res = consent_request(purpose, "SEND-EMAIL", timeout=900, email=email)
+    edits = res.get("edits") or {}
+    if res.get("decision") != "allow":
+        if res.get("save") and edits:
+            problem = _apply_draft_edits(d, edits, validate=False)
+            if problem:
+                return problem
+            return {"ok": "changes saved — email not sent"}
         return {"error": "refused: the email was not approved"}
+    if edits:
+        problem = _apply_draft_edits(d, edits, validate=True)
+        if problem:
+            return problem
+        d = DE.load_draft(d["path"])
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import send_receipt as SRE
     SRE.issue(d["path"], "dashboard")
@@ -266,14 +310,13 @@ def draft_send(path, clear_action=False):
         return {"error": out or f"gmail_send exited {r.returncode}", "output": out}
     mid = out.split("sent ", 1)[1].split()[0]
     DE.mark_sent(d["path"], mid)
-    note = f"replied {time.strftime('%Y-%m-%d')}: {d['subject'][:90] or '(no subject)'}"
-    try:
-        sys.path.insert(0, os.path.join(ROOT, "tools"))
-        import register as REG
-        REG.set_row(d.get("company") or "", d.get("role") or "", note=note,
-                    action="" if clear_action else None)
-    except Exception:
-        pass
+    if clear_action and d.get("company") and d.get("role"):
+        try:
+            sys.path.insert(0, os.path.join(ROOT, "tools"))
+            import register as REG
+            REG.set_row(d["company"], d["role"], action="")
+        except Exception:
+            pass
     return {"ok": f"sent {mid}", "message_id": mid, "output": out}
 
 
@@ -1843,32 +1886,41 @@ def permission_request(category, detail, timeout=300):
     return {"decision": rec.get("decision") or "deny", "id": rid, "category": category}
 
 
-def consent_request(purpose, token, timeout=300):
-    """A one-off approval (send mail, write the calendar): always asks, never remembered."""
+def consent_request(purpose, token, timeout=300, email=None):
+    """A one-off approval (send mail, write the calendar): always asks, never remembered.
+
+    `email` (optional) is the full message shown in the approval dialog, where the
+    human can edit To/Cc/Subject/body. Edits come back only with their decision.
+    """
     rid = uuid.uuid4().hex[:8]
     ev = threading.Event()
     with _PERM_LOCK:
         _PERM[rid] = {"id": rid, "category": token, "detail": purpose, "event": ev,
-                      "decision": None, "ts": time.time(), "rememberable": False}
+                      "decision": None, "ts": time.time(), "rememberable": False,
+                      "email": email, "edits": None, "save": False}
     ev.wait(timeout)
     with _PERM_LOCK:
         rec = _PERM.pop(rid, {})
-    return {"decision": rec.get("decision") or "deny", "id": rid}
+    return {"decision": rec.get("decision") or "deny", "id": rid,
+            "edits": rec.get("edits") or {}, "save": bool(rec.get("save"))}
 
 
 def permission_pending():
     with _PERM_LOCK:
         return [{"id": r["id"], "category": r["category"], "detail": r["detail"],
-                 "rememberable": r.get("rememberable", True)}
+                 "rememberable": r.get("rememberable", True),
+                 "email": r.get("email")}
                 for r in _PERM.values() if r["decision"] is None]
 
 
-def permission_decide(rid, decision, remember=False):
+def permission_decide(rid, decision, remember=False, edits=None, save=False):
     with _PERM_LOCK:
         r = _PERM.get(rid)
     if not r:
         return {"error": "unknown or expired request"}
     r["decision"] = "allow" if decision == "allow" else "deny"
+    r["edits"] = edits
+    r["save"] = bool(save)
     if remember and r.get("rememberable", True):
         p = load_perms()
         p[r["category"]] = r["decision"]
@@ -2706,13 +2758,15 @@ class H(BaseHTTPRequestHandler):
             return self._json({"ok": "saved", "env": save_graphrag_env(data.get("vars") or {})})
         if p == "/api/approval/ask":
             return self._json(consent_request(str(data.get("purpose", "risky action"))[:500],
-                                              str(data.get("token", "ACTION"))[:40]))
+                                              str(data.get("token", "ACTION"))[:40],
+                                              email=data.get("email") or None))
         if p == "/api/agent/permission":
             return self._json(permission_request(str(data.get("category", "?"))[:60],
                                                  str(data.get("detail", ""))[:400]))
         if p == "/api/agent/decide":
             return self._json(permission_decide(str(data.get("id", "")), str(data.get("decision", "deny")),
-                                                bool(data.get("remember"))))
+                                                bool(data.get("remember")), data.get("edits") or {},
+                                                bool(data.get("save"))))
         if p == "/api/update/apply":
             return self._json(apply_update(str(data.get("approval_token", ""))))
         if p == "/api/prepare":

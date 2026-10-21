@@ -174,10 +174,20 @@
 </div></div>
 
 <div id="perm" class="modal hide"><div class="modal-box">
-  <h2 style="text-transform:none;letter-spacing:0;color:var(--fg)">Agent requests permission</h2>
-  <p class="muted">The agent wants to do something that needs your approval.</p>
+  <h2 id="perm-title" style="text-transform:none;letter-spacing:0;color:var(--fg)">Agent requests permission</h2>
+  <p id="perm-sub" class="muted">The agent wants to do something that needs your approval.</p>
   <div id="perm-text" class="term" style="max-height:20vh"></div>
+  <div id="perm-email" class="hide">
+    <div class="emailmeta">
+      <label>To<input id="pe-to" autocomplete="off"></label>
+      <label>Cc<input id="pe-cc" autocomplete="off"></label>
+      <label>Subject<input id="pe-subject" autocomplete="off"></label>
+    </div>
+    <label class="emailbody">Message<textarea id="pe-body" spellcheck="true"></textarea></label>
+    <div id="pe-attach" class="muted mini"></div>
+  </div>
   <div class="row" style="justify-content:flex-end;margin-top:14px">
+    <button id="perm-save" class="hide" title="Save your edits to the draft without sending">Save changes, don't send</button>
     <button id="perm-deny">Deny</button>
     <button id="perm-once">Allow once</button>
     <button id="perm-always" class="risky">Always allow</button>

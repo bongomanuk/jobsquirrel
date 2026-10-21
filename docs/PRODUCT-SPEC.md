@@ -135,7 +135,8 @@ Components:
    **ask-or-refuse, never silent**.
 4. **CAPTCHA/2FA.** Stop, record `BLOCKED`, never evade.
 5. **Email.** Draft-first: the agent saves a reply (`draft_email.py`), the human presses **Send with approval**
-   in the drawer, and only then does `gmail_send.py` send that exact draft (one-time receipt; no env bypass).
+   in the drawer, edits the exact email in the approval dialog if needed, and only then does `gmail_send.py`
+   send that draft (one-time receipt; no env bypass).
    Mailbox deletion uses a separate `gmail.modify` token and `gmail_delete.py --authorize AUTHORIZE-DELETE`.
 6. **Web UI.** Binds `127.0.0.1`; every write needs a per-session token (anti-CSRF); risky
    actions also gated (see §9).
