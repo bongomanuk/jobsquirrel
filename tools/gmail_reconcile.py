@@ -211,8 +211,13 @@ def match_company(text, rows, body="", sender=""):
     for co in {r["company"] for r in rows}:
         for t in terms(co):
             if t in low:
+                # A whole-word hit beats a bare substring hit, whatever the
+                # length: "Thanks for Considering Cisco" must not match the
+                # company "Consid" (consid-ering). Only fall back to the
+                # substring match when nothing matches cleanly.
+                wm = 1 if _word_match(t, low) else 0
                 dm = 1 if (dom and dom in re.sub(r"[^a-z0-9]", "", co.lower())) else 0
-                key = (len(t), dm, -len(co), co)
+                key = (wm, len(t), dm, -len(co), co)
                 if best_key is None or key > best_key:
                     best_key, best_co = key, co
     if best_co:
@@ -256,18 +261,33 @@ def match_row(company, subject, rows):
     if len(cand) == 1:
         return cand[0]
     low = re.sub(r"\s+", " ", subject.lower())
+    # Compare on a punctuation-free skeleton as well as the raw text: an email
+    # names a role as "Research Engineer, Web Crawlers" while the register row
+    # says "Research Engineer - Web Crawlers", so a raw substring test misses it
+    # and the row ends up picked arbitrarily among the company's other roles.
+    low_skel = re.sub(r"[^a-z0-9]+", "", low)
     best, best_key = None, None
+    tie = False
     for r in cand:
         name = re.sub(r"\s+", " ", r["role"].lower()).strip()
         full = len(name) if name and name in low else 0
+        skel = re.sub(r"[^a-z0-9]+", "", name)
+        if not full and len(skel) >= 8 and skel in low_skel:
+            full = len(skel)
         word = 0
+        matched = 0
         for t in terms(r["role"]):
             if _word_match(t, low):
+                matched += 1
                 word = max(word, len(t))
-        key = (full, word)
-        if best is None or key > best_key:
-            best, best_key = r, key
-    if best_key is not None and (best_key[0] or best_key[1]):
+        key = (full, word, matched)
+        if best_key is None or key > best_key:
+            best, best_key, tie = r, key, False
+        elif key == best_key:
+            # Equally good match for a different role: genuinely ambiguous.
+            # Do not guess - the caller reports it for review instead.
+            tie = True
+    if best_key is not None and (best_key[0] or best_key[1]) and not tie:
         return best
     return None
 
@@ -284,7 +304,15 @@ def propose(current, category):
     if category == "REJECTION":
         return current if current == "OFFER" else "REJECTED"
     if category == "INTERVIEW":
-        return current if current in ("OFFER", "REJECTED") else "INTERVIEW"
+        # Never reopen a row the candidate or an operator closed by hand
+        # (CLOSED = do not pursue) and never overwrite a row that is waiting on
+        # a human step (BLOCKED/MANUAL). Those are human decisions; a replayed
+        # invitation email must not undo them.
+        if current in ("OFFER", "REJECTED"):
+            return current
+        if current in ("CLOSED", "BLOCKED", "MANUAL"):
+            return ""
+        return "INTERVIEW"
     if category == "CONFIRMATION":
         # Only upgrade a prepared role. IN_PROGRESS means it is already further
         # along (assessment/interview stage); a generic confirmation must never

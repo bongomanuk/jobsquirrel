@@ -27,9 +27,17 @@ echo "== graphrag update (incremental; only new/changed docs) =="
 "$G" update --root "$GR" || { echo "graphrag update failed" >&2; exit 1; }
 
 # Promote the updated index so queries use it.
+# GraphRAG v2 wrote a flat update_output/; v3 writes update_output/<timestamp>/{delta,previous}
+# and the query layer merges those, so no promotion is needed there — just report.
 if [ -f "$GR/update_output/entities.parquet" ]; then
   echo "== promoting update_output -> output =="
   rm -rf "$GR/output"
   mv "$GR/update_output" "$GR/output"
+else
+  _latest="$(ls -1dt "$GR"/update_output/*/ 2>/dev/null | head -n1 || true)"
+  if [ -n "$_latest" ] && [ -f "${_latest}delta/stats.json" ]; then
+    _n="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("update_documents","?"))' "${_latest}delta/stats.json" 2>/dev/null || echo "?")"
+    echo "== GraphRAG v3 incremental update: ${_n} document(s) updated; query layer merges update_output (no promote needed) =="
+  fi
 fi
 echo "knowledge graph updated $(date +%H:%M:%S)"

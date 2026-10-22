@@ -61,3 +61,7 @@ config/agent-permissions.json
 
 # one-time email send receipts (human approvals)
 state/send-receipts/
+
+# generated tool indexes and incremental-index working dirs
+.codegraph/
+kb/graphrag/update_output/

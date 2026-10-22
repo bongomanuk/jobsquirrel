@@ -61,19 +61,32 @@ def _import_google():
         sys.exit(2)
 
 
-def authenticate():
+def authenticate(force=False):
     Credentials, InstalledAppFlow, Request, build = _import_google()
     if not os.path.isfile(CREDENTIALS):
         print(f"credentials.json not found at {CREDENTIALS}\n"
               f"See state/gmail-setup.md for how to create it.", file=sys.stderr)
         sys.exit(2)
     creds = None
-    if os.path.isfile(TOKEN):
-        creds = Credentials.from_authorized_user_file(TOKEN, SCOPES)
+    if not force and os.path.isfile(TOKEN):
+        try:
+            creds = Credentials.from_authorized_user_file(TOKEN, SCOPES)
+        except Exception as exc:
+            print(f"stored token could not be read ({exc}); "
+                  f"a new authorisation is required", file=sys.stderr)
+            creds = None
     if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+        if creds and creds.expired and creds.refresh_token and not force:
+            try:
+                creds.refresh(Request())
+            except Exception as exc:
+                # A revoked or expired refresh token cannot be renewed in place.
+                # Fall through to a fresh consent flow instead of dying, so the
+                # pipeline can always be re-authorised with one command.
+                print(f"stored token could not be refreshed ({exc}); "
+                      f"a new authorisation is required", file=sys.stderr)
+                creds = None
+        if not creds or not creds.valid:
             flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS, SCOPES)
             creds = flow.run_local_server(port=0)
         os.makedirs(os.path.dirname(TOKEN), exist_ok=True)
@@ -91,6 +104,17 @@ def _decode(payload):
     for part in payload.get("parts", []) or []:
         text += _decode(part)
     return text
+
+
+# An "invitation" that is actually a refusal. Phrased as a negative, but it
+# contains the same wording the interview patterns look for, so it must be
+# checked first or the mail is filed as INTERVIEW.
+NEG_INVITE_RE = re.compile(
+    r"(?:can'?t|cannot|won'?t|will not|not able to)\s+(?:be able to\s+)?"
+    r"(?:invite|inviting)\s+you\s+for\s+an?\s+interview"
+    r"|won'?t\s+be\s+able\s+to\s+proceed\s+with\s+your\s+application"
+    r"|not\s+a\s+match\s+this\s+time",
+    re.I)
 
 
 def classify(subject, body):
@@ -179,6 +203,8 @@ def classify(subject, body):
         return "CONFIRMATION"
     if rej_subj:
         return "REJECTION"
+    if NEG_INVITE_RE.search(body):
+        return "REJECTION"
     if body_interview:
         return "INTERVIEW"
     if body_rej:
@@ -256,7 +282,7 @@ def main():
     ap.add_argument("--apply", action="store_true", help="update register notes from matches")
     args = ap.parse_args()
     if args.auth:
-        authenticate()
+        authenticate(force=True)
         print(f"authorised; token stored at {TOKEN}")
     elif args.sync:
         sync(args.query, args.apply)
