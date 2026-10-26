@@ -78,6 +78,9 @@ tbody tr.click{cursor:pointer}
 .PREPARED{background:#3a3007;color:var(--prepared)}
 .badge{padding:2px 10px;border-radius:999px;font-weight:800;font-size:12px}
 .badge.good{background:#12351f;color:#8ce99a}.badge.bad{background:#3a1414;color:#ffb4b4}.badge.mid{background:#3a2c07;color:#ffd479}
+.wm-remote{background:#0e2a3a;color:var(--sub)}
+.wm-hybrid{background:#2a2410;color:#fadf8a}
+.wm-onsite{background:#12351f;color:#8ce99a}
 
 /* terminal / code */
 .term{background:#07090c;border:1px solid var(--line);border-radius:var(--radius);padding:12px;

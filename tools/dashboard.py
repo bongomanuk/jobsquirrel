@@ -181,13 +181,17 @@ def provenance(company, role):
     return {}
 
 
-def update_row(company, role, status, note, employment=None, action=None):
+def update_row(company, role, status, note, employment=None, action=None,
+               work_model=None, salary=None, key=""):
     if not (company and role):
         return {"error": "company and role required"}
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import register as REG
     REG.set_row(company, role, status=(status or "").upper(), note=note or "",
                 employment=employment, action=action)
+    if work_model is not None or salary is not None:
+        set_role_meta(key or _slug(f"{company}-{role}"),
+                      work_model=work_model, salary=salary)
     return {"ok": f"updated {company} / {role}"}
 
 
@@ -596,6 +600,298 @@ def _employment_from_notes(notes):
     return ""
 
 
+# ---------------------------------------------------------------- pay + work model
+# Estimated annual pay and work model, derived from the saved ad. The estimates
+# are deliberately rough: they rank/filter roles, they do not replace the ad.
+# Manual overrides persist in state/logs/dashboard-role-meta.json and win.
+_PAY_FX = {"EUR": 1.0, "SEK": 0.090, "USD": 0.92, "GBP": 1.17,
+           "CAD": 0.68, "CHF": 1.05, "DKK": 0.134, "NOK": 0.086}
+_PAY_ANNUAL = {"year": 1, "month": 12, "week": 48, "day": 220, "hour": 1600}
+PAY_FIT = 70                                             # default "good fit" threshold
+PAY_TARGET_FALLBACK = 120000
+META_VERSION = 1                                         # bump when the parser changes
+META_FILE = os.path.join(LOGS, "dashboard-role-meta.json")
+_META, _meta_loaded, _meta_dirty = {}, False, False
+_TARGET = {"mt": 0, "eur": PAY_TARGET_FALLBACK}
+
+_PAY_HEAD = re.compile(
+    r"^\s*(?:base\s+)?(salary|compensation|pay|rate|package|remuneration)\b[^:]{0,40}:\s*(.+)$", re.I)
+_PAY_HINT = re.compile(r"(salary|compensation|pay|rate|remuneration)", re.I)
+_PAY_CUR = (("CAD", r"\bCA\$|\bCAD\b"), ("EUR", r"\bEUR\b|€"), ("USD", r"\bUSD\b|\bUS\$|\$"),
+            ("GBP", r"\bGBP\b|£"), ("CHF", r"\bCHF\b"), ("DKK", r"\bDKK\b"),
+            ("NOK", r"\bNOK\b"), ("SEK", r"\bSEK\b|\bkr\b"))
+_PAY_CUR_RE = re.compile(r"(€|£|\$|\b(?:EUR|SEK|USD|GBP|CHF|DKK|NOK|CAD)\b|\bkr\b)", re.I)
+
+
+def _pay_num(token):
+    if re.fullmatch(r"\d{1,3}(?:[ .,]\d{3})+", token):
+        return float(token.replace(" ", "").replace(",", "").replace(".", ""))
+    return float(token.replace(",", "."))
+
+
+_PAY_METRICS = re.compile(r"revenue|turnover|funding|raised|valuation|billion|million users|employees", re.I)
+
+
+def _pay_salary_like(text):
+    return bool(re.search(r"\d{1,3}(?:[ ,.]\d{3})+|\d{4,}|\d+\s*[kK]\b", text))
+
+
+def _pay_line_blocks(s):
+    """Sentences in one line that read like pay, not corporate metrics."""
+    if len(s) <= 240:
+        return [s] if _pay_salary_like(s) else []
+    out = []
+    for part in re.split(r"(?<=[.!?])\s+", s):
+        if (len(part) <= 240 and _PAY_HINT.search(part) and _PAY_CUR_RE.search(part)
+                and _pay_salary_like(part) and not _PAY_METRICS.search(part)):
+            out.append(part)
+    return out[:2]
+
+
+def _pay_blocks(text):
+    """Candidate salary/compensation lines from an ad (URLs and equity skipped)."""
+    out, lines = [], (text or "").splitlines()
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if not s or re.search(r"https?://|www\.", s, re.I):
+            continue
+        m = _PAY_HEAD.match(s)
+        if m:
+            out.append(m.group(2).strip())
+            for nxt in lines[i + 1:i + 3]:
+                n = nxt.strip()
+                if n and not re.match(r"^[A-Z][A-Za-z /&-]{2,40}:", n) and _pay_salary_like(n):
+                    out.append(n)
+            continue
+        if _PAY_HINT.search(s) and _PAY_CUR_RE.search(s):
+            out.extend(_pay_line_blocks(s))
+    seen, uniq = set(), []
+    for x in out:
+        if x not in seen:
+            seen.add(x)
+            uniq.append(x[:240])
+    return uniq[:8]
+
+
+def _parse_pay_block(raw):
+    if not raw:
+        return None
+    t = raw.replace("\u2013", "-").replace("\u2014", "-").replace("\u2212", "-").replace("\u00a0", " ")
+    # "kr840000" / "SEK1,000,000" are common; separate the code from the amount.
+    t = re.sub(r"\b(EUR|SEK|USD|GBP|CHF|DKK|NOK|CAD|kr)\s*", r"\1 ", t, flags=re.I)
+    cur = next((c for c, pat in _PAY_CUR if re.search(pat, t, re.I)), None)
+    if not cur:
+        return None
+    amounts = []
+    for m in re.finditer(r"(?<![\w./])(\d{1,3}(?:[ .,]\d{3})+|\d+(?:[.,]\d+)?)\s*([kKmM])?(?![%\w])", t):
+        try:
+            v = _pay_num(m.group(1))
+        except ValueError:
+            continue
+        suf = (m.group(2) or "").lower()
+        if suf == "k":
+            v *= 1000
+        elif suf == "m":
+            v *= 1000000
+        if v >= 10:
+            amounts.append((v, m.start()))
+    if not amounts:
+        return None
+    low = t.lower()
+    period = ""
+    for name, pat in (("hour", r"per hour|/hour|hourly|/hr\b|an hour|\bhour\b"),
+                      ("day", r"per day|/day|daily|day rate"),
+                      ("week", r"per week|/week|weekly"),
+                      ("month", r"per month|/month|monthly|a month|/mo\b"),
+                      ("year", r"per year|/year|/yr\b|annually|per annum|a year")):
+        if re.search(pat, low):
+            period = name
+            break
+    vals = [a[0] for a in amounts]
+    chosen = vals[0]
+    if len(vals) >= 2:
+        before = low[:amounts[0][1]]
+        # "up to X ... exceptional Y" -> the realistic number is X
+        if re.search(r"up to[^.;]{0,24}$", before) and max(vals) > 1.5 * min(vals):
+            chosen = vals[0]
+        else:
+            chosen = (min(vals) + max(vals)) / 2
+    if not period:
+        if cur in ("SEK", "NOK", "DKK"):
+            period = "year" if chosen >= 300000 else ("month" if chosen >= 15000 else "hour")
+        else:
+            period = "year" if chosen >= 30000 else ("hour" if chosen < 500 else "month")
+    eur = chosen * _PAY_ANNUAL[period] * _PAY_FX[cur]
+    return {"currency": cur, "period": period, "low": round(min(vals)), "high": round(max(vals)),
+            "chosen": round(chosen), "eur": int(round(eur / 1000) * 1000), "raw": t[:200]}
+
+
+def parse_pay(text, extract=True):
+    """Best salary estimate from an ad (or from one override line)."""
+    parsed = [p for p in (_parse_pay_block(b) for b in
+                          (_pay_blocks(text) if extract else [text or ""])) if p]
+    if not parsed:
+        return None
+    # Prefer the candidate's own market (SEK), then EUR, over other locations.
+    for market in ("SEK", "EUR"):
+        for p in parsed:
+            if p["currency"] == market:
+                return p
+    if len({p["currency"] for p in parsed}) > 1:
+        return None                                     # location-specific ranges, no EU/SEK figure
+    return parsed[0]
+
+
+def _salary_label(p):
+    if not p:
+        return ""
+    k = p["eur"] / 1000
+    return f"≈€{round(k)}k" if k >= 10 else f"≈€{p['eur']:,}"
+
+
+def _salary_target():
+    path = os.path.join(ROOT, "config", "profile.md")
+    mt = _mtime(path)
+    if _TARGET.get("mt") == mt:
+        return _TARGET["eur"]
+    eur = PAY_TARGET_FALLBACK
+    m = re.search(r"salary target\s*:\s*([^\n]+)", _read(path, 20000), re.I)
+    if m:
+        p = parse_pay(m.group(1), extract=False)
+        if p:
+            eur = p["eur"]
+    _TARGET.update(mt=mt, eur=eur)
+    return eur
+
+
+def _work_from_text(text):
+    """remote / hybrid / on-site / '' from the ad's location or work-model lines."""
+    if not text:
+        return ""
+    region = ""
+    for line in text.splitlines()[:30]:
+        if re.match(r"^\s*(work model|location(?:\s*/\s*work model)?|remote|workplace)\b", line, re.I):
+            region += " " + line.lower()
+    if not region:
+        region = "\n".join(text.splitlines()[:30]).lower()
+    if (re.search(r"\b(fully|100%|100 ?percent)\s+remote\b|\bremote[- ]first\b|"
+                  r"\bwork from (anywhere|home)\b|\bremote \((?:eu|europe|sweden|anywhere)|\bremote\b", region)
+            and not re.search(r"no remote|not remote", region)):
+        return "remote"
+    if re.search(r"\bhybrid\b(?!\s+cloud)|some (?:office|in-office) days|"
+                 r"\b\d+\s*(?:-\s*\d+\s*)?days?\s*(?:a|per)\s*week\s*(?:in|at)\s*(?:the\s*)?office|"
+                 r"partly remote|part remote", region):
+        return "hybrid"
+    if re.search(r"\bon-?site\b|in[- ]office|in[- ]person|office[- ]based|"
+                 r"work(?:ing)? from (?:the )?office", region):
+        return "on-site"
+    body = text[:6000].lower()
+    if re.search(r"\bfully remote\b|\b100% remote\b|\bremote[- ]first\b|work from anywhere", body):
+        return "remote"
+    if re.search(r"\bhybrid\b(?!\s+cloud)|some office days|days a week in (the )?office", body):
+        return "hybrid"
+    if re.search(r"\b(?:on-?site|in[- ]office|in[- ]person)\b", body):
+        return "on-site"
+    return ""
+
+
+def _work_label(w):
+    return {"remote": "Remote", "hybrid": "Hybrid", "on-site": "On-site"}.get(w, "—")
+
+
+def _load_meta():
+    global _meta_loaded
+    if _meta_loaded:
+        return
+    _meta_loaded = True
+    try:
+        with open(META_FILE, encoding="utf-8") as fh:
+            _META.update(json.load(fh))
+    except (OSError, ValueError):
+        pass
+
+
+def _save_meta(force=False):
+    global _meta_dirty
+    if not (_meta_dirty or force):
+        return
+    try:
+        os.makedirs(LOGS, exist_ok=True)
+        tmp = META_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(_META, fh)
+        os.replace(tmp, META_FILE)
+        _meta_dirty = False
+    except OSError:
+        pass
+
+
+def _role_meta(key, notes=""):
+    """Effective pay/work model: JD-derived, with a manual override on top."""
+    _load_meta()
+    path = os.path.join(STATE, "job-descriptions", key + ".md")
+    mt = _mtime(path) or 0
+    e = _META.setdefault(key, {})
+    if e.get("v") != META_VERSION or e.get("mt", -1) != mt or "salary" not in e:
+        text = _read(path, 20000) if mt else ""
+        e["mt"] = mt
+        e["v"] = META_VERSION
+        e["salary"] = parse_pay(text) if text else None
+        e["salary_raw"] = (e["salary"] or {}).get("raw", "")
+        e["work_model"] = _work_from_text(text) if text else ""
+        globals()["_meta_dirty"] = True
+    sal, raw = e.get("salary"), e.get("salary_raw") or ""
+    if e.get("salary_override"):
+        raw = e["salary_override"]
+        sal = parse_pay(raw, extract=False)
+    work = e.get("work_override") or e.get("work_model")
+    if not work and notes:
+        work = _work_from_text(notes[:4000])
+    return {"salary": sal, "salary_raw": raw,
+            "salary_override": bool(e.get("salary_override")),
+            "work_model": work or "unknown",
+            "work_detected": e.get("work_model") or "unknown",
+            "work_override": bool(e.get("work_override"))}
+
+
+def set_role_meta(key, work_model=None, salary=None):
+    """Persist a manual pay/work-model override ('' clears it)."""
+    if not key:
+        return
+    _load_meta()
+    e = _META.setdefault(key, {})
+    if work_model is not None:
+        e["work_override"] = (work_model or "").strip().lower()
+    if salary is not None:
+        e["salary_override"] = (salary or "").strip()
+    globals()["_meta_dirty"] = True
+    _save_meta(force=True)
+
+
+def _pay_work_fields(key, notes, status, cov, target):
+    """The grid's pay/work/focus fields for one row."""
+    meta = _role_meta(key, notes)
+    sal = meta["salary"]
+    eur = sal["eur"] if sal else None
+    work = meta["work_model"]
+    focus = (status not in ("CLOSED", "REJECTED") and cov is not None
+             and cov >= PAY_FIT and eur is not None and eur >= target)
+    focus_unknown = (status not in ("CLOSED", "REJECTED") and cov is not None
+                     and cov >= PAY_FIT and eur is None)
+    score = (round(0.6 * cov + 0.4 * min(100, 100 * eur / target))
+             if cov is not None and eur is not None else None)
+    band = ("good" if eur is not None and eur >= target else
+            "mid" if eur is not None and eur >= 0.8 * target else
+            "low" if eur is not None else "")
+    return {"salary_eur": eur, "salary_label": _salary_label(sal),
+            "salary_raw": meta["salary_raw"], "salary_band": band,
+            "salary_override": meta["salary_override"],
+            "work_model": work, "work_label": _work_label(work),
+            "work_detected": meta.get("work_detected", work),
+            "work_override": meta["work_override"],
+            "focus": focus, "focus_unknown": focus_unknown, "focus_score": score}
+
+
 def _doc_text(path):
     """Plain text of a CV file: .docx, .pdf (pdftotext) or .md/.txt. Cached by path+mtime."""
     if not path or not os.path.isfile(path):
@@ -929,6 +1225,7 @@ def grid():
     """One row per application: register ⋈ queue ⋈ in-flight running tasks ⋈ provenance."""
     apps = _rows(os.path.join(STATE, "applications.csv"))
     _load_cov(); _load_emp()
+    target = _salary_target()
     km, cvmap = _key_maps()
     qstate, qrow = {}, {}
     for st, path in (("pending", "queue.tsv"), ("human", "queue-human.tsv"), ("retry", "queue.retry")):
@@ -999,6 +1296,7 @@ def grid():
                     "notes": notes, "letter": r.get("letter", ""), "action": (r.get("action") or "").strip(),
                     "url": qrow.get(ck, {}).get("url", "") or subm_url.get(ck, ""),
                     "stages": stages_for(key, ck in subm),
+                    **_pay_work_fields(key, notes, status, cov, target),
                     "hint": hint})
     # queued but not yet in the register — show the work that's waiting / in flight
     for ck, r in qrow.items():
@@ -1031,8 +1329,9 @@ def grid():
                     "spec": key in specs, "applied": ck in subm,
                     "match": cov, "alignment": m.get("alignment", ""), "running": ck in running,
                     "notes": "", "letter": "", "action": "", "url": r.get("url", ""), "stages": st,
+                    **_pay_work_fields(key, "", stg, cov, target),
                     "hint": _hint(stg, "")})
-    _save_cov(); _save_emp()
+    _save_cov(); _save_emp(); _save_meta()
     out.sort(key=lambda x: (x["date"] or ""), reverse=True)
     out.sort(key=lambda x: 0 if x["running"] else (1 if x["status"] == "QUEUED" else 2))
     return out
@@ -2779,7 +3078,9 @@ class H(BaseHTTPRequestHandler):
         if p == "/api/register/row":
             return self._json(update_row(data.get("company", ""), data.get("role", ""),
                                          data.get("status", ""), data.get("notes", ""),
-                                         data.get("employment"), data.get("action")))
+                                         data.get("employment"), data.get("action"),
+                                         data.get("work_model"), data.get("salary"),
+                                         data.get("key", "")))
         if p == "/api/queue/action":
             return self._json(queue_action(data.get("action", ""), data.get("company", ""), data.get("role", "")))
         if p == "/api/roles/discover":

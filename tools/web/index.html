@@ -51,6 +51,25 @@
                 <option value="contract">contract</option><option value="consultant">consultant</option>
                 <option value="freelance">freelance</option><option value="internship">internship</option>
                 <option value="temporary">temporary</option><option value="__none">unknown</option></select>
+              <select id="fpay" title="Minimum estimated annual pay in EUR">
+                <option value="">any pay</option>
+                <option value="80000">pay ≥ €80k</option>
+                <option value="100000">pay ≥ €100k</option>
+                <option value="120000">pay ≥ €120k</option>
+                <option value="150000">pay ≥ €150k</option>
+                <option value="180000">pay ≥ €180k</option></select>
+              <select id="ffit" title="Minimum CV-to-job fit">
+                <option value="">any fit</option>
+                <option value="40">fit ≥ 40%</option>
+                <option value="60">fit ≥ 60%</option>
+                <option value="70">fit ≥ 70%</option>
+                <option value="80">fit ≥ 80%</option></select>
+              <select id="fwork" title="Work model">
+                <option value="">any work model</option>
+                <option value="remote">remote</option>
+                <option value="hybrid">hybrid</option>
+                <option value="on-site">on-site</option>
+                <option value="unknown">unknown</option></select>
               <label class="row mini" id="faction-wrap" title="Only rows that need a reply or other follow-up">
                 <input type="checkbox" id="faction"> ⚑ needs a reply/follow-up <span id="fact-count" class="muted"></span></label>
               <button id="fclear" class="small" type="button">Clear filters</button>
@@ -71,7 +90,9 @@
           <th data-s="role" title="Job title">Role</th>
           <th data-s="ats" title="Applicant-tracking system the application was submitted through (Ashby, Teamtailor, LinkedIn, …)">ATS</th>
           <th data-s="status" title="Current application status — see ⓘ Legend for each value">Status</th>
-          <th title="CV-to-job fit: how much of the ad's ATS keyword list the tailored CV covers. A red ✗ means the pre-submit alignment gate FAILED">Fit</th>
+          <th data-s="match" title="CV-to-job fit: how much of the ad's ATS keyword list the tailored CV covers. A red ✗ means the pre-submit alignment gate FAILED">Fit</th>
+          <th data-s="salary_eur" title="Estimated annual pay in EUR from the ad (hourly/day rates are annualised). Click to sort.">Pay</th>
+          <th data-s="work_model" title="Work model detected from the ad (remote / hybrid / on-site). Click to sort.">Work</th>
           <th title="Where the role sits in the apply queue — see ⓘ Legend">Queue</th>
           <th title="Provenance on file: the exact CV + cover letter (and SHA-256 hashes) recorded for the submission">Files</th>
           <th title="A saved job description exists for this role — open the row for the ad, ATS keywords and grounded context">Ad</th>
@@ -248,7 +269,9 @@
         <dt>ATS</dt><dd>The applicant-tracking system the application went through.</dd>
         <dt>Status</dt><dd>Where the application currently stands (list below).</dd>
         <dt>⚑ action</dt><dd>A reply or follow-up is needed (e.g. answer an interview email, complete an assessment). Tick the box under Filters to show only those; set or clear the flag in the row's drawer.</dd>
-        <dt>Match</dt><dd>How much of the ad's ATS keyword list the tailored CV covers. <b>align✗</b> = the pre-submit alignment gate failed.</dd>
+        <dt>Fit</dt><dd>How much of the ad's ATS keyword list the tailored CV covers. <b>align✗</b> = the pre-submit alignment gate failed. Click to sort.</dd>
+        <dt>Pay</dt><dd>Estimated annual pay in EUR from the ad (hourly/day rates annualised at 1,600h/220d; approximate FX). Hover for the source text. <span class="muted">—</span> = no figure in the ad — set one in the row's Summary. Click to sort.</dd>
+        <dt>Work</dt><dd>Remote / hybrid / on-site detected from the ad. Set an override in the row's Summary. Click to sort.</dd>
         <dt>Queue</dt><dd>Where the role sits in the apply queue (list below).</dd>
         <dt>Files (✓)</dt><dd>Provenance on file — the exact CV + letter and their SHA-256 hashes. <span class="muted">—</span> = none recorded.</dd>
         <dt>Job ad (✓)</dt><dd>A saved job description exists for this role. <span class="muted">—</span> = none saved.</dd>

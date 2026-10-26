@@ -28,6 +28,7 @@ const QUEUE_HELP = {
    Each row lands in exactly one bucket, by urgency: done > needs > ongoing > pipeline. */
 const BUCKETS = [
   { k: 'active', label: 'Active', hint: 'Everything not finished: needs you + ongoing + to apply' },
+  { k: 'focus', label: 'Focus', hint: 'Roles that pay at least your target and fit at least 70%; also shows high-fit roles with no pay figure' },
   { k: 'needs', label: 'Needs you', hint: 'Replies, interviews to book, assessments, offers or manual steps' },
   { k: 'ongoing', label: 'Ongoing', hint: 'Submitted, in progress or interviewing — waiting on the employer' },
   { k: 'pipeline', label: 'To apply', hint: 'Queued, drafting, prepared, blocked or with no result yet' },
@@ -39,6 +40,10 @@ const BUCKET_GROUPS = [
   { k: 'ongoing', title: 'Ongoing', desc: 'waiting on the employer' },
   { k: 'pipeline', title: 'To apply', desc: 'queued, prepared, or blocked before applying' },
   { k: 'done', title: 'Done', desc: 'rejected or closed — no action' },
+];
+const FOCUS_GROUPS = [
+  { k: 'focus_pay', title: 'Pays well + fits', desc: 'known pay at or above your target · strong fit', test: r => r.focus },
+  { k: 'focus_unknown', title: 'High fit, pay not stated', desc: 'strong fit — check the ad or set a salary', test: r => r.focus_unknown },
 ];
 const NEEDS_STATUS = new Set(['MANUAL', 'OFFER']);
 function bucketOf(r) {
@@ -69,7 +74,7 @@ const md = (s) => {
 };
 let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] }, CUR_PERM = null;
 let BUCKET = 'active', VISIBLE = [], VIEW = [];
-let COLLAPSED = { ongoing: true, pipeline: true, done: true };   // default to the actionable top of the list
+let COLLAPSED = { ongoing: true, pipeline: true, done: true, focus_unknown: true };   // default to the actionable top of the list
 let BUCKET_BEFORE_SEARCH = null;
 const PENDING = new Set();
 const NUT = '<span class="spin" title="working…">🥜</span> ';
@@ -265,7 +270,7 @@ const App = {
     renderRows();
   },
   clearFilters: () => {
-    ['fstatus', 'fqueue', 'ftype'].forEach(id => { const el = $('#' + id); if (el) el.value = ''; });
+    ['fstatus', 'fqueue', 'ftype', 'fpay', 'ffit', 'fwork'].forEach(id => { const el = $('#' + id); if (el) el.value = ''; });
     const fa = $('#faction'); if (fa) fa.checked = false;
     const q = $('#q'); if (q) q.value = '';
     const f = $('#filters'); if (f) f.open = false;
@@ -337,7 +342,13 @@ const App = {
     const d = await api('/api/kb/rebuild', {}); toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true); else { LIVE_RUNNING = false; $('#peras').classList.add('hide'); }
   },
   saveRow: async () => {
-    const d = await api('/api/register/row', { company: CUR.company, role: CUR.role, status: $('#dt-status').value, notes: $('#dt-notes').value, employment: $('#dt-emp') ? $('#dt-emp').value : undefined });
+    const d = await api('/api/register/row', {
+      company: CUR.company, role: CUR.role, key: CUR.key,
+      status: $('#dt-status').value, notes: $('#dt-notes').value,
+      employment: $('#dt-emp') ? $('#dt-emp').value : undefined,
+      work_model: $('#dt-work') ? $('#dt-work').value : undefined,
+      salary: $('#dt-salary') ? $('#dt-salary').value : undefined
+    });
     toast(d.ok || d.error, !!d.error); if (!d.error) { loadGrid(); }
   },
   saveAction: async () => {
@@ -464,7 +475,8 @@ async function loadGrid() {
 function bucketCounts() {
   const c = { needs: 0, ongoing: 0, pipeline: 0, done: 0 };
   GRID.forEach(r => { const k = bucketOf(r); c[k] = (c[k] || 0) + 1; });
-  return { ...c, active: c.needs + c.ongoing + c.pipeline, all: GRID.length };
+  return { ...c, focus: GRID.filter(r => r.focus || r.focus_unknown).length,
+           active: c.needs + c.ongoing + c.pipeline, all: GRID.length };
 }
 function renderBuckets() {
   const el = $('#metrics'); if (!el) return;
@@ -482,16 +494,24 @@ function renderRows() {
   const q = $('#q').value.toLowerCase(), st = $('#fstatus').value, qq = $('#fqueue').value;
   const ft = $('#ftype') ? $('#ftype').value : '';
   const fa = $('#faction') && $('#faction').checked;
+  const mp = parseInt(($('#fpay') || {}).value || '0', 10) || 0;
+  const mf = parseInt(($('#ffit') || {}).value || '0', 10) || 0;
+  const wm = ($('#fwork') || {}).value || '';
   const cy = String(new Date().getFullYear());
   const shortDate = (d) => { const [y, m, dd] = d.split('-'); return y === cy ? `${m}-${dd}` : `${y.slice(2)}-${m}-${dd}`; };
   const disp = (r) => r.label || r.status;               // INTERVIEW rows show SCHEDULED when an interview is still ahead
   const statusMatch = (r) => !st || (st === 'INTERVIEW' ? ['INTERVIEW', 'SCHEDULED', 'INVITED'].includes(disp(r)) : disp(r) === st);
   const typeMatch = (r) => !ft || (ft === '__none' ? !r.employment : (r.employment || '') === ft);
   const actMatch = (r) => !fa || !!r.action;
-  const filt = (r) => statusMatch(r) && typeMatch(r) && actMatch(r) && (!qq || r.queue === qq) &&
+  const payMatch = (r) => !mp || (r.salary_eur != null && r.salary_eur >= mp);
+  const fitMatch = (r) => !mf || (r.match != null && r.match >= mf);
+  const workMatch = (r) => !wm || (r.work_model || 'unknown') === wm;
+  const filt = (r) => statusMatch(r) && typeMatch(r) && actMatch(r) && payMatch(r) && fitMatch(r) && workMatch(r) &&
+    (!qq || r.queue === qq) &&
     (!q || (r.company + ' ' + r.role + ' ' + (r.ats || '') + ' ' + (r.action || '')).toLowerCase().includes(q));
   let rows = GRID.filter(filt);
   if (BUCKET === 'active') rows = rows.filter(r => bucketOf(r) !== 'done');
+  else if (BUCKET === 'focus') rows = rows.filter(r => r.focus || r.focus_unknown);
   else if (BUCKET !== 'all') rows = rows.filter(r => bucketOf(r) === BUCKET);
   VIEW = rows.map(r => r.key);
 
@@ -499,6 +519,14 @@ function renderRows() {
   const rank = (r) => r.running ? 0 : (r.status === 'QUEUED' ? 1 : 2);   // in-flight + queued float to the top
   const needRank = (r) => r.status === 'OFFER' ? 0 : ((r.label || '') === 'INVITED' ? 1 : (r.action ? 2 : 3));
   const sortRows = (arr, group) => arr.slice().sort((a, b) => {
+    if (group === 'focus_pay' && k === 'date') {
+      const sa = a.focus_score || 0, sb = b.focus_score || 0;
+      if (sa !== sb) return sb - sa;
+    }
+    if (group === 'focus_unknown' && k === 'date') {
+      const ma = a.match || 0, mb = b.match || 0;
+      if (ma !== mb) return mb - ma;
+    }
     if (group === 'needs' && k === 'date') {
       const na = needRank(a), nb = needRank(b);
       if (na !== nb) return na - nb;
@@ -511,6 +539,18 @@ function renderRows() {
   const mbadge = (r) => r.match == null ? '<span class="muted"' + T('No score — this role has no saved job ad (ATS keywords) and/or no CV to compare') + '>—</span>'
     : `<span class="badge ${r.match >= 70 ? 'good' : r.match >= 40 ? 'mid' : 'bad'}"${T("CV-to-job fit: this % of the ad's ATS keywords are covered by the tailored CV")}>${r.match}%</span>`
       + (r.alignment === 'FAIL' ? ' <span class="badge bad"' + T('Pre-submit alignment gate FAILED for this role — open the row to see why') + '>✗</span>' : '');
+  const payBadge = (r) => r.salary_eur == null
+    ? (r.salary_override && r.salary_raw
+        ? `<span class="badge bad"${T('Could not parse the salary override: ' + r.salary_raw + ' — edit it in the row’s Summary')}>?</span>`
+        : `<span class="muted"${T('No salary figure in the ad — add one in the row’s Summary, or read the ad')}>—</span>`)
+    : `<span class="badge ${r.salary_band === 'good' ? 'good' : r.salary_band === 'mid' ? 'mid' : 'bad'}"${T('Estimated annual pay in EUR' + (r.salary_override ? ' (manual override)' : ' from the ad') + (r.salary_raw ? ': ' + r.salary_raw : ''))}>${esc(r.salary_label || '—')}</span>`;
+  const workBadge = (r) => {
+    const w = r.work_model || 'unknown';
+    if (w === 'unknown')
+      return `<span class="muted"${T('Work model not found in the ad — set an override in the row’s Summary')}>—</span>`;
+    const cls = w === 'remote' ? 'wm-remote' : w === 'hybrid' ? 'wm-hybrid' : 'wm-onsite';
+    return `<span class="badge ${cls}"${T('Work model ' + (r.work_override ? '(manual override)' : 'detected from the ad') + ': ' + (r.work_label || w))}>${esc(r.work_label || w)}</span>`;
+  };
   const rowHTML = (r) => {
     const i = GRID.indexOf(r);
     const sel = (CUR && (r.key === CUR.key || (r.company === CUR.company && r.role === CUR.role))
@@ -521,6 +561,7 @@ function renderRows() {
       `<td${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}</td>` +
       `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
       `<td>${chip(r.label || r.status)}${r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : ''}</td><td>${mbadge(r)}</td>` +
+      `<td>${payBadge(r)}</td><td>${workBadge(r)}</td>` +
       `<td${T(QUEUE_HELP[r.queue] || 'Not in any queue')}>${['pending', 'human', 'retry'].includes(r.queue)
         ? `<span class="badge ${r.queue === 'human' ? 'bad' : r.queue === 'retry' ? 'mid' : 'good'}">${esc(r.queue)}</span>`
         : `<span class="muted">—</span>`}</td>` +
@@ -528,27 +569,33 @@ function renderRows() {
       `<td${T(r.spec ? 'A saved job description exists — open the row for the ad, ATS keywords and grounded context' : 'No saved job description')}>${r.spec ? '✓' : '<span class="muted">—</span>'}</td></tr>`;
   };
 
-  const empty = (msg) => `<tr><td colspan="9" class="muted">${msg}
+  const empty = (msg) => `<tr><td colspan="11" class="muted">${msg}
     <button class="small" type="button" onclick="App.clearFilters()">Clear filters</button>
     <button class="small" type="button" onclick="App.bucket('all')">Show all</button></td></tr>`;
   let html = '';
   let rendered = [];
+  const advanced = !!(st || qq || ft || fa || mp || mf || wm || q);
+  let groups = null;
   if (BUCKET === 'active' || BUCKET === 'all') {
-    const groups = BUCKET_GROUPS.filter(g => BUCKET === 'all' || g.k !== 'done');
-    const advanced = !!(st || qq || ft || fa || q);
+    groups = BUCKET_GROUPS.filter(g => BUCKET === 'all' || g.k !== 'done')
+      .map(g => ({ ...g, test: r => bucketOf(r) === g.k }));
     if (BUCKET === 'active' && !advanced && !rows.some(r => bucketOf(r) === 'needs'))
-      html += '<tr class="grp calm"><td colspan="9">✓ Nothing needs you right now — ongoing applications and the apply queue are below.</td></tr>';
+      html += '<tr class="grp calm"><td colspan="11">✓ Nothing needs you right now — ongoing applications and the apply queue are below.</td></tr>';
+  } else if (BUCKET === 'focus') {
+    groups = FOCUS_GROUPS;
+  }
+  if (groups) {
     for (const g of groups) {
-      const gr = sortRows(rows.filter(r => bucketOf(r) === g.k), g.k);
+      const gr = sortRows(rows.filter(g.test), g.k);
       if (!gr.length) continue;
       const collapsed = !advanced && !!COLLAPSED[g.k];
       html += `<tr class="grp ${g.k}${collapsed ? ' collapsed' : ''}" onclick="window.toggleGroup('${g.k}')">` +
-        `<td colspan="9"><span class="grp-caret">${collapsed ? '▸' : '▾'}</span>` +
+        `<td colspan="11"><span class="grp-caret">${collapsed ? '▸' : '▾'}</span>` +
         `<span class="grp-name">${esc(g.title)}</span>` +
         `<span class="grp-desc">${esc(g.desc)}</span><span class="grp-n">${gr.length}</span></td></tr>`;
       if (!collapsed) { html += gr.map(rowHTML).join(''); rendered.push(...gr); }
     }
-    if (!rows.length) html = empty('No rows in this view.');
+    if (!rows.length) html = empty(BUCKET === 'focus' ? 'No active roles match this focus.' : 'No rows in this view.');
   } else {
     const gr = sortRows(rows, BUCKET);
     rendered = gr;
@@ -561,11 +608,13 @@ function renderRows() {
     rows.forEach(r => { const b = bucketOf(r); c[b] = (c[b] || 0) + 1; });
     if (BUCKET === 'active') $('#count').textContent = `${c.needs} need you · ${c.ongoing} ongoing · ${c.pipeline} to apply`;
     else if (BUCKET === 'all') $('#count').textContent = `${c.needs} need you · ${c.ongoing} ongoing · ${c.pipeline} to apply · ${c.done} done`;
+    else if (BUCKET === 'focus') $('#count').textContent =
+      `${rows.filter(r => r.focus).length} pay well + fit · ${rows.filter(r => r.focus_unknown).length} high fit, pay not stated`;
     else $('#count').textContent = `${rows.length} ${((BUCKETS.find(b => b.k === BUCKET) || {}).label || BUCKET).toLowerCase()}`;
   }
   if ($('#fact-count')) { const n = GRID.filter(r => r.action).length; $('#fact-count').textContent = n ? `(${n})` : ''; }
   if ($('#filt-n')) {
-    const n = [st, qq, ft, fa ? '1' : '', q].filter(Boolean).length;
+    const n = [st, qq, ft, fa ? '1' : '', mp, mf, wm, q].filter(Boolean).length;
     $('#filt-n').textContent = n ? `(${n})` : '';
   }
 }
@@ -605,6 +654,7 @@ function summary(r) {
   const m = (D.match) || {};
   const reg = ['QUEUED', 'PREPARED', 'SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER', 'REJECTED', 'BLOCKED', 'MANUAL', 'CLOSED'];
   const known = reg.includes(r.status);
+  const wl = (w) => w === 'remote' ? 'Remote' : w === 'hybrid' ? 'Hybrid' : w === 'on-site' ? 'On-site' : 'unknown';
   const notes = (r.notes || '').trim();
   const hist = notes ? notes.split(/\s*\|\s*/).filter(Boolean).map(x => `<li>${md(x)}</li>`).join('') : '';
   const act = (r.action || '').trim();
@@ -624,7 +674,7 @@ function summary(r) {
         const cell = (k, label) => `<span class="stage ${st[k] ? 'on' : ''}" title="${st[k] ? 'done' : 'not yet'}">${st[k] ? '✓' : '○'} ${label}</span>`;
         return cell('ad', 'Ad saved') + cell('keywords', 'Keywords') + cell('grounding', 'Grounded') + cell('documents', 'Documents') + cell('applied', 'Applied');
       })()}</div>
-      <div class="state-meta mini muted">ATS: ${esc(r.ats || '—')}${r.employment ? ' · type: ' + esc(r.employment) : ''} · Queue: ${esc(r.queue || 'not queued')}${r.date ? ' · updated ' + esc(r.date) : ''}${r.interview_at ? ' · interview ' + esc(r.interview_at) : ''} · <span class="mono">${esc(r.key)}</span></div>
+      <div class="state-meta mini muted">ATS: ${esc(r.ats || '—')}${r.employment ? ' · type: ' + esc(r.employment) : ''} · Pay: ${esc(r.salary_label || '—')}${r.salary_override ? ' (manual)' : ''} · Work: ${esc(wl(r.work_model))}${r.work_override ? ' (manual)' : ''} · Queue: ${esc(r.queue || 'not queued')}${r.date ? ' · updated ' + esc(r.date) : ''}${r.interview_at ? ' · interview ' + esc(r.interview_at) : ''} · <span class="mono">${esc(r.key)}</span></div>
       ${r.running ? '<div class="working"><span class="spin">🥜</span> being worked on right now</div>' : ''}
     </div>` +
     `<div class="row" style="margin:6px 0 10px"><span class="muted">Set status</span>
@@ -637,6 +687,16 @@ function summary(r) {
       <button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>Prepare this role</button>
       ${r.status === 'PREPARED' ? `<button class="risky" data-act onclick='App.submitThis(${JSON.stringify(r.key)})' title="Submit this application now with the documents already prepared — sends it, needs approval">🚀 Submit this application</button>` : ''}
       <button data-act onclick='App.matchThis(${JSON.stringify(r.key)}, this)'>Recompute match</button></div>` +
+    `<div class="row" style="margin:0 0 10px">
+      <span class="muted">Work</span>
+      <select id="dt-work">
+        <option value="">auto — ${esc(wl(r.work_detected))}</option>
+        ${['remote', 'hybrid', 'on-site'].map(x => `<option value="${x}" ${r.work_override && r.work_model === x ? 'selected' : ''}>${wl(x).toLowerCase()}</option>`).join('')}
+      </select>
+      <span class="muted">Pay</span>
+      <input id="dt-salary" style="flex:1;max-width:380px" value="${esc(r.salary_override ? (r.salary_raw || '') : '')}" placeholder="${esc(r.salary_raw && !r.salary_override ? 'auto: ' + r.salary_raw : 'e.g. SEK 900k/yr')}">
+      <span class="muted mini">blank = auto from the ad</span>
+    </div>` +
     `<div class="row">${m.alignment ? `<span class="badge ${m.alignment === 'PASS' ? 'good' : 'bad'}">alignment ${m.alignment}</span>` : ''}` +
     `${m.coverage != null ? `<span class="badge ${m.coverage >= 70 ? 'good' : 'mid'}">coverage ${m.coverage}%</span>` : ''}${known ? '' : '<span class="muted mini">(runner-derived state)</span>'}</div>` +
     (m.missing && m.missing.length ? `<div class="muted mini" style="margin-top:8px">missing skills — click one to add where you have it:
@@ -1406,14 +1466,18 @@ $('#q').oninput = () => {
 };
 ['#fstatus', '#fqueue', '#ftype', '#faction'].forEach(sel => {
   const el = $(sel); if (!el) return;
-  el.onchange = () => { BUCKET = 'all'; renderBuckets(); renderRows(); };   // a filter must not be hidden by the active bucket
+  el.onchange = () => { if (BUCKET !== 'focus') BUCKET = 'all'; renderBuckets(); renderRows(); };
+});
+['#fpay', '#ffit', '#fwork'].forEach(sel => {
+  const el = $(sel); if (!el) return;
+  el.onchange = () => { renderRows(); };      // quality filters apply within the current bucket
 });
 $('#fclear').onclick = () => App.clearFilters();
 $('#a-prepare-shown').onclick = () => App.prepareShown();
 $('#a-submit-shown').onclick = () => App.submitPrepared();
 $('#a-match').onclick = () => App.matchShown($('#a-match'));
 $('#export').onclick = () => {
-  const cs = ['date', 'company', 'role', 'employment', 'ats', 'status', 'action', 'match', 'queue', 'applied', 'spec', 'key'];
+  const cs = ['date', 'company', 'role', 'employment', 'work_model', 'salary_label', 'ats', 'status', 'action', 'match', 'focus', 'queue', 'applied', 'spec', 'key'];
   const body = GRID.map(r => cs.map(c => JSON.stringify(r[c] == null ? '' : r[c])).join(',')).join('\n');
   const url = URL.createObjectURL(new Blob([cs.join(',') + '\n' + body], { type: 'text/csv' }));
   const a = document.createElement('a'); a.href = url; a.download = 'jobsquirrel.csv'; a.click(); URL.revokeObjectURL(url);
