@@ -73,6 +73,7 @@ const md = (s) => {
   return t;
 };
 let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] }, CUR_PERM = null;
+let BUILD = '';
 let BUCKET = 'active', VISIBLE = [], VIEW = [];
 let COLLAPSED = { ongoing: true, pipeline: true, done: true, focus_unknown: true };   // default to the actionable top of the list
 let BUCKET_BEFORE_SEARCH = null;
@@ -896,6 +897,10 @@ window.viewDoc = async (rel, title) => {
 /* ---------- live strip + agent dock ---------- */
 async function liveTick() {
   const d = await api('/api/live');
+  if (d && d.build) {                                  // server restarted or web files changed
+    if (BUILD && d.build !== BUILD) { location.reload(); return; }
+    BUILD = d.build;
+  }
   const a = d.action || {};
   let s = a.running ? '● ' + a.name + ' …' : (d.active ? '● running' : '○ idle');
   (d.running || []).forEach(r => s += '  ▶ ' + r);

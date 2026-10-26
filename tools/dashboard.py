@@ -33,6 +33,7 @@ STATE = os.environ.get("DASHBOARD_STATE", os.path.join(ROOT, "state"))
 LOGS = os.path.join(STATE, "logs")
 WEB = os.path.join(ROOT, "tools", "web")
 SESSION_TOKEN = secrets.token_urlsafe(24)
+BOOT_ID = secrets.token_urlsafe(8)          # changes on every restart; lets open tabs reload
 
 try:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1377,6 +1378,18 @@ def read_task_log(name):
     return {"name": name, "curated": curate(_read(os.path.join(LOGS, name + ".log"), cap=200_000))}
 
 
+def _web_build():
+    """Restart + static-frontend fingerprint, so an open tab reloads itself."""
+    try:
+        static = "|".join(
+            f"{st.st_mtime_ns}:{st.st_size}"
+            for st in (os.stat(os.path.join(WEB, f)) for f in ("index.html", "app.css", "app.js"))
+        )
+    except OSError:
+        static = ""
+    return f"{BOOT_ID}|{static}"
+
+
 def live():
     _act_load()
     active = bool(WQ and WQ.runner_active())
@@ -1401,6 +1414,7 @@ def live():
             "tail_name": tail_name, "tail": tail,
             "paused": os.path.exists(PAUSE_FILE),
             "stopping": os.path.exists(STOP_FILE),
+            "build": _web_build(),
             "action": {"name": act_name, "running": act_running,
                        "summary": summarize_action(act_name, act_log, act_running),
                        "overview": action_overview(act_name, act_lines, act_running),
@@ -3153,25 +3167,101 @@ class H(BaseHTTPRequestHandler):
         self._json({"error": "not found"}, 404)
 
 
+def _source_stamp():
+    """Fingerprint of the Python sources the server imports."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    out = []
+    for path in glob.glob(os.path.join(here, "*.py")):
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        out.append((path, st.st_mtime_ns, st.st_size))
+    return tuple(sorted(out))
+
+
+def _supervise(host, port, open_browser):
+    """Run the server in a child process; restart it when a source file changes."""
+    child = [sys.executable, os.path.abspath(__file__), "--serve",
+             "--host", host, "--port", str(port)]
+    url = f"http://{host}:{port}/"
+    print(f"🐿️  Jobsquirrel WebUI  ->  {url}   (Ctrl-C to stop · auto-reload on)", flush=True)
+    stamp = _source_stamp()
+    runs, proc = 0, None
+
+    def _stop(_signum, _frame):
+        raise KeyboardInterrupt                       # clean up the child on kill/TERM
+    try:
+        signal.signal(signal.SIGTERM, _stop)
+    except (ValueError, OSError):
+        pass
+    try:
+        while True:
+            proc = subprocess.Popen(child)
+            runs += 1
+            if runs == 1 and open_browser:
+                threading.Timer(0.8, lambda p=proc: p.poll() is None and webbrowser.open(url)).start()
+            changed = False
+            while proc.poll() is None:
+                time.sleep(0.7)
+                now = _source_stamp()
+                if now != stamp:
+                    changed = True
+                    time.sleep(0.25)                    # coalesce a multi-file save
+                    stamp = _source_stamp()
+                    print("↻ source changed — restarting the WebUI…", flush=True)
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait(timeout=3)
+                    break
+            if changed:
+                continue
+            if runs == 1:
+                return proc.returncode or 1             # e.g. port already in use
+            print("server exited — fix the error and save; waiting for the next change…", flush=True)
+            while _source_stamp() == stamp:
+                time.sleep(0.7)
+            stamp = _source_stamp()
+    except KeyboardInterrupt:
+        print("\nbye")
+    finally:
+        if proc and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="Jobsquirrel WebUI server.")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--open", action="store_true")
+    ap.add_argument("--serve", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--no-reload", action="store_true", help="run in-process (no auto-reload)")
     args = ap.parse_args()
     if not os.path.isfile(os.path.join(WEB, "index.html")):
         print(f"missing frontend: {WEB}/index.html", file=sys.stderr)
         return 2
+    if not args.serve and not args.no_reload and os.environ.get("JOBSQUIRREL_NO_RELOAD") != "1":
+        return _supervise(args.host, args.port, args.open)
     url = f"http://{args.host}:{args.port}/"
     DASH["url"] = f"http://{args.host}:{args.port}"       # handed to the agent so it can ask for approval
     srv = ThreadingHTTPServer((args.host, args.port), H)
-    print(f"🐿️  Jobsquirrel WebUI  ->  {url}   (Ctrl-C to stop)")
+    if not args.serve:
+        print(f"🐿️  Jobsquirrel WebUI  ->  {url}   (Ctrl-C to stop)", flush=True)
     if args.open:
         threading.Timer(0.7, lambda: webbrowser.open(url)).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
-        print("\nbye")
+        if not args.serve:
+            print("\nbye")
     return 0
 
 
