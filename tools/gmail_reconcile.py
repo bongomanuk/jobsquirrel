@@ -531,6 +531,11 @@ def main():
     elif changes:
         print("\n(dry run - re-run with --apply to write these)")
 
+    mode = "applied" if args.apply else "dry run"
+    print(f"\n== summary ({mode}): {len(messages)} inspected · {len(changes)} proposed · "
+          f"{len(outbound)} outbound · {len(verifications)} verification · "
+          f"{len(unmatched)} unmatched · {len(ambiguous)} ambiguous ==")
+
 
 if __name__ == "__main__":
     main()

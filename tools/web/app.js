@@ -46,11 +46,16 @@ const md = (s) => {
 let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] }, CUR_PERM = null;
 let SPECIAL = '', ACTIVE_METRIC = '', VISIBLE = [];
 const PENDING = new Set();
+const NUT = '<span class="spin" title="working…">🥜</span> ';
 function starting(label, keys) {
   LIVE_RUNNING = true;
   (keys || []).forEach(k => PENDING.add(k));
   const rc = $('#runctl'); if (rc) rc.classList.remove('hide');
-  const l = $('#live'); if (l) l.textContent = '● ' + (label || 'working') + ' — starting…';
+  const l = $('#live'); if (l) l.innerHTML = NUT + esc('● ' + (label || 'working') + ' — starting…');
+  ACT = { name: label || 'working', running: true, summary: {}, log: [] };
+  ACT_SIG = ''; ACT_IGNORE = LAST_ACT_NAME;
+  CHAT_STICK = true;
+  renderChat();
   document.querySelectorAll('#a-prepare,#a-submit,#a-reconcile,#a-prepare-shown,#a-submit-shown,#a-match,#d-body [data-act]')
     .forEach(b => { b.disabled = true; });
   renderRows();
@@ -206,6 +211,7 @@ const App = {
   },
   chat: async () => {
     const inp = $('#chatmsg'), m = inp.value.trim(); if (!m) return;
+    ACT = null; ACT_SIG = '';
     CHAT.running = true; CHAT_STICK = true; setSpin(true); renderChat();
     const d = await api('/api/chat', { message: m });
     if (d.error) { toast(d.error, true); CHAT.running = false; setSpin(false); renderChat(); return; }  // keep your text
@@ -222,11 +228,12 @@ const App = {
     const d = await api('/api/chat/new', {});
     if (d.error) { toast(d.error, true); return; }
     clearInterval(CHAT_TIMER); CHAT_TIMER = null;
+    ACT = null; ACT_SIG = '';
     CHAT = { segments: [], running: false }; setSpin(false); renderChat(); toast('agent history cleared');
   },
   open: (i) => openDetail(GRID[i]),
   metric: (kind) => {
-    if (kind === 'total') { SPECIAL = ''; ACTIVE_METRIC = ''; $('#fstatus').value = ''; $('#fqueue').value = ''; }
+    if (kind === 'total') { SPECIAL = ''; ACTIVE_METRIC = ''; $('#fstatus').value = ''; $('#fqueue').value = ''; if ($('#fclosed')) $('#fclosed').checked = true; }
     else if (ACTIVE_METRIC === kind) { SPECIAL = ''; ACTIVE_METRIC = ''; $('#fstatus').value = ''; $('#fqueue').value = ''; }
     else {
       ACTIVE_METRIC = kind; SPECIAL = ''; $('#fstatus').value = ''; $('#fqueue').value = '';
@@ -443,13 +450,15 @@ function renderRows() {
   const q = $('#q').value.toLowerCase(), st = $('#fstatus').value, qq = $('#fqueue').value;
   const ft = $('#ftype') ? $('#ftype').value : '';
   const fa = $('#faction') && $('#faction').checked;
+  const showClosed = $('#fclosed') && $('#fclosed').checked;
   const cy = String(new Date().getFullYear());
   const shortDate = (d) => { const [y, m, dd] = d.split('-'); return y === cy ? `${m}-${dd}` : `${y.slice(2)}-${m}-${dd}`; };
   const disp = (r) => r.label || r.status;               // INTERVIEW rows show SCHEDULED when an interview is still ahead
   const statusMatch = (r) => !st || (st === 'INTERVIEW' ? ['INTERVIEW', 'SCHEDULED', 'INVITED'].includes(disp(r)) : disp(r) === st);
+  const closedMatch = (r) => showClosed || st === 'CLOSED' || r.status !== 'CLOSED';
   const typeMatch = (r) => !ft || (ft === '__none' ? !r.employment : (r.employment || '') === ft);
   const actMatch = (r) => !fa || !!r.action;
-  let rows = GRID.filter(r => statusMatch(r) && typeMatch(r) && actMatch(r) && (!qq || r.queue === qq) &&
+  let rows = GRID.filter(r => closedMatch(r) && statusMatch(r) && typeMatch(r) && actMatch(r) && (!qq || r.queue === qq) &&
     (!q || (r.company + ' ' + r.role + ' ' + (r.ats || '') + ' ' + (r.action || '')).toLowerCase().includes(q)));
   if (SPECIAL === 'in_process') rows = rows.filter(r => ['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER'].includes(r.status));
   else if (SPECIAL === 'blocked') rows = rows.filter(r => ['BLOCKED', 'MANUAL'].includes(r.status));
@@ -756,8 +765,9 @@ async function liveTick() {
   (d.running || []).forEach(r => s += '  ▶ ' + r);
   const t = (d.tail || []).slice(-1)[0];
   if (t) s += '   ' + t.t;
-  $('#live').textContent = s;
   const busy = !!a.running || d.active;
+  if (busy) $('#live').innerHTML = NUT + esc(s);
+  else $('#live').textContent = s;
   LIVE_RUNNING = busy || LIVE_RUNNING;                 // stay optimistic until confirmed idle
   document.querySelectorAll('#a-prepare,#a-submit,#a-reconcile,#a-prepare-shown,#a-submit-shown,#a-match,#d-body [data-act]')
     .forEach(b => { b.disabled = LIVE_RUNNING; });
@@ -775,7 +785,7 @@ async function liveTick() {
   }
   if (!$('#peras').classList.contains('hide')) {         // background-run monitor
     const sm = a.summary || {};
-    let h = `<div class="act-h">${a.running ? '●' : '✓'} ${esc(a.name || 'working…')} <span class="muted">${a.running ? 'running…' : 'finished'}</span></div>`;
+    let h = `<div class="act-h">${a.running ? NUT : '✓'} ${esc(a.name || 'working…')} <span class="muted">${a.running ? 'running…' : 'finished'}</span></div>`;
     if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
     if ((sm.notable || []).length) h += '<ul class="act-list">' + sm.notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
     h += (d.running || []).length ? `<div class="act-h" style="margin-top:6px">▶ ${(d.running || []).map(esc).join(' · ')}</div>` : '';
@@ -783,11 +793,20 @@ async function liveTick() {
     $('#peras-body').innerHTML = h;
   }
   const sm = a.summary || {};
+  LAST_ACT_NAME = a.name || '';
+  const sig = a.name ? [a.name, a.running, (a.log || []).length, (a.overview || []).join('|')].join('|') : '';
+  if ((LIVE_RUNNING || ACT) && sig !== ACT_SIG &&
+      (!ACT_IGNORE || a.running || a.name !== ACT_IGNORE)) {
+    ACT_IGNORE = '';
+    ACT_SIG = sig;
+    ACT = a.name && (a.running || (a.log || []).length) ? a : null;
+    renderChat();
+  }
   $('#act-sum').textContent = a.name ? ((a.running ? '● ' : '✓ ') + a.name) : (d.active ? 'runner active' : 'idle');
   if (document.body.dataset.act === 'open') {
     let h = '';
     if (a.name && (a.running || (a.log || []).length)) {
-      h += `<div class="act-h">${a.running ? '●' : '✓'} ${esc(a.name)} <span class="muted">${a.running ? 'running…' : 'done'}</span></div>`;
+      h += `<div class="act-h">${a.running ? NUT : '✓'} ${esc(a.name)} <span class="muted">${a.running ? 'running…' : 'done'}</span></div>`;
       if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
       if ((sm.notable || []).length) h += '<ul class="act-list">' + sm.notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
       const total = (a.log || []).length;
@@ -1044,9 +1063,26 @@ function setSpin(v) {
 function openKeys(el) { return new Set([...el.querySelectorAll('details[open]')].map(d => d.getAttribute('data-k')).filter(Boolean)); }
 let CHAT_STICK = true;                                        // follow new output only if the reader is at the bottom
 function chatAtBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 60; }
+let ACT = null, ACT_SIG = '', ACT_IGNORE = '', LAST_ACT_NAME = '';   // last dashboard action, shown in the chat
+function actionCard(a) {
+  const sm = a.summary || {}, ov = a.overview || [];
+  let h = `<div class="c-user">${a.running ? NUT : ''}${esc(a.name)} <span class="muted">${a.running ? 'running…' : 'done'}</span></div>`;
+  if (ov.length) {
+    h += '<div class="act-h" style="margin-top:6px">Where we are</div>';
+    h += '<ul class="act-list">' + ov.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
+  } else if (sm.headline) {
+    h += `<div class="c-status">${esc(sm.headline)}</div>`;
+  }
+  const notable = (sm.notable || []).filter(x => x !== sm.headline &&
+    !(ov.length && /^==\s*(summary|proposed register changes)/i.test(x)));
+  if (notable.length) h += '<ul class="act-list">' + notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
+  const log = a.log || [];
+  if (log.length) h += `<details class="act-raw" data-k="a:${esc(a.name)}"><summary>full output · ${log.length} lines</summary><pre>${esc(log.join('\n'))}</pre></details>`;
+  return `<div class="c-act">${h}</div>`;
+}
 function renderChat() {
   const el = $('#chat'), segs = (CHAT && CHAT.segments) || [];
-  if (!segs.length && !CHAT.running) { el.innerHTML = '<span class="muted">ask the agent anything…</span>'; return; }
+  if (!segs.length && !CHAT.running && !ACT) { el.innerHTML = '<span class="muted">ask the agent anything…</span>'; return; }
   const keys = openKeys(el);                                  // keep expanded steps open across re-renders
   let h = '', i = 0;
   while (i < segs.length) {
@@ -1064,6 +1100,7 @@ function renderChat() {
     else h += `<div class="md">${collapseCode(md(s.body))}</div>`;
     i++;
   }
+  if (ACT) h += actionCard(ACT);
   if (CHAT.running) h += `<div class="working"><span class="muted">▮ working…</span></div>`;
   el.innerHTML = h;
   el.querySelectorAll('details[data-k]').forEach(d => { if (keys.has(d.getAttribute('data-k'))) d.open = true; });
@@ -1288,6 +1325,7 @@ $('#q').oninput = renderRows;
 $('#fstatus').onchange = () => { SPECIAL = ''; ACTIVE_METRIC = ''; document.querySelectorAll('#metrics .metric').forEach(m => m.classList.remove('on')); renderRows(); };
 $('#fqueue').onchange = () => { SPECIAL = ''; ACTIVE_METRIC = ''; document.querySelectorAll('#metrics .metric').forEach(m => m.classList.remove('on')); renderRows(); };
 $('#ftype').onchange = () => renderRows();
+if ($('#fclosed')) $('#fclosed').onchange = () => renderRows();
 if ($('#faction')) $('#faction').onchange = () => renderRows();
 $('#a-prepare-shown').onclick = () => App.prepareShown();
 $('#a-submit-shown').onclick = () => App.submitPrepared();

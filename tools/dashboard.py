@@ -1095,13 +1095,16 @@ def live():
             tail = read_task_log(tail_name)["curated"][-150:]
     proc = _ACT.get("proc")
     act_running = bool(proc and proc.poll() is None)
-    act_log = action_log(400)
+    act_lines = action_log(4000)
+    act_log = act_lines[-400:]
+    act_name = _ACT.get("name", "")
     return {"active": active, "running": [k.replace("|", " — ") for k in running],
             "tail_name": tail_name, "tail": tail,
             "paused": os.path.exists(PAUSE_FILE),
             "stopping": os.path.exists(STOP_FILE),
-            "action": {"name": _ACT.get("name", ""), "running": act_running,
-                       "summary": summarize_action(_ACT.get("name", ""), act_log, act_running),
+            "action": {"name": act_name, "running": act_running,
+                       "summary": summarize_action(act_name, act_log, act_running),
+                       "overview": action_overview(act_name, act_lines, act_running),
                        "log": act_log}}
 
 
@@ -1112,6 +1115,7 @@ def summarize_action(name, lines, running):
     """Compress an action log into a headline + the few lines that matter."""
     clean = [l.rstrip() for l in lines if l.strip() and not ACT_NOISE.match(l)]
     wanted = re.compile(r"(error|fail|warn|refus|denied|traceback|⇒|→|nothing to|no changes|"
+                        r"proposed|verification|unmatched|ambiguous|summary|"
                         r"\bwrote\b|\bwritten\b|\bsaved\b|prepared|submitted|applied|created|"
                         r"proposal|\b[1-9]\d*\b\s*(?:new|found|queued|sent|updated|skipped|matched))", re.I)
     notable, seen = [], set()
@@ -1121,6 +1125,66 @@ def summarize_action(name, lines, running):
     notable = notable[-8:]
     return {"headline": (clean[-1][:200] if clean else ("running…" if running else "no output")),
             "notable": notable, "lines": len(clean)}
+
+
+RECON_SUMMARY = re.compile(
+    r"summary \((dry run|applied)\): (\d+) inspected · (\d+) proposed · "
+    r"(\d+) outbound · (\d+) verification · (\d+) unmatched · (\d+) ambiguous")
+
+
+def action_overview(name, lines, running):
+    """A short 'where we are / what's new' summary after a reconcile."""
+    if "reconcile" not in (name or "").lower():
+        return []
+    apps = _rows(os.path.join(STATE, "applications.csv"))
+    counts = {}
+    for r in apps:
+        k = (r.get("status") or "").upper()
+        counts[k] = counts.get(k, 0) + 1
+    live = sum(counts.get(k, 0) for k in ("SUBMITTED", "IN_PROGRESS", "INTERVIEW", "OFFER"))
+    live_parts = " · ".join(f"{s} {counts[s]}" for s in
+                            ("SUBMITTED", "IN_PROGRESS", "INTERVIEW", "OFFER") if counts.get(s))
+    flagged = sum(1 for r in apps if (r.get("action") or "").strip())
+    blocked = counts.get("BLOCKED", 0) + counts.get("MANUAL", 0)
+    human = _count(os.path.join(STATE, "queue-human.tsv"))
+    out = [f"live {live}" + (f" — {live_parts}" if live_parts else "")]
+    needs = " · ".join(x for x in (
+        f"{human} waiting on you" if human else "",
+        f"{flagged} flagged" if flagged else "",
+        f"{blocked} blocked/manual" if blocked else "") if x)
+    out.append("needs you " + (needs or "nothing"))
+    out.append(f"queue {_count(os.path.join(STATE, 'queue.tsv'))} · "
+               f"prepared {counts.get('PREPARED', 0)} · "
+               f"closed {counts.get('CLOSED', 0)} (hidden by default) · "
+               f"rejected {counts.get('REJECTED', 0)}")
+    hit = None
+    for line in reversed(lines):
+        hit = RECON_SUMMARY.search(line)
+        if hit:
+            break
+    if hit:
+        mode, _insp, proposed, _out, verification, unmatched, ambiguous = hit.groups()
+        out.append(f"new this run ({mode}): {proposed} proposed · {verification} verification · "
+                   f"{unmatched} unmatched · {ambiguous} ambiguous")
+    elif running:
+        tail = [l.strip() for l in lines if l.strip()]
+        out.append("new this run: reconciling…" + (f" ({tail[-1][:100]})" if tail else ""))
+    changes, in_sec = [], False
+    for line in lines:
+        s = line.strip()
+        if s.startswith("== proposed register changes"):
+            in_sec = True
+            continue
+        if in_sec:
+            if s.startswith("=="):
+                break
+            if s and s != "(none)":
+                changes.append("new: " + " ".join(s.split())[:140])
+    if changes:
+        out.extend(changes[:5])
+        if len(changes) > 5:
+            out.append(f"new: … and {len(changes) - 5} more")
+    return out
 
 
 def logs_tail(lines=100):
@@ -2168,7 +2232,8 @@ ACTIONS = {
                 "purpose": "prepare documents (review run)", "token": None},
     "submit_queue": {"argv": ["bash", "tools/run_queue.sh"], "env": {},
                      "purpose": "run the apply queue (submits applications)", "token": "APPROVE_RUN_QUEUE"},
-    "reconcile": {"argv": [sys.executable, "tools/gmail_reconcile.py"], "env": {},
+    "reconcile": {"argv": [sys.executable, "tools/gmail_reconcile.py"],
+                  "env": {"PYTHONUNBUFFERED": "1"},
                   "purpose": "reconcile the register with Gmail", "token": None},
     "build_archetypes": {"argv": [sys.executable, "tools/build_archetypes.py"], "env": {},
                          "purpose": "regenerate archetype CVs", "token": None},

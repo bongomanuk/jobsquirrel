@@ -40,6 +40,8 @@
           <select id="fstatus"><option value="">all statuses</option>
             <option>QUEUED</option><option>DRAFTING</option><option>NO RESULT</option><option>SUBMITTED</option><option>IN_PROGRESS</option><option>INTERVIEW</option><option>SCHEDULED</option><option>INVITED</option><option>OFFER</option>
             <option>REJECTED</option><option>BLOCKED</option><option>MANUAL</option><option>PREPARED</option><option>CLOSED</option></select>
+          <label class="row mini" id="fclosed-wrap" title="Closed roles are finished and not actionable — hidden by default; tick to show them">
+            <input type="checkbox" id="fclosed"> show closed</label>
           <select id="fqueue"><option value="">any queue</option><option value="pending">pending</option>
             <option value="human">human-assist</option><option value="retry">retry</option><option value="finished">finished</option></select>
           <select id="ftype" title="Filter by engagement type (read from the job ad, or set per row in the drawer)">
