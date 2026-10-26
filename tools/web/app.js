@@ -270,6 +270,14 @@ const App = {
     renderBuckets();
     renderRows();
   },
+  focusGroup: (which) => {
+    BUCKET = 'focus';
+    BUCKET_BEFORE_SEARCH = null;
+    COLLAPSED.focus_pay = which === 'unknown';
+    COLLAPSED.focus_unknown = which !== 'unknown';
+    renderBuckets();
+    renderRows();
+  },
   clearFilters: () => {
     ['fstatus', 'fqueue', 'ftype', 'fpay', 'ffit', 'fwork'].forEach(id => { const el = $('#' + id); if (el) el.value = ''; });
     const fa = $('#faction'); if (fa) fa.checked = false;
@@ -590,10 +598,13 @@ function renderRows() {
       const gr = sortRows(rows.filter(g.test), g.k);
       if (!gr.length) continue;
       const collapsed = !advanced && !!COLLAPSED[g.k];
+      const target = g.k === 'focus_pay' ? "App.focusGroup('pay')" :
+        g.k === 'focus_unknown' ? "App.focusGroup('unknown')" : `App.bucket('${g.k}')`;
       html += `<tr class="grp ${g.k}${collapsed ? ' collapsed' : ''}" onclick="window.toggleGroup('${g.k}')">` +
         `<td colspan="11"><span class="grp-caret">${collapsed ? '▸' : '▾'}</span>` +
-        `<span class="grp-name">${esc(g.title)}</span>` +
-        `<span class="grp-desc">${esc(g.desc)}</span><span class="grp-n">${gr.length}</span></td></tr>`;
+        `<span class="grp-name" onclick="event.stopPropagation();${target}" title="Filter to this group">${esc(g.title)}</span>` +
+        `<span class="grp-desc">${esc(g.desc)}</span>` +
+        `<span class="grp-n"><button type="button" class="countlink" onclick="event.stopPropagation();${target}" title="Filter to this group">${gr.length}</button></span></td></tr>`;
       if (!collapsed) { html += gr.map(rowHTML).join(''); rendered.push(...gr); }
     }
     if (!rows.length) html = empty(BUCKET === 'focus' ? 'No active roles match this focus.' : 'No rows in this view.');
@@ -607,11 +618,24 @@ function renderRows() {
   if ($('#count')) {
     const c = { needs: 0, ongoing: 0, pipeline: 0, done: 0 };
     rows.forEach(r => { const b = bucketOf(r); c[b] = (c[b] || 0) + 1; });
-    if (BUCKET === 'active') $('#count').textContent = `${c.needs} need you · ${c.ongoing} ongoing · ${c.pipeline} to apply`;
-    else if (BUCKET === 'all') $('#count').textContent = `${c.needs} need you · ${c.ongoing} ongoing · ${c.pipeline} to apply · ${c.done} done`;
-    else if (BUCKET === 'focus') $('#count').textContent =
-      `${rows.filter(r => r.focus).length} pay well + fit · ${rows.filter(r => r.focus_unknown).length} high fit, pay not stated`;
-    else $('#count').textContent = `${rows.length} ${((BUCKETS.find(b => b.k === BUCKET) || {}).label || BUCKET).toLowerCase()}`;
+    const cl = (n, label, action, hint) =>
+      `<button type="button" class="countlink" onclick="${action}" title="${esc(hint || ('Filter to ' + label))}">${n} ${label}</button>`;
+    const dot = '<span class="muted"> · </span>';
+    if (BUCKET === 'active')
+      $('#count').innerHTML = cl(c.needs, 'need you', "App.bucket('needs')", 'Show the roles that need you') + dot +
+        cl(c.ongoing, 'ongoing', "App.bucket('ongoing')", 'Show ongoing applications') + dot +
+        cl(c.pipeline, 'to apply', "App.bucket('pipeline')", 'Show the roles still to apply to');
+    else if (BUCKET === 'all')
+      $('#count').innerHTML = cl(c.needs, 'need you', "App.bucket('needs')") + dot +
+        cl(c.ongoing, 'ongoing', "App.bucket('ongoing')") + dot +
+        cl(c.pipeline, 'to apply', "App.bucket('pipeline')") + dot +
+        cl(c.done, 'done', "App.bucket('done')", 'Show finished roles');
+    else if (BUCKET === 'focus')
+      $('#count').innerHTML =
+        cl(rows.filter(r => r.focus).length, 'pay well + fit', "App.focusGroup('pay')", 'Show roles with known pay at/above target') + dot +
+        cl(rows.filter(r => r.focus_unknown).length, 'high fit, pay not stated', "App.focusGroup('unknown')", 'Show high-fit roles with no salary figure');
+    else
+      $('#count').textContent = `${rows.length} ${((BUCKETS.find(b => b.k === BUCKET) || {}).label || BUCKET).toLowerCase()}`;
   }
   if ($('#fact-count')) { const n = GRID.filter(r => r.action).length; $('#fact-count').textContent = n ? `(${n})` : ''; }
   if ($('#filt-n')) {

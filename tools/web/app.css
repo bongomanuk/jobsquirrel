@@ -298,6 +298,13 @@ tr.grp.pipeline .grp-name{color:var(--prepared)}
 tr.grp.done .grp-name{color:var(--closed)}
 tr.grp .grp-desc{color:var(--muted);margin-left:10px}
 tr.grp .grp-n{float:right;color:var(--muted);font-weight:800}
+.countlink{background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;cursor:pointer}
+.countlink:hover{color:var(--accent);text-decoration:underline}
+#count .countlink{color:var(--fg)}
+#count .countlink:hover{color:var(--accent)}
+tr.grp .grp-name{cursor:pointer}
+tr.grp .grp-n .countlink{color:var(--muted)}
+tr.grp .grp-n .countlink:hover{color:var(--accent)}
 #grid tbody tr.grp.calm td{color:var(--offer);background:#0f1f16}
 .livestrip{flex:1;min-width:220px;color:var(--muted);font-family:var(--mono);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .runctl{display:flex;gap:6px;flex:0 0 auto}
