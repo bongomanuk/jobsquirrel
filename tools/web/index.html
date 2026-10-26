@@ -37,25 +37,29 @@
       <main>
         <div class="toolbar">
           <input id="q" placeholder="search company / role / ATS / notes…" style="flex:1;max-width:420px">
-          <select id="fstatus"><option value="">all statuses</option>
-            <option>QUEUED</option><option>DRAFTING</option><option>NO RESULT</option><option>SUBMITTED</option><option>IN_PROGRESS</option><option>INTERVIEW</option><option>SCHEDULED</option><option>INVITED</option><option>OFFER</option>
-            <option>REJECTED</option><option>BLOCKED</option><option>MANUAL</option><option>PREPARED</option><option>CLOSED</option></select>
-          <label class="row mini" id="fclosed-wrap" title="Closed roles are finished and not actionable — hidden by default; tick to show them">
-            <input type="checkbox" id="fclosed"> show closed</label>
-          <select id="fqueue"><option value="">any queue</option><option value="pending">pending</option>
-            <option value="human">human-assist</option><option value="retry">retry</option><option value="finished">finished</option></select>
-          <select id="ftype" title="Filter by engagement type (read from the job ad, or set per row in the drawer)">
-            <option value="">any type</option>
-            <option value="full-time">full-time</option><option value="part-time">part-time</option>
-            <option value="contract">contract</option><option value="consultant">consultant</option>
-            <option value="freelance">freelance</option><option value="internship">internship</option>
-            <option value="temporary">temporary</option><option value="__none">unknown</option></select>
-          <label class="row mini" id="faction-wrap" title="Only rows that need a reply or other follow-up">
-            <input type="checkbox" id="faction"> ⚑ action <span id="fact-count" class="muted"></span></label>
+          <details id="filters" class="filters">
+            <summary>Filters <span id="filt-n" class="muted"></span></summary>
+            <div class="filterbox">
+              <select id="fstatus"><option value="">any status</option>
+                <option>QUEUED</option><option>DRAFTING</option><option>NO RESULT</option><option>SUBMITTED</option><option>IN_PROGRESS</option><option>INTERVIEW</option><option>SCHEDULED</option><option>INVITED</option><option>OFFER</option>
+                <option>REJECTED</option><option>BLOCKED</option><option>MANUAL</option><option>PREPARED</option><option>CLOSED</option></select>
+              <select id="fqueue"><option value="">any queue</option><option value="pending">pending</option>
+                <option value="human">human-assist</option><option value="retry">retry</option><option value="finished">finished</option></select>
+              <select id="ftype" title="Filter by engagement type (read from the job ad, or set per row in the drawer)">
+                <option value="">any type</option>
+                <option value="full-time">full-time</option><option value="part-time">part-time</option>
+                <option value="contract">contract</option><option value="consultant">consultant</option>
+                <option value="freelance">freelance</option><option value="internship">internship</option>
+                <option value="temporary">temporary</option><option value="__none">unknown</option></select>
+              <label class="row mini" id="faction-wrap" title="Only rows that need a reply or other follow-up">
+                <input type="checkbox" id="faction"> ⚑ needs a reply/follow-up <span id="fact-count" class="muted"></span></label>
+              <button id="fclear" class="small" type="button">Clear filters</button>
+            </div>
+          </details>
           <button id="export">Export CSV</button>
-          <button id="a-prepare-shown" title="Generate documents for the rows shown — runs the agent per role (a few minutes each); nothing is submitted">⚡ Prepare shown</button>
-          <button id="a-submit-shown" class="risky" title="Submit the PREPARED rows shown, with the documents already generated — sends applications; needs approval">🚀 Submit prepared</button>
-          <button id="a-match" title="Recompute CV–job match for the rows shown — instant (no agent)">↻ Match</button>
+          <button id="a-prepare-shown" title="Generate documents for the rows in this view (expanded groups) — runs the agent per role, a few minutes each; nothing is submitted">⚡ Prepare shown</button>
+          <button id="a-submit-shown" class="risky" title="Submit the PREPARED rows in this view, with the documents already generated — sends applications; needs approval">🚀 Submit prepared</button>
+          <button id="a-match" title="Recompute CV–job match for the rows in this view — instant (no agent)">↻ Match</button>
           <button id="legend" title="What the columns, marks and statuses mean">ⓘ Legend</button>
           <span id="count" class="muted"></span>
         </div>
@@ -233,15 +237,17 @@
 </div></div>
 
 <div id="legend-modal" class="modal hide"><div class="modal-box" style="width:min(760px,94vw)">
-  <div class="row"><b style="flex:1">What the columns and marks mean</b><button onclick="window.legendClose()">✕</button></div>
+  <div class="row"><b style="flex:1">Views, columns and marks</b><button onclick="window.legendClose()">✕</button></div>
   <div class="legend">
     <div class="legend-col">
-      <h4>Columns</h4>
+      <h4>Views</h4>
+      <dl id="legend-views"></dl>
+      <h4 style="margin-top:12px">Columns</h4>
       <dl>
         <dt>Date</dt><dd>When the register row was last updated.</dd>
         <dt>ATS</dt><dd>The applicant-tracking system the application went through.</dd>
         <dt>Status</dt><dd>Where the application currently stands (list below).</dd>
-        <dt>⚑ action</dt><dd>A reply or follow-up is needed (e.g. answer an interview email, complete an assessment). Tick the toolbar box to show only those; set or clear the flag in the row's drawer.</dd>
+        <dt>⚑ action</dt><dd>A reply or follow-up is needed (e.g. answer an interview email, complete an assessment). Tick the box under Filters to show only those; set or clear the flag in the row's drawer.</dd>
         <dt>Match</dt><dd>How much of the ad's ATS keyword list the tailored CV covers. <b>align✗</b> = the pre-submit alignment gate failed.</dd>
         <dt>Queue</dt><dd>Where the role sits in the apply queue (list below).</dd>
         <dt>Files (✓)</dt><dd>Provenance on file — the exact CV + letter and their SHA-256 hashes. <span class="muted">—</span> = none recorded.</dd>

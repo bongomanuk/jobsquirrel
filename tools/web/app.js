@@ -24,6 +24,30 @@ const QUEUE_HELP = {
   retry: 'Failed once — queued to retry',
   finished: 'Finished — the runner processed it (moved to queue.done)',
 };
+/* Lifecycle buckets: the primary way to read the grid, no fine filtering needed.
+   Each row lands in exactly one bucket, by urgency: done > needs > ongoing > pipeline. */
+const BUCKETS = [
+  { k: 'active', label: 'Active', hint: 'Everything not finished: needs you + ongoing + to apply' },
+  { k: 'needs', label: 'Needs you', hint: 'Replies, interviews to book, assessments, offers or manual steps' },
+  { k: 'ongoing', label: 'Ongoing', hint: 'Submitted, in progress or interviewing — waiting on the employer' },
+  { k: 'pipeline', label: 'To apply', hint: 'Queued, drafting, prepared, blocked or with no result yet' },
+  { k: 'done', label: 'Done', hint: 'Rejected or closed — finished, no action' },
+  { k: 'all', label: 'All', hint: 'Every row, including finished ones' },
+];
+const BUCKET_GROUPS = [
+  { k: 'needs', title: 'Needs you', desc: 'reply, book a time, complete an assessment, or clear a manual step' },
+  { k: 'ongoing', title: 'Ongoing', desc: 'waiting on the employer' },
+  { k: 'pipeline', title: 'To apply', desc: 'queued, prepared, or blocked before applying' },
+  { k: 'done', title: 'Done', desc: 'rejected or closed — no action' },
+];
+const NEEDS_STATUS = new Set(['MANUAL', 'OFFER']);
+function bucketOf(r) {
+  const s = r.status, lb = r.label || s;
+  if (s === 'CLOSED' || s === 'REJECTED') return 'done';
+  if (r.action || NEEDS_STATUS.has(s) || lb === 'INVITED' || r.queue === 'human') return 'needs';
+  if (['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW'].includes(s)) return 'ongoing';
+  return 'pipeline';
+}
 const T = (s) => ` title="${esc(s)}"`;
 const chip = (s) => `<span class="chip ${esc((s || '').replace(/\s+/g, '_'))}"${T(STATUS_HELP[s] || '')}>${esc(s || '')}</span>`;
 const md = (s) => {
@@ -44,7 +68,9 @@ const md = (s) => {
   return t;
 };
 let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] }, CUR_PERM = null;
-let SPECIAL = '', ACTIVE_METRIC = '', VISIBLE = [];
+let BUCKET = 'active', VISIBLE = [], VIEW = [];
+let COLLAPSED = { ongoing: true, pipeline: true, done: true };   // default to the actionable top of the list
+let BUCKET_BEFORE_SEARCH = null;
 const PENDING = new Set();
 const NUT = '<span class="spin" title="working…">🥜</span> ';
 function starting(label, keys) {
@@ -232,18 +258,19 @@ const App = {
     CHAT = { segments: [], running: false }; setSpin(false); renderChat(); toast('agent history cleared');
   },
   open: (i) => openDetail(GRID[i]),
-  metric: (kind) => {
-    if (kind === 'total') { SPECIAL = ''; ACTIVE_METRIC = ''; $('#fstatus').value = ''; $('#fqueue').value = ''; if ($('#fclosed')) $('#fclosed').checked = true; }
-    else if (ACTIVE_METRIC === kind) { SPECIAL = ''; ACTIVE_METRIC = ''; $('#fstatus').value = ''; $('#fqueue').value = ''; }
-    else {
-      ACTIVE_METRIC = kind; SPECIAL = ''; $('#fstatus').value = ''; $('#fqueue').value = '';
-      if (kind === 'interviews') $('#fstatus').value = 'INTERVIEW';
-      else if (kind === 'offers') $('#fstatus').value = 'OFFER';
-      else if (kind === 'human') $('#fqueue').value = 'human';
-      else SPECIAL = kind;                                  // in_process / blocked / submissions
-    }
-    document.querySelectorAll('#metrics .metric').forEach(m => m.classList.toggle('on', m.dataset.metric === ACTIVE_METRIC));
+  bucket: (kind) => {
+    BUCKET = BUCKETS.some(b => b.k === kind) ? kind : 'active';
+    BUCKET_BEFORE_SEARCH = null;
+    renderBuckets();
     renderRows();
+  },
+  clearFilters: () => {
+    ['fstatus', 'fqueue', 'ftype'].forEach(id => { const el = $('#' + id); if (el) el.value = ''; });
+    const fa = $('#faction'); if (fa) fa.checked = false;
+    const q = $('#q'); if (q) q.value = '';
+    const f = $('#filters'); if (f) f.open = false;
+    BUCKET_BEFORE_SEARCH = null;
+    BUCKET = 'active'; renderBuckets(); renderRows();
   },
   prepareRoles: async (keys) => {
     const n = (keys || []).length;
@@ -266,9 +293,9 @@ const App = {
     if (!d.error) { openDock(true); } else { PENDING.clear(); LIVE_RUNNING = false; liveTick(); }
   },
   submitThis: (key) => App.submitRoles([key]),
-  submitPrepared: () => App.submitRoles(GRID.filter(r => r.status === 'PREPARED' && VISIBLE.includes(r.key)).map(r => r.key)),
+  submitPrepared: () => App.submitRoles(GRID.filter(r => r.status === 'PREPARED' && VIEW.includes(r.key)).map(r => r.key)),
   matchShown: async (el) => busyBtn(el, '⏳ recomputing match…', async () => {
-    const d = await api('/api/match/recompute', { keys: VISIBLE });
+    const d = await api('/api/match/recompute', { keys: VIEW });
     toast(d.error ? d.error : 'match recomputed for the rows shown', !!d.error);
     if (!d.error) loadGrid();
   }),
@@ -428,19 +455,24 @@ function approve(purpose, callText) {
 let GRID_TIMER = null, LIVE_RUNNING = false, IDLE_TICKS = 0, WAS_BUSY = false, DTAB = 0;
 async function loadGrid() {
   const sc = document.querySelector('.scroll'), y = sc ? sc.scrollTop : 0;
-  const [g, s] = await Promise.all([api('/api/grid'), api('/api/state')]);
+  const g = await api('/api/grid');
   GRID = Array.isArray(g) ? g : [];
-  $('#metrics').innerHTML =
-    `<span class="metric hero" data-metric="in_process"${T('Applications still live: submitted + in progress + interviews + offers — click to filter')}><b>${s.kpis.in_process}</b>in process</span>` +
-    `<span class="metric" data-metric="interviews"${T('Applications that reached at least one interview — click to filter')}><b>${s.kpis.interviews}</b>interviews</span>` +
-    `<span class="metric" data-metric="blocked"${T('Blocked or manual — click to filter')}><b>${s.kpis.blocked}</b>blocked</span>` +
-    `<span class="metric" data-metric="human"${T('Roles waiting on you — click to filter')}><b>${s.kpis.human}</b>human</span>` +
-    `<span class="metric" data-metric="offers"${T('Offers received — click to filter')}><b>${s.kpis.offers}</b>offers</span>` +
-    `<span class="metric" data-metric="total"${T('All rows — click to clear filters')}><b>${s.kpis.total}</b>total</span>` +
-    `<span class="metric" data-metric="submissions"${T('Submissions with recorded provenance — click to filter')}><b>${s.kpis.submissions}</b>submissions</span>`;
-  document.querySelectorAll('#metrics .metric').forEach(m => m.onclick = () => App.metric(m.dataset.metric));
+  renderBuckets();
   renderRows();
   if (sc) sc.scrollTop = y;
+}
+function bucketCounts() {
+  const c = { needs: 0, ongoing: 0, pipeline: 0, done: 0 };
+  GRID.forEach(r => { const k = bucketOf(r); c[k] = (c[k] || 0) + 1; });
+  return { ...c, active: c.needs + c.ongoing + c.pipeline, all: GRID.length };
+}
+function renderBuckets() {
+  const el = $('#metrics'); if (!el) return;
+  const c = bucketCounts();
+  el.innerHTML = BUCKETS.map(b =>
+    `<button type="button" class="metric bucket ${b.k === BUCKET ? 'on' : ''}${b.k === 'needs' && c.needs ? ' hot' : ''}" data-bucket="${b.k}"${T(b.hint)}><b>${c[b.k] || 0}</b>${esc(b.label)}</button>`
+  ).join('');
+  el.querySelectorAll('.bucket').forEach(b => b.onclick = () => App.bucket(b.dataset.bucket));
 }
 async function gridTick() {                 // keep the grid live (faster while a run is active)
   await loadGrid();
@@ -450,34 +482,36 @@ function renderRows() {
   const q = $('#q').value.toLowerCase(), st = $('#fstatus').value, qq = $('#fqueue').value;
   const ft = $('#ftype') ? $('#ftype').value : '';
   const fa = $('#faction') && $('#faction').checked;
-  const showClosed = $('#fclosed') && $('#fclosed').checked;
   const cy = String(new Date().getFullYear());
   const shortDate = (d) => { const [y, m, dd] = d.split('-'); return y === cy ? `${m}-${dd}` : `${y.slice(2)}-${m}-${dd}`; };
   const disp = (r) => r.label || r.status;               // INTERVIEW rows show SCHEDULED when an interview is still ahead
   const statusMatch = (r) => !st || (st === 'INTERVIEW' ? ['INTERVIEW', 'SCHEDULED', 'INVITED'].includes(disp(r)) : disp(r) === st);
-  const closedMatch = (r) => showClosed || st === 'CLOSED' || r.status !== 'CLOSED';
   const typeMatch = (r) => !ft || (ft === '__none' ? !r.employment : (r.employment || '') === ft);
   const actMatch = (r) => !fa || !!r.action;
-  let rows = GRID.filter(r => closedMatch(r) && statusMatch(r) && typeMatch(r) && actMatch(r) && (!qq || r.queue === qq) &&
-    (!q || (r.company + ' ' + r.role + ' ' + (r.ats || '') + ' ' + (r.action || '')).toLowerCase().includes(q)));
-  if (SPECIAL === 'in_process') rows = rows.filter(r => ['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER'].includes(r.status));
-  else if (SPECIAL === 'blocked') rows = rows.filter(r => ['BLOCKED', 'MANUAL'].includes(r.status));
-  else if (SPECIAL === 'applied') rows = rows.filter(r => r.applied);
-  VISIBLE = rows.map(r => r.key);
+  const filt = (r) => statusMatch(r) && typeMatch(r) && actMatch(r) && (!qq || r.queue === qq) &&
+    (!q || (r.company + ' ' + r.role + ' ' + (r.ats || '') + ' ' + (r.action || '')).toLowerCase().includes(q));
+  let rows = GRID.filter(filt);
+  if (BUCKET === 'active') rows = rows.filter(r => bucketOf(r) !== 'done');
+  else if (BUCKET !== 'all') rows = rows.filter(r => bucketOf(r) === BUCKET);
+  VIEW = rows.map(r => r.key);
+
   const k = SORT.k;
   const rank = (r) => r.running ? 0 : (r.status === 'QUEUED' ? 1 : 2);   // in-flight + queued float to the top
-  rows = rows.slice().sort((a, b) => {
+  const needRank = (r) => r.status === 'OFFER' ? 0 : ((r.label || '') === 'INVITED' ? 1 : (r.action ? 2 : 3));
+  const sortRows = (arr, group) => arr.slice().sort((a, b) => {
+    if (group === 'needs' && k === 'date') {
+      const na = needRank(a), nb = needRank(b);
+      if (na !== nb) return na - nb;
+    }
     const ra = rank(a), rb = rank(b);
     if (ra !== rb) return ra - rb;
     const av = a[k] || '', bv = b[k] || '';
     return av < bv ? -SORT.dir : av > bv ? SORT.dir : 0;
   });
-  $('#count').textContent = `${rows.length} / ${GRID.length} rows`;
-  if ($('#fact-count')) { const n = GRID.filter(r => r.action).length; $('#fact-count').textContent = n ? `(${n})` : ''; }
   const mbadge = (r) => r.match == null ? '<span class="muted"' + T('No score — this role has no saved job ad (ATS keywords) and/or no CV to compare') + '>—</span>'
     : `<span class="badge ${r.match >= 70 ? 'good' : r.match >= 40 ? 'mid' : 'bad'}"${T("CV-to-job fit: this % of the ad's ATS keywords are covered by the tailored CV")}>${r.match}%</span>`
       + (r.alignment === 'FAIL' ? ' <span class="badge bad"' + T('Pre-submit alignment gate FAILED for this role — open the row to see why') + '>✗</span>' : '');
-  $('#rows').innerHTML = rows.map((r) => {
+  const rowHTML = (r) => {
     const i = GRID.indexOf(r);
     const sel = (CUR && (r.key === CUR.key || (r.company === CUR.company && r.role === CUR.role))
       && PANELS.detail && PANELS.detail.open) ? ' sel' : '';
@@ -492,8 +526,50 @@ function renderRows() {
         : `<span class="muted">—</span>`}</td>` +
       `<td${T(r.applied ? 'Provenance recorded — exact CV, letter and SHA-256 hashes on file' : 'No submission recorded (not applied, or not reconciled yet)')}>${r.applied ? '✓' : '<span class="muted">—</span>'}</td>` +
       `<td${T(r.spec ? 'A saved job description exists — open the row for the ad, ATS keywords and grounded context' : 'No saved job description')}>${r.spec ? '✓' : '<span class="muted">—</span>'}</td></tr>`;
-  }).join('') || '<tr><td colspan=9 class="muted">no matching rows</td></tr>';
+  };
+
+  const empty = (msg) => `<tr><td colspan="9" class="muted">${msg}
+    <button class="small" type="button" onclick="App.clearFilters()">Clear filters</button>
+    <button class="small" type="button" onclick="App.bucket('all')">Show all</button></td></tr>`;
+  let html = '';
+  let rendered = [];
+  if (BUCKET === 'active' || BUCKET === 'all') {
+    const groups = BUCKET_GROUPS.filter(g => BUCKET === 'all' || g.k !== 'done');
+    const advanced = !!(st || qq || ft || fa || q);
+    if (BUCKET === 'active' && !advanced && !rows.some(r => bucketOf(r) === 'needs'))
+      html += '<tr class="grp calm"><td colspan="9">✓ Nothing needs you right now — ongoing applications and the apply queue are below.</td></tr>';
+    for (const g of groups) {
+      const gr = sortRows(rows.filter(r => bucketOf(r) === g.k), g.k);
+      if (!gr.length) continue;
+      const collapsed = !advanced && !!COLLAPSED[g.k];
+      html += `<tr class="grp ${g.k}${collapsed ? ' collapsed' : ''}" onclick="window.toggleGroup('${g.k}')">` +
+        `<td colspan="9"><span class="grp-caret">${collapsed ? '▸' : '▾'}</span>` +
+        `<span class="grp-name">${esc(g.title)}</span>` +
+        `<span class="grp-desc">${esc(g.desc)}</span><span class="grp-n">${gr.length}</span></td></tr>`;
+      if (!collapsed) { html += gr.map(rowHTML).join(''); rendered.push(...gr); }
+    }
+    if (!rows.length) html = empty('No rows in this view.');
+  } else {
+    const gr = sortRows(rows, BUCKET);
+    rendered = gr;
+    html = gr.map(rowHTML).join('') || empty('No matching rows in this view.');
+  }
+  VISIBLE = rendered.map(r => r.key);
+  $('#rows').innerHTML = html;
+  if ($('#count')) {
+    const c = { needs: 0, ongoing: 0, pipeline: 0, done: 0 };
+    rows.forEach(r => { const b = bucketOf(r); c[b] = (c[b] || 0) + 1; });
+    if (BUCKET === 'active') $('#count').textContent = `${c.needs} need you · ${c.ongoing} ongoing · ${c.pipeline} to apply`;
+    else if (BUCKET === 'all') $('#count').textContent = `${c.needs} need you · ${c.ongoing} ongoing · ${c.pipeline} to apply · ${c.done} done`;
+    else $('#count').textContent = `${rows.length} ${((BUCKETS.find(b => b.k === BUCKET) || {}).label || BUCKET).toLowerCase()}`;
+  }
+  if ($('#fact-count')) { const n = GRID.filter(r => r.action).length; $('#fact-count').textContent = n ? `(${n})` : ''; }
+  if ($('#filt-n')) {
+    const n = [st, qq, ft, fa ? '1' : '', q].filter(Boolean).length;
+    $('#filt-n').textContent = n ? `(${n})` : '';
+  }
 }
+window.toggleGroup = (k) => { COLLAPSED[k] = !COLLAPSED[k]; renderRows(); };
 document.querySelectorAll('#grid th[data-s]').forEach(th => th.onclick = () => { const k = th.dataset.s; SORT = { k, dir: SORT.k === k ? -SORT.dir : 1 }; renderRows(); });
 
 /* ---------- detail drawer ---------- */
@@ -1287,6 +1363,7 @@ $('#a-config').onclick = () => { $('#cfg').classList.remove('hide'); App.setting
 window.cfgClose = () => $('#cfg').classList.add('hide');
 window.legendClose = () => $('#legend-modal').classList.add('hide');
 $('#legend').onclick = () => {
+  $('#legend-views').innerHTML = BUCKETS.map(b => `<dt>${esc(b.label)}</dt><dd>${esc(b.hint)}</dd>`).join('');
   $('#legend-status').innerHTML = Object.entries(STATUS_HELP).map(([k, v]) => `<dt>${chip(k)}</dt><dd>${esc(v)}</dd>`).join('');
   $('#legend-queue').innerHTML = Object.entries(QUEUE_HELP).map(([k, v]) => `<dt><code>${esc(k)}</code></dt><dd>${esc(v)}</dd>`).join('');
   $('#legend-modal').classList.remove('hide');
@@ -1321,12 +1398,17 @@ $('#chat').addEventListener('scroll', () => {                 // remember whethe
 $('#chat-send').onclick = () => App.chat();
 $('#chat-stop').onclick = () => App.chatStop();
 $('#chat-new').onclick = () => App.newChat();
-$('#q').oninput = renderRows;
-$('#fstatus').onchange = () => { SPECIAL = ''; ACTIVE_METRIC = ''; document.querySelectorAll('#metrics .metric').forEach(m => m.classList.remove('on')); renderRows(); };
-$('#fqueue').onchange = () => { SPECIAL = ''; ACTIVE_METRIC = ''; document.querySelectorAll('#metrics .metric').forEach(m => m.classList.remove('on')); renderRows(); };
-$('#ftype').onchange = () => renderRows();
-if ($('#fclosed')) $('#fclosed').onchange = () => renderRows();
-if ($('#faction')) $('#faction').onchange = () => renderRows();
+$('#q').oninput = () => {
+  const has = !!($('#q').value || '').trim();
+  if (has && BUCKET !== 'all') { BUCKET_BEFORE_SEARCH = BUCKET; BUCKET = 'all'; renderBuckets(); }
+  else if (!has && BUCKET_BEFORE_SEARCH) { BUCKET = BUCKET_BEFORE_SEARCH; BUCKET_BEFORE_SEARCH = null; renderBuckets(); }
+  renderRows();
+};
+['#fstatus', '#fqueue', '#ftype', '#faction'].forEach(sel => {
+  const el = $(sel); if (!el) return;
+  el.onchange = () => { BUCKET = 'all'; renderBuckets(); renderRows(); };   // a filter must not be hidden by the active bucket
+});
+$('#fclear').onclick = () => App.clearFilters();
 $('#a-prepare-shown').onclick = () => App.prepareShown();
 $('#a-submit-shown').onclick = () => App.submitPrepared();
 $('#a-match').onclick = () => App.matchShown($('#a-match'));

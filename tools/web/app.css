@@ -267,6 +267,35 @@ body[data-act="closed"] .act-body,body[data-act="closed"] #split-inner{display:n
 .metric.hero{border-color:var(--accent)}
 .metric:hover{border-color:var(--accent);color:var(--fg)}
 .metric.on{border-color:var(--accent);color:var(--fg);background:var(--surface2);box-shadow:0 0 0 1px var(--accent) inset}
+.metric.bucket{font-family:var(--sans);text-transform:none}
+.metric.bucket.hot{border-color:var(--blocked);color:#ffb4b4}
+.metric.bucket.hot b{color:#ffb4b4}
+.metric.bucket.hot.on{border-color:var(--blocked);box-shadow:0 0 0 1px var(--blocked) inset}
+
+/* advanced filters, tucked away so the buckets stay the main control */
+.filters{position:relative}
+.filters>summary{cursor:pointer;list-style:none;padding:7px 12px;border:1px solid var(--line);border-radius:8px;
+  background:var(--surface2);font:600 13px var(--sans);color:var(--muted);min-height:32px;display:flex;align-items:center;gap:6px}
+.filters>summary::-webkit-details-marker{display:none}
+.filters>summary::before{content:'▸';color:var(--accent)}
+.filters[open]>summary::before{content:'▾'}
+.filters[open]>summary{border-color:var(--accent);color:var(--fg)}
+.filterbox{position:absolute;z-index:12;top:calc(100% + 6px);left:0;background:var(--surface);border:1px solid var(--line);
+  border-radius:10px;padding:10px;display:flex;gap:8px;flex-wrap:wrap;width:min(720px,92vw);box-shadow:0 14px 34px rgba(0,0,0,.5)}
+
+/* grouped grid: needs you first, then ongoing, to-apply, done */
+#grid tbody tr.grp{cursor:pointer}
+#grid tbody tr.grp:hover td{background:#202533}
+#grid tbody tr.grp td{background:var(--surface2);border-top:1px solid var(--line);padding:7px 12px;font-size:12px}
+tr.grp .grp-caret{color:var(--accent);margin-right:7px;display:inline-block;width:10px}
+tr.grp .grp-name{font-weight:800;color:var(--fg);text-transform:uppercase;letter-spacing:.06em;font-size:11px}
+tr.grp.needs .grp-name{color:#ffb4b4}
+tr.grp.ongoing .grp-name{color:var(--sub)}
+tr.grp.pipeline .grp-name{color:var(--prepared)}
+tr.grp.done .grp-name{color:var(--closed)}
+tr.grp .grp-desc{color:var(--muted);margin-left:10px}
+tr.grp .grp-n{float:right;color:var(--muted);font-weight:800}
+#grid tbody tr.grp.calm td{color:var(--offer);background:#0f1f16}
 .livestrip{flex:1;min-width:220px;color:var(--muted);font-family:var(--mono);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .runctl{display:flex;gap:6px;flex:0 0 auto}
 .toolbar{display:flex;gap:8px;align-items:center;margin:14px 0 10px;flex-wrap:wrap}
