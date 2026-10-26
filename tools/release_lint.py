@@ -35,12 +35,11 @@ STOP = {
 }
 
 # Deliberately broad: public release notes should not name a market or currency.
-MARKET = re.compile(
-    r"\b(sweden|swedish|stockholm|stuvsta|sek|eur|usd|gbp|nok|dkk|chf|cad)\b", re.I)
+CURRENCY = re.compile(r"\b(?:sek|eur|usd|gbp|nok|dkk|chf|cad)\b", re.I)
 COUNT = re.compile(
     r"\b\d+\s+(?:need you|needs you|ongoing|to apply|done|focus|submitted|applications?)\b", re.I)
 WHEN = re.compile(r"\b20\d{2}-\d{2}-\d{2}[ T]\d{2}:\d{2}\b")
-CONTACT = re.compile(r"(?:\+46|linkedin\.com/in/|@[a-z0-9.-]+\.[a-z]{2,})", re.I)
+CONTACT = re.compile(r"(?:\+\d{1,3}[\s\d()-]{6,}\d|linkedin\.com/in/|@[a-z0-9.-]+\.[a-z]{2,})", re.I)
 
 
 def _read(path):
@@ -114,7 +113,7 @@ def main():
 
     allow = {a.lower() for a in args.allow}
     terms = {t for t in _private_terms() if t.lower() not in allow}
-    patterns = [("market/currency", MARKET), ("live count", COUNT),
+    patterns = [("currency", CURRENCY), ("live count", COUNT),
                 ("interview date/time", WHEN), ("contact detail", CONTACT)]
 
     hits = []
