@@ -39,7 +39,7 @@ def _on_dialog(d):
         DIALOG["mode"] = None
 EXTRA_HEADERS = {
     "X-Request-Source": "camoufox-pipeline",
-    "X-Test-Owner": "peter-hollas",
+    "X-Test-Owner": "jobsquirrel",
 }
 
 INTERACTIVE_JS = """() => {

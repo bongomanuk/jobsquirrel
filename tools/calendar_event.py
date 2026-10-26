@@ -29,7 +29,7 @@ CONFIG = os.environ.get("CALENDAR_CONFIG", os.path.join(ROOT, "config", "calenda
 DEFAULT_DURATION = 45
 DEFAULTS = {
     "calendar_id": "primary",
-    "timezone": "Europe/Stockholm",
+    "timezone": "Etc/UTC",
     "default_duration_minutes": 45,
     "invite_attendees": True,
     "working_hours": {"start": "08:00", "end": "18:00"},

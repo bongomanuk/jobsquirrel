@@ -1,6 +1,6 @@
 {
   "calendar_id": "primary",
-  "timezone": "Europe/Stockholm",
+  "timezone": "Etc/UTC",
   "default_duration_minutes": 45,
   "invite_attendees": true,
   "working_hours": {

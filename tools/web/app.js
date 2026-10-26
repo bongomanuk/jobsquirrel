@@ -719,7 +719,7 @@ function summary(r) {
         ${['remote', 'hybrid', 'on-site'].map(x => `<option value="${x}" ${r.work_override && r.work_model === x ? 'selected' : ''}>${wl(x).toLowerCase()}</option>`).join('')}
       </select>
       <span class="muted">Pay</span>
-      <input id="dt-salary" style="flex:1;max-width:380px" value="${esc(r.salary_override ? (r.salary_raw || '') : '')}" placeholder="${esc(r.salary_raw && !r.salary_override ? 'auto: ' + r.salary_raw : 'e.g. SEK 900k/yr')}">
+      <input id="dt-salary" style="flex:1;max-width:380px" value="${esc(r.salary_override ? (r.salary_raw || '') : '')}" placeholder="${esc(r.salary_raw && !r.salary_override ? 'auto: ' + r.salary_raw : 'e.g. EUR 90000/yr')}">
       <span class="muted mini">blank = auto from the ad</span>
     </div>` +
     `<div class="row">${m.alignment ? `<span class="badge ${m.alignment === 'PASS' ? 'good' : 'bad'}">alignment ${m.alignment}</span>` : ''}` +

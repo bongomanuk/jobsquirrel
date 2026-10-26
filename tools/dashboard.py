@@ -609,7 +609,7 @@ _PAY_FX = {"EUR": 1.0, "SEK": 0.090, "USD": 0.92, "GBP": 1.17,
            "CAD": 0.68, "CHF": 1.05, "DKK": 0.134, "NOK": 0.086}
 _PAY_ANNUAL = {"year": 1, "month": 12, "week": 48, "day": 220, "hour": 1600}
 PAY_FIT = 70                                             # default "good fit" threshold
-PAY_TARGET_FALLBACK = 120000
+PAY_TARGET_FALLBACK = 100000
 META_VERSION = 1                                         # bump when the parser changes
 META_FILE = os.path.join(LOGS, "dashboard-role-meta.json")
 _META, _meta_loaded, _meta_dirty = {}, False, False
@@ -733,7 +733,7 @@ def parse_pay(text, extract=True):
                           (_pay_blocks(text) if extract else [text or ""])) if p]
     if not parsed:
         return None
-    # Prefer the candidate's own market (SEK), then EUR, over other locations.
+    # Prefer EUR, then SEK, over other locations.
     for market in ("SEK", "EUR"):
         for p in parsed:
             if p["currency"] == market:
@@ -776,7 +776,7 @@ def _work_from_text(text):
     if not region:
         region = "\n".join(text.splitlines()[:30]).lower()
     if (re.search(r"\b(fully|100%|100 ?percent)\s+remote\b|\bremote[- ]first\b|"
-                  r"\bwork from (anywhere|home)\b|\bremote \((?:eu|europe|sweden|anywhere)|\bremote\b", region)
+                  r"\bwork from (anywhere|home)\b|\bremote \((?:eu|europe|anywhere)|\bremote\b", region)
             and not re.search(r"no remote|not remote", region)):
         return "remote"
     if re.search(r"\bhybrid\b(?!\s+cloud)|some (?:office|in-office) days|"

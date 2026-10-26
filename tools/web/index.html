@@ -53,11 +53,11 @@
                 <option value="temporary">temporary</option><option value="__none">unknown</option></select>
               <select id="fpay" title="Minimum estimated annual pay in EUR">
                 <option value="">any pay</option>
-                <option value="80000">pay ≥ €80k</option>
+                <option value="75000">pay ≥ €75k</option>
                 <option value="100000">pay ≥ €100k</option>
-                <option value="120000">pay ≥ €120k</option>
+                <option value="125000">pay ≥ €125k</option>
                 <option value="150000">pay ≥ €150k</option>
-                <option value="180000">pay ≥ €180k</option></select>
+                <option value="200000">pay ≥ €200k</option></select>
               <select id="ffit" title="Minimum CV-to-job fit">
                 <option value="">any fit</option>
                 <option value="40">fit ≥ 40%</option>
@@ -227,7 +227,7 @@
     and will show up in future tailored CVs (rebuild the graph to apply it now).</p>
   <div class="row"><span class="muted" style="min-width:86px">Skill</span><input id="evid-skill" style="flex:1"></div>
   <div class="row" style="margin-top:6px"><span class="muted" style="min-width:86px">Where from</span>
-    <input id="evid-source" placeholder="employer / project / cert (e.g. HAUD AB, EuroCompliant, spare time)" style="flex:1"></div>
+    <input id="evid-source" placeholder="employer / project / cert (e.g. Acme AB, ExampleCorp, spare time)" style="flex:1"></div>
   <textarea id="evid-detail" placeholder="one line of specifics — what you did, tools, outcome" style="min-height:12vh;margin-top:8px"></textarea>
   <div class="row" style="justify-content:flex-end;margin-top:12px">
     <button onclick="evidClose()">Cancel</button><button id="evid-save" class="risky">Save evidence</button></div>
@@ -238,7 +238,7 @@
   <div class="row" style="margin-top:6px"><span class="muted" style="min-width:70px">To</span><input id="dr-to" style="flex:1" placeholder="recipient@example.com"></div>
   <div class="row"><span class="muted" style="min-width:70px">Cc</span><input id="dr-cc" style="flex:1"></div>
   <div class="row"><span class="muted" style="min-width:70px">Subject</span><input id="dr-subject" style="flex:1"></div>
-  <div class="row"><span class="muted" style="min-width:70px">Attach</span><input id="dr-attach" style="flex:1" placeholder="comma-separated paths, e.g. documents/applications/Peter_Hollas_CV_x.docx"></div>
+  <div class="row"><span class="muted" style="min-width:70px">Attach</span><input id="dr-attach" style="flex:1" placeholder="comma-separated paths, e.g. documents/applications/Your_Name_CV_x.docx"></div>
   <textarea id="dr-body" style="min-height:34vh;margin-top:8px" placeholder="Write the reply…"></textarea>
   <label class="row mini" style="margin-top:8px"><input type="checkbox" id="dr-clear" checked> clear the ⚑ action flag after sending</label>
   <div class="row" style="justify-content:flex-end;margin-top:10px">

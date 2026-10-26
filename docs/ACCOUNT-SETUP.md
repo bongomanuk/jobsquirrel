@@ -117,8 +117,8 @@ scopes in `gmail_readonly.py`).
 ```bash
 python3 tools/gmail_send.py --to recruiter@example.com --subject "Application: X" \
     --body-file state/draft.txt --signature \
-    --attach documents/applications/Peter_Hollas_CV_x.docx \
-    --attach documents/applications/Peter_Hollas_Motivation_x.docx
+    --attach documents/applications/Your_Name_CV_x.docx \
+    --attach documents/applications/Your_Name_Motivation_x.docx
 ```
 
 `--attach` is repeatable; a bare filename is also looked up in the configured
