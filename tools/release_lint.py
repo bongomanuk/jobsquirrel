@@ -31,7 +31,7 @@ STOP = {
     "remote", "hybrid", "generic", "stream", "canonical", "appear", "tbd", "unknown",
     "workday", "greenhouse", "lever", "ashby", "teamtailor", "jobylon", "deel",
     "linkedin", "google", "amazon", "microsoft", "apple", "meta", "openai",
-    "anthropic", "rain", "buffer", "linear", "notion",
+    "anthropic", "nvidia", "rain", "buffer", "linear", "notion",
 }
 
 # Deliberately broad: public release notes should not name a market or currency.
@@ -56,7 +56,7 @@ def _add(terms, value):
     if len(value) < 3 or value.lower() in STOP:
         return
     terms.add(value)
-    for part in re.split(r"[,;/|]", value):
+    for part in re.split(r"[,;|]", value):
         part = part.strip()
         if len(part) >= 3:
             terms.add(part)
@@ -121,12 +121,9 @@ def main():
     for n, line in enumerate(text.splitlines(), 1):
         low = line.lower()
         for term in terms:
-            if term.lower() in allow or not term:
+            if term.lower() in allow or not term or term.lower() in {"https:", "http:", "//"}:
                 continue
-            if len(term) <= 3:
-                word = re.search(r"(?<![\w])" + re.escape(term) + r"(?![\w])", line, re.I)
-            else:
-                word = term.lower() in low
+            word = re.search(r"(?<![\w])" + re.escape(term) + r"(?![\w])", line, re.I)
             if word:
                 hits.append((n, "private term", term, line.strip()))
         for label, pat in patterns:
