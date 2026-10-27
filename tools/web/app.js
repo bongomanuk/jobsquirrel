@@ -27,18 +27,20 @@ const QUEUE_HELP = {
 /* Lifecycle buckets: the primary way to read the grid, no fine filtering needed.
    Each row lands in exactly one bucket, by urgency: done > needs > ongoing > pipeline. */
 const BUCKETS = [
-  { k: 'active', label: 'Active', hint: 'Everything not finished: needs you + ongoing + to apply' },
+  { k: 'active', label: 'Active', hint: 'Everything not finished: needs you + prepared + ongoing + to apply' },
   { k: 'focus', label: 'Focus', hint: 'Roles that pay at least your target and fit at least 70%; also shows high-fit roles with no pay figure' },
   { k: 'needs', label: 'Needs you', hint: 'Replies, interviews to book, assessments, offers or manual steps' },
+  { k: 'prepared', label: 'Prepared', hint: 'Documents generated and gated — review or submit' },
   { k: 'ongoing', label: 'Ongoing', hint: 'Submitted, in progress or interviewing — waiting on the employer' },
-  { k: 'pipeline', label: 'To apply', hint: 'Queued, drafting, prepared, blocked or with no result yet' },
+  { k: 'pipeline', label: 'To apply', hint: 'Queued, drafting, blocked or with no result yet' },
   { k: 'done', label: 'Done', hint: 'Rejected or closed — finished, no action' },
   { k: 'all', label: 'All', hint: 'Every row, including finished ones' },
 ];
 const BUCKET_GROUPS = [
   { k: 'needs', title: 'Needs you', desc: 'reply, book a time, complete an assessment, or clear a manual step' },
+  { k: 'prepared', title: 'Prepared', desc: 'documents ready — review or submit' },
   { k: 'ongoing', title: 'Ongoing', desc: 'waiting on the employer' },
-  { k: 'pipeline', title: 'To apply', desc: 'queued, prepared, or blocked before applying' },
+  { k: 'pipeline', title: 'To apply', desc: 'queued, drafting, or blocked before applying' },
   { k: 'done', title: 'Done', desc: 'rejected or closed — no action' },
 ];
 const FOCUS_GROUPS = [
@@ -51,6 +53,7 @@ function bucketOf(r) {
   if (s === 'CLOSED' || s === 'REJECTED') return 'done';
   if (r.action || NEEDS_STATUS.has(s) || lb === 'INVITED' || r.queue === 'human') return 'needs';
   if (['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW'].includes(s)) return 'ongoing';
+  if (s === 'PREPARED') return 'prepared';
   return 'pipeline';
 }
 const T = (s) => ` title="${esc(s)}"`;
@@ -73,9 +76,9 @@ const md = (s) => {
   return t;
 };
 let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] }, CUR_PERM = null;
-let BUILD = '';
+let BUILD = '', LIVE_TASKS = [];
 let BUCKET = 'active', VISIBLE = [], VIEW = [];
-let COLLAPSED = { ongoing: true, pipeline: true, done: true, focus_unknown: true };   // default to the actionable top of the list
+let COLLAPSED = { ongoing: true, pipeline: true, done: true, prepared: false, focus_unknown: true };   // default to the actionable top of the list
 let BUCKET_BEFORE_SEARCH = null;
 const PENDING = new Set();
 const NUT = '<span class="spin" title="working…">🥜</span> ';
@@ -264,6 +267,7 @@ const App = {
     CHAT = { segments: [], running: false }; setSpin(false); renderChat(); toast('agent history cleared');
   },
   open: (i) => openDetail(GRID[i]),
+  showTaskLogFor: (company, role) => openTaskLog(taskLogName(company, role), `${company} — ${role}`),
   bucket: (kind) => {
     BUCKET = BUCKETS.some(b => b.k === kind) ? kind : 'active';
     BUCKET_BEFORE_SEARCH = null;
@@ -404,8 +408,13 @@ const App = {
     if (!(d.draft.to || '').trim()) return toast('add a recipient before sending', true);
     if (!$('#dr-subject').value.trim()) return toast('add a subject before sending', true);
     toast('sending — approve the prompt when it appears');
+    draftClose();                                  // the approval dialog must not sit behind the draft
     const s = await api('/api/draft/send', { path: DRAFT.path, clear_action: $('#dr-clear').checked });
-    if (s.error) return toast(s.error, true);
+    if (s.error) {
+      toast(s.error, true);
+      if (DRAFT && DRAFT.path) App.draftEdit(DRAFT.path);
+      return;
+    }
     draftClose(); toast(s.ok || 'sent'); App.loadDrafts(); loadGrid();
   },
   draftDelete: async (path) => {
@@ -476,16 +485,16 @@ let GRID_TIMER = null, LIVE_RUNNING = false, IDLE_TICKS = 0, WAS_BUSY = false, D
 async function loadGrid() {
   const sc = document.querySelector('.scroll'), y = sc ? sc.scrollTop : 0;
   const g = await api('/api/grid');
-  GRID = Array.isArray(g) ? g : [];
+  if (Array.isArray(g)) GRID = g;          // keep the last good grid through a transient error
   renderBuckets();
   renderRows();
   if (sc) sc.scrollTop = y;
 }
 function bucketCounts() {
-  const c = { needs: 0, ongoing: 0, pipeline: 0, done: 0 };
+  const c = { needs: 0, prepared: 0, ongoing: 0, pipeline: 0, done: 0 };
   GRID.forEach(r => { const k = bucketOf(r); c[k] = (c[k] || 0) + 1; });
   return { ...c, focus: GRID.filter(r => r.focus || r.focus_unknown).length,
-           active: c.needs + c.ongoing + c.pipeline, all: GRID.length };
+           active: c.needs + c.prepared + c.ongoing + c.pipeline, all: GRID.length };
 }
 function renderBuckets() {
   const el = $('#metrics'); if (!el) return;
@@ -496,7 +505,7 @@ function renderBuckets() {
   el.querySelectorAll('.bucket').forEach(b => b.onclick = () => App.bucket(b.dataset.bucket));
 }
 async function gridTick() {                 // keep the grid live (faster while a run is active)
-  await loadGrid();
+  try { await loadGrid(); } catch (e) { console.warn('grid refresh failed', e); }
   setTimeout(gridTick, LIVE_RUNNING ? 3000 : 8000);
 }
 function renderRows() {
@@ -566,7 +575,7 @@ function renderRows() {
       && PANELS.detail && PANELS.detail.open) ? ' sel' : '';
     return `<tr class="click${sel}" onclick="App.open(${i})">` +
       `<td class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet — queued, not applied')}>${r.date ? esc(shortDate(r.date)) : '—'}</td>` +
-      `<td${T(r.company + '  ·  employer / recruiter')}>${(r.running || PENDING.has(r.key)) ? '<span class="spin" title="Being worked on now">🥜</span> ' : ''}${r.action ? `<span class="actflag"${T(r.action)}>⚑</span> ` : ''}${esc(r.company)}</td>` +
+      `<td${T(r.company + '  ·  employer / recruiter')}>${r.running ? `<a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="event.stopPropagation();App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show the live log"><span class="spin">🥜</span></a> ` : (PENDING.has(r.key) ? '<span class="spin" title="Queued — waiting to start">🥜</span> ' : '')}${r.action ? `<span class="actflag"${T(r.action)}>⚑</span> ` : ''}${esc(r.company)}</td>` +
       `<td${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}</td>` +
       `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
       `<td>${chip(r.label || r.status)}${r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : ''}</td><td>${mbadge(r)}</td>` +
@@ -616,17 +625,19 @@ function renderRows() {
   VISIBLE = rendered.map(r => r.key);
   $('#rows').innerHTML = html;
   if ($('#count')) {
-    const c = { needs: 0, ongoing: 0, pipeline: 0, done: 0 };
+    const c = { needs: 0, prepared: 0, ongoing: 0, pipeline: 0, done: 0 };
     rows.forEach(r => { const b = bucketOf(r); c[b] = (c[b] || 0) + 1; });
     const cl = (n, label, action, hint) =>
       `<button type="button" class="countlink" onclick="${action}" title="${esc(hint || ('Filter to ' + label))}">${n} ${label}</button>`;
     const dot = '<span class="muted"> · </span>';
     if (BUCKET === 'active')
       $('#count').innerHTML = cl(c.needs, 'need you', "App.bucket('needs')", 'Show the roles that need you') + dot +
+        cl(c.prepared, 'prepared', "App.bucket('prepared')", 'Show prepared documents ready to review') + dot +
         cl(c.ongoing, 'ongoing', "App.bucket('ongoing')", 'Show ongoing applications') + dot +
         cl(c.pipeline, 'to apply', "App.bucket('pipeline')", 'Show the roles still to apply to');
     else if (BUCKET === 'all')
       $('#count').innerHTML = cl(c.needs, 'need you', "App.bucket('needs')") + dot +
+        cl(c.prepared, 'prepared', "App.bucket('prepared')") + dot +
         cl(c.ongoing, 'ongoing', "App.bucket('ongoing')") + dot +
         cl(c.pipeline, 'to apply', "App.bucket('pipeline')") + dot +
         cl(c.done, 'done', "App.bucket('done')", 'Show finished roles');
@@ -645,6 +656,67 @@ function renderRows() {
 }
 window.toggleGroup = (k) => { COLLAPSED[k] = !COLLAPSED[k]; renderRows(); };
 document.querySelectorAll('#grid th[data-s]').forEach(th => th.onclick = () => { const k = th.dataset.s; SORT = { k, dir: SORT.k === k ? -SORT.dir : 1 }; renderRows(); });
+
+/* ---------- resizable columns ---------- */
+const COL_DEFAULTS = { date: 90, company: 195, role: 320, ats: 110, status: 160,
+                       match: 70, salary: 85, work: 95, queue: 90, files: 55, ad: 50 };
+function initGridCols() {
+  const table = $('#grid'); if (!table) return;
+  const ths = [...table.querySelectorAll('thead th')];
+  const cols = ths.map((th, i) => th.dataset.col || th.dataset.s || ('c' + i));
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem('grid.cols') || '{}') || {}; } catch (e) { saved = {}; }
+  const widths = {};
+  const cg = document.createElement('colgroup');
+  cols.forEach((k) => {
+    let w = Number(saved[k]);
+    if (!Number.isFinite(w)) w = COL_DEFAULTS[k] || 100;
+    widths[k] = Math.max(40, Math.min(800, w));
+    const c = document.createElement('col');
+    c.dataset.col = k; c.style.width = widths[k] + 'px';
+    cg.appendChild(c);
+  });
+  table.insertBefore(cg, table.querySelector('thead'));
+  table.style.tableLayout = 'fixed';
+  const applyWidth = () => {
+    table.style.width = cols.reduce((n, k) => n + widths[k], 0) + 'px';
+  };
+  applyWidth();
+  const save = () => { try { localStorage.setItem('grid.cols', JSON.stringify(widths)); } catch (e) {} };
+  const reset = (k, i) => {
+    widths[k] = COL_DEFAULTS[k] || 100;
+    cg.children[i].style.width = widths[k] + 'px';
+    applyWidth(); save();
+  };
+  ths.forEach((th, i) => {
+    const k = cols[i];
+    const h = document.createElement('span');
+    h.className = 'col-resize';
+    h.title = 'Drag to resize; double-click to reset';
+    h.addEventListener('click', (e) => e.stopPropagation());
+    h.addEventListener('dblclick', (e) => { e.preventDefault(); e.stopPropagation(); reset(k, i); });
+    h.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const startX = e.clientX, startW = th.getBoundingClientRect().width;
+      try { h.setPointerCapture(e.pointerId); } catch (err) {}
+      table.classList.add('resizing');
+      const move = (ev) => {
+        const w = Math.max(40, Math.min(800, Math.round(startW + ev.clientX - startX)));
+        widths[k] = w; cg.children[i].style.width = w + 'px'; applyWidth();
+      };
+      const up = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        window.removeEventListener('pointercancel', up);
+        table.classList.remove('resizing'); save();
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+      window.addEventListener('pointercancel', up);
+    });
+    th.appendChild(h);
+  });
+}
 
 /* ---------- detail drawer ---------- */
 async function openDetail(r) {
@@ -700,7 +772,7 @@ function summary(r) {
         return cell('ad', 'Ad saved') + cell('keywords', 'Keywords') + cell('grounding', 'Grounded') + cell('documents', 'Documents') + cell('applied', 'Applied');
       })()}</div>
       <div class="state-meta mini muted">ATS: ${esc(r.ats || '—')}${r.employment ? ' · type: ' + esc(r.employment) : ''} · Pay: ${esc(r.salary_label || '—')}${r.salary_override ? ' (manual)' : ''} · Work: ${esc(wl(r.work_model))}${r.work_override ? ' (manual)' : ''} · Queue: ${esc(r.queue || 'not queued')}${r.date ? ' · updated ' + esc(r.date) : ''}${r.interview_at ? ' · interview ' + esc(r.interview_at) : ''} · <span class="mono">${esc(r.key)}</span></div>
-      ${r.running ? '<div class="working"><span class="spin">🥜</span> being worked on right now</div>' : ''}
+      ${r.running ? `<div class="working"><a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show what this run is doing"><span class="spin">🥜</span> being worked on right now — show live log</a></div>` : ''}
     </div>` +
     `<div class="row" style="margin:6px 0 10px"><span class="muted">Set status</span>
       <select id="dt-status"><option value="">— keep as ${esc(r.label || r.status || 'is')} —</option>` +
@@ -925,6 +997,12 @@ async function liveTick() {
     if (BUILD && d.build !== BUILD) { location.reload(); return; }
     BUILD = d.build;
   }
+  LIVE_TASKS = d.running_tasks || [];
+  const lb = $('#live-log');
+  if (lb) {
+    lb.classList.toggle('hide', !LIVE_TASKS.length);
+    lb.title = LIVE_TASKS.length ? 'Show the live log: ' + LIVE_TASKS[0].label : 'No running task';
+  }
   const a = d.action || {};
   let s = a.running ? '● ' + a.name + ' …' : (d.active ? '● running' : '○ idle');
   (d.running || []).forEach(r => s += '  ▶ ' + r);
@@ -953,7 +1031,8 @@ async function liveTick() {
     let h = `<div class="act-h">${a.running ? NUT : '✓'} ${esc(a.name || 'working…')} <span class="muted">${a.running ? 'running…' : 'finished'}</span></div>`;
     if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
     if ((sm.notable || []).length) h += '<ul class="act-list">' + sm.notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
-    h += (d.running || []).length ? `<div class="act-h" style="margin-top:6px">▶ ${(d.running || []).map(esc).join(' · ')}</div>` : '';
+    const ptasks = d.running_tasks || (d.running || []).map(x => ({ label: x, log: '' }));
+    h += ptasks.length ? `<div class="act-h" style="margin-top:6px">▶ ${ptasks.map(t => t.log ? `<a class="runlink" data-task="${esc(t.log)}" data-title="${esc(t.label)}">${esc(t.label)}</a>` : esc(t.label)).join(' · ')}</div>` : '';
     (d.tail || []).slice(-6).forEach(x => h += `<div class="mini muted">${esc(x.t)}</div>`);
     $('#peras-body').innerHTML = h;
   }
@@ -979,7 +1058,12 @@ async function liveTick() {
       h += '<div class="act-sep"></div>';
     }
     h += d.active ? '● runner active' : '○ runner idle';
-    (d.running || []).forEach(r => h += `\n▶ ${esc(r)}`);
+    const tasks = d.running_tasks || (d.running || []).map(x => ({ label: x, log: '' }));
+    tasks.forEach(t => {
+      h += t.log
+        ? `\n▶ <a class="runlink" data-task="${esc(t.log)}" data-title="${esc(t.label)}" title="Show the live log">${esc(t.label)}</a>`
+        : `\n▶ ${esc(t.label)}`;
+    });
     (d.tail || []).forEach(x => h += x.k === 'phase' ? `\n[p] ${esc(x.t)}` : `\n    ${esc(x.t)}`);
     $('#liveterm').innerHTML = h;
   }
@@ -1128,6 +1212,53 @@ function setPanel(key, props) {
   layoutPanels();
 }
 function openDock(v) { setPanel('agent', { open: v }); if (v) api('/api/agent').then(d => $('#agent-name').textContent = d.agent || '?'); }
+
+/* ---------- per-task live log ---------- */
+let TASKLOG = { name: '', title: '', timer: null };
+function taskLogName(company, role) { return `${company}-${role}`.replace(/[ \/|]/g, '_'); }
+async function taskLogPoll() {
+  if (!TASKLOG.name) return;
+  const d = await api('/api/log?task=' + encodeURIComponent(TASKLOG.name));
+  const raw = (d && d.raw) || [];
+  const lines = (d && d.curated) || [];
+  const age = d && d.age, size = d && d.size;
+  let meta = (d && d.error) ? 'log not found'
+    : `${size != null ? size : 0} bytes · ${age == null ? 'no output yet' : 'last output ' + age + 's ago'}` +
+      (age != null && age > 90 ? ' · quiet for ' + Math.floor(age / 60) + 'm — the model may be stalled (20m timeout)' : '');
+  if (!LIVE_TASKS.length) meta += ' · no task running now';
+  else if (!LIVE_TASKS.some(t => t.log === TASKLOG.name)) meta += ' · task finished — the runner moved on';
+  const mEl = $('#tasklog-meta'); if (mEl) mEl.textContent = meta;
+  const txt = raw.length ? raw.join('\n')
+    : (lines.map(x => (x.k === 'phase' ? '[phase] ' : '') + (x.t || '')).join('\n')
+       || `No log output yet.\n\n${meta}\n\nThe runner will time out after 20 minutes and move on.`);
+  const el = $('#tasklog-body');
+  const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+  el.textContent = txt;
+  if (stick) el.scrollTop = el.scrollHeight;
+  TASKLOG.timer = setTimeout(taskLogPoll, 1500);
+}
+function openTaskLog(name, title) {
+  if (!name) return;
+  clearTimeout(TASKLOG.timer);
+  TASKLOG = { name, title: title || name, timer: null };
+  $('#tasklog-title').textContent = TASKLOG.title;
+  $('#tasklog-body').textContent = 'loading…';
+  $('#tasklog').classList.remove('hide');
+  document.body.dataset.tasklog = 'open';
+  if (document.body.dataset.act !== 'open') {
+    document.body.dataset.act = 'open';
+    localStorage.setItem('dock.actOpen', '1');
+  }
+  openDock(true);
+  taskLogPoll();
+}
+function closeTaskLog() {
+  clearTimeout(TASKLOG.timer);
+  TASKLOG = { name: '', title: '', timer: null };
+  document.body.dataset.tasklog = 'closed';
+  $('#tasklog').classList.add('hide');
+  if (document.body.dataset.act === 'open') liveTick();
+}
 function zoneAt(x, y) {
   const w = window.innerWidth, h = window.innerHeight, top = 56;
   const dl = x, dr = w - x, dt = y - top, db = h - y;
@@ -1479,8 +1610,19 @@ $('#act-toggle').onclick = () => {
   const open = document.body.dataset.act !== 'open';
   document.body.dataset.act = open ? 'open' : 'closed';
   localStorage.setItem('dock.actOpen', open ? '1' : '0');
+  if (!open) closeTaskLog();
   if (open) liveTick();
 };
+$('#tasklog-close').onclick = () => closeTaskLog();
+$('#live-log').onclick = () => { const t = LIVE_TASKS[0]; if (t) openTaskLog(t.log, t.label); };
+$('#peras-body').addEventListener('click', (e) => {
+  const a = e.target.closest('.runlink'); if (!a) return;
+  e.preventDefault(); window.perasClose(); openTaskLog(a.dataset.task, a.dataset.title);
+});
+$('#liveterm').addEventListener('click', (e) => {
+  const a = e.target.closest('.runlink'); if (!a) return;
+  e.preventDefault(); openTaskLog(a.dataset.task, a.dataset.title);
+});
 $('#chat').addEventListener('scroll', () => {                 // remember whether the reader is following along
   const el = $('#chat'); CHAT_STICK = chatAtBottom(el);
 }, { passive: true });
@@ -1567,4 +1709,4 @@ $('#upd-go').onclick = async () => {
   const d = await api('/api/update/apply', { approval_token: 'APPROVE_UPDATE' });
   toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true);
 };
-initPanels(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel();
+initPanels(); initGridCols(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel();

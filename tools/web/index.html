@@ -4,14 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Jobsquirrel</title>
-<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/app.css?v={{ASSET}}">
 </head>
 <body data-session-token="{{TOKEN}}" data-act="closed">
 <header class="top">
   <div class="brand"><span class="mascot">🐿️</span><h1>Jobsquirrel</h1>
     <span id="health" class="pill unknown">health…</span><span class="pill">v<span id="ver">…</span></span>
     <button id="updpill" class="pill upd hide" title="A new version is available">⬆ update</button>
-    <span class="pill" title="UI build marker">WebUI v6</span></div>
+    <span class="pill" title="UI build marker">WebUI v6</span>
+    <a class="pill" id="logs-link" href="/logs" target="_blank" title="Live task logs (opens in a new tab; works without the dashboard script)">📜 Logs</a></div>
   <div class="actions">
     <button id="a-prepare" title="Safe: build tailored documents + run gates (REVIEW=1). Never submits.">⚡ Prepare</button>
     <button id="a-submit" class="risky" title="Applies to queued roles (submits). Requires approval.">🚀 Run Submissions</button>
@@ -28,6 +29,7 @@
     <div class="strip">
       <div class="metrics" id="metrics"></div>
       <div class="livestrip" id="live"><span class="muted">idle — no run active</span></div>
+      <button id="live-log" class="small hide" title="Show the live log of the running task">📜 Live log</button>
       <span id="runctl" class="runctl hide">
         <button id="btn-pause" title="Finish the current task, then start nothing new">⏸ Pause</button>
         <button id="btn-stop" class="risky" title="Stop now: no new tasks, terminate the in-flight work">⏹ Stop</button>
@@ -85,17 +87,17 @@
         <div class="gridwrap">
           <table id="grid">
         <thead><tr>
-          <th data-s="date" title="When this register row was last updated (YYYY-MM-DD)">Date</th>
-          <th data-s="company" title="Employer / recruiter name">Company</th>
-          <th data-s="role" title="Job title">Role</th>
-          <th data-s="ats" title="Applicant-tracking system the application was submitted through (Ashby, Teamtailor, LinkedIn, …)">ATS</th>
-          <th data-s="status" title="Current application status — see ⓘ Legend for each value">Status</th>
-          <th data-s="match" title="CV-to-job fit: how much of the ad's ATS keyword list the tailored CV covers. A red ✗ means the pre-submit alignment gate FAILED">Fit</th>
-          <th data-s="salary_eur" title="Estimated annual pay in EUR from the ad (hourly/day rates are annualised). Click to sort.">Pay</th>
-          <th data-s="work_model" title="Work model detected from the ad (remote / hybrid / on-site). Click to sort.">Work</th>
-          <th title="Where the role sits in the apply queue — see ⓘ Legend">Queue</th>
-          <th title="Provenance on file: the exact CV + cover letter (and SHA-256 hashes) recorded for the submission">Files</th>
-          <th title="A saved job description exists for this role — open the row for the ad, ATS keywords and grounded context">Ad</th>
+          <th data-s="date" data-col="date" title="When this register row was last updated (YYYY-MM-DD)">Date</th>
+          <th data-s="company" data-col="company" title="Employer / recruiter name">Company</th>
+          <th data-s="role" data-col="role" title="Job title">Role</th>
+          <th data-s="ats" data-col="ats" title="Applicant-tracking system the application was submitted through (Ashby, Teamtailor, LinkedIn, …)">ATS</th>
+          <th data-s="status" data-col="status" title="Current application status — see ⓘ Legend for each value">Status</th>
+          <th data-s="match" data-col="match" title="CV-to-job fit: how much of the ad's ATS keyword list the tailored CV covers. A red ✗ means the pre-submit alignment gate FAILED">Fit</th>
+          <th data-s="salary_eur" data-col="salary" title="Estimated annual pay in EUR from the ad (hourly/day rates are annualised). Click to sort.">Pay</th>
+          <th data-s="work_model" data-col="work" title="Work model detected from the ad (remote / hybrid / on-site). Click to sort.">Work</th>
+          <th data-col="queue" title="Where the role sits in the apply queue — see ⓘ Legend">Queue</th>
+          <th data-col="files" title="Provenance on file: the exact CV + cover letter (and SHA-256 hashes) recorded for the submission">Files</th>
+          <th data-col="ad" title="A saved job description exists for this role — open the row for the ad, ATS keywords and grounded context">Ad</th>
         </tr></thead>
             <tbody id="rows"></tbody>
           </table>
@@ -142,6 +144,14 @@
       <button class="pane-h act-toggle" id="act-toggle" title="Show/hide activity">
         <span class="chev">▸</span>Activity<span id="act-sum" class="muted">idle</span></button>
       <div id="liveterm" class="term grow act-body">idle.</div>
+      <div id="tasklog" class="tasklog hide">
+        <div class="row" style="margin:0 0 6px">
+          <b id="tasklog-title" style="font-size:12px">task</b>
+          <span id="tasklog-meta" class="muted mini"></span><span style="flex:1"></span>
+          <button id="tasklog-close" class="small" title="Back to the activity summary">← Activity</button>
+        </div>
+        <pre id="tasklog-body" class="tasklog-body">loading…</pre>
+      </div>
     </section>
   </div>
 </aside>
@@ -264,6 +274,7 @@
       <h4>Views</h4>
       <dl id="legend-views"></dl>
       <h4 style="margin-top:12px">Columns</h4>
+      <p class="muted mini" style="margin:-4px 0 6px">Drag a header edge to resize; double-click it to reset.</p>
       <dl>
         <dt>Date</dt><dd>When the register row was last updated.</dd>
         <dt>ATS</dt><dd>The applicant-tracking system the application went through.</dd>
@@ -292,6 +303,14 @@
   <div id="docv-body" class="d-body grow"></div>
 </div></div>
 
-<script src="/app.js"></script>
+<script>window.__bootfail = '';</script>
+<script src="/app.js?v={{ASSET}}" onerror="window.__bootfail='app.js failed to load'; setTimeout(function(){location.reload()},1200)"></script>
+<script>
+  // If app.js fails to load or never renders the grid (e.g. the dashboard was
+  // restarting mid-load), recover with a fresh page and fresh asset URLs.
+  setTimeout(function () {
+    if (window.__bootfail || !document.querySelectorAll('#metrics .bucket').length) location.reload();
+  }, 5000);
+</script>
 </body>
 </html>

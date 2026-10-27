@@ -11,6 +11,7 @@ require an explicit approval token. See docs/PRODUCT-SPEC.md.
 import argparse
 import csv
 import glob
+from functools import lru_cache
 import html as _html
 import json
 import mimetypes
@@ -396,9 +397,16 @@ def _prepared_letter(company, role, key):
 
 def _prepared_cv(company, role, key):
     """The targeted CV prepared for this row (falls back to the queue's archetype)."""
-    m = re.search(r"documents/[^\s|;]*_CV_[^\s|;]*\.docx", _row_note(company, role))
+    return _prepared_cv_note(_row_note(company, role), key)
+
+
+def _prepared_cv_note(note, key, cv_index=None):
+    """The targeted CV from a register note, or the key index (cheap, no CSV read)."""
+    m = re.search(r"documents/[^\s|;]*_CV_[^\s|;]*\.docx", note or "")
     if m and os.path.exists(os.path.join(ROOT, m.group(0))):
         return m.group(0)
+    if cv_index is not None:
+        return cv_index.get(key, "")
     hits = sorted(glob.glob(os.path.join(ROOT, "documents", "applications", f"*_CV_{key}.docx")))
     return os.path.relpath(hits[-1], ROOT) if hits else ""
 
@@ -944,28 +952,73 @@ def _skills_text():
     return (_read(os.path.join(ROOT, "config", "cv.json")) + " " + _read(SKILLS_FILE)).lower()
 
 
-def _cov_sig(key, cvrel):
+@lru_cache(maxsize=4096)
+def _norm_slug(s):
+    return re.sub(r"[^a-z0-9]+", "", (s or "").lower())
+
+
+def _ats_key_for(company, role, key, stems=None):
+    """The ATS/JD slug for a row, even when the agent resolved its own key."""
+    if os.path.isfile(os.path.join(STATE, "ats", key + ".txt")):
+        return key
+    cn = _norm_slug(company)
+    if len(cn) < 4:
+        return key
+    if stems is None:
+        try:
+            stems = [f[:-4] for f in os.listdir(os.path.join(STATE, "ats")) if f.endswith(".txt")]
+        except OSError:
+            return key
+    role_norm = _norm_slug(role)
+    best, best_score = key, 0
+    for s in stems:
+        sn = _norm_slug(s)
+        if not sn or not (sn.startswith(cn) or cn.startswith(sn)):
+            continue
+        score = min(len(sn), len(cn))
+        if role_norm and any(tok in role_norm for tok in re.findall(r"[a-z0-9]{4,}", s.lower())):
+            score += 10
+        if score > best_score:
+            best, best_score = s, score
+    return best
+
+
+def _content_key_for(cvrel, key):
+    """The cv-content/letters-content slug implied by the prepared CV filename."""
+    m = re.search(r"_CV_(.+?)\.docx$", cvrel or "")
+    if m and os.path.isfile(os.path.join(STATE, "cv-content", m.group(1) + ".json")):
+        return m.group(1)
+    return key
+
+
+def _jd_key_for(ats_key, key):
+    return ats_key if os.path.isfile(os.path.join(STATE, "job-descriptions", ats_key + ".md")) else key
+
+
+def _cov_sig(key, cvrel, ats_key=None, content_key=None):
+    ak, ck = ats_key or key, content_key or key
     cvp = cvrel if os.path.isabs(cvrel or "") else os.path.join(ROOT, cvrel or "")
     return ":".join(str(_mtime(p)) for p in (
-        os.path.join(STATE, "ats", key + ".txt"),
-        os.path.join(STATE, "cv-content", key + ".json"),
-        os.path.join(STATE, "letters-content", key + ".json"), cvp,
+        os.path.join(STATE, "ats", ak + ".txt"),
+        os.path.join(STATE, "cv-content", ck + ".json"),
+        os.path.join(STATE, "letters-content", ck + ".json"), cvp,
         os.path.join(ROOT, "config", "cv.json"), SKILLS_FILE))
 
 
-def coverage_for(key, cvrel=""):
+def coverage_for(key, cvrel="", ats_key=None, content_key=None):
     """ATS-keyword coverage %: the tailored content packs + the candidate's recorded skills
     (and the archetype CV text as a fallback)."""
     global _cov_dirty
-    kws = [l.strip() for l in _lines(os.path.join(STATE, "ats", key + ".txt"))]
+    ak, ck = ats_key or key, content_key or key
+    kws = [l.strip() for l in _lines(os.path.join(STATE, "ats", ak + ".txt"))]
     if not kws:
         return None
-    sig = _cov_sig(key, cvrel)
+    sig = _cov_sig(key, cvrel, ats_key=ak, content_key=ck)
     hit = _COV.get(key) or {}
     if hit.get("sig") == sig and "cov" in hit:
         return hit["cov"]
-    hay = (_read(os.path.join(STATE, "cv-content", key + ".json")) + " "
-           + _read(os.path.join(STATE, "letters-content", key + ".json"))).lower()
+    hay = (_read(os.path.join(STATE, "cv-content", ck + ".json")) + " "
+           + _read(os.path.join(STATE, "letters-content", ck + ".json"))).lower()
     if not hay.strip() and cvrel:
         cvp = cvrel if os.path.isabs(cvrel) else os.path.join(ROOT, cvrel)
         hay = _doc_text(cvp).lower()
@@ -1252,11 +1305,29 @@ def grid():
         except OSError:
             return set()
     ats_set, kb_set, cv_set = _keyset("ats", ".txt"), _keyset("kb-context", ".md"), _keyset("cv-content", ".json")
+    ats_stems = sorted(ats_set)
+    cv_index = {}
+    try:
+        app_dir = os.path.join(ROOT, "documents", "applications")
+        for f in os.listdir(app_dir):
+            m = re.match(r".*_CV_(.+?)\.docx$", f)
+            if not m:
+                continue
+            k = m.group(1)
+            rel = os.path.join("documents", "applications", f)
+            mt = _mtime(os.path.join(app_dir, f)) or 0
+            if k not in cv_index or mt >= cv_index[k][0]:
+                cv_index[k] = (mt, rel)
+    except OSError:
+        pass
+    cv_index = {k: v[1] for k, v in cv_index.items()}
 
-    def stages_for(key, applied):
-        """What has actually happened to this job so far."""
-        return {"ad": key in specs, "keywords": key in ats_set, "grounding": key in kb_set,
-                "documents": key in cv_set, "applied": bool(applied)}
+    def stages_for(key, applied, jd_key=None, ats_key=None, content_key=None):
+        """What has actually happened to this job so far (artifact slugs may differ)."""
+        jk, ak, ck = jd_key or key, ats_key or key, content_key or key
+        return {"ad": jk in specs, "keywords": ak in ats_set,
+                "grounding": jk in kb_set or ak in kb_set,
+                "documents": ck in cv_set or key in cv_set, "applied": bool(applied)}
     running = set()
     if WQ:
         try:
@@ -1272,13 +1343,17 @@ def grid():
         ck = (co.lower(), role.lower())
         seen.add(ck)
         key = km.get(ck) or _slug(f"{co}-{role}")
+        notes = r.get("notes", "")
+        cvrel = _prepared_cv_note(notes, key, cv_index) or cvmap.get(key, "") or subm_cv.get(ck, "")
+        ats_key = _ats_key_for(co, role, key, stems=ats_stems)
+        content_key = _content_key_for(cvrel, key)
+        jd_key = _jd_key_for(ats_key, key)
         m = _MATCH_CACHE.get(key, {})
         cov = m.get("coverage")
         if cov is None:
-            cov = coverage_for(key, cvmap.get(key, "") or subm_cv.get(ck, ""))
+            cov = coverage_for(key, cvrel, ats_key=ats_key, content_key=content_key)
         align = m.get("alignment") or (_COV.get(key, {}) or {}).get("align", "")
         status = (r.get("status") or "").upper()
-        notes = r.get("notes", "")
         label, interview_at = _interview_label(status, notes)
         hint = _hint(status, notes)
         if status == "INTERVIEW":
@@ -1287,17 +1362,18 @@ def grid():
                         label, (f"interview held {interview_at} — awaiting the outcome" if interview_at
                                 else "interview held — awaiting the outcome"))
         employment = ((r.get("employment") or "").strip().lower()
-                      or _employment_from_jd(key) or _employment_from_notes(notes))
+                      or _employment_from_jd(jd_key) or _employment_from_notes(notes))
         out.append({"date": r.get("date", ""), "company": co, "role": role, "ats": r.get("ats", ""),
                     "status": status, "label": label, "interview_at": interview_at, "key": key,
                     "employment": employment,
                     "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, ""),
-                    "spec": key in specs, "applied": ck in subm,
+                    "spec": jd_key in specs, "applied": ck in subm,
                     "match": cov, "alignment": align, "running": ck in running,
                     "notes": notes, "letter": r.get("letter", ""), "action": (r.get("action") or "").strip(),
                     "url": qrow.get(ck, {}).get("url", "") or subm_url.get(ck, ""),
-                    "stages": stages_for(key, ck in subm),
-                    **_pay_work_fields(key, notes, status, cov, target),
+                    "stages": stages_for(key, ck in subm, jd_key=jd_key,
+                                         ats_key=ats_key, content_key=content_key),
+                    **_pay_work_fields(jd_key, notes, status, cov, target),
                     "hint": hint})
     # queued but not yet in the register — show the work that's waiting / in flight
     for ck, r in qrow.items():
@@ -1375,7 +1451,15 @@ def task_logs():
 
 def read_task_log(name):
     name = os.path.basename(name)[:120]
-    return {"name": name, "curated": curate(_read(os.path.join(LOGS, name + ".log"), cap=200_000))}
+    path = os.path.join(LOGS, name + ".log")
+    try:
+        st = os.stat(path)
+        size, age = st.st_size, int(time.time() - st.st_mtime)
+    except OSError:
+        size, age = 0, None
+    text = ANSI.sub("", _read(path, cap=400_000))
+    return {"name": name, "curated": curate(text),
+            "raw": text.splitlines()[-400:], "size": size, "age": age}
 
 
 def _web_build():
@@ -1410,7 +1494,17 @@ def live():
     act_lines = action_log(4000)
     act_log = act_lines[-400:]
     act_name = _ACT.get("name", "")
+    def _running_task(k):
+        co, _, role = k.partition("|")
+        name = f"{co}-{role}".translate(str.maketrans(" /|", "___"))
+        try:
+            st = os.stat(os.path.join(LOGS, name + ".log"))
+            age, size = int(time.time() - st.st_mtime), st.st_size
+        except OSError:
+            age, size = None, 0
+        return {"label": k.replace("|", " — "), "log": name, "age": age, "size": size}
     return {"active": active, "running": [k.replace("|", " — ") for k in running],
+            "running_tasks": [_running_task(k) for k in running],
             "tail_name": tail_name, "tail": tail,
             "paused": os.path.exists(PAUSE_FILE),
             "stopping": os.path.exists(STOP_FILE),
@@ -2953,12 +3047,93 @@ class H(BaseHTTPRequestHandler):
             self.send_response(404); self.end_headers(); return
         if path.endswith("index.html"):
             body = body.replace(b"{{TOKEN}}", SESSION_TOKEN.encode())
+            body = body.replace(b"{{ASSET}}", quote(_web_build(), safe="").encode())
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def _page(self, title, body, refresh=0):
+        meta = f"<meta http-equiv='refresh' content='{int(refresh)}'>" if refresh else ""
+        html = ("<!doctype html><html><head><meta charset='utf-8'>" + meta +
+                "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                f"<title>{_html.escape(title)}</title>"
+                "<style>body{font:14px/1.5 system-ui,-apple-system,sans-serif;background:#0c0e12;color:#f3f4f6;margin:20px}"
+                "a{color:#f59e0b}pre{background:#07090c;border:1px solid #232838;border-radius:8px;padding:12px;"
+                "white-space:pre-wrap;overflow:auto;max-height:75vh;font:12px/1.5 ui-monospace,monospace}"
+                ".muted{color:#9ca3af}.bad{color:#ffb4b4}h2,h3{margin:.4em 0}li{margin:4px 0}</style></head><body>"
+                + body + "</body></html>")
+        data = html.encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _task_names(self):
+        out = {}
+        if WQ:
+            try:
+                for k in WQ.live_tasks():
+                    co, _, role = k.partition("|")
+                    out[f"{co}-{role}".translate(str.maketrans(" /|", "___"))] = k.replace("|", " — ")
+            except Exception:
+                pass
+        return out
+
+    def _logs_page(self):
+        running = self._task_names()
+        try:
+            files = [f for f in os.listdir(LOGS) if f.endswith(".log")]
+        except OSError:
+            files = []
+        files.sort(key=lambda f: os.path.getmtime(os.path.join(LOGS, f)), reverse=True)
+        rows = []
+        for f in files[:80]:
+            name = f[:-4]
+            try:
+                st = os.stat(os.path.join(LOGS, f))
+                age, size = int(time.time() - st.st_mtime), st.st_size
+            except OSError:
+                age, size = 0, 0
+            tag = ' <b class="bad">running</b>' if name in running else ''
+            rows.append(f"<li><a href='/tasklog?task={quote(name)}'>{_html.escape(name)}</a>{tag} "
+                        f"<span class='muted'>· {size} bytes · {age}s ago</span></li>")
+        body = (f"<h2>Task logs</h2><p class='muted'>{time.strftime('%Y-%m-%d %H:%M:%S')} · "
+                "auto-refresh 3s · <a href='/'>dashboard</a></p>")
+        if running:
+            body += "<h3>Running</h3><ul>" + "".join(
+                f"<li><a href='/tasklog?task={quote(n)}'>{_html.escape(n)}</a> "
+                f"<span class='muted'>· {_html.escape(label)}</span></li>" for n, label in running.items()) + "</ul>"
+        else:
+            body += "<p class='muted'>No task running.</p>"
+        body += "<h3>Recent</h3><ul>" + ("".join(rows) or "<li class='muted'>no logs yet</li>") + "</ul>"
+        return self._page("Jobsquirrel task logs", body, refresh=3)
+
+    def _tasklog_page(self, task):
+        name = os.path.basename(task or "")[:120]
+        if not name:
+            return self._logs_page()
+        path = os.path.join(LOGS, name + ".log")
+        try:
+            st = os.stat(path)
+            size, age = st.st_size, int(time.time() - st.st_mtime)
+        except OSError:
+            size, age = 0, None
+        raw = ANSI.sub("", _read(path, cap=400_000)).splitlines()[-400:]
+        running = name in self._task_names()
+        status = "running" if running else ("not running" if age is not None else "no log file")
+        meta = f"{size} bytes · " + (f"last output {age}s ago" if age is not None else "no output yet")
+        if age is not None and age > 90:
+            meta += f" · quiet for {age // 60}m — the model may be stalled"
+        text = "\n".join(raw) or "No output yet."
+        body = (f"<p><a href='/logs'>← all logs</a> · <a href='/'>dashboard</a></p>"
+                f"<h2>{_html.escape(name)}</h2><p class='muted'>{_html.escape(meta)} · {status}</p>"
+                f"<pre>{_html.escape(text)}</pre>")
+        return self._page(name + " · log", body, refresh=2)
 
     def do_GET(self):
         u = urlparse(self.path)
@@ -2968,6 +3143,10 @@ class H(BaseHTTPRequestHandler):
                   "/app.js": ("app.js", "application/javascript; charset=utf-8")}
         if p in static:
             return self._file(os.path.join(WEB, static[p][0]), static[p][1])
+        if p == "/logs":
+            return self._logs_page()
+        if p == "/tasklog":
+            return self._tasklog_page(qs.get("task", [""])[0])
         if p == "/api/state":
             return self._json(state())
         if p == "/api/health":

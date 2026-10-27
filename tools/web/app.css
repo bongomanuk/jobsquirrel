@@ -210,6 +210,17 @@ body[data-act="open"] .pane-act{flex:0 0 var(--act-size,180px)}
 body[data-act="closed"] .act-body,body[data-act="closed"] #split-inner{display:none}
 .act-body{margin-top:8px}
 
+/* per-task live log, expanded inside the Activity pane */
+.tasklog{display:flex;flex-direction:column;flex:1;min-height:0;margin-top:8px}
+.tasklog.hide{display:none}
+.tasklog-body{flex:1;min-height:0;max-height:none;margin:0;background:#07090c;border:1px solid var(--line);
+  border-radius:8px;padding:10px;white-space:pre-wrap;overflow:auto;font:12px/1.5 var(--mono)}
+body[data-tasklog="open"] .pane-act{flex:0 0 min(56vh,460px)}
+body[data-tasklog="open"] #liveterm{display:none}
+body[data-act="closed"] #tasklog{display:none}
+.runlink{color:var(--accent);cursor:pointer;text-decoration:none}
+.runlink:hover{text-decoration:underline}
+
 /* inner splitter (chat vs activity) */
 .split-inner{flex:0 0 auto}
 .edge[data-edge="left"] .split-inner,.edge[data-edge="right"] .split-inner{height:7px;cursor:row-resize}
@@ -254,6 +265,8 @@ body[data-act="closed"] .act-body,body[data-act="closed"] #split-inner{display:n
 /* modal */
 .overlay{position:fixed;inset:0;background:rgba(2,4,8,.6);z-index:40}
 .modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:41}
+/* approvals must always sit above an open draft / prepare modal */
+#perm,#approve{z-index:46}
 .modal-box{width:min(680px,92vw);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px}
 .modal-box h2{margin-top:0;color:var(--fg);text-transform:none;letter-spacing:0}
 .hide{display:none !important}
@@ -324,6 +337,10 @@ tr.grp .grp-n .countlink:hover{color:var(--accent)}
 #grid td:nth-child(1){font-size:12px;color:var(--muted)}
 #grid .badge{padding:2px 8px}
 #grid thead th{position:sticky;top:0;z-index:2}
+#grid thead th .col-resize{position:absolute;top:0;right:0;width:8px;height:100%;cursor:col-resize;z-index:5;touch-action:none}
+#grid thead th .col-resize::after{content:"";position:absolute;top:4px;bottom:4px;right:1px;width:2px;background:var(--line);border-radius:2px}
+#grid thead th .col-resize:hover::after{background:var(--accent)}
+#grid.resizing,#grid.resizing *{cursor:col-resize!important;user-select:none}
 #grid th[data-s]{cursor:pointer}
 #grid tbody tr.click{cursor:pointer}
 #grid tbody tr.sel{background:rgba(96,165,250,.12);box-shadow:inset 3px 0 0 #60a5fa}
