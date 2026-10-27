@@ -402,7 +402,7 @@ const App = {
       to: $('#dr-to').value, cc: $('#dr-cc').value, subject: $('#dr-subject').value,
       attachments: $('#dr-attach').value, body: $('#dr-body').value };
     const d = await api('/api/draft/save', payload);
-    if (d.error) return toast(d.error, true);
+    if (d.error) { if (/session/i.test(d.error)) return location.reload(); return toast(d.error, true); }
     DRAFT = d.draft;
     if (!send) { toast('draft saved'); App.loadDrafts(); return; }
     if (!(d.draft.to || '').trim()) return toast('add a recipient before sending', true);
@@ -411,8 +411,11 @@ const App = {
     draftClose();                                  // the approval dialog must not sit behind the draft
     const s = await api('/api/draft/send', { path: DRAFT.path, clear_action: $('#dr-clear').checked });
     if (s.error) {
+      if (/session/i.test(s.error)) return location.reload();
       toast(s.error, true);
-      if (DRAFT && DRAFT.path) App.draftEdit(DRAFT.path);
+      const showErr = () => { const e = $('#draft-error'); if (e) { e.textContent = 'Send failed: ' + s.error; e.classList.remove('hide'); } };
+      showErr();
+      if (DRAFT && DRAFT.path) App.draftEdit(DRAFT.path).then(showErr);
       return;
     }
     draftClose(); toast(s.ok || 'sent'); App.loadDrafts(); loadGrid();
@@ -826,6 +829,7 @@ function openDraft(d) {
   $('#dr-subject').value = d.subject || '';
   $('#dr-attach').value = (d.attachments || []).join(', ');
   $('#dr-body').value = d.body || '';
+  const de = $('#draft-error'); if (de) { de.textContent = ''; de.classList.add('hide'); }
   $('#draftm').classList.remove('hide');
   setTimeout(() => $('#dr-body').focus(), 50);
 }
@@ -1119,7 +1123,11 @@ async function permAnswer(decision, remember, save) {
     edits = { to: $('#pe-to').value, cc: $('#pe-cc').value, subject: $('#pe-subject').value, body };
   }
   const id = CUR_PERM.id; CUR_PERM = null; $('#perm').classList.add('hide');
-  await api('/api/agent/decide', { id, decision, remember: !!remember, edits, save: !!save });
+  const r = await api('/api/agent/decide', { id, decision, remember: !!remember, edits, save: !!save });
+  if (r && r.error) {
+    toast(r.error, true);
+    if (/session/i.test(r.error)) { location.reload(); return; }
+  }
   permTick();
 }
 
