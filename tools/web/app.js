@@ -75,7 +75,7 @@ const md = (s) => {
   t = t.replace(/^(?!<h\d|<ul|<li|<\/?ul|<pre|<\/?pre|<blockquote|<hr|\s*$)(.+)$/gm, '<p>$1</p>');
   return t;
 };
-let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] }, CUR_PERM = null;
+let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] }, CUR_PERM = null, PERM_BUSY = false;
 let BUILD = '', LIVE_TASKS = [];
 let BUCKET = 'active', VISIBLE = [], VIEW = [];
 let COLLAPSED = { ongoing: true, pipeline: true, done: true, prepared: false, focus_unknown: true };   // default to the actionable top of the list
@@ -1088,12 +1088,16 @@ async function liveTick() {
   permTick();
 }
 /* the embedded agent asks before doing something risky (agent_access.py -> here) */
-async function permTick() {
-  if (CUR_PERM) return;
+async function permTick(force = false) {
   const d = await api('/api/agent/pending');
   const q = (d && d.pending) || [];
-  if (!q.length) return;
+  if (!q.length) {
+    if (CUR_PERM) { CUR_PERM = null; $('#perm').classList.add('hide'); }
+    return;
+  }
+  if (CUR_PERM && !force && q[0].id === CUR_PERM.id) return;
   CUR_PERM = q[0];
+  const dm = $('#draftm'); if (dm) dm.classList.add('hide');
   const email = CUR_PERM.email && typeof CUR_PERM.email === 'object' ? CUR_PERM.email : null;
   const always = CUR_PERM.rememberable !== false;
   $('#perm-title').textContent = email ? 'Review email before sending' : 'Agent requests permission';
@@ -1120,28 +1124,60 @@ async function permTick() {
   $('#perm').classList.remove('hide');
 }
 async function permAnswer(decision, remember, save) {
-  if (!CUR_PERM) return;
-  const email = CUR_PERM.email && typeof CUR_PERM.email === 'object' ? CUR_PERM.email : null;
-  let edits;
-  if (email) {
-    const to = $('#pe-to').value.trim();
-    const cc = $('#pe-cc').value.trim();
-    const subject = $('#pe-subject').value.trim();
-    const body = $('#pe-body').value;
-    if (decision === 'allow') {
-      if (!to) return toast('add a recipient before sending', true);
-      if (!subject) return toast('add a subject before sending', true);
-      if (!body.trim()) return toast('the email body is empty', true);
+  if (!CUR_PERM || PERM_BUSY) return;
+  PERM_BUSY = true;
+  const buttons = [...document.querySelectorAll('#perm .row button')];
+  buttons.forEach(b => { b.disabled = true; });
+  try {
+    const shown = CUR_PERM;
+    const email = shown.email && typeof shown.email === 'object' ? shown.email : null;
+    let edits;
+    if (email) {
+      const to = $('#pe-to').value.trim();
+      const cc = $('#pe-cc').value.trim();
+      const subject = $('#pe-subject').value.trim();
+      const body = $('#pe-body').value;
+      if (decision === 'allow') {
+        if (!to) return toast('add a recipient before sending', true);
+        if (!subject) return toast('add a subject before sending', true);
+        if (!body.trim()) return toast('the email body is empty', true);
+      }
+      edits = { to: $('#pe-to').value, cc: $('#pe-cc').value, subject: $('#pe-subject').value, body };
     }
-    edits = { to: $('#pe-to').value, cc: $('#pe-cc').value, subject: $('#pe-subject').value, body };
+    // The tab may have been open across a restart or another send. Never post a
+    // stale pending id: fetch the live request and use its id when it is the
+    // same request (same category and recipient/subject).
+    let id = shown.id;
+    const live = await api('/api/agent/pending');
+    const q = (live && live.pending) || [];
+    if (!q.some(x => x.id === id)) {
+      const same = q.find(x => x.category === shown.category &&
+        (email
+          ? (((x.email || {}).to || '') === (email.to || '') &&
+             ((x.email || {}).subject || '') === (email.subject || ''))
+          : String(x.detail || '') === String(shown.detail || '')));
+      if (same) {
+        id = same.id;
+      } else {
+        toast('this request expired — showing the current one', true);
+        CUR_PERM = null; $('#perm').classList.add('hide');
+        await permTick(true);
+        return;
+      }
+    }
+    CUR_PERM = null; $('#perm').classList.add('hide');
+    const r = await api('/api/agent/decide', { id, decision, remember: !!remember, edits, save: !!save });
+    if (r && r.error) {
+      toast(r.error, true);
+      if (/session/i.test(r.error)) { location.reload(); return; }
+      await permTick(true);
+      return;
+    }
+    await permTick();
+  } finally {
+    PERM_BUSY = false;
+    buttons.forEach(b => { b.disabled = false; });
   }
-  const id = CUR_PERM.id; CUR_PERM = null; $('#perm').classList.add('hide');
-  const r = await api('/api/agent/decide', { id, decision, remember: !!remember, edits, save: !!save });
-  if (r && r.error) {
-    toast(r.error, true);
-    if (/session/i.test(r.error)) { location.reload(); return; }
-  }
-  permTick();
 }
 
 /* ---------- shared dockable panels (edges) ---------- */
@@ -1645,6 +1681,9 @@ $('#perm-once').onclick = () => permAnswer('allow', false);
 $('#perm-always').onclick = () => permAnswer('allow', true);
 $('#perm-deny').onclick = () => permAnswer('deny', false);
 $('#perm-save').onclick = () => permAnswer('deny', false, true);
+setInterval(() => permTick(), 2500);
+window.addEventListener('focus', () => permTick(true));
+document.addEventListener('visibilitychange', () => { if (!document.hidden) permTick(true); });
 $('#act-toggle').onclick = () => {
   const open = document.body.dataset.act !== 'open';
   document.body.dataset.act = open ? 'open' : 'closed';
