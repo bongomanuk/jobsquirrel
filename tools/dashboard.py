@@ -1225,6 +1225,11 @@ _INTERVIEW_WORDS = ("interview", "screen", "intro call", "first chat", "call wit
 # No date yet, but clearly still being arranged -> INVITED rather than held.
 _INVITED_WORDS = ("invit", "schedul", "availabil", "await", "reschedul", "book at",
                   "asked", "reply", "follow", "still interested")
+# A held interview needs explicit evidence. A bare INTERVIEW status, or a
+# reconciler note carrying the email's date, must not look like a past interview.
+_HELD_WORDS = ("interview held", "interview took place", "interview completed",
+               "awaiting the outcome", "awaiting outcome", "after the interview",
+               "spoke with", "had the interview", "post-interview")
 
 
 def _interview_time(notes):
@@ -1277,9 +1282,12 @@ def _interview_label(status, notes):
         return "SCHEDULED", time.strftime("%Y-%m-%d %H:%M", time.localtime(iv))
     if iv:
         return "INTERVIEW", time.strftime("%Y-%m-%d %H:%M", time.localtime(iv))
-    if any(w in (notes or "").lower() for w in _INVITED_WORDS):
+    low = (notes or "").lower()
+    if any(w in low for w in _HELD_WORDS):
+        return "INTERVIEW", ""
+    if re.search(r"gmail:\s*INTERVIEW\b", low) or any(w in low for w in _INVITED_WORDS):
         return "INVITED", ""
-    return "INTERVIEW", ""
+    return "INVITED", ""
 
 
 
