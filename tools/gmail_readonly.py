@@ -135,8 +135,9 @@ def classify(subject, body):
     if re.search(r"cancel", s) and re.search(r"interview|meeting|call|chat|screening", s):
         return "OTHER"
 
-    i_subj = re.search(r"interview|next steps?|intro(ductory)? call|first chat|invitation for|"
+    i_subj = re.search(r"let'?s talk|interview|next steps?|intro(ductory)? call|first chat|invitation for|"
                        r"phone screen|meet the team|book a time|would you be open|jump on a call|"
+                       r"would you have .{0,40}(?:call|chat|talk|meeting)|"
                        r"schedule[^.\n]{0,40}(call|chat|meeting|time)", s)
     conf_subj = re.search(r"thank you for applying|thanks for applying|received your application|"
                           r"we got your application|application received|new job application received|"
@@ -153,6 +154,8 @@ def classify(subject, body):
         r"(?:book|schedule|set up|arrange) (?:a |some )?(?:call|chat|meeting|interview|slot)|"
         r"(?:invite|inviting) you (?:for|to) (?:an? )?(?:interview|chat|call|intro)|"
         r"any chance you have time for an interview|have time for an interview|"
+        r"would you have .{0,40}(?:call|chat|talk|meeting)|"
+        r"(?:still|would) (?:like|love|want) to (?:talk|chat|speak)|"
         r"still interested .{0,40}(?:talk|chat|conversation)|"
         r"har du tid (?:för|till) (?:ett |en )?(?:intervju|samtal)|"
         r"boka in ett (?:telefon)?samtal|telefonsamtal eller ett teams-möte", b)
