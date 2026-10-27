@@ -2362,6 +2362,8 @@ DEFAULT_PERMS = {
 }
 _PERM_LOCK = threading.Lock()
 _PERM = {}                  # request id -> {category, detail, event, decision, ts}
+_DRAFT_SEND_LOCK = threading.Lock()
+_DRAFT_SENDING = set()      # draft paths with a send waiting for approval
 
 
 def load_perms():
@@ -3364,7 +3366,19 @@ class H(BaseHTTPRequestHandler):
         if p == "/api/draft/delete":
             return self._json(draft_delete(data.get("path", "")))
         if p == "/api/draft/send":
-            return self._json(draft_send(data.get("path", ""), bool(data.get("clear_action"))))
+            path = str(data.get("path", ""))
+            key = os.path.realpath(path) if path else ""
+            with _DRAFT_SEND_LOCK:
+                if key and key in _DRAFT_SENDING:
+                    return self._json({"error": "this draft is already waiting for approval — use the open approval dialog"})
+                if key:
+                    _DRAFT_SENDING.add(key)
+            try:
+                return self._json(draft_send(path, bool(data.get("clear_action"))))
+            finally:
+                if key:
+                    with _DRAFT_SEND_LOCK:
+                        _DRAFT_SENDING.discard(key)
         if p == "/api/role-chat":
             return self._json(role_chat_start(data.get("key", ""), data.get("company", ""),
                                               data.get("role", ""), data.get("message", "")))

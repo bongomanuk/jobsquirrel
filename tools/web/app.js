@@ -75,7 +75,7 @@ const md = (s) => {
   t = t.replace(/^(?!<h\d|<ul|<li|<\/?ul|<pre|<\/?pre|<blockquote|<hr|\s*$)(.+)$/gm, '<p>$1</p>');
   return t;
 };
-let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] }, CUR_PERM = null, PERM_BUSY = false;
+let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] }, CUR_PERM = null, PERM_BUSY = false, DRAFT_SENDING = false;
 let BUILD = '', LIVE_TASKS = [];
 let BUCKET = 'active', VISIBLE = [], VIEW = [];
 let COLLAPSED = { ongoing: true, pipeline: true, done: true, prepared: false, focus_unknown: true };   // default to the actionable top of the list
@@ -411,27 +411,33 @@ const App = {
   },
   draftSave: async (send) => {
     if (!CUR) return;
-    const payload = { path: DRAFT && DRAFT.path || '', company: CUR.company, role: CUR.role,
-      to: $('#dr-to').value, cc: $('#dr-cc').value, subject: $('#dr-subject').value,
-      attachments: $('#dr-attach').value, body: $('#dr-body').value };
-    const d = await api('/api/draft/save', payload);
-    if (d.error) { if (/session/i.test(d.error)) return location.reload(); return toast(d.error, true); }
-    DRAFT = d.draft;
-    if (!send) { toast('draft saved'); App.loadDrafts(); return; }
-    if (!(d.draft.to || '').trim()) return toast('add a recipient before sending', true);
-    if (!$('#dr-subject').value.trim()) return toast('add a subject before sending', true);
-    toast('sending — approve the prompt when it appears');
-    draftClose();                                  // the approval dialog must not sit behind the draft
-    const s = await api('/api/draft/send', { path: DRAFT.path, clear_action: $('#dr-clear').checked });
-    if (s.error) {
-      if (/session/i.test(s.error)) return location.reload();
-      toast(s.error, true);
-      const showErr = () => { const e = $('#draft-error'); if (e) { e.textContent = 'Send failed: ' + s.error; e.classList.remove('hide'); } };
-      showErr();
-      if (DRAFT && DRAFT.path) App.draftEdit(DRAFT.path).then(showErr);
-      return;
+    if (send && DRAFT_SENDING) { toast('this draft is already sending — use the open approval dialog', true); return; }
+    if (send) { DRAFT_SENDING = true; const sb = $('#dr-send'); if (sb) sb.disabled = true; }
+    try {
+      const payload = { path: DRAFT && DRAFT.path || '', company: CUR.company, role: CUR.role,
+        to: $('#dr-to').value, cc: $('#dr-cc').value, subject: $('#dr-subject').value,
+        attachments: $('#dr-attach').value, body: $('#dr-body').value };
+      const d = await api('/api/draft/save', payload);
+      if (d.error) { if (/session/i.test(d.error)) return location.reload(); return toast(d.error, true); }
+      DRAFT = d.draft;
+      if (!send) { toast('draft saved'); App.loadDrafts(); return; }
+      if (!(d.draft.to || '').trim()) return toast('add a recipient before sending', true);
+      if (!$('#dr-subject').value.trim()) return toast('add a subject before sending', true);
+      toast('sending — approve the prompt when it appears');
+      draftClose();                                  // the approval dialog must not sit behind the draft
+      const s = await api('/api/draft/send', { path: DRAFT.path, clear_action: $('#dr-clear').checked });
+      if (s.error) {
+        if (/session/i.test(s.error)) return location.reload();
+        toast(s.error, true);
+        const showErr = () => { const e = $('#draft-error'); if (e) { e.textContent = 'Send failed: ' + s.error; e.classList.remove('hide'); } };
+        showErr();
+        if (DRAFT && DRAFT.path) App.draftEdit(DRAFT.path).then(showErr);
+        return;
+      }
+      draftClose(); toast(s.ok || 'sent'); App.loadDrafts(); loadGrid();
+    } finally {
+      if (send) { DRAFT_SENDING = false; const sb = $('#dr-send'); if (sb) sb.disabled = false; }
     }
-    draftClose(); toast(s.ok || 'sent'); App.loadDrafts(); loadGrid();
   },
   draftDelete: async (path) => {
     if (!confirm('Delete this draft?')) return;
