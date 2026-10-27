@@ -206,7 +206,8 @@ const App = {
     const orKey = ($('#ai-or-key') && $('#ai-or-key').value || '').trim();
     if (orKey) env.OPENROUTER_API_KEY = orKey;
     const model = (($('#ai-model-custom') && $('#ai-model-custom').value.trim()) || ($('#ai-model-sel') && $('#ai-model-sel').value) || '');
-    const agent = $('#ai-agent').value.trim();
+    let agent = $('#ai-agent').value.trim();
+    if (agent === '__custom__') agent = ($('#ai-agent-custom') && $('#ai-agent-custom').value.trim()) || '';
     const models = agent && model ? { [agent]: model } : {};
     const d = await api('/api/agent/config', { agent, model, models, env });
     toast(d.ok || d.error, !!d.error);
@@ -1544,6 +1545,12 @@ async function setAI(b) {
   const [a, g] = await Promise.all([api('/api/agent/config'), api('/api/graphrag/env')]);
   const detected = (a.detected || []);
   const orKey = (a.env || {}).OPENROUTER_API_KEY || '';
+  const knownAgents = [['', 'Auto (OpenCode, else Claude)'], ['opencode', 'OpenCode'],
+    ['openrouter', 'OpenRouter'], ['claude', 'Claude Code']];
+  const customAgent = a.agent && !knownAgents.some(([v]) => v === a.agent) ? a.agent : '';
+  const agentOpts = knownAgents.map(([v, label]) =>
+    `<option value="${v}"${a.agent === v ? ' selected' : ''}>${label}</option>`).join('') +
+    `<option value="__custom__"${customAgent ? ' selected' : ''}>Custom…</option>`;
   const envRows = (a.env_keys || []).filter(k => k !== 'OPENROUTER_API_KEY').map(k =>
     `<div class="row" style="margin:3px 0"><code style="min-width:190px">${esc(k)}</code>
       <input data-env="${esc(k)}" placeholder="${esc(a.env[k])} (blank = keep)" style="flex:1">
@@ -1561,11 +1568,12 @@ async function setAI(b) {
       <code>npm i -g opencode-ai</code> (opencode) or <code>npm i -g @anthropic-ai/claude-code</code> (Claude Code),
       or set a custom command.</div>`}
     <div class="row" style="margin-top:8px"><span class="muted">Agent</span>
-      <input id="ai-agent" value="${esc(a.agent)}" placeholder="auto (opencode, else claude)" style="flex:1">
+      <select id="ai-agent" style="min-width:200px">${agentOpts}</select>
+      <input id="ai-agent-custom" value="${esc(customAgent)}" placeholder="custom command" style="flex:1; display:${customAgent ? '' : 'none'}">
       <span class="muted">Model</span>
       <select id="ai-model-sel" style="min-width:220px"></select>
       <input id="ai-model-custom" placeholder="or type a model id" style="flex:1"></div>
-    <div class="muted mini">The list comes from the selected agent (<code>opencode models</code>) or OpenRouter's models; anything else can be typed.
+    <div class="muted mini">Pick <b>OpenCode</b> or <b>OpenRouter</b> here. The model list comes from the selected provider (OpenCode's list or OpenRouter's catalogue); anything else can be typed.
       Applies to chat, role chats and queue/API runs; <code>MODEL=...</code> overrides for one run.</div>
     <div class="row" style="margin-top:8px"><b>OpenRouter</b>
       <input id="ai-or-key" type="password" autocomplete="new-password" placeholder="${orKey ? esc(orKey) + ' (blank = keep)' : 'sk-or-v1-…'}" style="flex:1">
@@ -1585,7 +1593,13 @@ async function setAI(b) {
       <span class="muted mini">Used by the knowledge graph (same OPENCODE_API_KEY works for both).</span></div>`;
   App.aiFillModels(a);
   const ag = $('#ai-agent');
-  if (ag) ag.onchange = () => App.aiFillModels({ which: ag.value, model: (a.models || {})[ag.value] || '', models: a.models || {} });
+  if (ag) ag.onchange = () => {
+    const isCustom = ag.value === '__custom__';
+    const ci = $('#ai-agent-custom');
+    if (ci) ci.style.display = isCustom ? '' : 'none';
+    const who = isCustom ? ((ci && ci.value.trim()) || '') : ag.value;
+    App.aiFillModels({ which: who, model: (a.models || {})[who] || '', models: a.models || {} });
+  };
 }
 function setProfile(b) {
   b.innerHTML = `<p class="muted">Your ground-truth CV, role-family templates and rules. JSON is validated before saving; a <code>.bak</code> is kept.</p>
