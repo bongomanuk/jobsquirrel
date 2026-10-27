@@ -32,6 +32,8 @@ Screenshots, logs and examples must be redacted or synthetic. If in doubt, leave
 ```bash
 # 0. write the notes to /tmp/notes.md, then lint them (must print RESULT: PASS)
 python3 tools/release_lint.py --text-file /tmp/notes.md
+# 0b. scan the public clone for live credentials (must print RESULT: PASS)
+python3 tools/secret_scan.py --repo jobsquirrel
 # 1. bump the version
 printf 'X.Y.Z\n' > VERSION && cp VERSION jobsquirrel/VERSION
 # 2. commit + push both repos, then tag (annotated) and push the tag
@@ -41,3 +43,8 @@ git tag -a vX.Y.Z -m 'vX.Y.Z "Funny Title"' && git push origin vX.Y.Z
 Never publish notes that fail `release_lint.py`. The release notes follow the house
 voice: a one-line gag, a theme sentence, then **The nuts we added** (bullets) and,
 when relevant, a *Cracked shells* section for behaviour that changed.
+
+`secret_scan.py` checks tracked/untracked files and git history for live key
+formats and for the exact values in the private agent/GraphRAG config. It never
+prints a secret. A hit in history is still a leak: rotate the key and purge the
+history; deleting it from the tip is not enough.
