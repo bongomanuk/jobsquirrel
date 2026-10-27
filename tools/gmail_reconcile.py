@@ -95,7 +95,7 @@ DEFAULT_QUERY = os.environ.get(
     "(newer_than:180d (from:ashbyhq.com OR from:teamtailor.com OR from:teamtailor-mail.com OR "
     "from:greenhouse.io OR from:greenhouse-mail.io OR from:lever.co OR from:hire.lever.co OR "
     "from:myworkday.com OR from:successfactors.eu OR from:workable.com OR from:pinpoint.email OR "
-    "from:join.com OR from:zerolime.se OR from:deel.com OR from:jobylon.com OR label:applications))")
+    "from:join.com OR from:zerolime.se OR from:deel.com OR from:jobylon.com OR from:msg.jobylon.com OR label:applications))")
 
 # Outbound mail: what WE sent (follow-ups, replies). Notes only - never a status.
 OUTBOUND_QUERY = os.environ.get(
@@ -162,6 +162,22 @@ def _load_aliases():
 
 
 SENDER_ALIASES = _load_aliases()
+
+# Job-board alerts, newsletters and marketing mail can mention a registered
+# company in the body; they are not application correspondence. Drop them before
+# matching so they cannot create fake "reply needed" rows or steal a role.
+BULK_SUBJECT = re.compile(r"jobalerts?|job alerts?|newsletter|weekly insights|digest|"
+                          r"unsubscribe|promotions?|%\s*off|up to \d+%", re.I)
+BULK_SENDER = re.compile(r"jobalerts?|job alerts?|linkedin.*(alert|notification)|"
+                         r"newsletter|marketing|digest", re.I)
+
+
+def _bulk_mail(sender, subject, body):
+    disp = sender_display(sender)
+    if BULK_SENDER.search(disp) or BULK_SENDER.search(sender) or BULK_SUBJECT.search(subject):
+        return True
+    b = (body or "").lower()
+    return "view job:" in b or "manage alerts" in b
 
 # Single-word company terms that are also ordinary hiring-email vocabulary.
 BODY_WORD_STOP = {"recruiter", "recruiters", "recruiting", "future", "candidate",
@@ -232,6 +248,11 @@ def match_company(text, rows, body="", sender=""):
                         best_key, best_co = key, co
         if best_co:
             return best_co
+    if body:
+        blow = body.lower()
+        for key, co in SENDER_ALIASES.items():
+            if key in blow and co in {r["company"] for r in rows} and _in_prose(blow, key):
+                return co
     for key, co in SENDER_ALIASES.items():
         if key in low and co in {r["company"] for r in rows}:
             return co
@@ -422,7 +443,7 @@ def main():
     acks = load_acks()
     cache = {} if args.no_cache else load_cache()
 
-    changes, unmatched, verifications, ambiguous = [], [], [], []
+    changes, unmatched, verifications, ambiguous, replies = [], [], [], [], []
     fetched = 0
     for idx, m in enumerate(messages, 1):
         if idx % 100 == 0:
@@ -436,6 +457,8 @@ def main():
         # etc.) cannot be mistaken for prose mentioning a company
         clean = re.sub(r"(?is)<(style|script|head)\b[^>]*>.*?</\1>", " ", body)
         plain = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", clean))[:4000]
+        if _bulk_mail(sender, subject, plain):
+            continue
         company = match_company(f"{subject} {sender_display(sender)}", rows, body=plain, sender=sender)
         row = match_row(company, " ".join([subject, plain]), rows)
         if category == "VERIFICATION":
@@ -446,13 +469,23 @@ def main():
         # subject names none of the roles is NOT guessed: it is reported under
         # "role ambiguous" for manual review. Guessing the most recent row made
         # past runs rejected the wrong role (see the notes on ambiguous matches).
+        if category == "OTHER":
+            if row:
+                replies.append((date, row, sender_display(sender), subject))
+            elif company:
+                ambiguous.append((date, "REPLY?", company, subject))
+            continue
         if not row:
-            if category != "OTHER":
-                (ambiguous if company else unmatched).append((date, category, company or sender, subject))
+            (ambiguous if company else unmatched).append((date, category, company or sender, subject))
             continue
         proposed = propose(row["status"], category)
         if proposed and proposed != row["status"]:
             changes.append((row, proposed, category, date, subject, amb, sender))
+        elif category in ("OTHER", "INTERVIEW"):
+            # No status change, but a personal/interview reply still needs a
+            # human: an invitation or "are you still interested?" is not a
+            # status transition on a row that is already INTERVIEW.
+            replies.append((date, row, sender_display(sender), subject))
 
     outbound, outbound_ambiguous = scan_outbound(service, rows)
 
@@ -488,6 +521,12 @@ def main():
         print("\n== outbound company matched but role ambiguous (not recorded) ==")
         for subject, company, to in outbound_ambiguous:
             print(f"  {company:<24} -> {to[:40]}  {subject[:60]}")
+
+    if replies:
+        print("\n== replies that may need a human (no status change) ==")
+        for date, row, sender, subject in replies:
+            print(f"  {date[:16]}  {row['company']:<24} {row['role'][:34]:<34} "
+                  f"{sender[:28]:<28} {subject[:60]}")
 
     print("\n== proposed register changes ==")
     if not changes:

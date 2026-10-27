@@ -1198,11 +1198,12 @@ def _key_maps():
 
 def _hint(status, notes):
     """A plain-language 'what this means / what to do' line for a row."""
-    reason = (notes or "").split(" | ")[0].strip()
+    parts = [x.strip() for x in (notes or "").split(" | ") if x.strip()]
+    reason = parts[0] if parts else ""
     if status in ("BLOCKED", "MANUAL"):
         return reason or "needs you — open the row to get past the block"
     if status in ("CLOSED", "REJECTED"):
-        return reason or ("closed — no action" if status == "CLOSED" else "rejected — no action")
+        return (parts[-1] if parts else "") or ("closed — no action" if status == "CLOSED" else "rejected — no action")
     return {
         "QUEUED": "in the apply queue — nothing done yet; applied when you run the queue",
         "DRAFTING": "in progress — ad/keywords saved, but no finished documents yet",
@@ -1222,7 +1223,8 @@ _MONTHS = {m: i for i, m in enumerate(
 _INTERVIEW_WORDS = ("interview", "screen", "intro call", "first chat", "call with",
                     "booked", "confirmed", "invit")
 # No date yet, but clearly still being arranged -> INVITED rather than held.
-_INVITED_WORDS = ("invit", "schedul", "availabil", "await", "reschedul", "book at")
+_INVITED_WORDS = ("invit", "schedul", "availabil", "await", "reschedul", "book at",
+                  "asked", "reply", "follow", "still interested")
 
 
 def _interview_time(notes):
@@ -1237,6 +1239,9 @@ def _interview_time(notes):
             continue
         if any(w in sl for w in ("email sent to", "message id", "outbound", "sent:")):
             continue                                     # outbound note: the send date, not an interview
+        if any(w in sl for w in ("asked", "followed up", "follow-up", "still interested",
+                                 "reply", "not booked", "availability")):
+            continue                                     # correspondence, not a booked interview
         if not any(w in seg.lower() for w in _INTERVIEW_WORDS):
             continue
         for m in re.finditer(r"\b(20\d{2})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?", seg):
@@ -2350,7 +2355,7 @@ def permission_request(category, detail, timeout=300):
     pol = load_perms().get(category, "ask")
     if pol in ("allow", "deny"):
         return {"decision": pol, "category": category}
-    rid = uuid.uuid4().hex[:8]
+    rid = uuid.uuid4().hex[:16]
     ev = threading.Event()
     with _PERM_LOCK:
         _PERM[rid] = {"id": rid, "category": category, "detail": detail, "event": ev, "decision": None, "ts": time.time()}
@@ -2366,7 +2371,7 @@ def consent_request(purpose, token, timeout=300, email=None):
     `email` (optional) is the full message shown in the approval dialog, where the
     human can edit To/Cc/Subject/body. Edits come back only with their decision.
     """
-    rid = uuid.uuid4().hex[:8]
+    rid = uuid.uuid4().hex[:16]
     ev = threading.Event()
     with _PERM_LOCK:
         _PERM[rid] = {"id": rid, "category": token, "detail": purpose, "event": ev,
@@ -3266,6 +3271,18 @@ class H(BaseHTTPRequestHandler):
 
     def do_POST(self):
         p = urlparse(self.path).path
+        if p == "/api/agent/decide":
+            # The pending id is the one-time secret the approval dialog holds.
+            # Do not also require the session token: a tab opened before a
+            # dashboard restart must still be able to approve its pending mail.
+            origin = self.headers.get("Origin") or ""
+            if origin and not re.match(r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$", origin):
+                return self._json({"error": "bad origin"}, 403)
+            data = self._body()
+            return self._json(permission_decide(str(data.get("id", "")),
+                                                str(data.get("decision", "deny")),
+                                                bool(data.get("remember")),
+                                                data.get("edits") or {}, bool(data.get("save"))))
         if not self._authed():
             return
         if p == "/api/kb/upload":
@@ -3325,10 +3342,6 @@ class H(BaseHTTPRequestHandler):
         if p == "/api/agent/permission":
             return self._json(permission_request(str(data.get("category", "?"))[:60],
                                                  str(data.get("detail", ""))[:400]))
-        if p == "/api/agent/decide":
-            return self._json(permission_decide(str(data.get("id", "")), str(data.get("decision", "deny")),
-                                                bool(data.get("remember")), data.get("edits") or {},
-                                                bool(data.get("save"))))
         if p == "/api/update/apply":
             return self._json(apply_update(str(data.get("approval_token", ""))))
         if p == "/api/prepare":

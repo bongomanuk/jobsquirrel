@@ -151,7 +151,11 @@ def classify(subject, body):
         r"first interview (?:will be|is|would be)|(?:like|love) to meet you|"
         r"would .{0,50}?work for you|are you (?:free|available)|"
         r"(?:book|schedule|set up|arrange) (?:a |some )?(?:call|chat|meeting|interview|slot)|"
-        r"(?:invite|inviting) you (?:for|to) (?:an? )?(?:interview|chat|call|intro)", b)
+        r"(?:invite|inviting) you (?:for|to) (?:an? )?(?:interview|chat|call|intro)|"
+        r"any chance you have time for an interview|have time for an interview|"
+        r"still interested .{0,40}(?:talk|chat|conversation)|"
+        r"har du tid (?:för|till) (?:ett |en )?(?:intervju|samtal)|"
+        r"boka in ett (?:telefon)?samtal|telefonsamtal eller ett teams-möte", b)
     body_rej = re.search(r"not (?:be )?moving forward|not to move forward|not move forward|"
                          r"move forward with (?:the )?other|move forward with another|"
                          r"moving forward with (?:the )?other|progress with other candidates|"
@@ -167,7 +171,10 @@ def classify(subject, body):
                          r"we regret to inform|unfortunately,? we (have )?(decided|chosen)|"
                          r"role (has been|is) filled|pursuing other candidates|not a (?:good )?(?:fit|match)|"
                          r"not an? ideal fit|we (?:don'?t|do not) see an ideal fit|"
-                         r"doesn'?t align with our current openings|profile doesn'?t align with", b)
+                         r"doesn'?t align with our current openings|profile doesn'?t align with|"
+                         r"gått vidare med (?:ett antal |andra |övriga )?kandidater|"
+                         r"har gått vidare med|vi har (?:tyvärr )?gått vidare|"
+                         r"vi har valt att gå vidare|vi går vidare med andra", b)
     # A stricter subset for the conf_subj branch: unambiguous "we chose someone
     # else" wording. Deliberately excludes loose phrases like "not a good fit"
     # or "unable to offer", which appear in benign acknowledgments too.
@@ -184,7 +191,10 @@ def classify(subject, body):
                            r"we regret to inform|unfortunately,? we (have )?(decided|chosen)|"
                            r"role (has been|is) filled|pursuing other candidates|"
                            r"not an? ideal fit|we (?:don'?t|do not) see an ideal fit|"
-                           r"doesn'?t align with our current openings|profile doesn'?t align with", b)
+                           r"doesn'?t align with our current openings|profile doesn'?t align with|"
+                         r"gått vidare med (?:ett antal |andra |övriga )?kandidater|"
+                         r"har gått vidare med|vi har (?:tyvärr )?gått vidare|"
+                         r"vi har valt att gå vidare|vi går vidare med andra", b)
     body_conf = re.search(r"thank you for applying|thanks for applying|received your application|"
                           r"we got your application|application (?:has been )?received|"
                           r"thank you for submitting your application|thanks for your application", b)
