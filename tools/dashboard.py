@@ -1232,8 +1232,11 @@ def _interview_time(notes):
     scanned, so application dates or start dates don't flip the label."""
     best = 0.0
     for seg in re.split(r"\s*\|\s*", notes or ""):
-        if seg.strip().lower().startswith("gmail:"):     # reconciler metadata: the email's date, not the interview's
+        sl = seg.strip().lower()
+        if sl.startswith("gmail:"):                     # reconciler metadata: the email's date, not the interview's
             continue
+        if any(w in sl for w in ("email sent to", "message id", "outbound", "sent:")):
+            continue                                     # outbound note: the send date, not an interview
         if not any(w in seg.lower() for w in _INTERVIEW_WORDS):
             continue
         for m in re.finditer(r"\b(20\d{2})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?", seg):

@@ -380,15 +380,14 @@ const App = {
     if (!CUR) return;
     const d = await api(`/api/drafts?company=${encodeURIComponent(CUR.company)}&role=${encodeURIComponent(CUR.role)}`);
     const el = $('#dt-draft-list'); if (!el) return;
-    const items = (d && d.drafts) || [];
+    const items = ((d && d.drafts) || []).filter(x => !x.sent_at);
     el.innerHTML = items.length ? items.map(x => {
-      const sent = x.sent_at ? ` <span class="badge good" title="Sent ${esc(x.message_id || '')}">sent ${esc(x.sent_at.slice(0, 10))}</span>` : '';
-      return `<div class="draftrow"><div class="row"><b>${esc(x.subject || '(no subject)')}</b>${sent}<span style="flex:1"></span>
+      return `<div class="draftrow"><div class="row"><b>${esc(x.subject || '(no subject)')}</b><span style="flex:1"></span>
         <button class="mini" onclick='App.draftEdit(${JSON.stringify(x.path)})'>Edit</button>
         <button class="mini" onclick='App.draftEdit(${JSON.stringify(x.path)})' title="Open it to review, then send">Send…</button>
         <button class="mini" onclick='App.draftDelete(${JSON.stringify(x.path)})'>Delete</button></div>
         <div class="muted mini">${esc(x.to || 'no recipient')} · updated ${esc((x.modified || '').slice(0, 16))}</div></div>`;
-    }).join('') : '<span class="muted">no drafts yet — write one, or ask the agent.</span>';
+    }).join('') : '<span class="muted">no open drafts — sent replies are archived in state/drafts/sent.json.</span>';
   },
   draftNew: () => { DRAFT = null; openDraft({}); },
   draftEdit: async (path) => {
