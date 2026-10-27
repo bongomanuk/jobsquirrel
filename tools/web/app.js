@@ -398,7 +398,7 @@ const App = {
     el.innerHTML = items.length ? items.map(x => {
       return `<div class="draftrow"><div class="row"><b>${esc(x.subject || '(no subject)')}</b><span style="flex:1"></span>
         <button class="mini" onclick='App.draftEdit(${JSON.stringify(x.path)})'>Edit</button>
-        <button class="mini" onclick='App.draftEdit(${JSON.stringify(x.path)})' title="Open it to review, then send">Send…</button>
+        <button class="mini" onclick='App.draftSend(${JSON.stringify(x.path)})' title="Send this saved draft — one approval dialog">Send…</button>
         <button class="mini" onclick='App.draftDelete(${JSON.stringify(x.path)})'>Delete</button></div>
         <div class="muted mini">${esc(x.to || 'no recipient')} · updated ${esc((x.modified || '').slice(0, 16))}</div></div>`;
     }).join('') : '<span class="muted">no open drafts — sent replies are archived in state/drafts/sent.json.</span>';
@@ -408,6 +408,25 @@ const App = {
     const d = await api('/api/draft?path=' + encodeURIComponent(path));
     if (d.error) return toast(d.error, true);
     DRAFT = d.draft; openDraft(d.draft);
+  },
+  draftSend: async (path) => {
+    if (!CUR || !path) return;
+    if (DRAFT_SENDING) { toast('this draft is already sending — use the open approval dialog', true); return; }
+    DRAFT_SENDING = true;
+    try {
+      toast('sending — approve the prompt when it appears');
+      const s = await api('/api/draft/send', { path, clear_action: true });
+      if (s.error) {
+        if (/session/i.test(s.error)) return location.reload();
+        return toast(s.error, true);
+      }
+      toast(s.ok || 'sent');
+      await App.loadDrafts();
+      await loadGrid();
+      if (CUR && !$('#detail').hidden) openDetail(CUR);
+    } finally {
+      DRAFT_SENDING = false;
+    }
   },
   draftSave: async (send) => {
     if (!CUR) return;
@@ -434,7 +453,8 @@ const App = {
         if (DRAFT && DRAFT.path) App.draftEdit(DRAFT.path).then(showErr);
         return;
       }
-      draftClose(); toast(s.ok || 'sent'); App.loadDrafts(); loadGrid();
+      draftClose(); toast(s.ok || 'sent'); await App.loadDrafts(); await loadGrid();
+      if (CUR && !$('#detail').hidden) openDetail(CUR);
     } finally {
       if (send) { DRAFT_SENDING = false; const sb = $('#dr-send'); if (sb) sb.disabled = false; }
     }
