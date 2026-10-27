@@ -2355,7 +2355,7 @@ def permission_request(category, detail, timeout=300):
     pol = load_perms().get(category, "ask")
     if pol in ("allow", "deny"):
         return {"decision": pol, "category": category}
-    rid = uuid.uuid4().hex[:16]
+    rid = uuid.uuid4().hex
     ev = threading.Event()
     with _PERM_LOCK:
         _PERM[rid] = {"id": rid, "category": category, "detail": detail, "event": ev, "decision": None, "ts": time.time()}
@@ -2371,7 +2371,7 @@ def consent_request(purpose, token, timeout=300, email=None):
     `email` (optional) is the full message shown in the approval dialog, where the
     human can edit To/Cc/Subject/body. Edits come back only with their decision.
     """
-    rid = uuid.uuid4().hex[:16]
+    rid = uuid.uuid4().hex
     ev = threading.Event()
     with _PERM_LOCK:
         _PERM[rid] = {"id": rid, "category": token, "detail": purpose, "event": ev,
@@ -2382,6 +2382,15 @@ def consent_request(purpose, token, timeout=300, email=None):
         rec = _PERM.pop(rid, {})
     return {"decision": rec.get("decision") or "deny", "id": rid,
             "edits": rec.get("edits") or {}, "save": bool(rec.get("save"))}
+
+
+def _log_approval(msg):
+    try:
+        os.makedirs(LOGS, exist_ok=True)
+        with open(os.path.join(LOGS, "approval.log"), "a", encoding="utf-8") as fh:
+            fh.write(time.strftime("%Y-%m-%d %H:%M:%S ") + msg + "\n")
+    except OSError:
+        pass
 
 
 def permission_pending():
@@ -3275,14 +3284,17 @@ class H(BaseHTTPRequestHandler):
             # The pending id is the one-time secret the approval dialog holds.
             # Do not also require the session token: a tab opened before a
             # dashboard restart must still be able to approve its pending mail.
+            # No Origin allow-list here: the dashboard may be opened by hostname
+            # or LAN name, and a 128-bit id is already the unguessable secret.
             origin = self.headers.get("Origin") or ""
-            if origin and not re.match(r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$", origin):
-                return self._json({"error": "bad origin"}, 403)
+            host = self.headers.get("Host") or ""
             data = self._body()
-            return self._json(permission_decide(str(data.get("id", "")),
-                                                str(data.get("decision", "deny")),
-                                                bool(data.get("remember")),
-                                                data.get("edits") or {}, bool(data.get("save"))))
+            rid = str(data.get("id", ""))
+            decision = str(data.get("decision", "deny"))
+            res = permission_decide(rid, decision, bool(data.get("remember")),
+                                    data.get("edits") or {}, bool(data.get("save")))
+            _log_approval(f"id={rid[:8]}... decision={decision} origin={origin!r} host={host!r} -> {res}")
+            return self._json(res)
         if not self._authed():
             return
         if p == "/api/kb/upload":
