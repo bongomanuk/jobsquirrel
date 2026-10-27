@@ -203,12 +203,25 @@ const App = {
   },
   saveAI: async () => {
     const env = {}; document.querySelectorAll('#ai-env input[data-env]').forEach(i => { if (i.value) env[i.dataset.env] = i.value; });
+    const orKey = ($('#ai-or-key') && $('#ai-or-key').value || '').trim();
+    if (orKey) env.OPENROUTER_API_KEY = orKey;
     const model = (($('#ai-model-custom') && $('#ai-model-custom').value.trim()) || ($('#ai-model-sel') && $('#ai-model-sel').value) || '');
     const agent = $('#ai-agent').value.trim();
     const models = agent && model ? { [agent]: model } : {};
     const d = await api('/api/agent/config', { agent, model, models, env });
     toast(d.ok || d.error, !!d.error);
     if (!d.error) { loadChatModel(); App.settings('ai'); }
+  },
+  useOpenRouter: async () => {
+    const key = ($('#ai-or-key') && $('#ai-or-key').value || '').trim();
+    const env = key ? { OPENROUTER_API_KEY: key } : {};
+    const pick = ($('#ai-model-sel') && $('#ai-model-sel').value || '').trim();
+    const model = pick && pick.includes('/') && !/^(opencode|opencode-go|claude)/.test(pick)
+      ? pick : 'deepseek/deepseek-v4.1-flash';
+    const d = await api('/api/agent/config', { agent: 'openrouter', model,
+      models: { openrouter: model }, env });
+    toast(d.ok || d.error, !!d.error);
+    if (!d.error) App.settings('ai');
   },
   saveGR: async () => {
     const vars = {}; document.querySelectorAll('#ai-gr input[data-gr]').forEach(i => { if (i.value) vars[i.dataset.gr] = i.value; });
@@ -1530,7 +1543,8 @@ async function setPerms(b) {
 async function setAI(b) {
   const [a, g] = await Promise.all([api('/api/agent/config'), api('/api/graphrag/env')]);
   const detected = (a.detected || []);
-  const envRows = (a.env_keys || []).map(k =>
+  const orKey = (a.env || {}).OPENROUTER_API_KEY || '';
+  const envRows = (a.env_keys || []).filter(k => k !== 'OPENROUTER_API_KEY').map(k =>
     `<div class="row" style="margin:3px 0"><code style="min-width:190px">${esc(k)}</code>
       <input data-env="${esc(k)}" placeholder="${esc(a.env[k])} (blank = keep)" style="flex:1">
       <button class="small" onclick="App.aiDel('${esc(k)}')" title="remove">✕</button></div>`).join('');
@@ -1551,8 +1565,12 @@ async function setAI(b) {
       <span class="muted">Model</span>
       <select id="ai-model-sel" style="min-width:220px"></select>
       <input id="ai-model-custom" placeholder="or type a model id" style="flex:1"></div>
-    <div class="muted mini">The list comes from the selected agent (<code>opencode models</code>); anything else can be typed.
+    <div class="muted mini">The list comes from the selected agent (<code>opencode models</code>) or OpenRouter's models; anything else can be typed.
       Applies to chat, role chats and queue/API runs; <code>MODEL=...</code> overrides for one run.</div>
+    <div class="row" style="margin-top:8px"><b>OpenRouter</b>
+      <input id="ai-or-key" type="password" autocomplete="new-password" placeholder="${orKey ? esc(orKey) + ' (blank = keep)' : 'sk-or-v1-…'}" style="flex:1">
+      <button onclick="App.useOpenRouter()">Use OpenRouter</button>
+      <span class="muted mini">OpenRouter serves the model; OpenCode is only the local tool runner. The key is stored with the other env values.</span></div>
     <h4 style="margin:14px 0 4px">API keys / env</h4>
     <div id="ai-env">${envRows || '<span class="muted mini">none set</span>'}</div>
     <div class="row" style="margin-top:6px">

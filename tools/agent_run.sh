@@ -23,7 +23,7 @@ set -u
 AGENT_CFG_FILE="${AGENT_CFG:-$HOME/.config/job-search/agent.json}"
 if [ -f "$AGENT_CFG_FILE" ]; then
   eval "$(python3 - "$AGENT_CFG_FILE" <<'PY' 2>/dev/null
-import json, shlex, sys
+import json, re, shlex, sys
 try:
     d = json.load(open(sys.argv[1]))
 except Exception:
@@ -37,6 +37,12 @@ if agent:
     print("CFG_AGENT=" + shlex.quote(agent))
 if model:
     print("CFG_MODEL=" + shlex.quote(model))
+env = d.get("env") if isinstance(d.get("env"), dict) else {}
+for k, v in env.items():
+    k = re.sub(r"[^A-Za-z0-9_]", "", str(k))[:80]
+    if not k or k in ("AGENT", "MODEL") or v is None or str(v) == "":
+        continue
+    print(f'if [ -z "${{{k}:-}}" ]; then export {k}={shlex.quote(str(v))}; fi')
 PY
 )"
 fi
@@ -49,6 +55,9 @@ fi
 export MODEL
 
 resolve_agent() {
+  # openrouter is a virtual agent: OpenCode is the local tool runner, while
+  # OpenRouter supplies the model. It has no binary of its own.
+  if [ "${AGENT:-}" = "openrouter" ]; then printf '%s' openrouter; return 0; fi
   if [ -n "${AGENT:-}" ]; then
     if command -v "${AGENT%% *}" >/dev/null 2>&1; then printf '%s' "$AGENT"; return 0; fi
     # AGENT is set but not a real command (e.g. a stray AGENT=1 / AGENT=true in the
@@ -75,6 +84,17 @@ fi
 prompt="$1"
 
 case "$agent" in
+  openrouter)
+    command -v opencode >/dev/null 2>&1 || {
+      echo "agent_run: openrouter needs opencode as the local tool runner on PATH" >&2; exit 127; }
+    [ -n "${MODEL:-}" ] || { echo "agent_run: openrouter needs a model (Settings -> AI & agent)" >&2; exit 64; }
+    m="$MODEL"
+    case "$m" in openrouter/*) ;; *) m="openrouter/$m" ;; esac
+    fmt=()
+    [ "${AGENT_JSON:-}" = "1" ] && fmt+=(--format json)
+    [ -n "${AGENT_SESSION:-}" ] && fmt+=(-s "$AGENT_SESSION")
+    exec opencode run --model "$m" "${fmt[@]}" "$prompt"
+    ;;
   opencode)
     fmt=()
     [ "${AGENT_JSON:-}" = "1" ] && fmt+=(--format json)

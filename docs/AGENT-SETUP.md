@@ -112,6 +112,30 @@ Both write `~/.config/job-search/agent.json`:
 - The **GraphRAG LLM is separate** (`kb/graphrag/.env`, same Settings page): the
   knowledge-graph builder does not use the coding-agent model.
 
+### OpenRouter models
+
+**Settings → AI & agent → OpenRouter** accepts an OpenRouter API key, then
+**Use OpenRouter** sets the agent to `openrouter` and the model to OpenRouter's
+DeepSeek V4.1 Flash. The model picker lists OpenRouter's catalogue (grouped by
+provider, with free models separated); pick another model or type its id.
+
+The key is stored in `~/.config/job-search/agent.json` under `env` (0600), never
+in the repository. OpenCode remains the local tool runner (it reads `AGENTS.md`
+and drives the browser/commands); OpenRouter supplies the model. The saved
+selection looks like:
+
+```jsonc
+{
+  "agent": "openrouter",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "models": { "openrouter": "deepseek/deepseek-v4.1-flash" },
+  "env": { "OPENROUTER_API_KEY": "sk-or-..." }
+}
+```
+
+`tools/agent_run.sh` forwards the key to the runner and prefixes the model with
+`openrouter/` for OpenCode. Queue/apply runs, chat and role chats all use it.
+
 ## 2. Run it with Claude Code, Cursor, or any other agent
 
 The contract is `AGENTS.md`. Any agent that can read files and run shell

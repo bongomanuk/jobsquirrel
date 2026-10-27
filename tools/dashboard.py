@@ -2094,6 +2094,7 @@ def save_agent_cfg(d):
     fd = os.open(AGENT_CFG_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         json.dump(out, fh, indent=2)
+    _MODEL_CACHE.update(t=0.0, key="", data={})
     return out
 
 
@@ -2122,7 +2123,27 @@ def agent_models(agent=""):
     if cache["key"] == base and now - cache["t"] < 300:
         return cache["data"]
     models, source = [], ""
-    if base == "opencode" and shutil.which("opencode"):
+    if base == "openrouter":
+        cfg = load_agent_cfg()
+        key = (os.environ.get("OPENROUTER_API_KEY")
+               or (cfg.get("env") or {}).get("OPENROUTER_API_KEY") or "").strip()
+        if not key:
+            models, source = [], "OpenRouter (set OPENROUTER_API_KEY)"
+        else:
+            try:
+                req = urllib.request.Request(
+                    "https://openrouter.ai/api/v1/models",
+                    headers={"Authorization": f"Bearer {key}", "User-Agent": "jobsquirrel"})
+                with urllib.request.urlopen(req, timeout=25) as r:
+                    data = json.load(r)
+                models = [str(m.get("id") or "").strip() for m in (data.get("data") or [])
+                          if isinstance(m, dict) and m.get("id")]
+                models = [m for m in models if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/~-]*", m)]
+                models = list(dict.fromkeys(models))
+                source = "OpenRouter"
+            except Exception as e:
+                models, source = [], f"OpenRouter (failed: {str(e)[:80]})"
+    elif base == "opencode" and shutil.which("opencode"):
         try:
             r = subprocess.run(["opencode", "models"], capture_output=True, text=True, timeout=40)
             models = [ln.strip() for ln in ANSI.sub("", r.stdout or "").splitlines()
@@ -2146,7 +2167,7 @@ def _model_groups(base, models):
     """Group model ids for the pickers: Free, products (Zen/Go/...), contributor."""
     def short(m):
         return m.split("/", 1)[1] if "/" in m else m
-    free = [m for m in models if short(m).lower().endswith("-free")]
+    free = [m for m in models if short(m).lower().endswith(("-free", ":free"))]
     contributor = [m for m in models if short(m).lower().endswith("-contributor")]
     rest = [m for m in models if m not in free and m not in contributor]
     groups = []
@@ -2157,7 +2178,8 @@ def _model_groups(base, models):
         key = m.split("/", 1)[0] if "/" in m else (base or "other")
         by_product.setdefault(key, []).append(m)
     labels = {"opencode": "OpenCode Zen", "opencode-go": "OpenCode Go",
-              "claude": "Claude Code", "anthropic": "Anthropic"}
+              "claude": "Claude Code", "anthropic": "Anthropic",
+              "deepseek": "DeepSeek", "openrouter": "OpenRouter"}
     for key in sorted(by_product):
         groups.append({"label": labels.get(key, key.replace("-", " ").title() or "Other"),
                        "models": by_product[key]})
@@ -2181,7 +2203,8 @@ def agent_config():
             "env": {k: _mask(v) for k, v in cfg["env"].items()},
             "env_keys": sorted(cfg["env"]), "detected": detected, "which": which,
             "config_path": AGENT_CFG_FILE,
-            "known_keys": ["OPENCODE_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]}
+            "known_keys": ["OPENROUTER_API_KEY", "OPENCODE_API_KEY",
+                           "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]}
 
 
 def graphrag_env():
