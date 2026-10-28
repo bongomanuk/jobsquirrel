@@ -201,6 +201,14 @@ So the agent's usual job: fill the queue (§3) → optionally **Review** first �
 - Web sources: `tools/discover.py` only sees alert emails; you may also search
   job boards directly and queue the results.
 
+**Every new role must have a job description before it enters the queue.** Save
+`state/job-descriptions/<key>.md` first and verify it with
+`python3 tools/jd_guard.py --require --key <key>`. `discover.py --queue` now
+refuses to queue a role without one; use `--fetch-jd` (and
+`--browser-server http://127.0.0.1:9872` for login-gated LinkedIn pages) to fetch
+it. Do **not** bulk-backfill old rows; the guard reports them without changing
+them.
+
 After adding rows, `python3 tools/prioritise_queue.py` and then run.
 
 ---

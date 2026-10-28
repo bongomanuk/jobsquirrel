@@ -20,6 +20,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gmail_readonly as G
 import register as R
+import jd_guard
 
 SENDER = "jobalerts-noreply@linkedin.com"
 JOB = re.compile(r'href="([^"]*linkedin\.com/[^"]*jobs/view/[^"]+)"[^>]*>(.*?)</a>', re.I | re.S)
@@ -134,6 +135,10 @@ def main():
                     help="append matched new roles to state/queue.tsv (feeds the run queue)")
     ap.add_argument("--cv", default=os.environ.get("CV_ARCHETYPE", "documents/archetypes/CV.docx"),
                     help="CV archetype to put in queued rows (override with CV_ARCHETYPE)")
+    ap.add_argument("--fetch-jd", action="store_true",
+                    help="fetch and save each new role's job description before queueing it")
+    ap.add_argument("--browser-server", default=os.environ.get("CAMOUFOX_SERVER", ""),
+                    help="optional Camoufox server for login-gated job pages")
     args = ap.parse_args()
     matcher = re.compile(args.match, re.I) if args.match else None
 
@@ -173,29 +178,60 @@ def main():
             continue
         new.append(j)
 
-    print(f"{len(jobs)} unique jobs, {len(new)} new (matching) not already in the register/queue:\n")
-    for j in new:
-        print(f"  {j['title'][:55]:55} | {(j['company'] or '?')[:22]:22} | {j['link']}")
+    def qkey(j):
+        co = j["company"] or "(LinkedIn)"
+        return co, slug(f"{co} {j['title']}") or slug(j["title"]) or slug(j["link"])
 
-    if args.apply and new:
-        for j in new:
+    ready, skipped = [], []
+    for j in new:
+        co, key = qkey(j)
+        if jd_guard.has_jd(key):
+            ready.append(j)
+            continue
+        if not args.fetch_jd:
+            skipped.append((j, "no job description (pass --fetch-jd)"))
+            continue
+        try:
+            text = ""
+            if args.browser_server:
+                try:
+                    text = jd_guard.fetch_browser(j["link"], args.browser_server)
+                except Exception:
+                    text = ""
+            if not text:
+                text = jd_guard.fetch_http(j["link"])
+            jd_guard.write_jd(key, co, j["title"], j["link"], text)
+            ready.append(j)
+        except Exception as e:
+            skipped.append((j, str(e)[:100]))
+
+    print(f"{len(jobs)} unique jobs, {len(new)} new (matching) not already in the register/queue")
+    print(f"  {len(ready)} have a job description; {len(skipped)} skipped\n")
+    for j in ready:
+        print(f"  READY {j['title'][:50]:50} | {(j['company'] or '?')[:20]:20} | {j['link']}")
+    for j, why in skipped:
+        print(f"  SKIP  {j['title'][:50]:50} | {(j['company'] or '?')[:20]:20} | {why}")
+
+    if args.apply and ready:
+        for j in ready:
             co = j["company"] or "(LinkedIn)"
             R.upsert(co, j["title"], "PREPARED", day=__import__("datetime").date.today().isoformat(),
                      notes=f"source: LinkedIn job alert; {j['link']}")
-        print(f"\nadded {len(new)} roles as PREPARED")
+        print(f"\nadded {len(ready)} roles as PREPARED")
 
-    if args.queue and new:
+    if args.queue and ready:
         qpath = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "state", "queue.tsv")
         n = 0
         with open(qpath, "a") as fh:
-            for j in new:
-                co = j["company"] or "(LinkedIn)"
-                key = slug(f"{co} {j['title']}") or slug(j["title"]) or slug(j["link"])
+            for j in ready:
+                co, key = qkey(j)
                 fh.write(f"{co}\t{j['title']}\t{j['link']}\t{args.cv}\tTBD\t{key}\n")
                 n += 1
         print(f"queued {n} roles into state/queue.tsv (run tools/run_queue.sh to apply)")
-    elif new and not args.apply:
+    elif ready and not args.apply:
         print("\n(dry run - use --apply and/or --queue)")
+    if skipped:
+        print(f"\n{len(skipped)} role(s) were not queued because they have no job description; save one first.")
 
 
 if __name__ == "__main__":

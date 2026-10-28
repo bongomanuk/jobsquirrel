@@ -107,7 +107,11 @@ COMMON = {"group", "labs", "health", "studios", "studio", "recruiting", "recruit
 # Generic words excluded from word-level matching.
 GENERIC_WORD = {"sound", "international", "solutions", "systems", "digital", "media",
                 "data", "tech", "global", "nordic", "partners", "partner", "software",
-                "services", "service", "and", "of", "the", "company"}
+                "services", "service", "and", "of", "the", "company", "security", "cyber",
+                "cloud", "platform", "architect", "devops", "consultant", "consulting",
+                "engineer", "engineering", "manager",
+                "director", "lead", "senior", "analyst", "specialist", "operations",
+                "network", "it", "ai", "ml"}
 # ATS vendor names: never treat these as the employer.
 ATS_VENDORS = {"ashby", "ashbyhq", "teamtailor", "greenhouse", "lever", "hire",
                "workday", "myworkday", "successfactors", "join", "pinpoint", "workable",
@@ -223,6 +227,17 @@ def match_company(text, rows, body="", sender=""):
     """
     low = text.lower()
     dom = sender_domain(sender)
+    names = {r["company"] for r in rows}
+    # A deliberately curated sender/subject alias beats a generic company word
+    # ("security", "stockholm", "software", …) from the subject/body.
+    for key, co in sorted(SENDER_ALIASES.items(), key=lambda kv: -len(kv[0])):
+        if co in names and key in low:
+            return co
+    if body:
+        blow = body.lower()
+        for key, co in sorted(SENDER_ALIASES.items(), key=lambda kv: -len(kv[0])):
+            if co in names and key in blow and _in_prose(blow, key):
+                return co
     best_key, best_co = None, ""
     for co in {r["company"] for r in rows}:
         for t in terms(co):
