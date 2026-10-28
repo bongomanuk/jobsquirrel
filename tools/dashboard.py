@@ -2052,6 +2052,9 @@ DASH = {"url": ""}          # set in main(); handed to the embedded agent so it 
 # ---------------------------------------------------------------- agent / LLM config
 AGENT_CFG_FILE = os.path.join(os.path.expanduser("~"), ".config", "job-search", "agent.json")
 GRAPHRAG_ENV = os.path.join(ROOT, "kb", "graphrag", ".env")
+GMAIL_REVIEW_FILE = os.path.join(STATE, "gmail-review.json")
+GMAIL_REVIEW_ACK = os.path.join(STATE, "gmail-review-ack.json")
+GMAIL_REVIEW_CFG = os.path.join(ROOT, "config", "gmail-review.json")
 
 
 def load_agent_cfg():
@@ -2103,6 +2106,20 @@ def save_agent_cfg(d):
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         json.dump(out, fh, indent=2)
     _MODEL_CACHE.update(t=0.0, key="", data={})
+    if (prev.get("agent"), prev.get("model")) != (out["agent"], out["model"]):
+        # A new provider/model must not resume a conversation built for the old
+        # context window (e.g. a 240k cloud chat on a 32k local model).
+        for path in (CHAT_SESSION,):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        try:
+            for f in os.listdir(ROLE_CHAT_DIR):
+                if f.endswith(".session"):
+                    os.remove(os.path.join(ROLE_CHAT_DIR, f))
+        except OSError:
+            pass
     return out
 
 
@@ -2131,7 +2148,27 @@ def agent_models(agent=""):
     if cache["key"] == base and now - cache["t"] < 300:
         return cache["data"]
     models, source = [], ""
-    if base == "openrouter":
+    if base in ("local", "llamacpp"):
+        cfg = load_agent_cfg()
+        baseurl = (os.environ.get("LOCAL_LLM_BASE_URL")
+                   or (cfg.get("env") or {}).get("LOCAL_LLM_BASE_URL")
+                   or os.environ.get("LLAMACPP_BASE_URL")
+                   or (cfg.get("env") or {}).get("LLAMACPP_BASE_URL")
+                   or "http://127.0.0.1:8080/v1").strip().rstrip("/")
+        key = (os.environ.get("LOCAL_LLM_API_KEY")
+               or (cfg.get("env") or {}).get("LOCAL_LLM_API_KEY") or "sk-local")
+        try:
+            req = urllib.request.Request(baseurl + "/models",
+                                         headers={"User-Agent": "jobsquirrel", "Authorization": f"Bearer {key}"})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                data = json.load(r)
+            models = [str(m.get("id") or "").strip() for m in (data.get("data") or [])
+                      if isinstance(m, dict) and m.get("id")]
+            models = [m for m in models if m]
+            source = "Local LLM (OpenAI-compatible)"
+        except Exception as e:
+            models, source = [], f"Local LLM (failed: {str(e)[:80]})"
+    elif base == "openrouter":
         cfg = load_agent_cfg()
         key = (os.environ.get("OPENROUTER_API_KEY")
                or (cfg.get("env") or {}).get("OPENROUTER_API_KEY") or "").strip()
@@ -2196,6 +2233,91 @@ def _model_groups(base, models):
     return groups
 
 
+def _gmail_review_cfg():
+    try:
+        with open(GMAIL_REVIEW_CFG, encoding="utf-8") as fh:
+            d = json.load(fh)
+        return {"enabled": bool(d.get("enabled", True)),
+                "use_model": bool(d.get("use_model", True)),
+                "auto_model": bool(d.get("auto_model", False))}
+    except (OSError, ValueError):
+        return {"enabled": True, "use_model": True, "auto_model": False}
+
+
+def _gmail_review_enabled():
+    return _gmail_review_cfg()["enabled"]
+
+
+def _gmail_review_ack_ids():
+    try:
+        with open(GMAIL_REVIEW_ACK, encoding="utf-8") as fh:
+            return {str(x) for x in json.load(fh)}
+    except (OSError, ValueError):
+        return set()
+
+
+def gmail_review_data():
+    cfg = _gmail_review_cfg()
+    try:
+        with open(GMAIL_REVIEW_FILE, encoding="utf-8") as fh:
+            items = [e for e in json.load(fh) if isinstance(e, dict) and e.get("id")]
+    except (OSError, ValueError):
+        items = []
+    ack = _gmail_review_ack_ids()
+    items = [e for e in items if str(e.get("id")) not in ack]
+    return {"enabled": cfg["enabled"], "use_model": cfg["use_model"],
+            "auto_model": cfg["auto_model"], "count": len(items), "items": items}
+
+
+def gmail_review_ack(rid):
+    rid = str(rid or "").strip()
+    if not rid:
+        return {"error": "id required"}
+    ack = _gmail_review_ack_ids()
+    ack.add(rid)
+    os.makedirs(STATE, exist_ok=True)
+    with open(GMAIL_REVIEW_ACK, "w", encoding="utf-8") as fh:
+        json.dump(sorted(ack), fh, indent=2)
+    try:
+        with open(GMAIL_REVIEW_FILE, encoding="utf-8") as fh:
+            items = [e for e in json.load(fh) if isinstance(e, dict) and str(e.get("id")) != rid]
+        with open(GMAIL_REVIEW_FILE, "w", encoding="utf-8") as fh:
+            json.dump(items, fh, indent=2, ensure_ascii=False)
+    except (OSError, ValueError):
+        pass
+    return {"ok": "removed from review", "count": len([e for e in items if str(e.get('id')) not in ack]) if 'items' in locals() else 0}
+
+
+def gmail_review_config(enabled=None, use_model=None, auto_model=None):
+    prev = _gmail_review_cfg()
+    enabled = prev["enabled"] if enabled is None else bool(enabled)
+    use_model = prev["use_model"] if use_model is None else bool(use_model)
+    auto_model = prev["auto_model"] if auto_model is None else bool(auto_model)
+    os.makedirs(os.path.dirname(GMAIL_REVIEW_CFG), exist_ok=True)
+    with open(GMAIL_REVIEW_CFG, "w", encoding="utf-8") as fh:
+        json.dump({"enabled": enabled, "use_model": use_model, "auto_model": auto_model}, fh, indent=2)
+    return {"ok": "saved", "enabled": enabled, "use_model": use_model, "auto_model": auto_model}
+
+
+def _plain_email(body):
+    body = re.sub(r"(?is)<(style|script|head)\b[^>]*>.*?</\1>", " ", body or "")
+    body = re.sub(r"(?is)<br\s*/?>|</p>|</li>", "\n", body)
+    body = re.sub(r"<[^>]+>", " ", body)
+    return re.sub(r"[ \t]+", " ", body).strip()
+
+
+def gmail_review_ask(rid):
+    rid = str(rid or "").strip()
+    try:
+        with open(GMAIL_REVIEW_FILE, encoding="utf-8") as fh:
+            item = next((e for e in json.load(fh) if str(e.get("id")) == rid), None)
+    except (OSError, ValueError):
+        item = None
+    if not item:
+        return {"error": "review item not found"}
+    import gmail_review_model as GRM
+    return GRM.ask(item)
+
 def agent_config():
     import shutil
     cfg = load_agent_cfg()
@@ -2208,10 +2330,11 @@ def agent_config():
     except (OSError, subprocess.SubprocessError):
         pass
     return {"agent": cfg["agent"], "model": cfg["model"], "models": cfg.get("models", {}),
-            "env": {k: _mask(v) for k, v in cfg["env"].items()},
+            "env": {k: (v if re.search(r"BASE_URL$", k) else _mask(v)) for k, v in cfg["env"].items()},
             "env_keys": sorted(cfg["env"]), "detected": detected, "which": which,
             "config_path": AGENT_CFG_FILE,
-            "known_keys": ["OPENROUTER_API_KEY", "OPENCODE_API_KEY",
+            "known_keys": ["OPENROUTER_API_KEY", "LOCAL_LLM_BASE_URL", "LOCAL_LLM_API_KEY",
+                           "LLAMACPP_BASE_URL", "OPENCODE_API_KEY",
                            "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]}
 
 
@@ -2562,7 +2685,21 @@ def chat_parse_json(text):
         except ValueError:
             continue
         t, p = e.get("type"), (e.get("part") or {})
-        if t == "text" and p.get("text"):
+        if t == "error":
+            err = e.get("error") or {}
+            msg = ((err.get("data") or {}).get("message") or err.get("message")
+                   or err.get("name") or "unknown agent error")
+            low = str(msg).lower()
+            if "context" in low or "exceed" in low:
+                try:
+                    os.remove(CHAT_SESSION)
+                except OSError:
+                    pass
+                segs.append({"t": "status",
+                             "body": "context limit hit — chat session reset; send the message again"})
+            else:
+                segs.append({"t": "status", "body": "agent error: " + str(msg)[:600]})
+        elif t == "text" and p.get("text"):
             segs.append({"t": "text", "body": p["text"]})
         elif t == "tool_use":
             st = p.get("state") or {}
@@ -2580,7 +2717,9 @@ def chat_parse_json(text):
             if p.get("cost") is not None:
                 cost = p.get("cost")
     if tokens is not None:
-        segs.append({"t": "status", "body": f"{tokens} tokens" + (f" · ${cost:.4f}" if isinstance(cost, (int, float)) else "")})
+        local = (load_agent_cfg().get("agent") or "") == "local"
+        cost_txt = "" if local else (f" · ${cost:.4f}" if isinstance(cost, (int, float)) else "")
+        segs.append({"t": "status", "body": f"{tokens} tokens{cost_txt}"})
     for s in segs:
         if s["t"] == "tool":
             _compress_tool(s)
@@ -3236,6 +3375,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(graphrag_env())
         if p == "/api/agent/pending":
             return self._json({"pending": permission_pending()})
+        if p == "/api/gmail/review":
+            return self._json(gmail_review_data())
         if p == "/api/update":
             return self._json(check_update(refresh=qs.get("refresh", ["0"])[0] in ("1", "true")))
         if p == "/api/kb":
@@ -3388,6 +3529,13 @@ class H(BaseHTTPRequestHandler):
             return self._json(role_chat_new(data.get("key", "")))
         if p == "/api/permissions":
             return self._json({"policy": save_perms(data.get("policy") or {})})
+        if p == "/api/gmail/review/ack":
+            return self._json(gmail_review_ack(data.get("id", "")))
+        if p == "/api/gmail/review/ask":
+            return self._json(gmail_review_ask(data.get("id", "")))
+        if p == "/api/gmail/review/config":
+            return self._json(gmail_review_config(data.get("enabled"), data.get("use_model"),
+                                                    data.get("auto_model")))
         if p == "/api/agent/config":
             return self._json({"ok": "saved", "config": save_agent_cfg(data)})
         if p == "/api/graphrag/env":

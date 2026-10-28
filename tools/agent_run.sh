@@ -47,7 +47,7 @@ PY
 )"
 fi
 # A stray AGENT=1 (or similar) must not shadow a configured agent.
-if [ -n "${AGENT:-}" ] && ! command -v "${AGENT%% *}" >/dev/null 2>&1 && [ -n "${CFG_AGENT:-}" ]; then
+if [ -n "${AGENT:-}" ] && [ "${AGENT}" != "openrouter" ] && [ "${AGENT}" != "llamacpp" ] &&    ! command -v "${AGENT%% *}" >/dev/null 2>&1 && [ -n "${CFG_AGENT:-}" ]; then
   AGENT="$CFG_AGENT"
 fi
 [ -n "${AGENT:-}" ] || AGENT="${CFG_AGENT:-}"
@@ -55,9 +55,9 @@ fi
 export MODEL
 
 resolve_agent() {
-  # openrouter is a virtual agent: OpenCode is the local tool runner, while
-  # OpenRouter supplies the model. It has no binary of its own.
-  if [ "${AGENT:-}" = "openrouter" ]; then printf '%s' openrouter; return 0; fi
+  # openrouter/llamacpp are virtual agents: OpenCode is the local tool runner,
+  # while the provider supplies the model. They have no binary of their own.
+  case "${AGENT:-}" in openrouter|local|llamacpp) printf '%s' "$AGENT"; return 0 ;; esac
   if [ -n "${AGENT:-}" ]; then
     if command -v "${AGENT%% *}" >/dev/null 2>&1; then printf '%s' "$AGENT"; return 0; fi
     # AGENT is set but not a real command (e.g. a stray AGENT=1 / AGENT=true in the
@@ -84,6 +84,21 @@ fi
 prompt="$1"
 
 case "$agent" in
+  local|llamacpp)
+    command -v opencode >/dev/null 2>&1 || {
+      echo "agent_run: local LLM needs opencode as the tool runner on PATH" >&2; exit 127; }
+    [ -n "${MODEL:-}" ] || { echo "agent_run: local LLM needs a model (Settings -> AI & agent)" >&2; exit 64; }
+    LOCAL_LLM_BASE_URL="${LOCAL_LLM_BASE_URL:-${LLAMACPP_BASE_URL:-http://127.0.0.1:8080/v1}}"
+    LOCAL_LLM_API_KEY="${LOCAL_LLM_API_KEY:-sk-local}"
+    export LOCAL_LLM_BASE_URL LOCAL_LLM_API_KEY
+    m="${MODEL#local/}"; m="${m#llamacpp/}"
+    OPENCODE_CONFIG_CONTENT="$(python3 -c 'import json,sys; base,key,model=sys.argv[1],sys.argv[2],sys.argv[3]; print(json.dumps({"permission":{"external_directory":{"*":"deny"},"task":"allow"},"provider":{"local":{"npm":"@ai-sdk/openai-compatible","name":"Local LLM","options":{"baseURL":base,"apiKey":key},"models":{model:{"name":model+" (local)","limit":{"context":131072,"output":8192}}}}}}))' "$LOCAL_LLM_BASE_URL" "$LOCAL_LLM_API_KEY" "$m")"
+    export OPENCODE_CONFIG_CONTENT
+    fmt=()
+    [ "${AGENT_JSON:-}" = "1" ] && fmt+=(--format json)
+    [ -n "${AGENT_SESSION:-}" ] && fmt+=(-s "$AGENT_SESSION")
+    exec opencode run --model "local/$m" "${fmt[@]}" "$prompt"
+    ;;
   openrouter)
     command -v opencode >/dev/null 2>&1 || {
       echo "agent_run: openrouter needs opencode as the local tool runner on PATH" >&2; exit 127; }

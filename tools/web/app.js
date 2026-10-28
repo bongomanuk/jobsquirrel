@@ -205,6 +205,10 @@ const App = {
     const env = {}; document.querySelectorAll('#ai-env input[data-env]').forEach(i => { if (i.value) env[i.dataset.env] = i.value; });
     const orKey = ($('#ai-or-key') && $('#ai-or-key').value || '').trim();
     if (orKey) env.OPENROUTER_API_KEY = orKey;
+    const localUrl = ($('#ai-local-url') && $('#ai-local-url').value.trim() || '');
+    if (localUrl) env.LOCAL_LLM_BASE_URL = localUrl.replace(/\/$/, '');
+    const localKey = ($('#ai-local-key') && $('#ai-local-key').value.trim() || '');
+    if (localKey) env.LOCAL_LLM_API_KEY = localKey;
     const model = (($('#ai-model-custom') && $('#ai-model-custom').value.trim()) || ($('#ai-model-sel') && $('#ai-model-sel').value) || '');
     let agent = $('#ai-agent').value.trim();
     if (agent === '__custom__') agent = ($('#ai-agent-custom') && $('#ai-agent-custom').value.trim()) || '';
@@ -224,10 +228,32 @@ const App = {
     toast(d.ok || d.error, !!d.error);
     if (!d.error) App.settings('ai');
   },
+  useLocal: async () => {
+    const url = (($('#ai-local-url') && $('#ai-local-url').value.trim()) || 'http://127.0.0.1:8080/v1').replace(/\/$/, '');
+    const key = ($('#ai-local-key') && $('#ai-local-key').value.trim()) || '';
+    const env = { LOCAL_LLM_BASE_URL: url };
+    if (key) env.LOCAL_LLM_API_KEY = key;
+    let d = await api('/api/agent/config', { agent: 'local', model: '', models: {}, env });
+    if (d.error) return toast(d.error, true);
+    const m = await api('/api/agent/models?agent=local');
+    const model = ((m && m.models) || [])[0] || 'lfm3-1.7b-heretic';
+    d = await api('/api/agent/config', { agent: 'local', model, models: { local: model }, env });
+    toast(d.ok || d.error, !!d.error);
+    if (!d.error) { loadChatModel(); App.settings('ai'); }
+  },
   saveGR: async () => {
     const vars = {}; document.querySelectorAll('#ai-gr input[data-gr]').forEach(i => { if (i.value) vars[i.dataset.gr] = i.value; });
     const d = await api('/api/graphrag/env', { vars });
     toast(d.ok || d.error, !!d.error); if (!d.error) App.settings('ai');
+  },
+  saveGmailReview: async () => {
+    const el = $('#gmail-review-enabled'), model = $('#gmail-review-model'), auto = $('#gmail-review-auto');
+    const d = await api('/api/gmail/review/config', {
+      enabled: !!(el && el.checked), use_model: !!(model && model.checked),
+      auto_model: !!(auto && auto.checked)
+    });
+    toast(d.ok || d.error, !!d.error);
+    if (!d.error) loadGmailReview();
   },
   kbDel: async (path) => { const d = await api('/api/kb/delete', { path }); toast(d.ok || d.error, !!d.error); if (!d.error) App.settings('kb'); },
   kbUpload: async () => {
@@ -1206,6 +1232,80 @@ async function permAnswer(decision, remember, save) {
   }
 }
 
+/* the human review queue for mail that did not confidently match a role */
+let REVIEW_ITEMS = [], REVIEW_USE_MODEL = true;
+async function loadGmailReview() {
+  try {
+    const d = await api('/api/gmail/review');
+    const items = (d && d.items) || [];
+    REVIEW_ITEMS = items;
+    const n = (d && d.count) || 0;
+    REVIEW_USE_MODEL = !(d && d.use_model === false);
+    const c = $('#review-count'); if (c) c.textContent = String(n);
+    const b = $('#a-gmail-review'); if (b) b.classList.toggle('hide', !(d && d.enabled));
+    const mc = $('#reviewm-count'); if (mc) mc.textContent = n ? `· ${n} item${n === 1 ? '' : 's'}` : '';
+  } catch (e) { /* keep the last count */ }
+}
+function suggText(s) {
+  if (!s) return '';
+  if (s.raw) return String(s.raw);
+  return [
+    s.action === true ? 'ACTION needed' : s.action === false ? 'no action' : '',
+    s.category ? `category: ${s.category}` : '',
+    (s.company || s.role) ? `match: ${s.company || '?'} — ${s.role || '?'}` : '',
+    s.reason ? `reason: ${s.reason}` : '',
+    s.evidence ? `evidence: "${s.evidence}"` : ''
+  ].filter(Boolean).join(' · ');
+}
+function renderGmailReview() {
+  const el = $('#reviewm-list'); if (!el) return;
+  const f = ($('#review-filter') && $('#review-filter').value) || '';
+  const items = f ? REVIEW_ITEMS.filter(x => String(x.category || '') === f) : REVIEW_ITEMS;
+  el.innerHTML = items.length ? items.map(x => {
+    const mail = 'https://mail.google.com/mail/u/0/#all/' + encodeURIComponent(x.id || '');
+    const links = (x.links || []).slice(0, 2).map(l =>
+      `<a href="${esc(l)}" target="_blank" rel="noopener">verification link ↗</a>`).join(' ');
+    const codes = (x.codes || []).slice(0, 2).map(c => `<code>${esc(c)}</code>`).join(' ');
+    const sg = x.suggestion || null;
+    const sgText = sg ? `${x.model || ''}: ${suggText(sg)}` : '';
+    return `<div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08)">
+      <div><b>${esc(x.category || '?')}</b> <span class="muted mini">${esc((x.date || '').slice(0, 16))}</span>
+        ${x.company ? ` · <b>${esc(x.company)}</b>` : ''}${x.role ? ` — ${esc(x.role)}` : ''}</div>
+      <div class="muted mini">${esc(x.sender || '')} · ${esc(x.subject || '')}</div>
+      <div>${esc(x.reason || '')}</div>
+      <div class="row" style="margin-top:6px"><a href="${mail}" target="_blank" rel="noopener">Open email ↗</a> ${links} ${codes}
+        <span style="flex:1"></span>
+        ${REVIEW_USE_MODEL ? `<button class="small" onclick="reviewAsk('${esc(x.id || '')}', this)">Ask model</button>` : ''}
+        <button class="small" onclick="reviewAck('${esc(x.id || '')}')">Done</button></div>
+      <div id="sugg-${esc(x.id || '')}" class="muted mini${sg ? '' : ' hide'}" style="margin-top:6px;white-space:pre-wrap">${esc(sgText)}</div>
+    </div>`;
+  }).join('') : '<span class="muted">Nothing needs review in this category.</span>';
+}
+window.reviewOpen = async () => {
+  await loadGmailReview();
+  renderGmailReview();
+  $('#reviewm').classList.remove('hide');
+};
+window.reviewClose = () => $('#reviewm').classList.add('hide');
+window.reviewAck = async (id) => {
+  const d = await api('/api/gmail/review/ack', { id });
+  if (d && d.error) return toast(d.error, true);
+  await loadGmailReview();
+  renderGmailReview();
+};
+window.reviewAsk = async (id, btn) => {
+  if (btn) { btn.disabled = true; btn.textContent = 'Asking…'; }
+  try {
+    const d = await api('/api/gmail/review/ask', { id });
+    if (d && d.error) return toast(d.error, true);
+    const s = (d && d.suggestion) || {};
+    const el = document.getElementById('sugg-' + id);
+    if (el) { el.textContent = `${d.model || ''}: ${suggText(s)}`; el.classList.remove('hide'); }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Ask model'; }
+  }
+};
+
 /* ---------- shared dockable panels (edges) ---------- */
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const EDGE_SIZE = {
@@ -1604,16 +1704,16 @@ async function setPerms(b) {
       <span class="muted mini">Applies to every agent (opencode, Claude Code, any <code>AGENT=</code>).</span></div>`;
 }
 async function setAI(b) {
-  const [a, g] = await Promise.all([api('/api/agent/config'), api('/api/graphrag/env')]);
+  const [a, g, gr] = await Promise.all([api('/api/agent/config'), api('/api/graphrag/env'), api('/api/gmail/review')]);
   const detected = (a.detected || []);
   const orKey = (a.env || {}).OPENROUTER_API_KEY || '';
   const knownAgents = [['', 'Auto (OpenCode, else Claude)'], ['opencode', 'OpenCode'],
-    ['openrouter', 'OpenRouter'], ['claude', 'Claude Code']];
+    ['openrouter', 'OpenRouter'], ['local', 'Local LLM (OpenAI-compatible)'], ['claude', 'Claude Code']];
   const customAgent = a.agent && !knownAgents.some(([v]) => v === a.agent) ? a.agent : '';
   const agentOpts = knownAgents.map(([v, label]) =>
     `<option value="${v}"${a.agent === v ? ' selected' : ''}>${label}</option>`).join('') +
     `<option value="__custom__"${customAgent ? ' selected' : ''}>Custom…</option>`;
-  const envRows = (a.env_keys || []).filter(k => k !== 'OPENROUTER_API_KEY').map(k =>
+  const envRows = (a.env_keys || []).filter(k => !['OPENROUTER_API_KEY', 'LOCAL_LLM_BASE_URL', 'LOCAL_LLM_API_KEY', 'LLAMACPP_BASE_URL'].includes(k)).map(k =>
     `<div class="row" style="margin:3px 0"><code style="min-width:190px">${esc(k)}</code>
       <input data-env="${esc(k)}" placeholder="${esc(a.env[k])} (blank = keep)" style="flex:1">
       <button class="small" onclick="App.aiDel('${esc(k)}')" title="remove">✕</button></div>`).join('');
@@ -1641,6 +1741,17 @@ async function setAI(b) {
       <input id="ai-or-key" type="password" autocomplete="new-password" placeholder="${orKey ? esc(orKey) + ' (blank = keep)' : 'sk-or-v1-…'}" style="flex:1">
       <button onclick="App.useOpenRouter()">Use OpenRouter</button>
       <span class="muted mini">OpenRouter serves the model; OpenCode is only the local tool runner. The key is stored with the other env values.</span></div>
+    <div class="row" style="margin-top:8px"><b>Local LLM</b>
+      <input id="ai-local-url" placeholder="http://127.0.0.1:8080/v1" value="${esc((a.env || {}).LOCAL_LLM_BASE_URL || 'http://127.0.0.1:8080/v1')}" style="flex:1">
+      <input id="ai-local-key" type="password" autocomplete="new-password" placeholder="optional API key" style="max-width:180px">
+      <button onclick="App.useLocal()">Use local LLM</button>
+      <span class="muted mini">Any OpenAI-compatible endpoint; the model list comes from its /v1/models.</span></div>
+    <div class="row" style="margin-top:8px"><b>Gmail review</b>
+      <label class="mini"><input type="checkbox" id="gmail-review-enabled" ${gr && gr.enabled !== false ? 'checked' : ''}> capture unclassified/ambiguous emails</label>
+      <label class="mini"><input type="checkbox" id="gmail-review-model" ${gr && gr.use_model !== false ? 'checked' : ''}> use the selected model for review suggestions</label>
+      <label class="mini"><input type="checkbox" id="gmail-review-auto" ${gr && gr.auto_model ? 'checked' : ''}> automatically ask it for new review items</label>
+      <button onclick="App.saveGmailReview()">Save</button>
+      <span class="muted mini">New items only; the existing backlog is never auto-processed. Suggestions use the agent/model above and never change status automatically.</span></div>
     <h4 style="margin:14px 0 4px">API keys / env</h4>
     <div id="ai-env">${envRows || '<span class="muted mini">none set</span>'}</div>
     <div class="row" style="margin-top:6px">
@@ -1690,6 +1801,10 @@ $('#legend').onclick = () => {
   $('#legend-modal').classList.remove('hide');
 };
 $('#a-drawer').onclick = () => openDock(!PANELS.agent.open);
+$('#a-gmail-review').onclick = () => reviewOpen();
+if ($('#review-filter')) $('#review-filter').onchange = renderGmailReview;
+loadGmailReview();
+setInterval(loadGmailReview, 60000);
 if ($('#chat-model')) $('#chat-model').onchange = async (e) => {
   const val = e.target.value, who = e.target.dataset.agent || '', cfg = e.target.dataset.configured || '';
   const models = {}; if (who && val) models[who] = val;

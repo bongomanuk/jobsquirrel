@@ -17,6 +17,7 @@
     <button id="a-prepare" title="Safe: build tailored documents + run gates (REVIEW=1). Never submits.">⚡ Prepare</button>
     <button id="a-submit" class="risky" title="Applies to queued roles (submits). Requires approval.">🚀 Run Submissions</button>
     <button id="a-reconcile" title="Reconcile the register with Gmail (read-only).">📥 Reconcile</button>
+    <button id="a-gmail-review" title="Emails that could not be confidently classified or matched; review and mark Done">📬 Review <b id="review-count">0</b></button>
     <button id="a-config" title="Edit profile / CV / archetypes">⚙ Config</button>
     <button id="a-drawer" title="Agent console + live run">💬 Agent</button>
   </div>
@@ -241,6 +242,21 @@
   <textarea id="evid-detail" placeholder="one line of specifics — what you did, tools, outcome" style="min-height:12vh;margin-top:8px"></textarea>
   <div class="row" style="justify-content:flex-end;margin-top:12px">
     <button onclick="evidClose()">Cancel</button><button id="evid-save" class="risky">Save evidence</button></div>
+</div></div>
+
+<div id="reviewm" class="modal hide" style="z-index:10040"><div class="modal-box" style="width:min(900px,96vw);max-height:90vh;display:flex;flex-direction:column">
+  <div class="row"><b style="flex:1">Gmail review <span id="reviewm-count" class="muted"></span></b><button class="small" onclick="reviewClose()">✕</button></div>
+  <p class="muted mini">Emails the reconciler could not confidently classify or match. Open the mail, decide, then mark Done. Turning this off in Settings stops new items being captured.</p>
+  <div class="row" style="margin:4px 0"><span class="muted">Show</span>
+    <select id="review-filter" class="mini">
+      <option value="">all categories</option>
+      <option value="OTHER">other / unclassified</option>
+      <option value="VERIFICATION">verification</option>
+      <option value="INTERVIEW">interview</option>
+      <option value="CONFIRMATION">confirmation</option>
+      <option value="REJECTION">rejection</option>
+    </select><span style="flex:1"></span></div>
+  <div id="reviewm-list" class="term grow" style="overflow:auto;white-space:normal"></div>
 </div></div>
 
 <div id="draftm" class="modal hide"><div class="modal-box" style="width:min(820px,96vw);display:flex;flex-direction:column;max-height:92vh">

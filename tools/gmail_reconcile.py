@@ -37,6 +37,65 @@ ACK_FILE = os.path.join(STATE, "gmail_reconcile_ack.txt")
 # window every time (quota-safe, fast, no repeated token spend). Derived, so it
 # lives outside the register and can be deleted at any time.
 CACHE_FILE = os.path.join(STATE, "gmail_cache.json")
+REVIEW_FILE = os.path.join(STATE, "gmail-review.json")
+REVIEW_ACK_FILE = os.path.join(STATE, "gmail-review-ack.json")
+REVIEW_CFG_FILE = os.path.join(os.path.dirname(STATE), "config", "gmail-review.json")
+
+
+def review_enabled():
+    try:
+        with open(REVIEW_CFG_FILE, encoding="utf-8") as fh:
+            return bool(json.load(fh).get("enabled", True))
+    except (OSError, ValueError):
+        return True
+
+
+def auto_model_enabled():
+    try:
+        with open(REVIEW_CFG_FILE, encoding="utf-8") as fh:
+            d = json.load(fh)
+        return (bool(d.get("enabled", True)) and bool(d.get("use_model", True))
+                and bool(d.get("auto_model", False)))
+    except (OSError, ValueError):
+        return False
+
+
+def _review_ack_ids():
+    try:
+        with open(REVIEW_ACK_FILE, encoding="utf-8") as fh:
+            return {str(x) for x in json.load(fh)}
+    except (OSError, ValueError):
+        return set()
+
+
+def save_review(entries, seen_ids):
+    """Persist the human-review queue, preserving old unresolved items.
+
+    Mail in the current scan is replaced by the current decision; older mail
+    stays until the operator marks it Done. A disabled review queue writes
+    nothing.
+    """
+    if not review_enabled():
+        return
+    old = {}
+    try:
+        with open(REVIEW_FILE, encoding="utf-8") as fh:
+            for e in json.load(fh):
+                if isinstance(e, dict) and e.get("id"):
+                    old[e["id"]] = e
+    except (OSError, ValueError):
+        pass
+    for mid in seen_ids:
+        old.pop(mid, None)
+    for e in entries:
+        if e.get("id"):
+            old[e["id"]] = e
+    ack = _review_ack_ids()
+    out = sorted((e for mid, e in old.items() if mid not in ack),
+                 key=lambda e: str(e.get("date", "")), reverse=True)
+    os.makedirs(STATE, exist_ok=True)
+    with open(REVIEW_FILE, "w", encoding="utf-8") as fh:
+        json.dump(out, fh, indent=2, ensure_ascii=False)
 
 
 def fetch_full(service, mid, attempts=5):
@@ -459,6 +518,7 @@ def main():
     cache = {} if args.no_cache else load_cache()
 
     changes, unmatched, verifications, ambiguous, replies = [], [], [], [], []
+    review = []
     fetched = 0
     for idx, m in enumerate(messages, 1):
         if idx % 100 == 0:
@@ -479,6 +539,11 @@ def main():
         if category == "VERIFICATION":
             links, codes = G.extract(body)
             verifications.append((date, company or sender_display(sender), subject, links, codes))
+            review.append({"id": m["id"], "date": date, "category": category,
+                           "company": company, "role": row["role"] if row else "",
+                           "sender": sender_display(sender), "subject": subject,
+                           "reason": "verification link or code; handle manually",
+                           "links": links, "codes": codes})
         amb = False
         # An invite/rejection for a company with several applications whose
         # subject names none of the roles is NOT guessed: it is reported under
@@ -487,11 +552,27 @@ def main():
         if category == "OTHER":
             if row:
                 replies.append((date, row, sender_display(sender), subject))
+                reason = "reply may need a human"
+                rco, rrole = row["company"], row["role"]
             elif company:
                 ambiguous.append((date, "REPLY?", company, subject))
+                reason = "company matched but role ambiguous"
+                rco, rrole = company, ""
+            else:
+                reason = "could not classify or match this email"
+                rco, rrole = "", ""
+            review.append({"id": m["id"], "date": date, "category": "OTHER",
+                           "company": rco, "role": rrole, "sender": sender_display(sender),
+                           "subject": subject, "reason": reason, "links": [], "codes": []})
             continue
         if not row:
             (ambiguous if company else unmatched).append((date, category, company or sender, subject))
+            review.append({"id": m["id"], "date": date, "category": category,
+                           "company": company, "role": "", "sender": sender_display(sender),
+                           "subject": subject,
+                           "reason": ("company matched but role ambiguous" if company
+                                      else "no company match in the register"),
+                           "links": [], "codes": []})
             continue
         proposed = propose(row["status"], category)
         if proposed and proposed != row["status"]:
@@ -501,6 +582,10 @@ def main():
             # human: an invitation or "are you still interested?" is not a
             # status transition on a row that is already INTERVIEW.
             replies.append((date, row, sender_display(sender), subject))
+            review.append({"id": m["id"], "date": date, "category": category,
+                           "company": row["company"], "role": row["role"],
+                           "sender": sender_display(sender), "subject": subject,
+                           "reason": "reply may need a human", "links": [], "codes": []})
 
     outbound, outbound_ambiguous = scan_outbound(service, rows)
 
@@ -508,6 +593,32 @@ def main():
     live = {m["id"] for m in messages}
     cache = {k: v for k, v in cache.items() if k in live}
     save_cache(cache)
+    # Optional, bounded model pass: only mail that is new since the previous
+    # review file (never the existing backlog), suggestions only, no status.
+    if auto_model_enabled() and os.path.exists(REVIEW_FILE):
+        try:
+            with open(REVIEW_FILE, encoding="utf-8") as fh:
+                old_ids = {str(e.get("id")) for e in json.load(fh) if isinstance(e, dict)}
+        except (OSError, ValueError):
+            old_ids = set()
+        ack_ids = _review_ack_ids()
+        new_items = [e for e in review
+                     if str(e.get("id")) not in old_ids and str(e.get("id")) not in ack_ids]
+        if new_items:
+            try:
+                import gmail_review_model as GRM
+                print(f"auto model review: {len(new_items)} new item(s)", flush=True)
+                for item in new_items:
+                    res = GRM.ask(item)
+                    if res.get("suggestion"):
+                        item["suggestion"] = res["suggestion"]
+                        item["model"] = res.get("model", "")
+                        print(f"  suggested: {item.get('company') or item.get('sender','')} — {item.get('subject','')[:60]}", flush=True)
+                    else:
+                        print(f"  skipped: {res.get('error','no suggestion')[:120]}", flush=True)
+            except Exception as e:
+                print(f"auto model review skipped: {str(e)[:160]}", flush=True)
+    save_review(review, live)
     print(f"({fetched} fetched, {len(messages) - fetched} from cache)\n")
 
     # de-duplicate (the same mail can match twice) keeping the first
