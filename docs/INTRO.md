@@ -9,6 +9,7 @@ concise, plain, no jargon. Then ask if they want to proceed with setup.*
 roles, writes a tailored CV and cover letter for each one, makes sure every claim
 is true, applies for you through the employer's own website, and tracks the
 replies. You give it your CV and a few rules; it does the repetitive work.
+(If you are in the US, "CV" means *resume* throughout, this file included.)
 
 **How it works, end to end**: for each role, in order:
 

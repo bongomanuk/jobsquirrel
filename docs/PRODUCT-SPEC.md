@@ -52,7 +52,7 @@ Components:
 
 | Path | Contents |
 |---|---|
-| `state/applications.csv` | Canonical register: `date,company,role,ats,status,letter,notes,employment,action`. One row per company+role. `action` is a short follow-up flag (reply/assessment/booking) surfaced as ⚑ in the grid and filterable. |
+| `state/applications.csv` | Canonical register: `date,company,role,ats,status,letter,notes,employment,action,key,apply_url`. One row per role. `key` is the role's single identity (the queue row's last column, also what `queue.done` stores); rows written before it existed fall back to `company|role`. `action` is a short follow-up flag (reply/assessment/booking) surfaced as ⚑ in the grid and filterable. |
 | `state/submissions.csv` | Provenance ledger: paths + sha256 + snapshot dir + evidence + confidence (`verified`/`forced`/`inferred`). |
 | `state/queue.tsv` | Pending roles: `company␉role␉url␉cv-archetype␉ats␉key`. |
 | `state/queue.done` / `queue.retry` / `queue-human.tsv` | Completion, retry, human-assist queues. |
@@ -77,7 +77,7 @@ Components:
 
 ## 5. Status model
 
-`SUBMITTED | IN_PROGRESS | INTERVIEW | OFFER | REJECTED | BLOCKED | MANUAL | PREPARED | CLOSED`.
+`QUEUED | SUBMITTED | IN_PROGRESS | INTERVIEW | OFFER | REJECTED | BLOCKED | MANUAL | PREPARED | CLOSED`.
 
 - **Follow-up flags** (`action` in the register; ⚑ in the grid, a toolbar filter, and editable
   in the row drawer). Each row also lists its **drafted replies** (write one, or ask the agent; then
@@ -87,9 +87,13 @@ Components:
   the drawer, filterable in the toolbar): `full-time | part-time | contract | consultant |
   freelance | internship | temporary`. Set explicitly on the row; otherwise guessed from the
   saved job ad, then the notes; `unknown` when nothing says.
-- `INTERVIEW` splits into three display labels (the stored status stays `INTERVIEW`,
-  derived from the notes): **`SCHEDULED`** (a future interview is booked), **`INVITED`**
-  (being arranged, no confirmed time), and plain **`INTERVIEW`** (held — awaiting the outcome).
+- `INTERVIEW` is one stored status with three display labels, derived from the row's
+  notes (the status itself never changes): **`SCHEDULED`** when the notes contain a
+  future interview date, **`INVITED`** when they only show an invitation or an
+  availability exchange ("invited", "book", "availability", "reschedule"), and plain
+  **`INTERVIEW`** otherwise. The label is a hint, not a record: the notes and the
+  mailbox are the truth, and a row can say `INVITED` long after the interview was
+  held if nothing updated it. Reconcile keeps the notes current; the drawer shows them.
 - **IN PROCESS** = `SUBMITTED + IN_PROGRESS + INTERVIEW + OFFER` (the live pipeline).
 - `BLOCKED` = a manual step is required (CAPTCHA/login); do not auto-retry.
 - `MANUAL` = the human must act (login/email); `PREPARED` = documents ready, not sent.
@@ -99,8 +103,14 @@ Components:
 
 | Tool | Role |
 |---|---|
-| `register.py` | The register: `--stats/--list/--show/--check/--render/--set/--delete`. |
+| `register.py` | The register: read `--stats/--list/--show`, edit `--set/--render/--delete`, integrity `--audit` (exits non-zero on duplicates, unrecorded `queue.done` rows, SUBMITTED rows without provenance, stale counts) and repair `--dedupe/--backfill/--backfill-done/--record-provenance-gaps`. |
 | `record_submission.py` | Provenance: upserts register, writes `submissions.csv`, snapshots, enforces gate receipt + evidence; **idempotent**. |
+| `gate_receipt.py` | Hash-stamped PASS receipts for the exact CV/letter; `record_submission.py` refuses a SUBMITTED row without one. |
+| `jd_guard.py` | A role needs a saved job ad before it may enter the queue (`--require`, `--fetch`, `--queue`). |
+| `storage.py` + `stateio.py` | Compress logs, mail cache and cold per-role artifacts; `stateio` makes a packed artifact read like a plain one. See `docs/STORAGE.md`. |
+| `agent_access.py` | The permission gate for anything outside the repo: `read`/`write`/`run`, decided by the operator's policy. |
+| `verify_pending.py` | Audit ATS email verifications against the register. |
+| `outcomes.py` | Conversion by source and by CV (what is actually working). |
 | `check_documents.py` | Pre-submit gate (identity, placeholders, salience, claims, rate, duplication, coverage); CV-only mode; `--record` writes a receipt. |
 | `check_alignment.py` | Role-family vs CV-archetype alignment gate (PASS/FAIL). |
 | `ats_keywords.py` | Extract keywords from a JD; score coverage. |

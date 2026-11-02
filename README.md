@@ -1,21 +1,24 @@
 # 🐿️ Jobsquirrel
 
-**An open, self-hosted job-application agent: hand it your CV and it finds, tailors, gates and applies to jobs for you.**
+**An open, self-hosted job-application agent: hand it your CV (resume) and it finds, tailors, gates and applies to jobs for you.**
 
 *A diligent squirrel for your job hunt. It gathers the roles, tailors each one,
 and never stashes a nut it can't actually crack.* 🐿️
 
-An agentic pipeline that takes **your CV** and applies to jobs for you, end to
-end, in a way that is honest, targeted, and auditable. You give it your CV and a
-few rules (where you can work, what you will accept, what you must never
-overstate). It then discovers roles, tailors a CV and cover letter per role,
-gates them for accuracy and quality, submits applications through a real browser,
-reads your inbox to track replies, and keeps a single source of truth for every
-application and the exact files sent.
+An agentic pipeline that takes **your CV** (your **resume**, in US English) and
+applies to jobs for you, end to end, in a way that is honest, targeted, and
+auditable. You give it your CV and a few rules (where you can work, what you will
+accept, what you must never overstate). It then discovers roles, tailors a
+CV/resume and cover letter per role, gates them for accuracy and quality, submits
+applications through a real browser, reads your inbox to track replies, and keeps
+a single source of truth for every application and the exact files sent.
 
 It is **person-agnostic and country-agnostic**: nothing here is tied to a
 particular person, employer, language or country. You configure everything in
 `config/`.
+
+**CV or resume?** The same document. This project, its files and its tools say
+*CV*; if you are in the US, read every mention as *resume*. Nothing else changes.
 
 **First run, one prompt. No cloning, no setup.** Start your agent and paste this:
 
@@ -28,8 +31,8 @@ bootstrap in BOOTSTRAP.md.
 That's the whole installation. The agent clones the repo, installs the
 dependencies, interviews you about your identity, eligibility, languages,
 availability and the claims you must never overstate, writes your config, builds
-your CV archetypes and a private knowledge graph from your documents, and sets up
-your accounts, explaining each step in plain language.
+your CV/resume archetypes and a private knowledge graph from your documents, and
+sets up your accounts, explaining each step in plain language.
 
 Already have it cloned? Just `cd jobsquirrel`, run `opencode`, and say:
 *"Read AGENTS.md, introduce the project, and run the bootstrap."*
@@ -115,7 +118,7 @@ gates* rather than good intentions.
 
 | | Typical auto-apply bot | **Jobsquirrel** |
 | --- | --- | --- |
-| **Documents** | One CV for all, or a blind LLM rewrite | Per-role CV + letter, **grounded in a private knowledge graph with citations** |
+| **Documents** | One CV for all, or a blind LLM rewrite | Per-role CV/resume + letter, **grounded in a private knowledge graph with citations** |
 | **Truthfulness** | Claims "never fabricates" (unchecked) | **Enforced**: no claim without a source; unsupported lines are blocked |
 | **Quality gate** | none | **Pre-submit gate**: real identity, no placeholders, no AI-slop, ATS coverage, correct engagement |
 | **Targeting** | keyword match | **Alignment gate** maps the role family to the right CV archetype; a mismatched CV cannot be submitted |
@@ -136,7 +139,7 @@ regret.
 ## The knowledge graph: feed it everything you've got 🥜
 
 The single most powerful thing you can do is give the pipeline **a lot** about
-yourself. Drop your master CV, **every** old and role-specific CV, a "brag
+yourself. Drop your master CV/resume, **every** old and role-specific CV, a "brag
 document", project and design notes, talks, performance-reviews, a LinkedIn
 export, README excerpts, as many documents as you have, into `kb/sources/`.
 **GraphRAG** turns that corpus into a private graph of your people, projects,
@@ -145,7 +148,7 @@ relevant, **cited** facts.
 
 That is not a footnote, it is the engine of the whole thing:
 
-- **Specificity.** A thin CV yields generic bullets. A rich corpus lets each
+- **Specificity.** A thin CV/resume yields generic bullets. A rich corpus lets each
   application surface the *exact* achievement, metric and technology a given ad
   asks for, the ones you'd never recall at 11pm, from a project you'd forgotten.
 - **Truthfulness by construction.** Every generated line is traceable to a source
@@ -185,7 +188,7 @@ cp config/profile.example.md   config/profile.md
 cp config/cv.example.json      config/cv.json
 cp config/archetypes.example.json config/archetypes.json
 
-# 3. Build your reusable archetype CVs + letters
+# 3. Build your reusable archetype CVs (resumes) + letters
 python3 tools/build_archetypes.py     # -> documents/archetypes/
 
 # 4. Put roles in the queue (one per line, tab-separated):
@@ -254,9 +257,10 @@ config/                     # YOUR configuration (git-ignored once filled in)
   archetypes.example.json   #   role-family CV templates
 tools/                      # the pipeline (language/library-free CLI tools)
   cv_builder.py             #   renders CVs + letters from config (library, not run directly)
-  build_archetypes.py       #   builds one 2-page CV + base letter per archetype
+  build_archetypes.py       #   builds one 2-page CV/resume + base letter per archetype
   cv_target.py              #   renders a role-targeted CV (.docx ATS-safe + .pdf styled)
   make_letter.py            #   renders one cover-letter .docx
+  fix_letterheads.py        #   normalise cover-letter letterheads to your identity
   check_documents.py        #   PRE-SUBMIT GATE (truthfulness, slop, ATS coverage, contract rate)
   check_alignment.py        #   role-family <-> CV-archetype alignment gate
   ats_keywords.py           #   extract ATS keywords from an ad; score a CV/letter
@@ -264,9 +268,12 @@ tools/                      # the pipeline (language/library-free CLI tools)
   register.py               #   canonical outcome register (state/applications.csv)
   record_submission.py      #   provenance ledger (state/submissions.csv) + snapshots
   gate_receipt.py           #   hash-stamped gate receipts; enforces the pre-submit gate
+  jd_guard.py               #   a role needs a saved job description before it is queued
   outcomes.py               #   conversion by source/CV, what's actually working
   gmail_readonly.py         #   read-only inbox sync + classification
   gmail_reconcile.py        #   reconcile the register with your inbox
+  gmail_review_model.py     #   read-only model suggestion for one review item
+  verify_pending.py         #   audit ATS email verifications against the register
   google_config.py          #   where the Google OAuth client/token live (configurable)
   gmail_calendar_auth.py    #   (optional) Google Calendar auth (same token)
   calendar_event.py         #   create/update events, import .ics, suggest free slots
@@ -276,27 +283,44 @@ tools/                      # the pipeline (language/library-free CLI tools)
   email_opportunities.py    #   surface recruiter/contract leads from your inbox
   email_verify.py           #   read the newest verification email for a site
   accounts.py               #   per-site credentials (stored outside the repo)
+  approval.py               #   human-approval gate for risky actions (send, delete)
+  send_receipt.py           #   one-time human receipts authorising a specific send
+  agent_access.py           #   permission gate for anything outside the repo (read/write/run)
   identity.py               #   print your standard form answers (JSON)
   camoufox_server.py        #   one Camoufox browser behind a small HTTP API
   camoufox_browser.py       #   the agent-facing browser CLI (nav/snap/click/fill/...)
+  camoufox_test.py          #   browser test harness (health/detection checks)
   run_queue.sh              #   the queue runner: applies to each queued role end-to-end
   agent_run.sh              #   runs one headless task with opencode, Claude Code or any CLI agent
   compat/                   #   portable flock/setsid/timeout for macOS
   run_linkedin.sh           #   serialized, paced LinkedIn Easy Apply (opt-in; see ToS note)
   build_human_queue.py      #   route CAPTCHA/2FA-blocked roles to a human queue
+  human_assist.sh           #   focused runner for the roles that need you
+  captcha_manual.sh         #   manual-mode runner: opens the page in your own browser
+  watch_human.sh            #   live view of the human queue only
+  human_status.py           #   tiny status channel for the human-assist run
+  chain_queue.sh            #   wait for the running queue, then start a fresh run
+  requeue_blocked.sh        #   put blocked roles back in the queue for a retry
   reconcile_loop.sh         #   periodically reconcile + refresh counts
   watch_queue.sh            #   live queue progress
   prioritise_queue.py       #   sort the queue most-senior-first
+  watch_queue.py            #   the live view behind watch_queue.sh
   init_config.py            #   scaffold/validate config/ (used by the bootstrap)
   doctor.py                 #   one-shot health check (config, KB, browser, register, git)
+  setup_accounts.sh         #   check the accounts/credentials the pipeline can use
+  release_lint.py           #   lint release notes before they go public
+  secret_scan.py            #   fail if a public clone contains live credentials
   storage.py                #   compress old logs / caches when disk gets tight (see docs/STORAGE.md)
+  stateio.py                #   transparent gzip for state artifacts, so packed reads like plain
   dashboard.py              #   slick web UI over the register, queue, runs + curated logs, live view, chat (agent-agnostic)
   graph_explore.py          #   reads the GraphRAG index (entities/relationships/communities) for the web UI
   setup_kb.sh               #   explain + build the GraphRAG knowledge base
   kb_graphrag.py            #   build the cited grounding pack per role (required)
+  kb_update.sh              #   incremental GraphRAG update from new kb/sources/
   kb_ingest.py              #   ingest kb/sources/ any-format -> GraphRAG text input
   embeddings.sh             #   local embeddings backend (auto CUDA/Metal/Vulkan/CPU)
 state/                      # generated: register, queues, logs, saved ads, keyword files
+                            #   (cold parts are packed; see docs/STORAGE.md)
 documents/                  # generated: archetype CVs, per-role letters, submitted snapshots
 kb/                         # your knowledge base (GraphRAG grounding; required for targeted docs)
 docs/                       # documentation (this folder)
@@ -312,7 +336,7 @@ docs/                       # documentation (this folder)
    against your `config/profile.md` rules. Ineligible roles are recorded CLOSED,
    not applied to.
 3. **Alignment gate**: `check_alignment.py` confirms the role family matches the
-   CV archetype you chose (so an AI-CV never goes to a backend req).
+   CV/resume archetype you chose (so an AI-CV never goes to a backend req).
 4. **Grounding**: facts come from the knowledge base (GraphRAG, `kb/`) plus `config/cv.json`. No claim outside those sources.
 5. **Tailor**: a targeted CV (`cv_target.py`) and a per-role letter are produced.
 6. **Pre-submit gate**: `check_documents.py` must print `RESULT: PASS`: real
@@ -330,8 +354,9 @@ docs/                       # documentation (this folder)
 
 ## Statuses
 
-`PREPARED, IN_PROGRESS, SUBMITTED, INTERVIEW, OFFER, REJECTED, BLOCKED, MANUAL,
-CLOSED`.
+`QUEUED, PREPARED, IN_PROGRESS, SUBMITTED, INTERVIEW, OFFER, REJECTED, BLOCKED,
+MANUAL, CLOSED`. `PREPARED` means the documents were built and gated but nothing
+was sent; `INTERVIEW` means an interview thread exists (invited, booked or held).
 
 ## Documentation
 
@@ -348,6 +373,9 @@ CLOSED`.
 - [docs/ACCOUNT-SETUP.md](docs/ACCOUNT-SETUP.md), Gmail, Calendar, LinkedIn, browser and credentials.
 - [docs/KNOWLEDGE-BASE.md](docs/KNOWLEDGE-BASE.md), set up the GraphRAG knowledge base (required for targeted documents).
 - [docs/RUN-MODES.md](docs/RUN-MODES.md), discover / review / apply / fixed-CV run modes.
+- [docs/STORAGE.md](docs/STORAGE.md), what gets compressed, what is never packed, and how it is restored.
+- [docs/PRODUCT-SPEC.md](docs/PRODUCT-SPEC.md), the full product and web-interface specification.
+- [docs/RELEASES.md](docs/RELEASES.md), how a release is cut (title rules, notes lint, publishing).
 - [DISCLAIMER.md](DISCLAIMER.md), acceptable use, no-warranty and liability statement.
 
 ## Safety and privacy
@@ -408,8 +436,8 @@ git push -u origin main
 `config/`, `state/`, `documents/` and `kb/` are git-ignored, so your personal data
 never leaves your machine. Suggested repo description:
 
-> An agent-driven, self-hosted job-search pipeline: give it your CV and it finds,
-> tailors, gates and applies to jobs for you, truthfully, and under your rules.
+> An agent-driven, self-hosted job-search pipeline: give it your CV (resume) and it
+> finds, tailors, gates and applies to jobs for you, truthfully, and under your rules.
 
 Suggested topics: `job-search`, `ai-agents`, `automation`, `resume`,
 `cover-letter`, `ats`, `graphrag`, `opencode`.

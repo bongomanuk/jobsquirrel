@@ -275,7 +275,7 @@ On any failure at (6): fix and re-run, never upload. On a wall at (7): record
 
 ## 5. Writing the documents (what "good" means)
 
-- **CV**: mirror the ad's language; include every role, the strongest
+- **CV** (a *resume*, in US English): mirror the ad's language; include every role, the strongest
   role-relevant bullets with their metrics and technologies; ATS-safe (single
   column for the .docx); fill the **two pages** without exceeding them.
 - **Letter**: name the company and role; in the candidate's voice; no shared or
@@ -356,8 +356,10 @@ Stop and ask (or record `MANUAL`/`BLOCKED`) when:
  , per-role artifacts.
 - `documents/archetypes/`, `documents/applications/`, `documents/submitted/`
  , CVs, letters, snapshots.
-- `tools/storage.py`, compression of logs/caches when disk gets tight
- (`docs/STORAGE.md`). Old logs are gzipped automatically at the start of a run.
+- `tools/storage.py` + `tools/stateio.py`, compression of logs and of the
+  cold per-role artifacts, restored on demand (`docs/STORAGE.md`). Logs older
+  than a day are gzipped at the start of a run, a finished role's transcript is
+  packed immediately, and a packed artifact reads exactly like a plain one.
 - See `BOOTSTRAP.md` (first-run interview), `docs/ACCOUNT-SETUP.md` (Gmail,
   Calendar, LinkedIn, browser, credentials), `docs/WORKFLOW.md`,
   `docs/ATS-RECIPES.md`, `docs/ELIGIBILITY.md`, `docs/KNOWLEDGE-BASE.md`.

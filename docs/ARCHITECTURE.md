@@ -31,11 +31,21 @@ placeholder data.
 
 ## Data model
 
-**`state/applications.csv`**: the canonical outcome register, one row per
-`(company, role)`:
-`day, company, role, ats, status, cv, letter, notes`.
-Statuses: `PREPARED, IN_PROGRESS, SUBMITTED, INTERVIEW, OFFER, REJECTED, BLOCKED,
-MANUAL, CLOSED`. Managed by `tools/register.py` (`--stats/--list/--show/--check/--render/--set`).
+**`state/applications.csv`**: the canonical outcome register, one row per role:
+`date, company, role, ats, status, letter, notes, employment, action, key,
+apply_url`. **`key`** is the role's single identity (the queue row's last column);
+`queue.done` stores the same key and `apply_url` is the apply target, so a rename
+or a `|` in a company name can never create a second, orphaned row. Rows written
+before that column existed fall back to `company|role`.
+
+Statuses: `QUEUED, PREPARED, IN_PROGRESS, SUBMITTED, INTERVIEW, OFFER, REJECTED,
+BLOCKED, MANUAL, CLOSED` (`PREPARED` = documents built and gated, nothing sent).
+Managed by `tools/register.py`: read with `--stats/--list/--show`, edit with
+`--set/--render/--delete`, and **audit** with `--audit` (exits non-zero on a
+duplicate row or key, a `queue.done` entry with no row, a `SUBMITTED` row with no
+provenance, or a stale `state/counts.md`). Repair with `--dedupe`,
+`--backfill`, `--backfill-done` and `--record-provenance-gaps`; `--stats`
+regenerates `state/counts.md`, which is never edited by hand.
 
 **`state/submissions.csv`**: the provenance ledger: the exact files sent per
 application, with `sha256` and a snapshot directory under `documents/submitted/`.
@@ -43,7 +53,7 @@ Written by `tools/record_submission.py` (which also upserts the register).
 
 **Queues**: `state/queue.tsv` tab-separated:
 `company  role  url  cv-archetype  ats  key`. `run_queue.sh` processes rows whose
-`company|role` key is not in `state/queue.done`, **most-senior-first** by default
+`key` is not in `state/queue.done`, **most-senior-first** by default
 (`PRIORITISE=1`; set `PRIORITISE=0` for file order). `tools/prioritise_queue.py`
 sorts the queue file itself by seniority.
 
@@ -52,14 +62,49 @@ sorts the queue file itself by seniority.
 - **Build**: `cv_builder.py` (library), `build_archetypes.py`, `cv_target.py`,
   `make_letter.py`, `fix_letterheads.py`.
 - **Gate**: `check_alignment.py` (role family ↔ CV), `check_documents.py`
-  (pre-submit), `ats_keywords.py` (coverage), `facts.py` (claim/tense checks).
-- **Record**: `register.py`, `record_submission.py`.
+  (pre-submit), `ats_keywords.py` (coverage), `facts.py` (claim/tense checks),
+  `gate_receipt.py` (hash-stamped PASS receipts; `record_submission.py` refuses a
+  `SUBMITTED` row without one), `jd_guard.py` (a role needs a saved job ad before
+  it is queued).
+- **Record**: `register.py`, `record_submission.py`, `outcomes.py`.
 - **Email**: `gmail_readonly.py`, `gmail_reconcile.py`, `gmail_calendar_auth.py`,
   `gmail_send.py`, `discover.py`, `email_opportunities.py`, `email_verify.py`.
 - **Browser**: `camoufox_server.py`, `camoufox_browser.py`, `camoufox_test.py`.
 - **Run**: `run_queue.sh` (parallel queue), `run_linkedin.sh` (serialized LinkedIn),
-  `reconcile_loop.sh`, `watch_queue.sh`, `build_human_queue.py`, `human_assist.sh`.
+  `agent_run.sh` (whichever agent CLI you have), `reconcile_loop.sh`,
+  `watch_queue.sh`, `build_human_queue.py`, `human_assist.sh`,
+  `captcha_manual.sh`, `chain_queue.sh`, `requeue_blocked.sh`.
+- **Approval and access**: `approval.py` (risky actions), `send_receipt.py`
+  (one-time human receipts for a specific send), `agent_access.py` (the gate for
+  anything outside the repo: read, write, run).
 - **Grounding (required)**: `kb_graphrag.py` (+ `kb/`), `embeddings.sh`.
+
+## Machine-local state and compression
+
+Everything the pipeline learns about a run lives in `state/` and is machine-local.
+It is largely text — saved job ads, ATS keyword files, GraphRAG grounding packs,
+CV content packs, letters, gate receipts, agent transcripts — so it compresses
+3-7x, and `tools/storage.py` packs the cold parts:
+
+| Area | Action | Read back by |
+|---|---|---|
+| logs idle for a day | `--logs`, plus `--pack-log <file>` the moment a role finishes | the dashboard reads `.gz` directly |
+| per-role artifacts older than `--state-days` | `--state` | `tools/stateio.py` |
+| `state/gmail_cache.json` | `--gmail-cache` | `gmail_reconcile.py` |
+| `kb/graphrag/cache` | `--graphrag-cache --apply` (tar.zst archive) | re-extract if you want incremental indexing |
+
+The invariant is that **a packed artifact is indistinguishable from a plain one**:
+`stateio.resolve()` returns `x` or `x.gz`, `read_text()` reads either, and
+`ensure()` restores one in place (keeping its original mtime) when a tool needs a
+real file. A queue run hydrates everything at the start (`--hydrate-all`) and
+packs the cold leftovers when it finishes.
+
+Never packed: files that are appended to or written by shell redirection
+(`queue*.tsv`, `*.done`, `*.csv`, `state/drafts/`, live dashboard logs), symlinks,
+and — by default — anything git tracks (packing a tracked file is a deletion plus
+an untracked `.gz`; `--include-tracked` overrides). `documents/` holds `.docx` and
+`.pdf`, already-compressed containers; `kb/graphrag/output/` is read at query time
+and stays unpacked. Details: **[STORAGE.md](STORAGE.md)**.
 
 ## Runner model
 

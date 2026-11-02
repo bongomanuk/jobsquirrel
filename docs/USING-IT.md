@@ -88,7 +88,7 @@ Everything is observable. Useful things to ask for, or run yourself:
 - **Conversion**: `python3 tools/outcomes.py`, response rate by source (ATS/site)
   and by CV, so you invest where it actually converts.
 - **Queue state**: `state/queue.tsv` (pending), `state/queue.done` (finished,
-  keyed `company|role`).
+  keyed by the row's `key`, the same identity the register uses).
 - **Replies / counts**: `bash tools/reconcile_loop.sh` keeps reconciliation and
   `state/counts.md` fresh in the background.
 - **Interviews**: `python3 tools/gmail_calendar_auth.py --check --days 14`.

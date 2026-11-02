@@ -56,8 +56,11 @@ PARALLEL=3 bash tools/run_queue.sh            # processes state/queue.tsv
 For each row it: checks eligibility against `config/profile.md`; picks and verifies
 the aligned archetype; builds a targeted CV + letter; runs the pre-submit gate;
 submits via Camoufox; and records the outcome (or the blocker). Finished rows are
-appended to `state/queue.done` (keyed `company|role`). `LIGHT=1 FIXED_CV=<path>`
-runs a cheaper mode with one fixed CV.
+appended to `state/queue.done` under the row's **key** (the same identity stored in
+the register; rows written before that column existed fall back to
+`company|role`). `LIGHT=1 FIXED_CV=<path>` runs a cheaper mode with one fixed CV,
+`REVIEW=1` builds and gates the documents without sending, and `PREPARED=1`
+submits documents that are already gated.
 
 **Seniority first.** When several roles are pending, the runner applies to the
 most senior first, e.g. a company's *Director of Engineering* before its
