@@ -26,15 +26,19 @@ cycle() {
   "$PY" "$ROOT/tools/gmail_reconcile.py" --apply >> "$LOGS/reconcile.log" 2>&1
   "$PY" "$ROOT/tools/register.py" --render >> "$LOGS/reconcile.log" 2>&1
   "$PY" "$ROOT/tools/register.py" --check >> "$LOGS/reconcile.log" 2>&1
+  # Capture once, then write: --stats itself writes counts.md, so redirecting a
+  # block that also calls --stats into the same file would race with it.
+  local out check audit
+  out="$("$PY" "$ROOT/tools/register.py" --stats)"
+  check="$("$PY" "$ROOT/tools/register.py" --check 2>&1 || true)"
+  audit="$("$PY" "$ROOT/tools/register.py" --audit 2>&1 || true)"
   {
     echo "# Application counts"
     echo
-    echo "_Updated: $ts — source: Gmail reconcile loop_"
+    echo "_Updated: $ts — source: register.py --stats_"
     echo
     echo '```'
-    "$PY" "$ROOT/tools/register.py" --stats
-    echo
-    "$PY" "$ROOT/tools/register.py" --check
+    printf '%s\n\n%s\n%s\n' "$out" "$check" "$audit"
     echo '```'
   } > "$ROOT/state/counts.md"
 }

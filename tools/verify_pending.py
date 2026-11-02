@@ -84,6 +84,8 @@ def main():
     ap = argparse.ArgumentParser(description="Audit ATS email verifications vs the register.")
     ap.add_argument("--days", type=int, default=14)
     ap.add_argument("--open", action="store_true", help="complete verify/activation links in the pipeline browser")
+    ap.add_argument("--record", action="store_true",
+                    help="set the register ACTION on matched rows so the pending verification is tracked")
     ap.add_argument("--server", default=os.environ.get("CAMOUFOX_SERVER", "http://127.0.0.1:9872"))
     ap.add_argument("--query", default="")
     args = ap.parse_args()
@@ -117,6 +119,7 @@ def main():
 
     print(f"{len(rows)} verification email(s); {len(pending)} match a SUBMITTED register company.\n")
     print("== SUBMITTED but verification may be pending ==")
+    recorded = 0
     for date, guess, co, subject, link, codes in pending:
         print(f"  {co}  ({guess})  [{date[:16]}]")
         print(f"      {subject[:80]}")
@@ -124,8 +127,17 @@ def main():
             print(f"      LINK {link}")
         if codes:
             print(f"      CODE {codes}")
+        if args.record and co:
+            import register
+            action = f"complete ATS verification: {subject[:70]}"
+            for r in register.load():
+                if r["company"] == co and r["status"] == "SUBMITTED" and (r.get("action") or "") != action:
+                    register.set_row(co, r["role"], action=action)
+                    recorded += 1
         if args.open and link:
             print(f"      -> {browser_nav(args.server, link)}")
+    if args.record:
+        print(f"\nrecorded ACTION on {recorded} register row(s)")
     if unmapped:
         print("\n== verification emails not matched to a SUBMITTED company ==")
         for date, guess, co, subject, link, codes in unmapped:

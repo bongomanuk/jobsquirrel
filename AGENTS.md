@@ -88,6 +88,17 @@ reports a clean config.
 6. **Record only with real evidence.** `record_submission.py --evidence` must
    carry the actual thank-you text or confirmation email, never "confirmed"/"ok".
 7. **Keep the register current.** It is the single source of truth for resuming.
+   Every role has one identity: the queue's `key`, stored in
+   `state/applications.csv` (`key`, `apply_url`) and in `state/queue.done`.
+   Never key a role by raw company/role text — a rename or a `|` in a company
+   name used to create a second, orphaned row. After any reconcile or queue run:
+   `python3 tools/register.py --audit` must print `0 problem(s)`; it checks for
+   duplicate rows/keys, `queue.done` entries with no register row, SUBMITTED rows
+   with no `state/submissions.csv` provenance, and a stale `state/counts.md`.
+   Repair with `--dedupe` (merge duplicates), `--backfill-done` (record handled
+   roles that were never registered), `--record-provenance-gaps` (annotate rows
+   that predate provenance logging) and `--backfill` (resync key/apply_url).
+   `--stats` writes `state/counts.md`; never edit that file by hand.
 8. **Respect each site's terms.** Prefer the employer's own ATS over portals.
    LinkedIn Easy Apply is **opt-in and may breach LinkedIn's User Agreement**: do
    not mass-apply, and if the user hasn't explicitly enabled it, don't use it.

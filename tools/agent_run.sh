@@ -60,9 +60,14 @@ resolve_agent() {
   case "${AGENT:-}" in openrouter|local|llamacpp) printf '%s' "$AGENT"; return 0 ;; esac
   if [ -n "${AGENT:-}" ]; then
     if command -v "${AGENT%% *}" >/dev/null 2>&1; then printf '%s' "$AGENT"; return 0; fi
-    # AGENT is set but not a real command (e.g. a stray AGENT=1 / AGENT=true in the
-    # environment) — warn and fall through to auto-detect instead of failing the run.
-    echo "agent_run: AGENT='$AGENT' is not installed or on PATH — falling back to auto-detect" >&2
+    # Tolerate the classic stray shell values (AGENT=1 / true / yes / on), which
+    # mean "nothing specified". Any other missing command is a configuration
+    # error and must fail loudly: silently switching agents mid-pipeline hides it.
+    case "$AGENT" in
+      1|true|TRUE|yes|YES|on|ON) : ;;
+      *) echo "agent_run: AGENT='$AGENT' is not installed or on PATH; fix Settings -> AI & agent or install it" >&2
+         return 1 ;;
+    esac
   fi
   local a
   for a in opencode claude; do

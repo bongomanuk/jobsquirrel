@@ -37,6 +37,7 @@ def _sandbox(tmp_path, rows):
         "".join("\t".join(r) + "\n" for r in rows))
     (tmp_path / "prompts").mkdir()
     env = dict(os.environ, ROOT=str(root), REVIEW="1", RETRY_LIMIT="0",
+               AGENT_CFG=str(tmp_path / "no-agent.json"),
                AGENT=str(_exe(tmp_path / "stub-agent", STUB)),
                CALLS=str(tmp_path / "calls"), PROMPTS=str(tmp_path / "prompts"))
     env.pop("VIRTUAL_ENV", None)
@@ -60,7 +61,10 @@ def test_queue_runs_each_role_once_in_parallel(tmp_path):
     assert sorted(calls) == want, "every role must be claimed exactly once"
 
     done = (root / "state" / "queue.done").read_text().splitlines()
-    assert sorted(done) == sorted(k for k in want if not k.startswith("CoSlow"))
+    # DONE stores the queue key (field 6), not "company|role": keys survive a
+    # company rename and cannot be ambiguous when a company name contains "|".
+    want_keys = [r[5] for r in rows if r[0] != "CoSlow"]
+    assert sorted(done) == sorted(want_keys)
 
     out = (root / "state" / "logs" / "run_queue.out").read_text()
     assert "INFRA-FAIL" in out and "CoSlow | Slow Role (timeout with no model output" in out
@@ -119,7 +123,8 @@ def _argv_of(tmp_path, agent, **extra):
     bindir = tmp_path / "bin"
     bindir.mkdir(exist_ok=True)
     _exe(bindir / agent, '#!/bin/sh\nfor a in "$@"; do printf "%s\\n" "$a"; done\n')
-    env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}", AGENT=agent, **extra)
+    env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}", AGENT=agent,
+               AGENT_CFG=str(tmp_path / "no-agent.json"), **extra)
     for k in ("MODEL", "CLAUDE_ALLOWED_TOOLS", "CLAUDE_PERMISSION_MODE", "CLAUDE_ARGS"):
         if k not in extra:
             env.pop(k, None)

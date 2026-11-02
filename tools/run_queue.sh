@@ -286,11 +286,11 @@ run_task() {
   IFS=$'\t' read -r company role url cv ats key <<<"$line"
   [ -z "${company:-}" ] && return 0
   case "$company" in \#*) return 0 ;; esac
-  if grep -qxF "$company|$role" "$DONE" 2>/dev/null; then return 0; fi
+  if grep -qxF "$company|$role" "$DONE" 2>/dev/null || { [ -n "${key:-}" ] && grep -qxF "$key" "$DONE" 2>/dev/null; }; then return 0; fi
   dup="$(is_duplicate "$company" "$role")"
   if [ -n "$dup" ]; then
     echo "SKIP-DUPLICATE $(date +%H:%M:%S) $company | $role (already $dup)" >> "$LOGS/run_queue.out"
-    echo "$company|$role" >> "$DONE"
+    echo "${key:-$company|$role}" >> "$DONE"
     return 0
   fi
   log="$LOGS/$(echo "$company-$role" | tr ' /|' '___').log"
@@ -320,7 +320,7 @@ run_task() {
     reason="empty model output"
   fi
   if [ -n "$reason" ]; then
-    printf '%s\n' "$company|$role" >> "$RETRY_FILE"
+    printf '%s\n' "${key:-$company|$role}" >> "$RETRY_FILE"
     echo "INFRA-FAIL $(date +%H:%M:%S) $company | $role ($reason, rc=$rc)" >> "$LOGS/run_queue.out"
     if [ "$hard" -eq 1 ]; then
       n=0
@@ -337,10 +337,10 @@ run_task() {
   elif [ "$rc" -eq 124 ] || [ "$outcome" = "BLOCKED" ]; then
     # A task that was BLOCKED or timed out is worth one automatic retry (a
     # transient wall, a slow save, or a stale session often clears on a 2nd pass).
-    echo "$company|$role" >> "$DONE"
-    printf '%s\n' "$company|$role" >> "$RETRY_FILE"
+    echo "${key:-$company|$role}" >> "$DONE"
+    printf '%s\n' "${key:-$company|$role}" >> "$RETRY_FILE"
   else
-    echo "$company|$role" >> "$DONE"
+    echo "${key:-$company|$role}" >> "$DONE"
   fi
   tail -1 "$log" >> "$LOGS/run_queue.out" 2>/dev/null
   echo "DONE  $(date +%H:%M:%S) $company | $role (rc=$rc)" >> "$LOGS/run_queue.out"
@@ -373,7 +373,22 @@ if [ "${RESET_CLAIMED:-1}" != "0" ]; then
   : > "$TOKENFAIL_FILE"
 fi
 
-_role_key() { local rest="$1"; rest="${rest#*$'\t'}"; printf '%s|%s' "${1%%$'\t'*}" "${rest%%$'\t'*}"; }
+# Identity of a queue line for DONE/CLAIMED: the row's own key (field 6) when it
+# has one, else the legacy "company|role". Keys survive a company rename and
+# cannot be ambiguous when a company name contains "|".
+_role_key() {
+  local key
+  key="$(printf '%s' "$1" | awk -F'\t' '{print $6}')"
+  if [ -n "$key" ]; then printf '%s' "$key"; return; fi
+  local rest="$1"; rest="${rest#*$'\t'}"; printf '%s|%s' "${1%%$'\t'*}" "${rest%%$'\t'*}"
+}
+_legacy_key() { local rest="$1"; rest="${rest#*$'\t'}"; printf '%s|%s' "${1%%$'\t'*}" "${rest%%$'\t'*}"; }
+_done_has() { grep -qxF "$1" "$2" 2>/dev/null; }
+_line_done() {
+  _done_has "$(_role_key "$1")" "$DONE" && return 0
+  _done_has "$(_legacy_key "$1")" "$DONE" && return 0
+  return 1
+}
 
 # Seniority rank of a queue line's role (field 2); higher = more senior. Used so
 # the most senior pending role is applied to first (e.g. a Director role before
@@ -399,7 +414,7 @@ has_pending() {
   while IFS= read -r line; do
     [ -z "$line" ] && continue
     case "$line" in \#*) continue ;; esac
-    grep -qxF "$(_role_key "$line")" "$DONE" 2>/dev/null && continue
+    _line_done "$line" && continue
     grep -qxF "$(_role_key "$line")" "$CLAIMED" 2>/dev/null && continue
     return 0
   done < "$QUEUE"
@@ -414,7 +429,7 @@ pop_next() {
       [ -z "$line" ] && continue
       case "$line" in \#*) continue ;; esac
       [ -z "${line%%$'\t'*}" ] && continue
-      grep -qxF "$(_role_key "$line")" "$DONE" 2>/dev/null && continue
+      _line_done "$line" && continue
       grep -qxF "$(_role_key "$line")" "$CLAIMED" 2>/dev/null && continue
       if [ "${PRIORITISE:-1}" = "1" ]; then
         score="$(_seniority "$line")"

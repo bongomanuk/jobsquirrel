@@ -20,15 +20,21 @@ import contextlib
 import csv
 import fcntl
 import os
+import re
 import sys
 import tempfile
-from datetime import date
+from datetime import date, datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSV_PATH = os.environ.get("APPLICATIONS_CSV", os.path.join(ROOT, "state", "applications.csv"))
 MD_PATH = os.environ.get("APPLICATIONS_MD", os.path.join(ROOT, "state", "applications-register.md"))
 LOCK_PATH = CSV_PATH + ".lock"
-FIELDS = ["date", "company", "role", "ats", "status", "letter", "notes", "employment", "action"]
+COUNTS_PATH = os.environ.get("APPLICATIONS_COUNTS", os.path.join(ROOT, "state", "counts.md"))
+QUEUE_PATH = os.environ.get("QUEUE_TSV", os.path.join(ROOT, "state", "queue.tsv"))
+DONE_PATH = os.environ.get("QUEUE_DONE", os.path.join(ROOT, "state", "queue.done"))
+SUBMISSIONS_PATH = os.path.join(ROOT, "state", "submissions.csv")
+FIELDS = ["date", "company", "role", "ats", "status", "letter", "notes", "employment",
+          "action", "key", "apply_url"]
 STATUSES = ["QUEUED", "SUBMITTED", "INTERVIEW", "OFFER", "REJECTED", "BLOCKED", "MANUAL",
             "PREPARED", "IN_PROGRESS", "CLOSED"]
 # Statuses that count as a live process - an application we have sent and are
@@ -52,7 +58,26 @@ def load():
     if not os.path.isfile(CSV_PATH):
         return []
     with open(CSV_PATH, newline="", encoding="utf-8") as fh:
-        return [{k: (r.get(k) or "") for k in FIELDS} for r in csv.DictReader(fh)]
+        rows = [{k: (r.get(k) or "") for k in FIELDS} for r in csv.DictReader(fh)]
+    for r in rows:
+        if not r["key"]:
+            r["key"] = make_key(r["company"], r["role"])
+    return rows
+
+
+def _slug(value):
+    return re.sub(r"[^a-z0-9]+", "-", str(value or "").lower()).strip("-")
+
+
+def make_key(company, role):
+    """Stable identity for a role: used by the queue, documents and the register.
+
+    The register used to be keyed on the raw (company, role) strings, so a rename
+    ('nent' -> 'Nordic Entertainment Group') or a punctuation change silently
+    produced a second, unrelated row. The key is derived from the same fields but
+    normalised, so it can be compared across artifacts.
+    """
+    return (_slug(company) + "-" + _slug(role)).strip("-")[:80]
 
 
 @contextlib.contextmanager
@@ -87,7 +112,8 @@ def _key(company, role):
     return (company.strip().lower(), role.strip().lower())
 
 
-def upsert(company, role, status, day="", ats="", letter="", notes="", employment="", action=None):
+def upsert(company, role, status, day="", ats="", letter="", notes="", employment="", action=None,
+           key="", apply_url=""):
     """Insert or update the single row for (company, role). Returns the row."""
     with locked():
         rows = load()
@@ -107,12 +133,17 @@ def upsert(company, role, status, day="", ats="", letter="", notes="", employmen
                     r["employment"] = employment
                 if action is not None:
                     r["action"] = action.strip()
+                if key:
+                    r["key"] = key
+                if apply_url:
+                    r["apply_url"] = apply_url
                 save(rows)
                 render(silent=True)
                 return r
         r = {"date": day or date.today().isoformat(), "company": company, "role": role,
              "ats": ats, "status": status, "letter": letter, "notes": notes,
-             "employment": employment, "action": (action or "").strip()}
+             "employment": employment, "action": (action or "").strip(),
+             "key": key or make_key(company, role), "apply_url": apply_url}
         rows.append(r)
         save(rows)
         render(silent=True)
@@ -204,22 +235,36 @@ def add_note(needle, text, status=""):
         return changed
 
 
-def stats():
+def stats(write=True):
     rows = load()
     counts = {s: 0 for s in STATUSES}
     for r in rows:
         counts[r["status"] if r["status"] in counts else "CLOSED"] += 1
-    print(f"total: {len(rows)}")
+    lines = [f"total: {len(rows)}"]
     for s in STATUSES:
         if counts[s]:
-            print(f"  {s:<12} {counts[s]}")
+            lines.append(f"  {s:<12} {counts[s]}")
     in_process = sum(counts[s] for s in PROCESS_STATUSES)
     breakdown = " + ".join(f"{s} {counts[s]}" for s in PROCESS_STATUSES)
-    print(f"  {'-' * 17}")
-    print(f"  IN PROCESS   {in_process}  ({breakdown})")
+    lines.append(f"  {'-' * 17}")
+    lines.append(f"  IN PROCESS   {in_process}  ({breakdown})")
     actions = sum(1 for r in rows if (r.get("action") or "").strip())
     if actions:
-        print(f"  ACTION       {actions}  (needs a reply / follow-up)")
+        lines.append(f"  ACTION       {actions}  (needs a reply / follow-up)")
+    body = "\n".join(lines)
+    print(body)
+    if write:
+        # counts.md is written by the same command that prints the counts, so it
+        # cannot drift from the register. The reconcile loop used to be the only
+        # writer, so a reconcile that did not finish left it stale (it reported
+        # 855 rows while the register held 931).
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        out = (f"# Application counts\n\n_Updated: {ts} - source: register.py --stats_\n\n"
+               f"```\n{body}\n```\n")
+        tmp = COUNTS_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(out)
+        os.replace(tmp, COUNTS_PATH)
     return rows
 
 
@@ -268,6 +313,267 @@ def check():
     return 1 if problems else 0
 
 
+def _read_queue():
+    rows = []
+    try:
+        with open(QUEUE_PATH, encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip() or line.startswith("#"):
+                    continue
+                parts = line.rstrip("\n").split("\t")
+                while len(parts) < 6:
+                    parts.append("")
+                rows.append({"company": parts[0].strip(), "role": parts[1].strip(),
+                             "url": parts[2].strip(), "key": parts[5].strip()})
+    except OSError:
+        pass
+    return rows
+
+
+def backfill():
+    """Fill `key` / `apply_url` from the queue, then from the row itself."""
+    q = _read_queue()
+    exact = {(x["company"].lower(), x["role"].lower()): x for x in q}
+    loose = {make_key(x["company"], x["role"]): x for x in q}
+    with locked():
+        rows = load()
+        filled_key = filled_url = 0
+        seen = {}
+        for r in rows:
+            ref = exact.get((r["company"].strip().lower(), r["role"].strip().lower()))
+            if ref is None:
+                ref = loose.get(make_key(r["company"], r["role"]))
+            if ref:
+                if ref["key"] and r.get("key") != ref["key"]:
+                    r["key"] = ref["key"]
+                    filled_key += 1
+                if ref["url"] and not r.get("apply_url"):
+                    r["apply_url"] = ref["url"]
+                    filled_url += 1
+            if not r.get("key"):
+                r["key"] = make_key(r["company"], r["role"])
+                filled_key += 1
+            base = r["key"]
+            n = 2
+            while r["key"] in seen:
+                r["key"] = f"{base}-{n}"
+                n += 1
+            seen[r["key"]] = True
+        save(rows)
+        render(silent=True)
+    print(f"backfill: {filled_key} key(s), {filled_url} apply_url(s) set; {len(rows)} rows")
+
+
+def audit():
+    """Report every place where 'what was handled' is uncertain. Read-only."""
+    rows = load()
+    problems = []
+    seen_pairs, seen_keys = {}, {}
+    for i, r in enumerate(rows, start=2):
+        p = make_key(r["company"], r["role"])
+        if p in seen_pairs:
+            problems.append(f"duplicate row {i} of row {seen_pairs[p]}: {r['company']} / {r['role']}")
+        else:
+            seen_pairs[p] = i
+        if r["key"] in seen_keys and r["key"]:
+            problems.append(f"duplicate key {r['key']!r} on rows {seen_keys[r['key']]} and {i}")
+        seen_keys[r["key"]] = i
+
+    reg_pairs = {_key(r["company"], r["role"]) for r in rows}
+    reg_keys = {r["key"] for r in rows if r["key"]}
+    by_role = {}
+    for r in rows:
+        by_role.setdefault(_slug(r["role"]), set()).add(r["key"])
+
+    q = _read_queue()
+    qinfo = {x["key"]: (x["company"], x["role"]) for x in q}
+    q_keys = {}
+    for x in q:
+        q_keys[x["key"]] = q_keys.get(x["key"], 0) + 1
+    for k, n in q_keys.items():
+        if n > 1:
+            problems.append(f"queue key {k!r} appears {n} times")
+    pending = [x for x in q if x["key"] not in reg_keys
+               and make_key(x["company"], x["role"]) not in reg_keys
+               and _key(x["company"], x["role"]) not in reg_pairs]
+
+    try:
+        with open(DONE_PATH, encoding="utf-8") as fh:
+            done = [l.strip() for l in fh if l.strip()]
+    except OSError:
+        done = []
+
+    done_key = {}
+    for x in q:
+        done_key[f"{x['company']}|{x['role']}"] = x["key"]
+        done_key[f"{x['company']}|{x['role']}".lower()] = x["key"]
+
+    def done_known(d):
+        if d in reg_keys:
+            return True
+        info = qinfo.get(d)
+        if info:
+            co, ro = info
+            if _key(co, ro) in reg_pairs or make_key(co, ro) in reg_keys:
+                return True
+            same = by_role.get(_slug(ro))
+            if same and len(same) == 1:
+                return True
+        return False
+
+    for d in done:
+        if "|" in d:
+            mapped = done_key.get(d) or done_key.get(d.lower())
+            if mapped and (mapped in reg_keys or done_known(mapped)):
+                continue
+            a, b = d.split("|", 1)
+            if done_known(d) or _key(a, b) in reg_pairs or make_key(a, b) in reg_keys:
+                continue
+            same = by_role.get(_slug(b))
+            if same and len(same) == 1:
+                continue
+            problems.append(f"queue.done entry not in register: {d}")
+        elif not done_known(d):
+            problems.append(f"queue.done key not in register: {d}")
+
+    prov = set()
+    try:
+        with open(SUBMISSIONS_PATH, newline="", encoding="utf-8") as fh:
+            for s in csv.DictReader(fh):
+                prov.add((s.get("company", "").strip().lower(), s.get("role", "").strip().lower()))
+    except OSError:
+        pass
+    for r in rows:
+        if r["status"] == "SUBMITTED" and (r["company"].strip().lower(), r["role"].strip().lower()) not in prov:
+            if "provenance not recorded" in (r.get("notes") or ""):
+                continue
+            problems.append(f"SUBMITTED without provenance: {r['company']} / {r['role']}")
+
+    try:
+        with open(COUNTS_PATH, encoding="utf-8") as fh:
+            m = re.search(r"total:\s*(\d+)", fh.read())
+        if m and int(m.group(1)) != len(rows):
+            problems.append(f"counts.md stale: says {m.group(1)}, register has {len(rows)}")
+    except OSError:
+        problems.append("counts.md missing")
+
+    for p in problems:
+        print("FAIL", p)
+    print(f"{len(rows)} register rows, {len(q)} queue rows ({len(pending)} pending), "
+          f"{len(done)} done entries, {len(problems)} problem(s)")
+    return 1 if problems else 0
+
+
+def dedupe(dry=False):
+    """Merge rows that are the same role twice (normally a duplicate-guard row)."""
+    admin = re.compile(r"duplicate of existing|skipped .*duplicate", re.I)
+    rank = {st: i for i, st in enumerate(
+        ["OFFER", "INTERVIEW", "REJECTED", "SUBMITTED", "IN_PROGRESS", "PREPARED",
+         "MANUAL", "BLOCKED", "CLOSED"])}
+    with locked():
+        rows = load()
+        groups = {}
+        for r in rows:
+            groups.setdefault(make_key(r["company"], r["role"]), []).append(r)
+        merged, out = 0, []
+        for group in groups.values():
+            if len(group) == 1:
+                out.append(group[0])
+                continue
+            real = [r for r in group if not admin.search(r.get("notes") or "")]
+            pool = real or group
+            pool.sort(key=lambda r: (r["date"], -rank.get(r["status"], 99)), reverse=True)
+            keep = pool[0]
+            dropped = [r for r in group if r is not keep]
+            note = "audit: merged duplicate row(s) " + ", ".join(
+                f"{r['status']} ({r['date']})" for r in dropped)
+            keep["notes"] = (keep["notes"] + " | " if keep["notes"] else "") + note
+            for r in dropped:
+                if r.get("letter") and not keep.get("letter"):
+                    keep["letter"] = r["letter"]
+                if r.get("apply_url") and not keep.get("apply_url"):
+                    keep["apply_url"] = r["apply_url"]
+            out.append(keep)
+            merged += len(dropped)
+            print(f"merge {len(dropped)} row(s) into {keep['status']}: {keep['company']} / {keep['role']}")
+        if merged and not dry:
+            save(out)
+            render(silent=True)
+    print(f"dedupe: {merged} row(s) merged" + (" (dry run)" if dry else ""))
+    return merged
+
+
+def backfill_done():
+    """Record queue.done entries that have no register row as MANUAL.
+
+    queue.done means a runner handled the role; without a register row the
+    outcome was never recorded. MANUAL + an explicit action makes the uncertainty
+    visible and countable instead of silently lost.
+    """
+    rows = load()
+    pairs = {_key(r["company"], r["role"]) for r in rows}
+    keys = {r["key"] for r in rows if r["key"]}
+    by_role = {}
+    for r in rows:
+        by_role.setdefault(_slug(r["role"]), set()).add(r["key"])
+    q = _read_queue()
+    qinfo = {x["key"]: (x["company"], x["role"]) for x in q}
+    qpairs = {f"{x['company']}|{x['role']}": (x["company"], x["role"]) for x in q}
+    try:
+        with open(DONE_PATH, encoding="utf-8") as fh:
+            done = [l.strip() for l in fh if l.strip()]
+    except OSError:
+        done = []
+    created = 0
+    for d in done:
+        if "|" in d:
+            company, role = qpairs.get(d, (None, None))
+            if not company:
+                company, role = (x.strip() for x in d.split("|", 1))
+        else:
+            company, role = qinfo.get(d, ("", ""))
+            if not company:
+                continue
+        if _key(company, role) in pairs or make_key(company, role) in keys:
+            continue
+        same = by_role.get(_slug(role))
+        if same and len(same) == 1:
+            continue
+        upsert(company, role, "MANUAL",
+               notes=f"audit {date.today().isoformat()}: queue.done entry with no register record; outcome unknown",
+               action="verify outcome: queue.done has no register record (check Gmail)")
+        keys.add(make_key(company, role))
+        pairs.add(_key(company, role))
+        created += 1
+    print(f"backfill-done: {created} MANUAL row(s) created")
+    return created
+
+
+def record_provenance_gaps():
+    """Annotate SUBMITTED rows that have no state/submissions.csv entry."""
+    rows = load()
+    prov = set()
+    try:
+        with open(SUBMISSIONS_PATH, newline="", encoding="utf-8") as fh:
+            for s in csv.DictReader(fh):
+                prov.add((s.get("company", "").strip().lower(), s.get("role", "").strip().lower()))
+    except OSError:
+        pass
+    marked = 0
+    for r in rows:
+        if r["status"] != "SUBMITTED":
+            continue
+        if (r["company"].strip().lower(), r["role"].strip().lower()) in prov:
+            continue
+        if "provenance not recorded" in (r.get("notes") or ""):
+            continue
+        set_row(r["company"], r["role"],
+                note=f"{date.today().isoformat()} audit: provenance not recorded (applied before submissions.csv logging)")
+        marked += 1
+    print(f"record-provenance-gaps: {marked} row(s) annotated")
+    return marked
+
+
 def render(silent=False):
     rows = load()
     lines = [
@@ -311,6 +617,14 @@ def main():
     ap.add_argument("--status", default="")
     ap.add_argument("--show", default="")
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--audit", action="store_true", help="report every uncertain/unrecorded role (read-only)")
+    ap.add_argument("--backfill", action="store_true", help="fill key/apply_url from the queue")
+    ap.add_argument("--dedupe", action="store_true", help="merge duplicate (company, role) rows")
+    ap.add_argument("--backfill-done", action="store_true",
+                    help="record queue.done entries missing from the register as MANUAL")
+    ap.add_argument("--record-provenance-gaps", action="store_true",
+                    help="annotate SUBMITTED rows that have no submissions.csv entry")
+    ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--render", action="store_true")
     ap.add_argument("--set", action="store_true")
     ap.add_argument("--delete", action="store_true")
@@ -351,6 +665,16 @@ def main():
         show(args.show)
     elif args.check:
         sys.exit(check())
+    elif args.audit:
+        sys.exit(audit())
+    elif args.backfill:
+        backfill()
+    elif args.dedupe:
+        dedupe(dry=args.dry_run)
+    elif args.backfill_done:
+        backfill_done()
+    elif args.record_provenance_gaps:
+        record_provenance_gaps()
     elif args.render:
         render()
     else:

@@ -26,6 +26,7 @@ def _which(tmp_path, agent=None, extra_path=""):
     env = dict(os.environ)
     env.pop("AGENT", None)
     env["PATH"] = str(tmp_path) + os.pathsep + extra_path
+    env["AGENT_CFG"] = str(tmp_path / "no-agent.json")
     if agent is not None:
         env["AGENT"] = agent
     return subprocess.run([BASH, AGENT_RUN, "--which"],

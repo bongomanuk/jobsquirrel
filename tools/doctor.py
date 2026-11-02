@@ -95,6 +95,10 @@ def checks():
         r = _run([sys.executable, reg, "--check"])
         add("register", bool(r and r.returncode == 0),
             (r.stdout.strip().splitlines() or ["?"])[-1] if r and r.stdout else "check failed")
+        a = _run([sys.executable, reg, "--audit"])
+        add("register:audit", bool(a and a.returncode == 0),
+            (a.stdout.strip().splitlines() or ["?"])[-1] if a and a.stdout else "audit failed",
+            warn=True)
 
     q = os.environ.get("QUEUE", os.path.join(STATE, "queue.tsv"))
     add("queue", os.path.isfile(q), "state/queue.tsv" if os.path.isfile(q) else "empty queue", warn=True)
