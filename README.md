@@ -51,30 +51,6 @@ keep it cheap with opencode + DeepSeek Flash, and **what it costs to run**.
 
 ---
 
-## Screenshots
-
-A local, single-page dashboard over the whole pipeline. Every action is
-auditable, and nothing is sent without the gates passing. (Company names are
-blurred in these shots.)
-
-| The grid — every role, its stage and its fit | Role drawer — pipeline stage, gates, type, one-click action |
-|---|---|
-| ![Application grid](docs/screenshots/grid.png) | ![Role detail drawer](docs/screenshots/drawer.png) |
-
-| Documents — the rendered, gated CV in place | Agent console — chat and live activity |
-|---|---|
-| ![Documents tab with the embedded CV](docs/screenshots/documents.png) | ![Agent console](docs/screenshots/agent.png) |
-
-| Evidence overlay — every CV line scored against the job's requirements and the knowledge base |
-|---|
-| ![Evidence overlay: green lines are backed by the knowledge base, amber lines name a requirement it cannot confirm](docs/screenshots/evidence.png) |
-
-| Legend — what every status and queue state means | Settings — accounts, knowledge base, agent permissions |
-|---|---|
-| ![Status and queue legend](docs/screenshots/legend.png) | ![Settings](docs/screenshots/settings.png) |
-
----
-
 ## Why it exists
 
 Applying well is repetitive but not mechanical: every role needs a CV that
@@ -289,6 +265,7 @@ tools/                      # the pipeline (language/library-free CLI tools)
   prioritise_queue.py       #   sort the queue most-senior-first
   init_config.py            #   scaffold/validate config/ (used by the bootstrap)
   doctor.py                 #   one-shot health check (config, KB, browser, register, git)
+  storage.py                #   compress old logs / caches when disk gets tight (see docs/STORAGE.md)
   dashboard.py              #   slick web UI over the register, queue, runs + curated logs, live view, chat (agent-agnostic)
   graph_explore.py          #   reads the GraphRAG index (entities/relationships/communities) for the web UI
   setup_kb.sh               #   explain + build the GraphRAG knowledge base

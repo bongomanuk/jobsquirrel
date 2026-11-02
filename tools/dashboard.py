@@ -11,6 +11,7 @@ require an explicit approval token. See docs/PRODUCT-SPEC.md.
 import argparse
 import csv
 import glob
+import gzip
 from functools import lru_cache
 import html as _html
 import json
@@ -55,10 +56,13 @@ STATUSES = ["SUBMITTED", "IN_PROGRESS", "INTERVIEW", "OFFER", "REJECTED",
 
 # ---------------------------------------------------------------- helpers
 def _read(path, cap=400_000):
+    # Task logs are gzipped by tools/storage.py once they are old enough, so the
+    # viewer reads both forms; the task name stays the same either way.
     try:
-        with open(path, encoding="utf-8", errors="ignore") as fh:
+        opener = gzip.open if path.endswith(".gz") else open
+        with opener(path, "rt", encoding="utf-8", errors="ignore") as fh:
             return fh.read()[:cap]
-    except OSError:
+    except (OSError, EOFError):
         return ""
 
 
@@ -1383,7 +1387,7 @@ def grid():
                     "status": status, "label": label, "interview_at": interview_at, "key": key,
                     "employment": employment,
                     "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, ""),
-                    "spec": jd_key in specs, "applied": ck in subm,
+                    "spec": jd_key in specs, "jd_key": jd_key, "applied": ck in subm,
                     "match": cov, "alignment": align, "running": ck in running,
                     "notes": notes, "letter": r.get("letter", ""), "action": (r.get("action") or "").strip(),
                     "url": qrow.get(ck, {}).get("url", "") or subm_url.get(ck, ""),
@@ -1419,7 +1423,7 @@ def grid():
                     "status": stg, "label": stg, "interview_at": "", "key": key,
                     "employment": r.get("employment", "") or _employment_from_jd(key),
                     "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, "pending"),
-                    "spec": key in specs, "applied": ck in subm,
+                    "spec": key in specs, "jd_key": key, "applied": ck in subm,
                     "match": cov, "alignment": m.get("alignment", ""), "running": ck in running,
                     "notes": "", "letter": "", "action": "", "url": r.get("url", ""), "stages": st,
                     **_pay_work_fields(key, "", stg, cov, target),
@@ -1459,8 +1463,15 @@ def runs(n=40):
 
 
 def task_logs():
+    # A compressed log keeps its task name: foo.log.gz -> "foo".
     try:
-        return sorted(f[:-4] for f in os.listdir(LOGS) if f.endswith(".log"))
+        names = {}
+        for f in os.listdir(LOGS):
+            if f.endswith(".log"):
+                names[f[:-4]] = True
+            elif f.endswith(".log.gz"):
+                names.setdefault(f[:-7], True)
+        return sorted(names)
     except OSError:
         return []
 
@@ -1468,6 +1479,8 @@ def task_logs():
 def read_task_log(name):
     name = os.path.basename(name)[:120]
     path = os.path.join(LOGS, name + ".log")
+    if not os.path.exists(path):
+        path += ".gz"
     try:
         st = os.stat(path)
         size, age = st.st_size, int(time.time() - st.st_mtime)

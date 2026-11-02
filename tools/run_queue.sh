@@ -56,6 +56,10 @@ CV_PREFIX="${CV_PREFIX:-CV}"
 
 mkdir -p "$LOGS"; touch "$DONE"
 
+# Keep state/logs/ bounded: gzip logs older than the window before every run.
+# Only files untouched for a week are touched, so an in-flight log is never moved.
+python3 "$ROOT/tools/storage.py" --logs --quiet >/dev/null 2>&1 || true
+
 # LIGHT runs upload one fixed CV and no letter, so gate that CV once, up front.
 # The PASS writes the receipt record_submission.py needs before it will record a
 # SUBMITTED row; a CV that fails stops the run before anything is sent.

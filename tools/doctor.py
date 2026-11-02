@@ -16,6 +16,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE = os.path.join(ROOT, "state")
@@ -42,6 +43,52 @@ def _read(path):
         return open(path, encoding="utf-8", errors="ignore").read()
     except OSError:
         return ""
+
+
+def _size(path):
+    total = 0
+    for base, _dirs, names in os.walk(path):
+        for name in names:
+            try:
+                total += os.stat(os.path.join(base, name)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def _gb(n):
+    return f"{n / 1073741824:.2f} GB" if n >= 1073741824 else f"{n / 1048576:.0f} MB"
+
+
+def _storage_detail():
+    """Size of the machine-local data, and what compression could reclaim now."""
+    logs = _size(os.path.join(STATE, "logs"))
+    cache = _size(os.path.join(ROOT, "kb", "graphrag", "cache"))
+    gmail = os.path.join(STATE, "gmail_cache.json")
+    gmail_size = os.path.getsize(gmail) if os.path.exists(gmail) else 0
+    old = old_count = 0
+    cutoff = time.time() - 7 * 86400
+    try:
+        names = os.listdir(os.path.join(STATE, "logs"))
+    except OSError:
+        names = []
+    for name in names:
+        if not name.endswith(".log"):
+            continue
+        try:
+            st = os.stat(os.path.join(STATE, "logs", name))
+        except OSError:
+            continue
+        if st.st_mtime < cutoff and st.st_size >= 1024:
+            old += st.st_size
+            old_count += 1
+    parts = [f"logs {_gb(logs)}", f"graphrag cache {_gb(cache)}"]
+    if gmail_size:
+        parts.append(f"gmail cache {_gb(gmail_size)}")
+    reclaim = int(old * 0.78) + (int(gmail_size * 0.89) if gmail_size else 0)
+    if old_count or gmail_size:
+        parts.append(f"{_gb(reclaim)} reclaimable (tools/storage.py --all)")
+    return "; ".join(parts)
 
 
 def checks():
@@ -102,6 +149,8 @@ def checks():
 
     q = os.environ.get("QUEUE", os.path.join(STATE, "queue.tsv"))
     add("queue", os.path.isfile(q), "state/queue.tsv" if os.path.isfile(q) else "empty queue", warn=True)
+
+    add("storage", True, _storage_detail(), warn=True)
 
     add("git", shutil.which("git") is not None and os.path.isdir(os.path.join(ROOT, ".git")),
         "not a git checkout" if not os.path.isdir(os.path.join(ROOT, ".git")) else "ok", warn=True)
