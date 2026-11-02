@@ -1,6 +1,6 @@
 # Releases
 
-## Privacy (the public repo is public)
+## Privacy (release notes are public)
 Release titles, notes, tags, commit messages and the code are all public. **Never**
 put the candidate's personal data or live pipeline state in them. In particular,
 never write:
@@ -32,11 +32,11 @@ Screenshots, logs and examples must be redacted or synthetic. If in doubt, leave
 ```bash
 # 0. write the notes to /tmp/notes.md, then lint them (must print RESULT: PASS)
 python3 tools/release_lint.py --text-file /tmp/notes.md
-# 0b. scan the public clone for live credentials (must print RESULT: PASS)
-python3 tools/secret_scan.py --repo jobsquirrel
+# 0b. scan the repo for live credentials (must print RESULT: PASS)
+python3 tools/secret_scan.py
 # 1. bump the version
-printf 'X.Y.Z\n' > VERSION && cp VERSION jobsquirrel/VERSION
-# 2. commit + push both repos, then tag (annotated) and push the tag
+printf 'X.Y.Z\n' > VERSION
+# 2. commit and push, then tag (annotated) and push the tag
 git tag -a vX.Y.Z -m 'vX.Y.Z "Funny Title"' && git push origin vX.Y.Z
 # 3. create the GitHub Release with the same name and notes (via the API; gh isn't required)
 ```

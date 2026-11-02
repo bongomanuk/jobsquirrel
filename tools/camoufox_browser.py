@@ -137,6 +137,18 @@ def main() -> int:
             print("usage: eval <js>", file=sys.stderr)
             return 1
         payload["js"] = " ".join(a)
+    elif cmd == "addinit":
+        if not a:
+            print("usage: addinit <path>", file=sys.stderr)
+            return 1
+        payload["path"] = a[0]
+    elif cmd == "preload":
+        if len(a) < 2:
+            print("usage: preload <match> <script-src> [placement]", file=sys.stderr)
+            return 1
+        payload["match"], payload["src"] = a[0], a[1]
+        if len(a) > 2:
+            payload["placement"] = a[2]
     elif cmd == "wait":
         if not a:
             print("usage: wait <ms>", file=sys.stderr)

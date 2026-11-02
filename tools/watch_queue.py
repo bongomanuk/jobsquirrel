@@ -253,9 +253,62 @@ def cmdlines():
         yield c.replace("\\012", "\n").replace("\\011", "\t")
 
 
-def runner_active():
+RUNNER_SCRIPTS = ("run_queue.sh", "run_linkedin.sh", "human_assist.sh")
+
+
+def _proc_cwd(pid: int) -> str:
+    try:
+        return os.path.realpath(f"/proc/{pid}/cwd")
+    except OSError:
+        return ""
+
+
+def _proc_root_env(pid: int) -> str:
+    """The ROOT= the process was started with, if any (runner sandboxes set it)."""
+    try:
+        raw = open(f"/proc/{pid}/environ", "rb").read()
+    except OSError:
+        return ""
+    for item in raw.split(b"\x00"):
+        if item.startswith(b"ROOT="):
+            return os.path.realpath(item[5:].decode("utf-8", "ignore"))
+    return ""
+
+
+def runner_active() -> bool:
+    """True while a queue/human run for THIS repo is in progress.
+
+    A run belongs to the repo when it was started by absolute path (the
+    dashboard spawns it that way) or when it runs with the repo as its working
+    directory (a hand-run `bash tools/run_queue.sh`). Without that check any
+    `run_queue.sh` anywhere counts — including the throwaway sandboxes the test
+    suite starts, which made an open dashboard flip to "running" and then
+    announce a finished run while the code was being worked on.
+    """
+    root = os.path.realpath(ROOT)
+    me = os.getpid()
+    if HAVE_PROC:
+        for path in glob.glob("/proc/[0-9]*/cmdline"):
+            try:
+                pid = int(path.split("/")[2])
+                if pid == me:
+                    continue
+                c = open(path, "rb").read().replace(b"\x00", b" ").decode("utf-8", "ignore")
+            except (OSError, ValueError):
+                continue
+            if "watch_queue" in c or not any(r in c for r in RUNNER_SCRIPTS):
+                continue
+            # ROOT= wins when set (the test suite runs the real script against a
+            # throwaway sandbox); otherwise the process must be working in this
+            # repo. Either way an unrelated run must not count.
+            where = _proc_root_env(pid) or _proc_cwd(pid)
+            if where == root:
+                return True
+        return False
     for c in cmdlines():
-        if "run_queue.sh" in c and "watch_queue" not in c:
+        if "watch_queue" in c or not any(r in c for r in RUNNER_SCRIPTS):
+            continue
+        if root in c:
             return True
     return False
 

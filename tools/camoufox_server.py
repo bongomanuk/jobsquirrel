@@ -253,6 +253,50 @@ def dispatch(cmd: str, body: dict) -> dict:
         js = body.get("js") or ""
         return {"ok": True, "result": page.evaluate(js)}
 
+    if cmd == "addinit":
+        # Install a script that runs in every new document before the page's
+        # own scripts (used when a site ships a broken/missing vendor bundle
+        # such as jQuery and its handlers throw on load).
+        path = body.get("path") or ""
+        js = body.get("js") or ""
+        if path:
+            page.add_init_script(path=str(Path(path).resolve()))
+            return {"ok": True, "addinit": path}
+        if not js:
+            return {"ok": False, "error": "addinit: need 'path' or 'js'"}
+        page.add_init_script(script=js)
+        return {"ok": True, "addinit": "inline", "bytes": len(js)}
+
+    if cmd == "preload":
+        # Inject a <script src> into matching documents as they are served, for
+        # sites whose own vendor bundle 404s/403s so their handlers never bind.
+        url_match = body.get("match") or "**/*"
+        src = (body.get("src") or "").strip()
+        placement = body.get("placement") or "<head>"
+        if not src:
+            return {"ok": False, "error": "preload: need 'src'"}
+
+        def _inject(route):
+            try:
+                if route.request.resource_type != "document":
+                    return route.continue_()
+                resp = route.fetch()
+                html = resp.text()
+                tag = f'<script src="{src}"></script>'
+                if placement in html:
+                    html = html.replace(placement, placement + tag, 1)
+                else:
+                    html = tag + html
+                route.fulfill(response=resp, body=html)
+            except Exception:
+                try:
+                    route.continue_()
+                except Exception:
+                    pass
+
+        page.route(url_match, _inject)
+        return {"ok": True, "preload": src, "match": url_match}
+
     if cmd == "wait":
         ms = int(body.get("ms") or 1000)
         page.wait_for_timeout(max(0, min(ms, 60000)))
@@ -379,34 +423,6 @@ class Handler(BaseHTTPRequestHandler):
         self._send(out)
 
 
-def _proxy_opt(url):
-    """Playwright/Camoufox proxy dict from a URL (scheme://user:pass@host:port)."""
-    from urllib.parse import urlparse
-    if "://" not in url:
-        url = "http://" + url
-    p = urlparse(url)
-    opt = {"server": f"{p.scheme}://{p.hostname}:{p.port}"}
-    if p.username:
-        opt["username"] = p.username
-    if p.password:
-        opt["password"] = p.password
-    return opt
-
-
-def _resolve_proxy(explicit, path):
-    """[unhinged] Pick a proxy: --proxy > BROWSER_PROXY_FILE (rotate) > BROWSER_PROXY."""
-    import os
-    import random
-    if explicit:
-        return explicit
-    path = path or os.environ.get("BROWSER_PROXY_FILE", "")
-    if path and os.path.isfile(path):
-        lines = [l.strip() for l in open(path) if l.strip() and not l.startswith("#")]
-        if lines:
-            return random.choice(lines)
-    return os.environ.get("BROWSER_PROXY", "")
-
-
 def main() -> int:
     global PAGE, HEADFUL
     ap = argparse.ArgumentParser()
@@ -430,10 +446,6 @@ def main() -> int:
     ap.add_argument("--window", default="",
                     help="spoofed window size WxH in CSS px (e.g. 1440x900); also sets "
                          "the viewport so screenshots come out that size")
-    ap.add_argument("--proxy", default="",
-                    help="[unhinged] proxy URL for this session (scheme://user:pass@host:port)")
-    ap.add_argument("--proxy-file", default="",
-                    help="[unhinged] file of proxy URLs (one per line); one is picked per launch")
     args = ap.parse_args()
 
     try:
@@ -465,10 +477,6 @@ def main() -> int:
         launch["disable_coop"] = True
     if args.main_world_eval:
         launch["main_world_eval"] = True
-    proxy = _resolve_proxy(args.proxy, args.proxy_file)
-    if proxy:
-        launch["proxy"] = _proxy_opt(proxy)
-        print(f"proxy: {launch['proxy']['server']}  [unhinged/ip-rotation]", flush=True)
     if profile:
         cm = Camoufox(persistent_context=True, user_data_dir=profile,
                       extra_http_headers=EXTRA_HEADERS, **launch)

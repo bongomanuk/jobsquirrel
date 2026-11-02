@@ -1,7 +1,6 @@
 # Jobsquirrel — Product & Web Interface Specification
 
-Status: living document · Owner: repo owner · Applies to: base (`jobsquirrel`) + the
-private overlay (personal/permissive patchset).
+Status: living document · Owner: repo owner · Applies to this repository.
 
 ---
 
@@ -70,7 +69,7 @@ Components:
 | `config/cv.json` | Ground-truth CV (experience/projects/education/skills/sidebar). |
 | `config/archetypes.json` | Role-family CV templates (one per family) + base letter. |
 | `config/google.json` | Where the Google OAuth client/token live; optional client id/secret. Editable in Settings → Accounts. |
-| `config/recruiter-aliases.json` | Optional sender/agency name → register company map (kept out of the code, and out of the public mirror). |
+| `config/recruiter-aliases.json` | Optional sender/agency name → register company map, kept out of the code so names stay in config. |
 | `config/email.json` / `config/calendar.json` | Sender signature + attachments; calendar timezone, meeting length, working hours. |
 | `kb/sources/` | Private knowledge corpus (CVs, own sites, contracts…). |
 | `kb/graphrag/` | Index + settings. |
@@ -153,16 +152,12 @@ Components:
 6. **Web UI.** Binds `127.0.0.1`; every write needs a per-session token (anti-CSRF); risky
    actions also gated (see §9).
 
-## 8. Repository model — base vs private overlay
+## 8. Repository model
 
-- **Base (`jobsquirrel`, public):** sanitized, generic, human-approval-gated; no personal data.
-- **Private overlay:** the base **plus** a reviewable patchset and personal state, kept on a
-  private git server only. `tools/sync_base.sh` keeps the base identical to upstream
-  (`--apply` sets base := upstream, then re-applies `patches/base.patch`); `patches/BASE_FILES.txt`
-  lists the shared files.
-- **Per-personal/permissive patchset** (private only): personal sender aliases, the LinkedIn
-  runner, proxy/IP rotation, and the `unhinged/` scale tools. `.githooks/pre-push` **refuses any
-  push to a `github.com` remote**, so state and permissive tooling cannot leak to the public base.
+One repository, self-contained. Personal data (config, state, documents, the knowledge base)
+stays on your machine and out of version control; the code and the documentation are generic
+and person-agnostic. Everything that reaches a site goes through the same human-approval gates
+and stops at any CAPTCHA/2FA rather than working around it.
 
 ## 9. Web interface specification (`tools/dashboard.py`)
 

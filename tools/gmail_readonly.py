@@ -41,7 +41,7 @@ DEFAULT_QUERY = os.environ.get(
     "GMAIL_QUERY",
     "newer_than:60d (from:ashbyhq.com OR from:teamtailor.com OR from:greenhouse.io OR "
     "from:lever.co OR from:myworkday.com OR from:successfactors.eu OR from:workable.com OR "
-    "from:pinpoint.email OR from:join.com OR from:deel.com OR label:applications)")
+    "from:pinpoint.email OR from:join.com OR from:zerolime.se OR from:deel.com OR label:applications)")
 
 VERIFY_RE = re.compile(r"https?://[^\s\"'<>()]*(?:verif|confirm|activat|verify)[^\s\"'<>()]*", re.I)
 CODE_INLINE_RE = re.compile(r"(?:code|kod)[^A-Za-z0-9]{0,15}([A-Z0-9]{6,8})\b", re.I)
@@ -142,7 +142,7 @@ def classify(subject, body):
     conf_subj = re.search(r"thank you for applying|thanks for applying|received your application|"
                           r"we got your application|application received|new job application received|"
                           r"successfully submitted|thank you for submitting|application has been received|"
-                          r"application submitted|your application to|"
+                          r"application submitted|your application to|tack f\u00f6r din ans\u00f6kan|"
                           r"you already applied|acknowledg", s)
     rej_subj = re.search(r"unfortunately|unsuccessful|not (?:be )?moving forward|we regret|"
                          r"not selected|won'?t be moving forward|rejection", s)
@@ -216,6 +216,10 @@ def classify(subject, body):
         return "CONFIRMATION"
     if rej_subj:
         return "REJECTION"
+    # A refusal phrased as an invitation ("we can't invite you for an interview",
+    # "we won't be able to proceed with your application") is a rejection, not an
+    # interview invite. Check it before the body-interview patterns, which
+    # otherwise match the invitation wording and mis-file it as INTERVIEW.
     if NEG_INVITE_RE.search(body):
         return "REJECTION"
     if body_interview:

@@ -219,7 +219,7 @@ const App = {
   googleSave: async () => {
     const d = await api('/api/google', { config_dir: $('#g-dir').value, credentials: $('#g-cred').value,
       token: $('#g-token').value, client_id: $('#g-id').value, client_secret: $('#g-secret').value });
-    toast(d.ok || d.error, !!d.error); if (!d.error) App.settings('accounts');
+    toast(d.ok || d.error, !!d.error);
   },
   savePerms: async () => {
     const policy = {}; document.querySelectorAll('#set-body select[data-cat]').forEach(s => policy[s.dataset.cat] = s.value);
@@ -231,37 +231,15 @@ const App = {
     const box = $('#ai-env'); if (box.querySelector('span.muted')) box.innerHTML = '';
     const row = document.createElement('div'); row.className = 'row'; row.style.margin = '3px 0';
     row.innerHTML = `<code style="min-width:190px">${esc(k)}</code>
-      <input data-env="${esc(k)}" value="${esc(v)}" style="flex:1"><button class="small" onclick="this.parentElement.remove()">✕</button>`;
+      <input data-env="${esc(k)}" value="${esc(v)}" style="flex:1" onchange="App.saveAI()">
+      <button class="small" onclick="App.aiDel('${esc(k)}')" title="remove">✕</button>`;
     box.appendChild(row); $('#ai-env-k').value = ''; $('#ai-env-v').value = '';
+    App.saveAI();
   },
-  aiDel: (k) => { const el = document.querySelector(`#ai-env input[data-env="${k}"]`); if (el) el.closest('.row').remove(); },
-  aiFillModels: async (a) => {
-    const sel = $('#ai-model-sel'); if (!sel) return;
-    const who = (a && (a.which || a.agent)) || '';
-    let m = { models: [], source: '' };
-    try { m = await api('/api/agent/models?agent=' + encodeURIComponent(who)); } catch (e) { return; }
-    const cur = (a && a.model) || '';
-    const list = m.models || [];
-    sel.innerHTML = modelOptionsHTML(m.groups || [], cur, list);
-    const custom = $('#ai-model-custom');
-    if (custom) custom.value = (cur && !list.includes(cur)) ? cur : '';
-    sel.title = m.source ? `models from ${m.source}` : 'type a model id instead';
-  },
-  saveAI: async () => {
-    const env = {}; document.querySelectorAll('#ai-env input[data-env]').forEach(i => { if (i.value) env[i.dataset.env] = i.value; });
-    const orKey = ($('#ai-or-key') && $('#ai-or-key').value || '').trim();
-    if (orKey) env.OPENROUTER_API_KEY = orKey;
-    const localUrl = ($('#ai-local-url') && $('#ai-local-url').value.trim() || '');
-    if (localUrl) env.LOCAL_LLM_BASE_URL = localUrl.replace(/\/$/, '');
-    const localKey = ($('#ai-local-key') && $('#ai-local-key').value.trim() || '');
-    if (localKey) env.LOCAL_LLM_API_KEY = localKey;
-    const model = (($('#ai-model-custom') && $('#ai-model-custom').value.trim()) || ($('#ai-model-sel') && $('#ai-model-sel').value) || '');
-    let agent = $('#ai-agent').value.trim();
-    if (agent === '__custom__') agent = ($('#ai-agent-custom') && $('#ai-agent-custom').value.trim()) || '';
-    const models = agent && model ? { [agent]: model } : {};
-    const d = await api('/api/agent/config', { agent, model, models, env });
-    toast(d.ok || d.error, !!d.error);
-    if (!d.error) { loadChatModel(); App.settings('ai'); }
+  aiDel: (k) => {
+    const el = document.querySelector(`#ai-env input[data-env="${k}"]`);
+    if (el) el.closest('.row').remove();
+    App.saveAI({ envExtra: { [k]: '' } });
   },
   useOpenRouter: async () => {
     const key = ($('#ai-or-key') && $('#ai-or-key').value || '').trim();
@@ -287,10 +265,65 @@ const App = {
     toast(d.ok || d.error, !!d.error);
     if (!d.error) { loadChatModel(); App.settings('ai'); }
   },
+  aiStatus: (msg, bad) => {
+    const el = $('#ai-msg');
+    if (el) { el.textContent = msg; el.className = 'muted mini' + (bad ? ' bad' : ''); }
+    if (bad) toast(msg, true);
+  },
+  aiFillModels: async (a) => {
+    const sel = $('#ai-model-sel'); if (!sel) return;
+    const seq = ++AI_MODEL_SEQ;
+    const who = (a && (a.which || a.agent)) || '';
+    let m = { models: [], source: '' };
+    try { m = await api('/api/agent/models?agent=' + encodeURIComponent(who)); } catch (e) { return; }
+    if (seq !== AI_MODEL_SEQ) return;
+    const cur = (a && a.model) || '';
+    const list = m.models || [];
+    sel.innerHTML = modelOptionsHTML(m.groups || [], cur, list);
+    const custom = $('#ai-model-custom');
+    if (custom) custom.value = (cur && !list.includes(cur)) ? cur : '';
+    sel.title = m.source ? `models from ${m.source}` : 'type a model id instead';
+  },
+  saveAI: async (opts = {}) => {
+    const has = (k) => Object.prototype.hasOwnProperty.call(opts, k);
+    const env = Object.assign({}, opts.envExtra || {});
+    document.querySelectorAll('#ai-env input[data-env]').forEach(i => { if (i.value) env[i.dataset.env] = i.value; });
+    const orKey = ($('#ai-or-key') && $('#ai-or-key').value || '').trim();
+    if (orKey) env.OPENROUTER_API_KEY = orKey;
+    const localUrl = ($('#ai-local-url') && $('#ai-local-url').value.trim() || '');
+    if (localUrl) env.LOCAL_LLM_BASE_URL = localUrl.replace(/\/$/, '');
+    const localKey = ($('#ai-local-key') && $('#ai-local-key').value.trim() || '');
+    if (localKey) env.LOCAL_LLM_API_KEY = localKey;
+    let agent = has('agent') ? String(opts.agent || '').trim() : (($('#ai-agent') && $('#ai-agent').value) || '').trim();
+    if (agent === '__custom__') agent = ($('#ai-agent-custom') && $('#ai-agent-custom').value.trim()) || '';
+    let model = has('model') ? String(opts.model || '').trim()
+      : ((($('#ai-model-custom') && $('#ai-model-custom').value.trim()) || ($('#ai-model-sel') && $('#ai-model-sel').value) || '').trim());
+    if (!agent) model = '';
+    const models = agent && model ? { [agent]: model } : {};
+    const d = await api('/api/agent/config', { agent, model, models, env });
+    if (d.error) { App.aiStatus(d.error, true); return d; }
+    const saved = d.config || {};
+    const iu = $('#ai-inuse'); if (iu) iu.textContent = saved.agent || agent || 'auto';
+    const top = $('#chat-model');
+    if (top) {
+      top.dataset.agent = saved.agent || agent || '';
+      top.dataset.configured = saved.agent || agent || '';
+      const target = saved.model || model;
+      if (target) {
+        let opt = Array.from(top.options).find(o => o.value === target);
+        if (!opt) { opt = document.createElement('option'); opt.value = target; opt.textContent = target; top.appendChild(opt); }
+        top.value = target;
+      }
+    }
+    App.aiStatus('saved');
+    loadChatModel(true);
+    return d;
+  },
   saveGR: async () => {
     const vars = {}; document.querySelectorAll('#ai-gr input[data-gr]').forEach(i => { if (i.value) vars[i.dataset.gr] = i.value; });
     const d = await api('/api/graphrag/env', { vars });
-    toast(d.ok || d.error, !!d.error); if (!d.error) App.settings('ai');
+    if (d.error) return App.aiStatus(d.error, true);
+    App.aiStatus('GraphRAG saved');
   },
   saveGmailReview: async () => {
     const el = $('#gmail-review-enabled'), model = $('#gmail-review-model'), auto = $('#gmail-review-auto');
@@ -579,7 +612,7 @@ const App = {
     $('#chatmsg').value = msg; App.chat();
   },
 };
-let CF = 'cv.json', CUR = null, CF_SEC = 'accounts', DRAFT = null;
+let CF = 'cv.json', CUR = null, CF_SEC = 'accounts', DRAFT = null, AI_MODEL_SEQ = 0;
 let ROLE_DATA = { segments: [], running: false, pending: 0 }, ROLE_TIMER = null;
 
 /* ---------- approval ---------- */
@@ -595,7 +628,7 @@ function approve(purpose, callText) {
 }
 
 /* ---------- grid ---------- */
-let GRID_TIMER = null, LIVE_RUNNING = false, IDLE_TICKS = 0, WAS_BUSY = false, DTAB = 0;
+let GRID_TIMER = null, LIVE_RUNNING = false, IDLE_TICKS = 0, WAS_BUSY = false, BUSY_NAME = '', DTAB = 0;
 async function loadGrid() {
   const sc = document.querySelector('.scroll'), y = sc ? sc.scrollTop : 0;
   const g = await api('/api/grid');
@@ -844,7 +877,7 @@ async function openDetail(r) {
   $('#dtabs').innerHTML = tabs.map((t, i) => `<a class="${i === DTAB ? 'on' : ''}" onclick="dt(${i})">${t}</a>`).join('');
   $('#d-body').innerHTML = '<span class="muted">loading…</span>';
   const jobs = [api(`/api/provenance?company=${encodeURIComponent(r.company)}&role=${encodeURIComponent(r.role)}`)];
-  if (r.spec) jobs.push(api('/api/roles/' + encodeURIComponent(r.key)));
+  if (r.spec) jobs.push(api('/api/roles/' + encodeURIComponent(r.jd_key || r.key)));
   const [p, d] = await Promise.all(jobs); P = p || {}; D = d || {};
   dt(DTAB);
 }
@@ -1131,13 +1164,21 @@ async function liveTick() {
     .forEach(b => { b.disabled = LIVE_RUNNING; });
   const rc = $('#runctl'); if (rc) { rc.classList.toggle('hide', !LIVE_RUNNING); $('#btn-pause').textContent = d.paused ? '▶ Resume' : '⏸ Pause'; }
   if (LIVE_RUNNING && !busy) $('#live').textContent = '● starting… (the run takes a few minutes — see the monitor)';
-  if (busy) { IDLE_TICKS = 0; WAS_BUSY = true; } else if (LIVE_RUNNING && ++IDLE_TICKS >= 3) {
+  if (busy) {
+    IDLE_TICKS = 0; WAS_BUSY = true;
+    BUSY_NAME = a.name || (d.active ? 'queue run' : 'run');
+  } else if (LIVE_RUNNING && ++IDLE_TICKS >= 3) {
     LIVE_RUNNING = false;
-    if (WAS_BUSY) {                                    // a run just finished — refresh everything
+    if (WAS_BUSY) {                                    // something we were watching finished
       WAS_BUSY = false;
+      const was = BUSY_NAME; BUSY_NAME = '';
       loadGrid();
       if (CUR && !$('#detail').hidden) openDetail(CUR);
-      toast('run finished — updated the grid and this role');
+      // Say what actually finished. An update is not a job run, and reporting
+      // it as one made the software-update flow look like the pipeline had
+      // applied to a role.
+      if (/^update\b/i.test(was)) toast('software updated — restart the dashboard to load the new code');
+      else toast(was === 'queue run' ? 'run finished — grid refreshed' : 'finished — grid refreshed');
     }
     PENDING.clear(); $('#peras').classList.add('hide'); renderRows();
   }
@@ -1756,38 +1797,6 @@ async function setAccounts(b) {
     <div class="muted mini">scopes: ${sc.length ? sc.map(scopeName).map(esc).join(' · ') : 'none yet'}${g.account ? ` · ${esc(g.account)}` : ''}</div>
     <pre class="doc">${esc(d.text || '(no output)')}</pre>`;
 }
-const fmtSize = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n > 1024 ? (n / 1024).toFixed(0) + ' KB' : n + ' B';
-async function setAccounts(b) {
-  const [d, g] = await Promise.all([api('/api/accounts'), api('/api/google')]);
-  const sc = g.scopes || [];
-  const dot = (ok) => `<span class="pill" style="background:${ok ? '#1f6f43' : '#7a2e2e'}">${ok ? '✓' : '✗'}</span>`;
-  const scopeName = (s) => s.split('/').pop();
-  b.innerHTML = `<p class="muted">Connect your accounts. Authorisation opens in your browser - finish it there, then re-check.
-      Per-site logins: <b>${d.sites}</b> stored.</p>
-    <h4 style="margin:10px 0 4px">Google (Gmail + Calendar)</h4>
-    <p class="muted mini">Create a <b>Desktop</b> OAuth client in Google Cloud, then paste its client id and secret here and press
-      <b>Save Google settings</b> - the pipeline writes <code>credentials.json</code> for you (or drop a downloaded one at the path below).
-      Gmail can read, send and attach files; Calendar can read and book events. Sending mail and writing to the calendar
-      still ask for your approval every time. Timezone and meeting defaults live in <code>config/calendar.json</code>, mail
-      signature and attachments in <code>config/email.json</code>.</p>
-    <div class="row" style="margin:6px 0"><span class="muted" style="min-width:118px">Client ID</span>
-      <input id="g-id" placeholder="${esc(g.client_id || '…apps.googleusercontent.com')}" style="flex:1"></div>
-    <div class="row" style="margin:6px 0"><span class="muted" style="min-width:118px">Client secret</span>
-      <input id="g-secret" type="password" placeholder="${g.has_client_secret ? '•••• stored — leave blank to keep' : ''}" style="flex:1"></div>
-    <div class="row" style="margin:6px 0"><span class="muted" style="min-width:118px">Config dir</span>
-      <input id="g-dir" value="${esc(g.config_dir)}" style="flex:1">
-      <span class="muted mini">credentials ${dot(g.credentials_exists)} · token ${dot(g.token_exists)}</span></div>
-    <div class="row" style="margin:6px 0"><span class="muted" style="min-width:118px">Files</span>
-      <input id="g-cred" value="${esc(g.credentials)}" style="flex:1" title="credentials.json path">
-      <input id="g-token" value="${esc(g.token)}" style="flex:1" title="token.json path"></div>
-    <div class="row" style="margin:8px 0"><button onclick="App.googleSave()">Save Google settings</button>
-      <button onclick="App.auth('gmail')">Authorise Gmail</button>
-      <button onclick="App.auth('calendar')">Authorise Calendar</button>
-      <button onclick="viewDoc('docs/ACCOUNT-SETUP.md','Account setup guide')">Setup guide</button>
-      <button onclick="App.settings('accounts')">Re-check</button></div>
-    <div class="muted mini">scopes: ${sc.length ? sc.map(scopeName).map(esc).join(' · ') : 'none yet'}${g.account ? ` · ${esc(g.account)}` : ''}</div>
-    <pre class="doc">${esc(d.text || '(no output)')}</pre>`;
-}
 async function setKB(b) {
   const d = await api('/api/kb');
   let list = '';
@@ -1831,10 +1840,9 @@ async function setPerms(b) {
   b.innerHTML = `<p class="muted">What the embedded agent may do <b>without asking</b>. <b>ask</b> shows you a
       prompt (Allow once / Always allow / Deny) the moment the agent tries it — the agent waits for your answer.</p>
     <table><tbody>${cats.map(c => `<tr><td><code>${esc(c)}</code><div class="muted mini">${esc(help[c] || '')}</div></td>
-      <td><select data-cat="${esc(c)}">${['allow', 'ask', 'deny'].map(v =>
+      <td><select data-cat="${esc(c)}" onchange="App.savePerms()">${['allow', 'ask', 'deny'].map(v =>
         `<option value="${v}" ${(d.policy[c] === v) ? 'selected' : ''}>${v}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table>
-    <div class="row" style="margin-top:10px"><button onclick="App.savePerms()">Save</button>
-      <span class="muted mini">Applies to every agent (opencode, Claude Code, any <code>AGENT=</code>).</span></div>`;
+    <div class="row" style="margin-top:10px"><span class="muted mini">Changes save immediately. Applies to every agent (opencode, Claude Code, any <code>AGENT=</code>).</span></div>`;
 }
 async function setAI(b) {
   const [a, g, gr] = await Promise.all([api('/api/agent/config'), api('/api/graphrag/env'), api('/api/gmail/review')]);
@@ -1848,17 +1856,18 @@ async function setAI(b) {
     `<option value="__custom__"${customAgent ? ' selected' : ''}>Custom…</option>`;
   const envRows = (a.env_keys || []).filter(k => !['OPENROUTER_API_KEY', 'LOCAL_LLM_BASE_URL', 'LOCAL_LLM_API_KEY', 'LLAMACPP_BASE_URL'].includes(k)).map(k =>
     `<div class="row" style="margin:3px 0"><code style="min-width:190px">${esc(k)}</code>
-      <input data-env="${esc(k)}" placeholder="${esc(a.env[k])} (blank = keep)" style="flex:1">
+      <input data-env="${esc(k)}" placeholder="${esc(a.env[k])} (blank = keep)" style="flex:1" onchange="App.saveAI()">
       <button class="small" onclick="App.aiDel('${esc(k)}')" title="remove">✕</button></div>`).join('');
   const grRows = (g.keys || []).map(k =>
     `<div class="row" style="margin:3px 0"><code style="min-width:190px">${esc(k)}</code>
-      <input data-gr="${esc(k)}" placeholder="${esc(g.vars[k])} (blank = keep)" style="flex:1"></div>`).join('');
-  b.innerHTML = `<p class="muted">Which LLM/agent runs the pipeline. Token values are stored outside the repo
+      <input data-gr="${esc(k)}" placeholder="${esc(g.vars[k])} (blank = keep)" style="flex:1" onchange="App.saveGR()"></div>`).join('');
+  b.innerHTML = `<p class="muted">Which LLM/agent runs the pipeline. Changes save automatically. Token values are stored outside the repo
       (<code>${esc(a.config_path)}</code>, 0600) and shown masked.</p>
     <div class="row" style="margin:6px 0"><b>Detected:</b>
       ${detected.length ? detected.map(x => `<span class="pill">${esc(x)}</span>`).join(' ')
         : '<span class="muted">none on PATH</span>'}
-      <span class="muted">· in use: <b>${esc(a.which || '?')}</b></span></div>
+      <span class="muted">· in use: <b id="ai-inuse">${esc(a.which || '?')}</b></span>
+      <span id="ai-msg" class="muted mini"></span></div>
     ${detected.length ? '' : `<div class="muted mini" style="margin-bottom:8px">Install one, then set the command below:
       <code>npm i -g opencode-ai</code> (opencode) or <code>npm i -g @anthropic-ai/claude-code</code> (Claude Code),
       or set a custom command.</div>`}
@@ -1871,51 +1880,74 @@ async function setAI(b) {
     <div class="muted mini">Pick <b>OpenCode</b> or <b>OpenRouter</b> here. The model list comes from the selected provider (OpenCode's list or OpenRouter's catalogue); anything else can be typed.
       Applies to chat, role chats and queue/API runs; <code>MODEL=...</code> overrides for one run.</div>
     <div class="row" style="margin-top:8px"><b>OpenRouter</b>
-      <input id="ai-or-key" type="password" autocomplete="new-password" placeholder="${orKey ? esc(orKey) + ' (blank = keep)' : 'sk-or-v1-…'}" style="flex:1">
+      <input id="ai-or-key" type="password" autocomplete="new-password" placeholder="${orKey ? esc(orKey) + ' (blank = keep)' : 'sk-or-v1-…'}" style="flex:1" onchange="App.saveAI()">
       <button onclick="App.useOpenRouter()">Use OpenRouter</button>
       <span class="muted mini">OpenRouter serves the model; OpenCode is only the local tool runner. The key is stored with the other env values.</span></div>
     <div class="row" style="margin-top:8px"><b>Local LLM</b>
-      <input id="ai-local-url" placeholder="http://127.0.0.1:8080/v1" value="${esc((a.env || {}).LOCAL_LLM_BASE_URL || 'http://127.0.0.1:8080/v1')}" style="flex:1">
-      <input id="ai-local-key" type="password" autocomplete="new-password" placeholder="optional API key" style="max-width:180px">
+      <input id="ai-local-url" placeholder="http://127.0.0.1:8080/v1" value="${esc((a.env || {}).LOCAL_LLM_BASE_URL || 'http://127.0.0.1:8080/v1')}" style="flex:1" onchange="App.saveAI()">
+      <input id="ai-local-key" type="password" autocomplete="new-password" placeholder="optional API key" style="max-width:180px" onchange="App.saveAI()">
       <button onclick="App.useLocal()">Use local LLM</button>
       <span class="muted mini">Any OpenAI-compatible endpoint; the model list comes from its /v1/models.</span></div>
     <div class="row" style="margin-top:8px"><b>Gmail review</b>
-      <label class="mini"><input type="checkbox" id="gmail-review-enabled" ${gr && gr.enabled !== false ? 'checked' : ''}> capture unclassified/ambiguous emails</label>
-      <label class="mini"><input type="checkbox" id="gmail-review-model" ${gr && gr.use_model !== false ? 'checked' : ''}> use the selected model for review suggestions</label>
-      <label class="mini"><input type="checkbox" id="gmail-review-auto" ${gr && gr.auto_model ? 'checked' : ''}> automatically ask it for new review items</label>
-      <button onclick="App.saveGmailReview()">Save</button>
-      <span class="muted mini">New items only; the existing backlog is never auto-processed. Suggestions use the agent/model above and never change status automatically.</span></div>
+      <label class="mini"><input type="checkbox" id="gmail-review-enabled" onchange="App.saveGmailReview()" ${gr && gr.enabled !== false ? 'checked' : ''}> capture unclassified/ambiguous emails</label>
+      <label class="mini"><input type="checkbox" id="gmail-review-model" onchange="App.saveGmailReview()" ${gr && gr.use_model !== false ? 'checked' : ''}> use the selected model for review suggestions</label>
+      <label class="mini"><input type="checkbox" id="gmail-review-auto" onchange="App.saveGmailReview()" ${gr && gr.auto_model ? 'checked' : ''}> automatically ask it for new review items</label>
+      <span class="muted mini">Changes save immediately. New items only; the existing backlog is never auto-processed. Suggestions use the agent/model above and never change status automatically.</span></div>
     <h4 style="margin:14px 0 4px">API keys / env</h4>
     <div id="ai-env">${envRows || '<span class="muted mini">none set</span>'}</div>
     <div class="row" style="margin-top:6px">
       <input id="ai-env-k" list="ai-known" placeholder="KEY name" style="max-width:220px">
       <datalist id="ai-known">${(a.known_keys || []).map(k => `<option>${esc(k)}</option>`).join('')}</datalist>
       <input id="ai-env-v" placeholder="value" style="flex:1"><button onclick="App.aiAdd()">＋ Add</button></div>
-    <div class="row" style="margin-top:10px"><button onclick="App.saveAI()">Save agent config</button>
-      <span class="muted mini">Agent/model are read by every runner via tools/agent_run.sh.</span></div>
+    <div class="row" style="margin-top:10px"><span class="muted mini">Agent/model are saved automatically and read by every runner via tools/agent_run.sh.</span></div>
     <h4 style="margin:18px 0 4px">GraphRAG LLM (<code>kb/graphrag/.env</code>)</h4>
     <div id="ai-gr">${grRows || '<span class="muted mini">no .env yet</span>'}</div>
-    <div class="row" style="margin-top:8px"><button onclick="App.saveGR()">Save GraphRAG env</button>
-      <span class="muted mini">Used by the knowledge graph (same OPENCODE_API_KEY works for both).</span></div>`;
+    <div class="row" style="margin-top:8px"><span class="muted mini">Changes save immediately. Used by the knowledge graph (same OPENCODE_API_KEY works for both).</span></div>`;
+  const initialModel = $('#ai-model-sel');
+  if (initialModel) initialModel.innerHTML = modelOptionsHTML(
+    a.model ? [{ label: 'current', models: [a.model] }] : [], a.model || '', a.model ? [a.model] : []);
   App.aiFillModels(a);
-  const ag = $('#ai-agent');
-  if (ag) ag.onchange = () => {
+  const ag = $('#ai-agent'), ci = $('#ai-agent-custom');
+  if (ag) ag.onchange = async () => {
     const isCustom = ag.value === '__custom__';
-    const ci = $('#ai-agent-custom');
     if (ci) ci.style.display = isCustom ? '' : 'none';
     const who = isCustom ? ((ci && ci.value.trim()) || '') : ag.value;
-    App.aiFillModels({ which: who, model: (a.models || {})[who] || '', models: a.models || {} });
+    if (isCustom && !who) return;
+    let model = (a.models || {})[who] || '';
+    if (!model && who === 'openrouter') model = 'deepseek/deepseek-v4.1-flash';
+    if (!model && who === 'local') {
+      try { const mm = await api('/api/agent/models?agent=local'); model = ((mm && mm.models) || [])[0] || ''; } catch (e) {}
+    }
+    const nextModels = Object.assign({}, a.models || {});
+    if (model) nextModels[who] = model;
+    App.aiFillModels({ which: who, agent: who, model, models: nextModels });
+    const d = await App.saveAI({ agent: who, model });
+    if (!d.error) App.aiFillModels({ which: who, agent: who,
+      model: (d.config && d.config.model) || model, models: (d.config && d.config.models) || nextModels });
+  };
+  if (ci) ci.onchange = () => {
+    if (ag && ag.value === '__custom__' && ci.value.trim()) App.saveAI({ agent: ci.value.trim() });
+  };
+  const sel = $('#ai-model-sel');
+  if (sel) sel.onchange = () => {
+    const custom = $('#ai-model-custom');
+    if (custom) custom.value = '';
+    App.saveAI();
+  };
+  const customModel = $('#ai-model-custom');
+  if (customModel) customModel.onchange = () => {
+    if (customModel.value.trim()) App.saveAI();
   };
 }
 function setProfile(b) {
-  b.innerHTML = `<p class="muted">Your ground-truth CV, role-family templates and rules. JSON is validated before saving; a <code>.bak</code> is kept.</p>
+  b.innerHTML = `<p class="muted">Your ground-truth CV, role-family templates and rules. Changes save automatically on blur; JSON is validated before saving and a <code>.bak</code> is kept.</p>
     <div class="row"><div class="tabs2" id="cf-tabs" style="margin:0;border:0">
       <a data-t="cv.json" onclick="App.cf('cv.json')">cv.json</a>
       <a data-t="archetypes.json" onclick="App.cf('archetypes.json')">archetypes.json</a>
       <a data-t="profile.md" onclick="App.cf('profile.md')">profile.md</a></div>
-      <span style="flex:1"></span><button onclick="App.cfSave()">Save</button>
+      <span style="flex:1"></span>
       <button onclick="App.run('build_archetypes')">Regenerate archetype CVs</button></div>
-    <textarea id="cf-text" spellcheck="false"></textarea>
+    <textarea id="cf-text" spellcheck="false" onchange="App.cfSave()"></textarea>
     <div id="cf-msg" class="muted"></div>`;
   App.cf(CF);
 }
@@ -1943,7 +1975,7 @@ if ($('#chat-model')) $('#chat-model').onchange = async (e) => {
   const models = {}; if (who && val) models[who] = val;
   const d = await api('/api/agent/config', { agent: cfg, model: val, models });
   toast(d.error ? d.error : `model: ${val || '(agent default)'} — applies to chat, role chats and queue/API runs`, !!d.error);
-  loadChatModel();
+  if (d.error) loadChatModel(true);
 };
 $('#updpill').onclick = () => updateDialog();
 $('#btn-stop').onclick = () => App.stop();
@@ -2020,8 +2052,12 @@ function modelOptionsHTML(groups, cur, flat) {
   }
   return h;
 }
-async function loadChatModel() {
+let CHAT_MODEL_LOADING = false, CHAT_MODEL_PENDING = false;
+async function loadChatModel(force) {
   const sel = $('#chat-model'); if (!sel) return;
+  if (CHAT_MODEL_LOADING) { if (force) CHAT_MODEL_PENDING = true; return; }
+  if (!force && document.activeElement === sel) return;
+  CHAT_MODEL_LOADING = true;
   try {
     const c = await api('/api/agent/config');
     const who = c.which || c.agent || '';
@@ -2031,7 +2067,13 @@ async function loadChatModel() {
     sel.dataset.agent = who; sel.dataset.configured = c.agent || '';
     sel.title = 'Model for chat, role chats and queue/API runs' + (m.source ? ` (${m.source})` : '');
   } catch (e) { /* leave the picker empty */ }
+  finally {
+    CHAT_MODEL_LOADING = false;
+    if (CHAT_MODEL_PENDING) { CHAT_MODEL_PENDING = false; loadChatModel(true); }
+  }
 }
+window.addEventListener('focus', () => loadChatModel(true));
+setInterval(() => loadChatModel(true), 60000);
 window.App = App;
 async function healthPill() { const s = await api('/api/health'); const h = $('#health');
   h.textContent = 'health: ' + (s.v || '?'); h.className = 'pill ' + (s.v || 'unknown'); h.title = s.detail || ''; setTimeout(healthPill, 60000); }

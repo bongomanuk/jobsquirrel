@@ -62,7 +62,7 @@ def _add(terms, value):
 
 
 def _private_terms():
-    """Terms from the live profile/CV/register (empty in the public clone)."""
+    """Terms from the live profile/CV/register (empty when nothing is configured)."""
     terms = set()
     profile = _read(os.path.join(ROOT, "config", "profile.md"))
     wanted = {

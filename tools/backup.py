@@ -20,7 +20,7 @@ What goes in:
     documents/      rendered archetypes, per-role CVs/letters, sent snapshots
                     (only with --documents, which is the default)
 
-What never goes in: `.git`, the virtualenvs, the public clone (`jobsquirrel/`),
+What never goes in: `.git`, the virtualenvs, any nested checkout,
 `state/logs/` (agent transcripts), the derived mail cache, the GraphRAG index
 (rebuildable), and the Google OAuth token (it lives outside the repo).
 

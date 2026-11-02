@@ -289,7 +289,6 @@ tools/                      # the pipeline (language/library-free CLI tools)
   identity.py               #   print your standard form answers (JSON)
   camoufox_server.py        #   one Camoufox browser behind a small HTTP API
   camoufox_browser.py       #   the agent-facing browser CLI (nav/snap/click/fill/...)
-  camoufox_test.py          #   browser test harness (health/detection checks)
   run_queue.sh              #   the queue runner: applies to each queued role end-to-end
   agent_run.sh              #   runs one headless task with opencode, Claude Code or any CLI agent
   compat/                   #   portable flock/setsid/timeout for macOS
@@ -309,7 +308,7 @@ tools/                      # the pipeline (language/library-free CLI tools)
   doctor.py                 #   one-shot health check (config, KB, browser, register, git)
   setup_accounts.sh         #   check the accounts/credentials the pipeline can use
   release_lint.py           #   lint release notes before they go public
-  secret_scan.py            #   fail if a public clone contains live credentials
+  secret_scan.py            #   fail if the repo contains live credentials
   storage.py                #   compress old logs / caches when disk gets tight (see docs/STORAGE.md)
   backup.py                 #   back up / restore / clear the whole system as one zip
   stateio.py                #   transparent gzip for state artifacts, so packed reads like plain

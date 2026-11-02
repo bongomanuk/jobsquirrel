@@ -211,7 +211,7 @@ def terms(value):
 
 # Sender/display names that differ from the register's company name. Kept in
 # config/recruiter-aliases.json (private, optional) so real employer/agency names
-# never end up in the code or the public mirror.
+# never end up in the code.
 ALIAS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           "config", "recruiter-aliases.json")
 

@@ -69,7 +69,7 @@ sorts the queue file itself by seniority.
 - **Record**: `register.py`, `record_submission.py`, `outcomes.py`.
 - **Email**: `gmail_readonly.py`, `gmail_reconcile.py`, `gmail_calendar_auth.py`,
   `gmail_send.py`, `discover.py`, `email_opportunities.py`, `email_verify.py`.
-- **Browser**: `camoufox_server.py`, `camoufox_browser.py`, `camoufox_test.py`.
+- **Browser**: `camoufox_server.py`, `camoufox_browser.py`.
 - **Run**: `run_queue.sh` (parallel queue), `run_linkedin.sh` (serialized LinkedIn),
   `agent_run.sh` (whichever agent CLI you have), `reconcile_loop.sh`,
   `watch_queue.sh`, `build_human_queue.py`, `human_assist.sh`,

@@ -71,3 +71,9 @@ kb/archives/
 
 # local backups (personal data: keep them out of git)
 backups/
+
+# your answers to standard application questions (personal data)
+answers/
+
+# machine-local pipeline state (applications, queues, logs, caches)
+state/
