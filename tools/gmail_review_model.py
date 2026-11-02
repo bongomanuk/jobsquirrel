@@ -2,6 +2,7 @@
 """Ask the selected agent/model for a read-only suggestion on one review item."""
 
 import json
+import gzip
 import os
 import re
 import urllib.request
@@ -27,11 +28,18 @@ def _plain(body):
 
 
 def _body(mid):
-    try:
-        with open(os.path.join(STATE, "gmail_cache.json"), encoding="utf-8") as fh:
-            return ((json.load(fh).get(mid) or {}).get("body") or "")
-    except (OSError, ValueError):
-        return ""
+    # The body cache may be stored plain or gzipped (tools/storage.py).
+    for name in ("gmail_cache.json", "gmail_cache.json.gz"):
+        path = os.path.join(STATE, name)
+        if not os.path.exists(path):
+            continue
+        try:
+            opener = gzip.open if name.endswith(".gz") else open
+            with opener(path, "rt", encoding="utf-8") as fh:
+                return ((json.load(fh).get(mid) or {}).get("body") or "")
+        except (OSError, ValueError):
+            continue
+    return ""
 
 
 def ask(item):

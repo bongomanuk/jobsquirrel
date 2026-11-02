@@ -18,6 +18,7 @@ Run with the venv python:
   .venv/bin/python tools/gmail_reconcile.py --apply
 """
 import argparse
+import gzip
 import json
 import os
 import re
@@ -429,16 +430,28 @@ def add_ack(pattern):
 
 
 def load_cache():
-    if not os.path.exists(CACHE_FILE):
-        return {}
-    try:
-        with open(CACHE_FILE, encoding="utf-8") as f:
-            return json.load(f)
-    except (ValueError, OSError):
-        return {}
+    # tools/storage.py may have gzipped the cache; read whichever form exists.
+    for path in (CACHE_FILE, CACHE_FILE + ".gz"):
+        if not os.path.exists(path):
+            continue
+        try:
+            opener = gzip.open if path.endswith(".gz") else open
+            with opener(path, "rt", encoding="utf-8") as f:
+                return json.load(f)
+        except (ValueError, OSError):
+            continue
+    return {}
 
 
 def save_cache(cache):
+    # Keep the compressed form if the cache was compressed, so the next run does
+    # not silently undo the saving (and re-inflate a 20 MB JSON on every write).
+    if os.path.exists(CACHE_FILE + ".gz") and not os.path.exists(CACHE_FILE):
+        tmp = CACHE_FILE + ".gz.tmp"
+        with gzip.open(tmp, "wt", encoding="utf-8", compresslevel=6) as f:
+            json.dump(cache, f)
+        os.replace(tmp, CACHE_FILE + ".gz")
+        return
     tmp = CACHE_FILE + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(cache, f)

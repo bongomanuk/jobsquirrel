@@ -35,6 +35,7 @@ state/letters-content/
 state/human/
 state/gmail_reconcile_ack.txt
 state/gmail_cache.json
+state/gmail_cache.json.gz
 state/counts.md
 state/interviews.md
 state/applications-register.md
@@ -65,3 +66,5 @@ state/send-receipts/
 # generated tool indexes and incremental-index working dirs
 .codegraph/
 kb/graphrag/update_output/
+# compressed archives of old logs / regenerable index caches (tools/storage.py)
+kb/archives/

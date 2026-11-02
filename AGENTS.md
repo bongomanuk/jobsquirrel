@@ -356,6 +356,8 @@ Stop and ask (or record `MANUAL`/`BLOCKED`) when:
  , per-role artifacts.
 - `documents/archetypes/`, `documents/applications/`, `documents/submitted/`
  , CVs, letters, snapshots.
+- `tools/storage.py`, compression of logs/caches when disk gets tight
+ (`docs/STORAGE.md`). Old logs are gzipped automatically at the start of a run.
 - See `BOOTSTRAP.md` (first-run interview), `docs/ACCOUNT-SETUP.md` (Gmail,
   Calendar, LinkedIn, browser, credentials), `docs/WORKFLOW.md`,
   `docs/ATS-RECIPES.md`, `docs/ELIGIBILITY.md`, `docs/KNOWLEDGE-BASE.md`.
