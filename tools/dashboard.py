@@ -30,6 +30,9 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, quote
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import stateio  # noqa: E402  transparent gzip for state/ artifacts
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE = os.environ.get("DASHBOARD_STATE", os.path.join(ROOT, "state"))
 LOGS = os.path.join(STATE, "logs")
@@ -56,11 +59,16 @@ STATUSES = ["SUBMITTED", "IN_PROGRESS", "INTERVIEW", "OFFER", "REJECTED",
 
 # ---------------------------------------------------------------- helpers
 def _read(path, cap=400_000):
-    # Task logs are gzipped by tools/storage.py once they are old enough, so the
-    # viewer reads both forms; the task name stays the same either way.
+    # Task logs are gzipped once they are old enough and state artifacts can be
+    # packed by tools/storage.py; read whichever form exists rather than restoring
+    # the file, so simply browsing the grid never undoes the saving.
+    target = path
+    if not path.endswith(".gz") and not os.path.exists(path):
+        if os.path.exists(path + ".gz"):
+            target = path + ".gz"
     try:
-        opener = gzip.open if path.endswith(".gz") else open
-        with opener(path, "rt", encoding="utf-8", errors="ignore") as fh:
+        opener = gzip.open if target.endswith(".gz") else open
+        with opener(target, "rt", encoding="utf-8", errors="ignore") as fh:
             return fh.read()[:cap]
     except (OSError, EOFError):
         return ""
@@ -483,9 +491,7 @@ def _archetype_for(key):
 
 def roles_list():
     out = []
-    for key in sorted(f[:-3] for f in (os.listdir(os.path.join(STATE, "job-descriptions"))
-                                        if os.path.isdir(os.path.join(STATE, "job-descriptions")) else [])
-                      if f.endswith(".md")):
+    for key in stateio.stems(os.path.join(STATE, "job-descriptions"), ".md"):
         m = _MATCH_CACHE.get(key, {})
         out.append({"key": key, "company": m.get("company", ""), "role": m.get("role", ""),
                     "ats": m.get("ats", ""), "match_pct": m.get("coverage"), "alignment": m.get("alignment")})
@@ -944,10 +950,23 @@ def _doc_text(path):
 
 
 def _mtime(path):
+    found = stateio.resolve(path)
+    if not found:
+        return 0
     try:
-        return int(os.path.getmtime(path))
+        return int(os.path.getmtime(found))
     except OSError:
         return 0
+
+
+def _present(path):
+    """True if a state artifact exists, packed or plain."""
+    return stateio.exists(path)
+
+
+def _hydrate(path):
+    """Restore a packed artifact in place (tools/storage.py --state packed it)."""
+    return stateio.ensure(path)
 
 
 def _skills_text():
@@ -963,14 +982,14 @@ def _norm_slug(s):
 
 def _ats_key_for(company, role, key, stems=None):
     """The ATS/JD slug for a row, even when the agent resolved its own key."""
-    if os.path.isfile(os.path.join(STATE, "ats", key + ".txt")):
+    if _present(os.path.join(STATE, "ats", key + ".txt")):
         return key
     cn = _norm_slug(company)
     if len(cn) < 4:
         return key
     if stems is None:
         try:
-            stems = [f[:-4] for f in os.listdir(os.path.join(STATE, "ats")) if f.endswith(".txt")]
+            stems = stateio.stems(os.path.join(STATE, "ats"), ".txt")
         except OSError:
             return key
     role_norm = _norm_slug(role)
@@ -990,13 +1009,13 @@ def _ats_key_for(company, role, key, stems=None):
 def _content_key_for(cvrel, key):
     """The cv-content/letters-content slug implied by the prepared CV filename."""
     m = re.search(r"_CV_(.+?)\.docx$", cvrel or "")
-    if m and os.path.isfile(os.path.join(STATE, "cv-content", m.group(1) + ".json")):
+    if m and _present(os.path.join(STATE, "cv-content", m.group(1) + ".json")):
         return m.group(1)
     return key
 
 
 def _jd_key_for(ats_key, key):
-    return ats_key if os.path.isfile(os.path.join(STATE, "job-descriptions", ats_key + ".md")) else key
+    return ats_key if _present(os.path.join(STATE, "job-descriptions", ats_key + ".md")) else key
 
 
 def _cov_sig(key, cvrel, ats_key=None, content_key=None):
@@ -1146,8 +1165,8 @@ def discover(url):
     text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text)).strip()
     slug = re.sub(r"[^a-z0-9]+", "-", urlparse(url).netloc + "-" + urlparse(url).path).strip("-")[:80]
     os.makedirs(os.path.join(STATE, "job-descriptions"), exist_ok=True)
-    with open(os.path.join(STATE, "job-descriptions", slug + ".md"), "w", encoding="utf-8") as fh:
-        fh.write(f"# {url}\n\n{text[:20000]}\n")
+    stateio.write(os.path.join(STATE, "job-descriptions", slug + ".md"),
+                  f"# {url}\n\n{text[:20000]}\n".encode("utf-8"))
     return {"ok": f"saved role {slug}", "key": slug}
 
 
@@ -1314,16 +1333,10 @@ def grid():
                for r in _rows(os.path.join(STATE, "submissions.csv")) if r.get("cv_file")}
     subm_url = {(r["company"].lower(), r["role"].lower()): r.get("apply_url", "")
                 for r in _rows(os.path.join(STATE, "submissions.csv")) if r.get("apply_url")}
-    try:
-        specs = {f[:-3] for f in os.listdir(os.path.join(STATE, "job-descriptions")) if f.endswith(".md")}
-    except OSError:
-        specs = set()
+    specs = set(stateio.stems(os.path.join(STATE, "job-descriptions"), ".md"))
 
     def _keyset(folder, ext):
-        try:
-            return {f[:-len(ext)] for f in os.listdir(os.path.join(STATE, folder)) if f.endswith(ext)}
-        except OSError:
-            return set()
+        return set(stateio.stems(os.path.join(STATE, folder), ext))
     ats_set, kb_set, cv_set = _keyset("ats", ".txt"), _keyset("kb-context", ".md"), _keyset("cv-content", ".json")
     ats_stems = sorted(ats_set)
     cv_index = {}
@@ -1652,6 +1665,8 @@ def _safe_path(rel):
 
 def file_view(rel):
     p = _safe_path(rel)
+    if p and not os.path.isfile(p):
+        p = stateio.ensure(p) or p
     if not p or not os.path.isfile(p):
         return {"error": "not found or not allowed"}
     ext = os.path.splitext(p)[1].lower()
@@ -1680,6 +1695,8 @@ def file_view(rel):
 
 def raw_file(rel):
     p = _safe_path(rel)
+    if p and not os.path.isfile(p):
+        p = stateio.ensure(p) or p
     if not p or not os.path.isfile(p):
         return None, None, None
     try:
@@ -2889,9 +2906,49 @@ def action_log(n=100):
     return txt.splitlines()[-int(n or 100):]
 
 
+LOG_CAP_BYTES = 2_000_000     # an append-only log is history after this much
+
+
+def _cap_log(path):
+    """Roll an oversized append-only log: older content becomes <stem>-<stamp>.log.gz.
+
+    These two logs are appended to while the dashboard runs, so they cannot be
+    packed like the rest of state/logs; capping keeps yesterday's transcript
+    (gzipped, readable in the log viewer) without an ever-growing plain file.
+    """
+    try:
+        if os.path.getsize(path) <= LOG_CAP_BYTES:
+            return False
+    except OSError:
+        return False
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    dst = f"{path[:-len('.log')]}-{stamp}.log.gz"
+    tmp = dst + ".tmp"
+    try:
+        with open(path, "rb") as src, gzip.open(tmp, "wb", compresslevel=9) as out:
+            while True:
+                chunk = src.read(1024 * 1024)
+                if not chunk:
+                    break
+                out.write(chunk)
+        os.replace(tmp, dst)
+        with open(path, "w", encoding="utf-8"):
+            pass          # truncate: the live log starts empty
+    except OSError:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        return False
+    return True
+
+
 def _spawn(purpose, argv, env=None):
     """Run a command detached, logged to the activity pane (state/logs/dashboard-action.log)."""
     os.makedirs(LOGS, exist_ok=True)
+    if _cap_log(os.path.join(LOGS, "dashboard-action.log")):
+        _ACT["offset"] = 0
+    _cap_log(CHAT_LOG)
     logf = open(os.path.join(LOGS, "dashboard-action.log"), "a", encoding="utf-8")
     logf.write(f"\n=== {time.strftime('%Y-%m-%dT%H:%M:%S')} {purpose} ===\n")
     logf.flush()

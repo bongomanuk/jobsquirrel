@@ -23,6 +23,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import stateio
+
 from docx import Document
 
 # Terms that matter to roles in this search. Matched case-insensitively on word
@@ -129,6 +132,7 @@ def main():
     ap.add_argument("--cv", default="")
     ap.add_argument("--min-coverage", type=float, default=0.6)
     args = ap.parse_args()
+    stateio.ensure_paths(args.jd, args.out, args.letter, args.cv)
 
     with open(args.jd, encoding="utf-8", errors="ignore") as fh:
         jd_text = fh.read()

@@ -19,6 +19,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import stateio
+
 from docx import Document
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -308,6 +311,7 @@ def main():
     ap.add_argument("--title", default="")
     ap.add_argument("--keywords", default="")
     args = ap.parse_args()
+    stateio.ensure_paths(args.cv, args.jd)
 
     jd = ""
     if args.jd and os.path.isfile(args.jd):

@@ -56,9 +56,12 @@ CV_PREFIX="${CV_PREFIX:-CV}"
 
 mkdir -p "$LOGS"; touch "$DONE"
 
-# Keep state/logs/ bounded: gzip logs older than the window before every run.
+# Keep state/ bounded and usable: gzip logs older than the window, and restore any
+# per-role artifact that was packed (job ads, keyword files, grounding packs, gate
+# receipts) so this run and the agent always see plain files.
 # Only files untouched for a week are touched, so an in-flight log is never moved.
 python3 "$ROOT/tools/storage.py" --logs --quiet >/dev/null 2>&1 || true
+python3 "$ROOT/tools/storage.py" --hydrate-all --quiet >/dev/null 2>&1 || true
 
 # LIGHT runs upload one fixed CV and no letter, so gate that CV once, up front.
 # The PASS writes the receipt record_submission.py needs before it will record a
@@ -348,6 +351,8 @@ run_task() {
   fi
   tail -1 "$log" >> "$LOGS/run_queue.out" 2>/dev/null
   echo "DONE  $(date +%H:%M:%S) $company | $role (rc=$rc)" >> "$LOGS/run_queue.out"
+  # The role is finished: its transcript is history, so pack it.
+  python3 "$ROOT/tools/storage.py" --pack-log "$log" --quiet >/dev/null 2>&1 || true
   if [ -n "$reason" ]; then
     emit_run_json "$company" "$role" "INFRA_FAIL" "$rc" "$reason"
   elif [ "$rc" -eq 124 ]; then
@@ -490,3 +495,6 @@ if [ -e "$STOP_FILE" ]; then
 else
   echo "queue complete $(date +%H:%M:%S)" >> "$LOGS/run_queue.out"
 fi
+
+# Pack the artifacts from earlier runs that this one did not touch.
+python3 "$ROOT/tools/storage.py" --state --quiet >/dev/null 2>&1 || true

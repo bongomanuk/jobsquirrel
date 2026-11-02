@@ -20,6 +20,9 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import stateio
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GRAPHRAG = os.environ.get("GRAPHRAG_BIN") or (
     os.path.join(ROOT, ".venv-graphrag", "bin", "graphrag")
@@ -94,6 +97,7 @@ def main() -> int:
     if args.check:
         return check_backends()
 
+    stateio.ensure_paths(args.jd, args.out)
     jd = open(args.jd).read() if args.jd else (args.text or "")
     if not jd.strip():
         print("provide --jd or --text", file=sys.stderr)

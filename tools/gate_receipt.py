@@ -21,8 +21,12 @@ Env:
 import hashlib
 import json
 import os
+import sys
 import time
 from datetime import datetime, timezone
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import stateio
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GATES_DIR = os.environ.get("GATES_DIR", os.path.join(ROOT, "state", "gates"))
@@ -30,6 +34,7 @@ DEFAULT_MAX_AGE_HOURS = float(os.environ.get("GATE_MAX_AGE_HOURS", "168"))
 
 
 def _sha256(path):
+    stateio.ensure(path)          # a packed answer/CV file must hash the same
     h = hashlib.sha256()
     with open(path, "rb") as fh:
         for chunk in iter(lambda: fh.read(65536), b""):
@@ -78,8 +83,7 @@ def emit(gate, files, meta=None):
         "meta": meta or {},
     }
     path = os.path.join(GATES_DIR, f"{gate}-{stamp}-{key}.json")
-    with open(path, "w") as fh:
-        json.dump(rec, fh, indent=2)
+    stateio.write(path, json.dumps(rec, indent=2).encode("utf-8"))
     return path
 
 
@@ -96,12 +100,9 @@ def find_pass(files, max_age_hours=DEFAULT_MAX_AGE_HOURS):
         return False, "no gate receipts exist (run the gate with --record)"
     now = time.time()
     best = None
-    for name in sorted(os.listdir(GATES_DIR)):
-        if not name.endswith(".json"):
-            continue
-        try:
-            rec = json.load(open(os.path.join(GATES_DIR, name)))
-        except Exception:
+    for name in stateio.stems(GATES_DIR, ".json"):
+        rec = json.loads(stateio.read_text(os.path.join(GATES_DIR, name + ".json")) or "{}")
+        if not isinstance(rec, dict):
             continue
         if rec.get("result") != "PASS":
             continue

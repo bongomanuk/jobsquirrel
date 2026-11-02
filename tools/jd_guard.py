@@ -17,6 +17,9 @@ import urllib.request
 from datetime import date
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import stateio
+
 ROOT = Path(__file__).resolve().parents[1]
 JD_DIR = ROOT / "state" / "job-descriptions"
 QUEUE = ROOT / "state" / "queue.tsv"
@@ -35,9 +38,14 @@ def clean(key):
 
 
 def has_jd(key):
-    p = jd_path(clean(key))
+    found = stateio.resolve(str(jd_path(clean(key))))
+    if not found:
+        return False
+    if found.endswith(stateio.SUFFIX):
+        # A packed ad's file size says nothing about the ad; judge the text.
+        return len(stateio.read_text(found)) >= 200
     try:
-        return p.stat().st_size >= 200
+        return os.stat(found).st_size >= 200
     except OSError:
         return False
 
@@ -99,7 +107,7 @@ def write_jd(key, company, role, url, text):
         "---\n"
         f"{text.strip()}\n"
     )
-    jd_path(key).write_text(body, encoding="utf-8")
+    stateio.write(str(jd_path(key)), body.encode("utf-8"))
     return jd_path(key)
 
 

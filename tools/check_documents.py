@@ -28,6 +28,9 @@ from docx import Document
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import facts as F
 import identity as ID
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import stateio
+
 
 # Identity comes from config/profile.md (fallback config/profile.example.md).
 PROFILE = ID.parse()
@@ -312,6 +315,7 @@ def main():
                     help="on PASS, write a gate receipt for the CV+letter (hash-stamped); "
                          "record_submission.py requires a matching receipt to record SUBMITTED")
     args = ap.parse_args()
+    stateio.ensure_paths(args.letter, args.cv, args.jd, args.ats_keywords, *args.answer)
 
     if not args.letter and not args.cv:
         ap.error("give --letter (with --cv), or --cv alone to gate a CV on its own")

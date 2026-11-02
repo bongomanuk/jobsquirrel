@@ -59,6 +59,8 @@ fi
 CV_PREFIX="${CV_PREFIX:-CV}"
 
 mkdir -p "$LOGS"; touch "$QUEUE" "$DONE"
+# Restore any packed per-role artifact so this run sees plain files.
+python3 "$ROOT/tools/storage.py" --hydrate-all --quiet >/dev/null 2>&1 || true
 printf '%s\n' "$QUEUE" > "$ROOT/state/active_queue"
 printf '%s\n' "$DONE" > "$ROOT/state/active_done"
 printf '1\n' > "$ROOT/state/active_parallel"
@@ -118,6 +120,8 @@ run_task() {
   echo "$company|$role" >> "$DONE"
   tail -1 "$log" >> "$LOGS/linkedin_run.out" 2>/dev/null
   echo "DONE  $(date +%H:%M:%S) $company | $role (rc=$rc)" >> "$LOGS/linkedin_run.out"
+  # The role is finished: its transcript is history, so pack it.
+  python3 "$ROOT/tools/storage.py" --pack-log "$log" --quiet >/dev/null 2>&1 || true
 }
 
 sent_today() { awk -F, -v d="$(date +%F)" 'tolower($4) ~ /linkedin/ && $1==d' "$ROOT/state/submissions.csv" 2>/dev/null | wc -l; }

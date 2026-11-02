@@ -124,3 +124,62 @@ def test_dashboard_reads_compressed_task_logs(tmp_path, monkeypatch):
     assert dashboard.task_logs() == ["plain", "zipped"]
     assert dashboard.read_task_log("zipped")["raw"] == ["zipped line"]
     assert dashboard.read_task_log("plain")["raw"] == ["plain line"]
+
+
+def test_append_only_logs_are_never_packed(tmp_path, monkeypatch):
+    """A log the dashboard appends to would corrupt on the next write if packed."""
+    logs = tmp_path / "logs"
+    live = _write(logs / "dashboard-chat.log", "chat\n" * 400)
+    run = _write(logs / "run_queue.out", "queue\n" * 400)
+    dead = _write(logs / "acme-eng.log", "START acme\n" * 400)
+    for f in (live, run, dead):
+        _age(f, 30)                     # even when it looks idle
+
+    monkeypatch.setattr(storage, "LOGS", str(logs))
+    monkeypatch.setattr(storage, "GRAPHRAG_LOGS", str(tmp_path / "missing"))
+    storage.compress_logs(days=1, apply=True, quiet=True)
+
+    assert live.exists() and run.exists(), "append-only logs stay plain"
+    assert not dead.exists() and (logs / "acme-eng.log.gz").exists()
+
+
+def test_pack_log_packs_one_finished_transcript(tmp_path):
+    log = _write(tmp_path / "acme-eng.log", "STATUS acme | SUBMITTED\n" * 200)
+    assert storage.pack_log(str(log), quiet=True) > 0
+
+    assert not log.exists()
+    with gzip.open(str(log) + ".gz", "rt", encoding="utf-8") as fh:
+        assert "SUBMITTED" in fh.read()
+
+
+def test_pack_log_ignores_tiny_and_missing_files(tmp_path):
+    tiny = _write(tmp_path / "tiny.log", "ok\n")
+    assert storage.pack_log(str(tiny), quiet=True) == 0
+    assert tiny.exists()
+    assert storage.pack_log(str(tmp_path / "absent.log"), quiet=True) == 0
+
+
+def test_dashboard_caps_an_oversized_append_only_log(tmp_path, monkeypatch):
+    import dashboard
+
+    logs = tmp_path / "logs"
+    monkeypatch.setattr(dashboard, "LOGS", str(logs))
+    monkeypatch.setattr(dashboard, "LOG_CAP_BYTES", 100)
+    big = _write(logs / "dashboard-action.log", "line\n" * 500)
+
+    assert dashboard._cap_log(str(big))
+    assert big.exists() and big.stat().st_size == 0, "the live log restarts empty"
+    rolled = list(logs.glob("dashboard-action-*.log.gz"))
+    assert rolled, "the old content is kept, gzipped"
+    with gzip.open(str(rolled[0]), "rt", encoding="utf-8") as fh:
+        assert "line" in fh.read()
+
+
+def test_dashboard_leaves_a_small_log_alone(tmp_path, monkeypatch):
+    import dashboard
+
+    logs = tmp_path / "logs"
+    monkeypatch.setattr(dashboard, "LOG_CAP_BYTES", 10_000)
+    small = _write(logs / "dashboard-chat.log", "small\n")
+    assert not dashboard._cap_log(str(small))
+    assert small.read_text() == "small\n"

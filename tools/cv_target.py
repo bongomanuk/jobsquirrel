@@ -38,6 +38,9 @@ from xml.sax.saxutils import escape as _xml_escape
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cv_builder as B  # reuse the styling primitives (no duplicated layout code)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import stateio
+
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORE_XML = (
@@ -267,6 +270,7 @@ def main() -> int:
     ap.add_argument("--out", default=os.path.join(_REPO, "documents", "applications"))
     ap.add_argument("--no-pdf", action="store_true")
     args = ap.parse_args()
+    stateio.ensure_paths(args.content)
 
     data = json.load(open(args.content)) if args.content else _default_data(args.key)
     data.setdefault("key", args.key)
