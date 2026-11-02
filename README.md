@@ -311,6 +311,7 @@ tools/                      # the pipeline (language/library-free CLI tools)
   release_lint.py           #   lint release notes before they go public
   secret_scan.py            #   fail if a public clone contains live credentials
   storage.py                #   compress old logs / caches when disk gets tight (see docs/STORAGE.md)
+  backup.py                 #   back up / restore / clear the whole system as one zip
   stateio.py                #   transparent gzip for state artifacts, so packed reads like plain
   dashboard.py              #   slick web UI over the register, queue, runs + curated logs, live view, chat (agent-agnostic)
   graph_explore.py          #   reads the GraphRAG index (entities/relationships/communities) for the web UI
@@ -321,6 +322,7 @@ tools/                      # the pipeline (language/library-free CLI tools)
   embeddings.sh             #   local embeddings backend (auto CUDA/Metal/Vulkan/CPU)
 state/                      # generated: register, queues, logs, saved ads, keyword files
                             #   (cold parts are packed; see docs/STORAGE.md)
+backups/                    # generated: your backups and the automatic pre-restore copies
 documents/                  # generated: archetype CVs, per-role letters, submitted snapshots
 kb/                         # your knowledge base (GraphRAG grounding; required for targeted docs)
 docs/                       # documentation (this folder)
@@ -374,6 +376,7 @@ was sent; `INTERVIEW` means an interview thread exists (invited, booked or held)
 - [docs/KNOWLEDGE-BASE.md](docs/KNOWLEDGE-BASE.md), set up the GraphRAG knowledge base (required for targeted documents).
 - [docs/RUN-MODES.md](docs/RUN-MODES.md), discover / review / apply / fixed-CV run modes.
 - [docs/STORAGE.md](docs/STORAGE.md), what gets compressed, what is never packed, and how it is restored.
+- [docs/USING-IT.md](docs/USING-IT.md#backup-restore-and-start-over), backing the system up to one zip, restoring it, and clearing it safely.
 - [docs/PRODUCT-SPEC.md](docs/PRODUCT-SPEC.md), the full product and web-interface specification.
 - [docs/RELEASES.md](docs/RELEASES.md), how a release is cut (title rules, notes lint, publishing).
 - [DISCLAIMER.md](DISCLAIMER.md), acceptable use, no-warranty and liability statement.

@@ -22,6 +22,7 @@ import secrets
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.request
@@ -3288,6 +3289,111 @@ def role_grounding(key):
             "cited_entities": len(ents), "cited_sources": len(docs)}
 
 
+# ---------------------------------------------------------------- backup / clear
+def _backup_module():
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import backup as BK
+    return BK
+
+
+def _runner_busy() -> bool:
+    """True while a queue or human-assist run is in progress."""
+    try:
+        return bool(WQ and WQ.runner_active())
+    except Exception:
+        return False
+
+
+def _reset_caches():
+    """Forget everything that was read from state before a restore or clear."""
+    _MATCH_CACHE.clear()
+    _EMP.clear()
+    globals()["_emp_loaded"] = False
+    try:
+        _norm_slug.cache_clear()
+    except Exception:
+        pass
+
+
+def backup_info():
+    info = _backup_module().summarise()
+    info["busy"] = _runner_busy()
+    return info
+
+
+def backup_make(include_documents=True):
+    """Build a backup zip in a temp file; the caller streams and deletes it."""
+    BK = _backup_module()
+    fd, path = tempfile.mkstemp(prefix="jobsquirrel-backup-", suffix=".zip")
+    os.close(fd)
+    os.unlink(path)                       # create() refuses to overwrite
+    try:
+        BK.create(out=path, include_documents=include_documents, quiet=True)
+    except OSError as exc:
+        return {"error": f"could not build the backup: {exc}"}
+    return {"path": path, "name": os.path.basename(path)}
+
+
+def backup_restore(data_parts, confirm):
+    """Restore an uploaded backup over the current state."""
+    if (confirm or "").strip().upper() != "RESTORE":
+        return {"error": 'type RESTORE to confirm — nothing was changed'}
+    if _runner_busy():
+        return {"error": "a queue run is in progress — stop it before restoring"}
+    BK = _backup_module()
+    result = BK.restore(data_parts, quiet=True)
+    if result.get("error"):
+        return result
+    _reset_caches()
+    _log_approval(f"backup restore from {os.path.basename(data_parts)} -> {result.get('restored')} files")
+    return {"ok": f"restored {result['restored']} file(s) — reloading",
+            "restored": result["restored"], "safety": result.get("safety", ""),
+            "reload": True}
+
+
+def backup_clear(scope, confirm):
+    if (confirm or "").strip().upper() != "CLEAR":
+        return {"error": 'type CLEAR to confirm — nothing was changed'}
+    if _runner_busy():
+        return {"error": "a queue run is in progress — stop it before clearing"}
+    BK = _backup_module()
+    result = BK.clear(scope or "data", quiet=True)
+    if result.get("error"):
+        return result
+    _reset_caches()
+    _log_approval(f"cleared {result.get('removed')} files (scope={scope or 'data'})")
+    return {"ok": f"cleared {result['removed']} file(s) — reloading",
+            "removed": result["removed"], "safety": result.get("safety", ""),
+            "reload": True}
+
+
+def _multipart(handler):
+    """(fields, files) from a multipart/form-data body; files is [(name, bytes)]."""
+    n = int(handler.headers.get("Content-Length", "0") or 0)
+    if n <= 0 or n > 2 * 1024 ** 3:
+        return {}, [], "missing or oversized upload"
+    raw = handler.rfile.read(n)
+    m = re.search(r"boundary=([^;]+)", handler.headers.get("Content-Type", ""))
+    if not m:
+        return {}, [], "expected multipart/form-data"
+    boundary = m.group(1).strip('"').encode()
+    fields, files = {}, []
+    for part in raw.split(b"--" + boundary):
+        if part.strip() in (b"", b"--", b"--\r\n"):
+            continue
+        head, _, body = part.partition(b"\r\n\r\n")
+        if body.endswith(b"\r\n"):
+            body = body[:-2]
+        hs = head.decode("utf-8", "ignore")
+        fm = re.search(r'filename="([^"]*)"', hs)
+        nm = re.search(r'name="([^"]*)"', hs)
+        if fm and fm.group(1):
+            files.append((fm.group(1), body))
+        elif nm and nm.group(1):
+            fields[nm.group(1)] = body.decode("utf-8", "ignore").strip()
+    return fields, files, ""
+
+
 # ---------------------------------------------------------------- HTTP
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -3315,6 +3421,31 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def _download(self, path, filename):
+        try:
+            st = os.stat(path)
+            fh = open(path, "rb")
+        except OSError as exc:
+            return self._json({"error": str(exc)}, 500)
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Length", str(st.st_size))
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            while True:
+                chunk = fh.read(1024 * 1024)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+        finally:
+            fh.close()
+            try:
+                os.unlink(path)          # the temp copy is not a saved backup
+            except OSError:
+                pass
 
     def _page(self, title, body, refresh=0):
         meta = f"<meta http-equiv='refresh' content='{int(refresh)}'>" if refresh else ""
@@ -3410,6 +3541,17 @@ class H(BaseHTTPRequestHandler):
             return self._tasklog_page(qs.get("task", [""])[0])
         if p == "/api/state":
             return self._json(state())
+        if p == "/api/backup":
+            if not self._authed():
+                return
+            if qs.get("info", [""])[0]:
+                return self._json(backup_info())
+            if _runner_busy():
+                return self._json({"error": "a queue run is in progress — try again when it finishes"}, 409)
+            made = backup_make(qs.get("documents", ["1"])[0] not in ("0", "no", "false"))
+            if made.get("error"):
+                return self._json(made, 500)
+            return self._download(made["path"], made["name"])
         if p == "/api/health":
             return self._json(health())
         if p == "/api/register":
@@ -3545,6 +3687,28 @@ class H(BaseHTTPRequestHandler):
             return
         if p == "/api/kb/upload":
             return self._json(self._upload())
+        if p == "/api/backup/restore":
+            fields, files, problem = _multipart(self)
+            if problem:
+                return self._json({"error": problem}, 400)
+            if not files:
+                return self._json({"error": "choose a backup .zip first"}, 400)
+            name, blob = files[0]
+            if not name.lower().endswith(".zip"):
+                return self._json({"error": "that is not a .zip file"}, 400)
+            fd, tmp = tempfile.mkstemp(prefix="restore-", suffix=".zip")
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(blob)
+            try:
+                return self._json(backup_restore(tmp, fields.get("confirm", "")))
+            finally:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+        if p == "/api/backup/clear":
+            data = self._body()
+            return self._json(backup_clear(data.get("scope", "data"), data.get("confirm", "")))
         data = self._body()
         if p == "/api/register/row":
             return self._json(update_row(data.get("company", ""), data.get("role", ""),

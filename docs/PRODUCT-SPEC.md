@@ -65,6 +65,7 @@ Components:
 | `state/gmail_reconcile_ack.txt` | Verification links already acted on. |
 | `state/approvals.log` | Every approval decision (who/what, granted or refused). |
 | `state/counts.md`, `state/interviews.md`, `state/human/current.json` | Generated summaries. |
+| `backups/` | Your backup zips plus the automatic `pre-restore-*` / `pre-clear-*` safety copies (newest five kept). Git-ignored: personal data. |
 | `config/profile.md` | Identity, eligibility, pay, EEO, accuracy rules (key: value). |
 | `config/cv.json` | Ground-truth CV (experience/projects/education/skills/sidebar). |
 | `config/archetypes.json` | Role-family CV templates (one per family) + base letter. |
@@ -108,6 +109,7 @@ Components:
 | `gate_receipt.py` | Hash-stamped PASS receipts for the exact CV/letter; `record_submission.py` refuses a SUBMITTED row without one. |
 | `jd_guard.py` | A role needs a saved job ad before it may enter the queue (`--require`, `--fetch`, `--queue`). |
 | `storage.py` + `stateio.py` | Compress logs, mail cache and cold per-role artifacts; `stateio` makes a packed artifact read like a plain one. See `docs/STORAGE.md`. |
+| `backup.py` | Back up / restore / clear the whole system as a single zip, with a safety copy before anything destructive. |
 | `agent_access.py` | The permission gate for anything outside the repo: `read`/`write`/`run`, decided by the operator's policy. |
 | `verify_pending.py` | Audit ATS email verifications against the register. |
 | `outcomes.py` | Conversion by source and by CV (what is actually working). |
@@ -246,6 +248,9 @@ Clicking a row opens a drawer with tabs:
 | GET | `/api/state` | — | {kpis, counts, queue_counts, interviews} |
 | GET | `/api/health` | — | doctor.py result (cached 60s) |
 | GET | `/api/grid` | — | the unified grid rows (register ⋈ queue ⋈ spec ⋈ provenance) |
+| GET | `/api/backup` | `info=1`, `documents=0/1` | backup summary, or the `.zip` as a download (session token required) |
+| POST | `/api/backup/restore` | multipart `file`, `confirm=RESTORE` | restores over the current state after a safety backup |
+| POST | `/api/backup/clear` | `{scope: data|full, confirm=CLEAR}` | deletes generated data; `config/` and `kb/sources/` survive |
 | GET | `/api/register` | `q,status,limit,offset` | {total, rows} |
 | GET | `/api/provenance` | `company,role` | provenance row (sha256, evidence, snapshot) |
 | GET | `/api/queue` | — | {pending, human, retry, done} |

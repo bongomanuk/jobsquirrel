@@ -98,6 +98,19 @@ documents for weeks slowly fills with loose objects. One command reclaims it:
 `tools/storage.py` does not run it for you: it rewrites the object database, so
 it is a git decision, not a file-compression one.
 
+## Backups and the data lifecycle
+
+`tools/backup.py` (Settings → **Backup & data**) is the other half of storage:
+`--state`/`--logs` shrink what is there, a backup lets you move or rebuild it.
+A backup zip holds `config/`, `answers/`, `kb/sources/`, `state/` (minus logs and
+the mail cache) and optionally `documents/`; the GraphRAG index is excluded
+because it is rebuildable from the sources.
+
+Anything destructive — restore or clear — writes an automatic safety copy to
+`backups/` first (`pre-restore-*.zip`, `pre-clear-*.zip`), and only the newest
+five of those are kept. Your own `jobsquirrel-*.zip` backups are never pruned.
+`backups/` is git-ignored: it contains personal data.
+
 ## Checking
 
 `python3 tools/doctor.py` includes a `storage` line with the current sizes of

@@ -356,6 +356,9 @@ Stop and ask (or record `MANUAL`/`BLOCKED`) when:
  , per-role artifacts.
 - `documents/archetypes/`, `documents/applications/`, `documents/submitted/`
  , CVs, letters, snapshots.
+- `backups/`, the system backup zips (yours plus the automatic safety copies
+  taken before a restore or a clear); personal data, git-ignored. `tools/backup.py`
+  creates, restores and clears them — never delete a safety copy without asking.
 - `tools/storage.py` + `tools/stateio.py`, compression of logs and of the
   cold per-role artifacts, restored on demand (`docs/STORAGE.md`). Logs older
   than a day are gzipped at the start of a run, a finished role's transcript is

@@ -68,3 +68,6 @@ state/send-receipts/
 kb/graphrag/update_output/
 # compressed archives of old logs / regenerable index caches (tools/storage.py)
 kb/archives/
+
+# local backups (personal data: keep them out of git)
+backups/

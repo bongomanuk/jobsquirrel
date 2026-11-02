@@ -95,6 +95,46 @@ Everything is observable. Useful things to ask for, or run yourself:
 - **Human-only items**: `state/queue-human.tsv`, opened with
   `bash tools/human_assist.sh`.
 
+## Backup, restore and start over
+
+Settings → **Backup & data** covers the three things you do around the edges of
+a job search: take a copy, put a copy back, or clear the system and start again.
+
+**Backup** writes one `.zip` with everything the pipeline cannot regenerate:
+`config/` (profile, CV, archetypes, mail/calendar and Google settings),
+`answers/`, `kb/sources/` (your corpus), `state/` (register, queues, provenance,
+drafts, saved ads, keyword files, grounding and content packs, gate receipts) and
+— unless you untick it — `documents/` (rendered CVs, letters, and the exact files
+you sent). Transcripts, the mail cache and the GraphRAG index are left out: they
+are noise or rebuildable.
+
+    python3 tools/backup.py create                 # -> backups/jobsquirrel-<date>.zip
+    python3 tools/backup.py create --no-documents  # ~5 MB instead of ~150 MB
+    python3 tools/backup.py list
+    python3 tools/backup.py inspect backups/<file>.zip
+
+> ⚠️ The zip holds **your personal data** — CV, applications, and any Google
+> client secret in `config/google.json`. Keep it private; `backups/` is
+> git-ignored for that reason.
+
+**Restore** replaces `config/`, `state/`, `documents/` and `kb/sources/` with the
+zip's contents. It asks you to type `RESTORE`, refuses while a queue run is in
+progress, and **writes a safety backup first**, so a wrong choice is recoverable:
+
+    python3 tools/backup.py restore backups/<file>.zip --yes
+
+**Clear** deletes the pipeline's data and keeps your identity: the register,
+queues, drafts, saved ads, keyword files, grounding packs and every generated
+document go; `config/` and `kb/sources/` stay. *Full reset* additionally drops the
+GraphRAG index (a rebuild takes 20–30 minutes). It asks you to type `CLEAR` and
+takes a safety backup first:
+
+    python3 tools/backup.py clear --scope data --yes
+    python3 tools/backup.py clear --scope full --yes
+
+Automatic pre-restore/pre-clear copies live in `backups/` and the newest five are
+kept; your own backups are never pruned.
+
 **What the agent will interrupt you for:** a CAPTCHA/2FA/bot check, an email to
 approve before sending, a verification link or code, an ambiguous eligibility or
 accuracy rule, or a model budget/rate-limit stop.

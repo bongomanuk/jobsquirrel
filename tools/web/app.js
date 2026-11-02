@@ -128,8 +128,8 @@ const LONG = {
 window.perasClose = () => $('#peras').classList.add('hide');
 
 async function api(path, body) {
-  const o = { headers: {} };
-  if (body !== undefined) { o.method = 'POST'; o.headers['Content-Type'] = 'application/json'; o.headers['X-Session'] = TOKEN; o.body = JSON.stringify(body); }
+  const o = { headers: { 'X-Session': TOKEN } };
+  if (body !== undefined) { o.method = 'POST'; o.headers['Content-Type'] = 'application/json'; o.body = JSON.stringify(body); }
   try { return await (await fetch(path, o)).json(); } catch (e) { return { error: String(e) }; }
 }
 let _toastTimer = null;
@@ -167,9 +167,55 @@ const App = {
     if (CF_SEC === 'kb') return setKB(b);
     if (CF_SEC === 'graph') return setGraph(b);
     if (CF_SEC === 'perms') return setPerms(b);
+    if (CF_SEC === 'data') return setData(b);
     return setProfile(b);
   },
   auth: async (kind) => { const d = await api('/api/accounts/auth', { kind }); toast(d.ok || d.error, !!d.error); },
+  backupDownload: async () => {
+    const docs = $('#bk-docs') && $('#bk-docs').checked ? '1' : '0';
+    toast('building the backup…');
+    try {
+      const r = await fetch('/api/backup?documents=' + docs, { headers: { 'X-Session': TOKEN } });
+      if (!r.ok) { const e = await r.json().catch(() => ({})); return toast(e.error || 'backup failed', true); }
+      const blob = await r.blob();
+      const cd = r.headers.get('Content-Disposition') || '';
+      const m = /filename="([^"]+)"/.exec(cd);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = m ? m[1] : 'jobsquirrel-backup.zip';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      toast('backup downloaded');
+      App.settings('data');
+    } catch (e) { toast(String(e), true); }
+  },
+  backupRestore: async () => {
+    const f = $('#bk-file').files[0];
+    const confirm = $('#bk-confirm').value.trim();
+    if (!f) return toast('choose a backup .zip first', true);
+    if (confirm.toUpperCase() !== 'RESTORE') return toast('type RESTORE to confirm', true);
+    if (!window.confirm('Restore ' + f.name + ' over the current system?\n\n' +
+      'This replaces config/, state/, documents/ and kb/sources/ with what is in the backup.\n' +
+      'A safety backup of the current system is written to backups/ first.')) return;
+    const fd = new FormData(); fd.append('file', f); fd.append('confirm', confirm);
+    toast('restoring…');
+    const r = await fetch('/api/backup/restore', { method: 'POST', headers: { 'X-Session': TOKEN }, body: fd });
+    const d = await r.json().catch(() => ({ error: 'restore failed' }));
+    toast(d.ok || d.error, !!d.error);
+    if (d.reload) setTimeout(() => location.reload(), 1200);
+  },
+  clearData: async (scope) => {
+    const confirm = $('#cl-confirm').value.trim();
+    if (confirm.toUpperCase() !== 'CLEAR') return toast('type CLEAR to confirm', true);
+    const what = scope === 'full'
+      ? 'every application, every document AND the knowledge-graph index (a rebuild takes 20–30 minutes)'
+      : 'the register, queues, drafts, saved job ads and every generated document';
+    if (!window.confirm('Delete ' + what + '?\n\nConfig and kb/sources/ are kept.\n' +
+      'A safety backup is written to backups/ first, but this cannot be undone from the UI.')) return;
+    const d = await api('/api/backup/clear', { scope, confirm });
+    toast(d.ok || d.error, !!d.error);
+    if (d.reload) setTimeout(() => location.reload(), 1200);
+  },
   googleSave: async () => {
     const d = await api('/api/google', { config_dir: $('#g-dir').value, credentials: $('#g-cred').value,
       token: $('#g-token').value, client_id: $('#g-id').value, client_secret: $('#g-secret').value });
@@ -1623,6 +1669,93 @@ function discuss(r) {
 }
 
 /* ---------- settings sections ---------- */
+async function setData(b) {
+  const d = await api('/api/backup?info=1');
+  if (d.error) { b.innerHTML = `<span class="muted">${esc(d.error)}</span>`; return; }
+  const p = d.parts || {};
+  const docs = (p.documents || {}).bytes || 0;
+  const rows = [
+    ['config', p.config], ['answers', p.answers], ['state', p.state],
+    ['kb/sources', p.sources], ['documents', p.documents],
+  ].filter(([, v]) => v && v.files).map(([k, v]) =>
+    `<span class="pill">${esc(k)} · ${v.files} file(s) · ${fmtSize(v.bytes)}</span>`).join(' ');
+  const total = Object.values(p).reduce((n, v) => n + ((v || {}).bytes || 0), 0);
+  const backups = (d.backups || []).length
+    ? d.backups.map(x => `<li><span class="mini">${esc(x.at)}</span> <span class="muted mini">${fmtSize(x.bytes)}</span> ${esc(x.name)}</li>`).join('')
+    : '<li class="muted mini">none yet</li>';
+  b.innerHTML = `
+    <p class="muted">A backup is one <code>.zip</code> with everything the pipeline cannot regenerate:
+      <code>config/</code> (profile, CV, archetypes, mail and calendar settings), <code>answers/</code>,
+      <code>kb/sources/</code>, <code>state/</code> (register, queues, provenance, drafts, saved ads, keyword files,
+      grounding and content packs, gate receipts) and, unless you untick it, <code>documents/</code> (rendered CVs,
+      letters and the exact files you sent).</p>
+    <div class="muted mini">${rows} <span class="pill">total ${fmtSize(total)}</span></div>
+    <p class="muted mini" style="margin-top:6px">⚠ A backup contains <b>your personal data</b> — CV, applications, and any Google client
+      secret stored in <code>config/google.json</code>. Keep it somewhere private and never commit it. The OAuth token lives outside
+      the repo, so it is not in the zip. Agent transcripts (<code>state/logs/</code>), the mail cache and the GraphRAG index are
+      deliberately left out.</p>
+    ${d.busy ? '<p class="muted mini"><b>A run is in progress</b> — downloading is paused until it finishes.</p>' : ''}
+
+    <h4 style="margin:14px 0 4px">Back up</h4>
+    <div class="row" style="margin:7px 0">
+      <label class="mini"><input type="checkbox" id="bk-docs" checked> include generated documents (${fmtSize(docs)})</label>
+      <button onclick="App.backupDownload()">Download backup (.zip)</button>
+    </div>
+    <div class="muted mini">Saved copies live in <code>${esc(d.backup_dir)}</code>. Backups taken before a restore or a clear are
+      written there too.</div>
+    <div class="muted mini" style="margin-top:6px">Last backups: <ul style="margin:4px 0 0 16px;padding:0">${backups}</ul></div>
+
+    <h4 style="margin:16px 0 4px">Restore a backup</h4>
+    <p class="muted mini">Replaces <code>config/</code>, <code>state/</code>, <code>documents/</code> and <code>kb/sources/</code> with the
+      contents of the zip. A safety backup of the current system is written first, so a wrong choice is recoverable.</p>
+    <div class="row" style="margin:7px 0">
+      <input type="file" id="bk-file" accept=".zip">
+      <input id="bk-confirm" placeholder="type RESTORE" style="max-width:190px">
+      <button class="risky" onclick="App.backupRestore()">Restore backup</button>
+    </div>
+
+    <h4 style="margin:16px 0 4px;color:#c98">Danger zone</h4>
+    <p class="muted mini"><b>Clear</b> deletes the pipeline's data and starts you over with the same identity: the register, queues,
+      drafts, saved job ads, keyword files, grounding packs and every generated document. <code>config/</code> and
+      <code>kb/sources/</code> are never touched. A safety backup is taken first, but treat this as irreversible.</p>
+    <div class="row" style="margin:7px 0">
+      <input id="cl-confirm" placeholder="type CLEAR" style="max-width:190px">
+      <button class="risky" onclick="App.clearData('data')">Clear pipeline data</button>
+      <button class="risky" onclick="App.clearData('full')" title="also deletes the GraphRAG index — a rebuild takes 20–30 min">Full reset (incl. index)</button>
+    </div>`;
+}
+const fmtSize = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n > 1024 ? (n / 1024).toFixed(0) + ' KB' : n + ' B';
+async function setAccounts(b) {
+  const [d, g] = await Promise.all([api('/api/accounts'), api('/api/google')]);
+  const sc = g.scopes || [];
+  const dot = (ok) => `<span class="pill" style="background:${ok ? '#1f6f43' : '#7a2e2e'}">${ok ? '✓' : '✗'}</span>`;
+  const scopeName = (s) => s.split('/').pop();
+  b.innerHTML = `<p class="muted">Connect your accounts. Authorisation opens in your browser - finish it there, then re-check.
+      Per-site logins: <b>${d.sites}</b> stored.</p>
+    <h4 style="margin:10px 0 4px">Google (Gmail + Calendar)</h4>
+    <p class="muted mini">Create a <b>Desktop</b> OAuth client in Google Cloud, then paste its client id and secret here; changes save automatically.
+      The pipeline writes <code>credentials.json</code> for you (or drop a downloaded one at the path below).
+      Gmail can read, send and attach files; Calendar can read and book events. Sending mail and writing to the calendar
+      still ask for your approval every time. Timezone and meeting defaults live in <code>config/calendar.json</code>, mail
+      signature and attachments in <code>config/email.json</code>.</p>
+    <div class="row" style="margin:6px 0"><span class="muted" style="min-width:118px">Client ID</span>
+      <input id="g-id" placeholder="${esc(g.client_id || '…apps.googleusercontent.com')}" style="flex:1" onchange="App.googleSave()"></div>
+    <div class="row" style="margin:6px 0"><span class="muted" style="min-width:118px">Client secret</span>
+      <input id="g-secret" type="password" placeholder="${g.has_client_secret ? '•••• stored — leave blank to keep' : ''}" style="flex:1" onchange="App.googleSave()"></div>
+    <div class="row" style="margin:6px 0"><span class="muted" style="min-width:118px">Config dir</span>
+      <input id="g-dir" value="${esc(g.config_dir)}" style="flex:1" onchange="App.googleSave()">
+      <span class="muted mini">credentials ${dot(g.credentials_exists)} · token ${dot(g.token_exists)}</span></div>
+    <div class="row" style="margin:6px 0"><span class="muted" style="min-width:118px">Files</span>
+      <input id="g-cred" value="${esc(g.credentials)}" style="flex:1" title="credentials.json path" onchange="App.googleSave()">
+      <input id="g-token" value="${esc(g.token)}" style="flex:1" title="token.json path" onchange="App.googleSave()"></div>
+    <div class="row" style="margin:8px 0">
+      <button onclick="App.auth('gmail')">Authorise Gmail</button>
+      <button onclick="App.auth('calendar')">Authorise Calendar</button>
+      <button onclick="viewDoc('docs/ACCOUNT-SETUP.md','Account setup guide')">Setup guide</button>
+      <button onclick="App.settings('accounts')">Re-check</button></div>
+    <div class="muted mini">scopes: ${sc.length ? sc.map(scopeName).map(esc).join(' · ') : 'none yet'}${g.account ? ` · ${esc(g.account)}` : ''}</div>
+    <pre class="doc">${esc(d.text || '(no output)')}</pre>`;
+}
 const fmtSize = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n > 1024 ? (n / 1024).toFixed(0) + ' KB' : n + ' B';
 async function setAccounts(b) {
   const [d, g] = await Promise.all([api('/api/accounts'), api('/api/google')]);
