@@ -302,7 +302,7 @@ All POSTs require header `X-Session: <token>` (else 403); the token is injected 
   (GitHub `releases/latest` vs the `VERSION` file, cached 1h) reports a newer
   release, an **⬆ update** pill appears. Clicking it shows the release notes with
   **Update now** (`git pull --ff-only`, approval-gated) — restart to apply.
-- Degrades to empty state with no local data (safe on the public base).
+- Degrades to an empty state with no local data.
 - **One notification surface:** toasts replace in place (never stack), and the
   Prepare / Run Submissions / Reconcile buttons are disabled while a run is active.
 - **Agent console:** a dockable pullout — **left by default**, or top / bottom / right. **Drag the
@@ -335,7 +335,7 @@ All POSTs require header `X-Session: <token>` (else 403); the token is injected 
 ## 12. Non-goals
 
 - Not a push-button "apply to 500 jobs autonomously" bot — the human owns decisions and approvals.
-- No credential storage in the repo; no CAPTCHA evasion in the base.
+- No credential storage in the repo; no CAPTCHA evasion.
 - No fabricated claims, credentials, or identities.
 
 ## 13. Roadmap (candidates)
