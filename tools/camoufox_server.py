@@ -433,9 +433,8 @@ def main() -> int:
                     help="persistent user-data dir (keeps logins, e.g. LinkedIn); "
                          "omit for an ephemeral session")
     ap.add_argument("--os", dest="os", default="windows",
-                    help="spoofed OS: windows|macos|linux|none. Use 'linux' on a "
-                         "Linux host (a Windows spoof on Linux makes anti-bot "
-                         "fingerprints inconsistent). 'none' = Camoufox default.")
+                    help="spoofed OS: windows|macos|linux|none. Match your host "
+                         "(use 'linux' on Linux). 'none' = Camoufox default.")
     ap.add_argument("--disable-coop", action="store_true",
                     help="drop Cross-Origin-Opener-Policy so widgets inside "
                          "cross-origin iframes (hCaptcha / reCAPTCHA / Turnstile "
