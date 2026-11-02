@@ -124,25 +124,10 @@ def dispatch(cmd: str, body: dict) -> dict:
                 return {"ok": False, "error": f"ref {ref} out of range (re-snap)"}
             page.wait_for_timeout(400)
             return {"ok": True, "clicked": el, "url": page.url, "title": page.title()}
-        force = bool(body.get("force"))
         try:
-            page.click(target, timeout=15000, force=force)
-        except Exception as first:
-            # Workday/ATS overlays routinely sit over the real control. A
-            # normal click then times out; retrying with force dispatches the
-            # same trusted event at the same coordinates without waiting for
-            # actionability, which is what a human click would do anyway.
-            if force:
-                return {"ok": False, "error": str(first),
-                        "url": page.url, "title": page.title()}
-            try:
-                page.click(target, timeout=8000, force=True)
-            except Exception as second:
-                return {"ok": False,
-                        "error": f"{first} | force retry: {second}",
-                        "url": page.url, "title": page.title()}
-            page.wait_for_timeout(400)
-            return {"ok": True, "clicked": {"selector": target, "force_fallback": True},
+            page.click(target, timeout=15000)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc),
                     "url": page.url, "title": page.title()}
         page.wait_for_timeout(400)
         return {"ok": True, "clicked": {"selector": target},
@@ -363,14 +348,6 @@ def dispatch(cmd: str, body: dict) -> dict:
         return {"ok": True, "applied": applied, "total": len(results),
                 "failed": [r for r in results if not r["ok"]], "results": results}
 
-    if cmd == "mouse":
-        # trusted coordinate click (needed for cross-origin widgets like the
-        # hCaptcha checkbox, which cannot be reached by selector)
-        page.mouse.click(int(body.get("x", 0)), int(body.get("y", 0)))
-        page.wait_for_timeout(500)
-        return {"ok": True, "clicked": {"x": body.get("x"), "y": body.get("y")},
-                "url": page.url, "title": page.title()}
-
     if cmd == "dialog":
         mode = (body.get("mode") or "accept").strip().lower()
         DIALOG["mode"] = mode if mode in ("accept", "dismiss", "once") else "accept"
@@ -432,19 +409,9 @@ def main() -> int:
     ap.add_argument("--profile", default="",
                     help="persistent user-data dir (keeps logins, e.g. LinkedIn); "
                          "omit for an ephemeral session")
-    ap.add_argument("--os", dest="os", default="windows",
-                    help="spoofed OS: windows|macos|linux|none. Match your host "
-                         "(use 'linux' on Linux). 'none' = Camoufox default.")
-    ap.add_argument("--disable-coop", action="store_true",
-                    help="drop Cross-Origin-Opener-Policy so widgets inside "
-                         "cross-origin iframes (hCaptcha / reCAPTCHA / Turnstile "
-                         "checkbox + challenge) can actually be clicked")
-    ap.add_argument("--main-world-eval", action="store_true",
-                    help="run page.evaluate in the page's own scope (needed to "
-                         "touch the real DOM, e.g. set a captcha token)")
     ap.add_argument("--window", default="",
-                    help="spoofed window size WxH in CSS px (e.g. 1440x900); also sets "
-                         "the viewport so screenshots come out that size")
+                    help="browser window size WxH (e.g. 1440x900); the viewport "
+                         "follows it, so screenshots come out that size")
     args = ap.parse_args()
 
     try:
@@ -459,12 +426,10 @@ def main() -> int:
     if profile:
         Path(profile).mkdir(parents=True, exist_ok=True)
     print(f"camoufox server: http://127.0.0.1:{args.port}  "
-          f"({'headful' if HEADFUL else 'headless'})  os={args.os}"
+          f"({'headful' if HEADFUL else 'headless'})"
           f"{'  profile: ' + profile if profile else ''}", flush=True)
 
-    launch = dict(headless=not HEADFUL, humanize=True)
-    if args.os and args.os != "none":
-        launch["os"] = args.os
+    launch = dict(headless=not HEADFUL)
     if args.window:
         try:
             w, h = (int(x) for x in re.split(r"[x,]", args.window))
@@ -472,10 +437,6 @@ def main() -> int:
         except ValueError:
             print(f"bad --window {args.window!r}; expected WxH", file=sys.stderr)
             return 2
-    if args.disable_coop:
-        launch["disable_coop"] = True
-    if args.main_world_eval:
-        launch["main_world_eval"] = True
     if profile:
         cm = Camoufox(persistent_context=True, user_data_dir=profile,
                       extra_http_headers=EXTRA_HEADERS, **launch)

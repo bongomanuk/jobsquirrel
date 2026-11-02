@@ -116,8 +116,7 @@ if ! curl -s -m 3 "$HUMAN_SERVER/health" >/dev/null 2>&1; then
   done
   HUMAN_PY="${HUMAN_PY:-python3}"
   setsid nohup "$HUMAN_PY" "$ROOT/tools/camoufox_server.py" --port "$PORT" --headful \
-    --os "${HUMAN_OS:-linux}" --profile "${HUMAN_PROFILE:-$HOME/.config/job-search/human-profile}" \
-    --disable-coop --main-world-eval \
+    --profile "${HUMAN_PROFILE:-$HOME/.config/job-search/human-profile}" \
     >> "$LOGS/camoufox_server.log" 2>&1 < /dev/null &
   disown
   # give it time to launch the visible browser
@@ -149,10 +148,10 @@ Browser: run every command as \`python3 tools/camoufox_browser.py --server $HUMA
 
 Steps:
 1. Open the Apply URL. Pre-fill EVERYTHING so the human only has to solve the challenge: identity (name/email/phone, location, work authorisation, pay) from config/profile.md, upload the CV and cover letter, and answer any questions truthfully. Identify the Submit button now (e.g. \`python3 tools/camoufox_browser.py --server $HUMAN_SERVER eval "(()=>JSON.stringify([...document.querySelectorAll('button,input[type=submit]')].map((b,i)=>({i,t:(b.innerText||b.value||'').trim().slice(0,40)})).filter(x=>/apply|submit/i.test(x.t)))())"\`). At the very start run: \`python3 tools/human_status.py set --company "$company" --role "$role" --state filling --note "pre-filling the form"\`
-2. With every field filled, CLICK SUBMIT ONCE to trigger the challenge (hCaptcha/reCAPTCHA on ATS forms are usually INVISIBLE until submit - the token only appears after you click). Do NOT solve, bypass or evade the challenge. If the submit instead succeeds (thank-you page), skip to step 5.
+2. With every field filled, click Submit once. The page may ask for a human check at this point; do NOT solve, bypass or evade it. If the submission goes through instead (thank-you page), skip to step 5.
 3. Announce it (this fires a desktop notification + the focused viewer): \`python3 tools/human_status.py set --company "$company" --role "$role" --state awaiting --note "<one line, e.g. tick the 'I'm not a robot' box>"\`, then print a LOUD banner: ">>> SOLVE THE CHALLENGE IN THE VISIBLE BROWSER - everything else is already done for you <<<".
-4. WAIT for the human to solve it. Every ~5s run: \`python3 tools/camoufox_browser.py --server $HUMAN_SERVER eval "(()=>{const q=s=>document.querySelector(s);const v=(q('textarea[name=g-recaptcha-response]')||q('textarea[name=h-captcha-response]')||q('input[name=cf-turnstile-response]')||{}).value||'';return JSON.stringify({solved:v.length>0});})()"\`. Treat it as solved when solved=true (or when the challenge text disappears). Poll up to 20 minutes.
-5. ONCE SOLVED (token non-empty): wait ~3s. hCaptcha/reCAPTCHA normally submit the form itself on solve - do NOT click Submit again if the page has moved on. Only if you are still on the same /apply form after ~3s, click Submit ONCE. NEVER click Submit while the token is empty (that is what causes "error verifying your application"). Then confirm the success/thank-you page and record. The pre-submit gate must pass first (it writes the receipt record_submission.py requires); if there is no letter file, run the record with \`GATE_ENFORCE=0\` and say why:
+4. WAIT for the human to finish it. Every ~5s snap the page and check whether the challenge is gone and the form is still there. Poll up to 20 minutes; never touch the challenge yourself.
+5. ONCE THE HUMAN HAS FINISHED: wait ~3s. The page usually submits itself once the check is passed - do not click Submit again if the page has moved on. Only if you are still on the same /apply form after ~3s, click Submit once. Then confirm the success/thank-you page and record. The pre-submit gate must pass first (it writes the receipt record_submission.py requires); if there is no letter file, run the record with \`GATE_ENFORCE=0\` and say why:
    \`python3 tools/check_documents.py --letter "$letter" --cv "$cv" --company "$company" --record\`  (must print RESULT: PASS)
    \`python3 tools/human_status.py set --company "$company" --role "$role" --state done --note "captcha solved; auto-submitted"\`
    \`python3 tools/record_submission.py --company "$company" --role "$role" --ats "human-assisted" --url "$url" --cv "$cv" --letter "$letter" --status SUBMITTED --evidence "<exact thank-you text/URL>"\`

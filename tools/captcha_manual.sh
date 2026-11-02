@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 # MANUAL CAPTCHA queue.
 #
-# Some ATS (Lever/hCaptcha in particular) reject the token produced inside
-# Camoufox, so the automated "solve + auto-submit" path fails with
-# "There was an error verifying your application". For those, the reliable path
-# is YOUR OWN browser: open the role, solve the challenge, submit. No automation
-# touches the site, so the captcha is trusted.
+# Some applications end at a challenge the pipeline will not automate. For
+# those the path is YOUR OWN browser: open the role, complete the page and its
+# challenge yourself, submit. No automation touches the site.
 #
 # This walks state/queue-captcha.tsv one role at a time, opening each in your
 # real browser (xdg-open, or open on macOS). Press Enter once you've submitted

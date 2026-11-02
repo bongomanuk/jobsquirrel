@@ -2,7 +2,7 @@
 """Agent-facing CLI for the Camoufox pipeline browser (Camoufox/Firefox only — no Chromium).
 
 The command surface the agent prompts use:
-  status | nav <url> | snap [path] | click <ref|selector> [--force] |
+  status | nav <url> | snap [path] | click <ref|selector> |
   fill <sel> <text> | type <sel> <text> | select <sel> <value> |
   pick <option text> [open-selector] | fillmap '<json steps>' | press <key> [sel] |
   check <sel> | value <sel> | eval <js> | wait <ms> | upload <sel> <path> | headers
@@ -10,7 +10,6 @@ The command surface the agent prompts use:
 Custom ATS widgets (Workday, Greenhouse react-select, ...):
   - use `pick` to choose a listbox option: synthetic JS clicks are ignored.
   - use `press` for real key events (Enter commits type-aheads).
-  - `click` falls back to a forced click automatically when an overlay blocks it.
 
 All commands are forwarded to tools/camoufox_server.py over HTTP.
 
@@ -53,7 +52,6 @@ def main() -> int:
     ap.add_argument("--server", default=DEFAULT_SERVER)
     ap.add_argument("cmd", help="status|nav|snap|click|fill|type|select|pick|fillmap|press|check|value|eval|wait|upload|download|headers|dialog")
     ap.add_argument("args", nargs="*", help="command arguments")
-    ap.add_argument("--force", action="store_true", help="click: skip actionability checks")
     ns = ap.parse_args()
 
     cmd = ns.cmd.lower()
@@ -99,11 +97,6 @@ def main() -> int:
         payload["key"] = a[0]
         if len(a) > 1:
             payload["selector"] = a[1]
-    elif cmd == "mouse":
-        if len(a) < 2:
-            print("usage: mouse <x> <y>", file=sys.stderr)
-            return 1
-        payload["x"], payload["y"] = int(a[0]), int(a[1])
     elif cmd == "pick":
         if not a:
             print("usage: pick <option text> [open-selector]", file=sys.stderr)
