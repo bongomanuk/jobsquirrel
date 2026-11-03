@@ -115,10 +115,11 @@ matter, **truthfulness** and **targeting**: as hard gates.
 7. **Be a considerate client, not a sneaky one.** A real browser profile, paced
    submissions, named contacts, and a hard stop on any CAPTCHA/2FA. The goal is to
    be polite, not to evade, and to prefer the employer's own ATS over portals.
-8. **One secure store for secrets.** API keys, OAuth client secrets, per-site
-   passwords and GraphRAG settings live in a single 0600 store outside the repo,
-   managed from **Settings → Secrets**. Nothing sensitive is written into
-   `config/` or a tracked `.env`.
+8. **One encrypted store for secrets.** API keys, OAuth client secrets, per-site
+   passwords and GraphRAG settings live in a single AES-256-GCM store outside the
+   repo, managed from **Settings → Secrets**. The key lives in the OS keyring (or
+   a 0600 key file); nothing sensitive is written into `config/` or a tracked
+   `.env`.
 
 ## Why Jobsquirrel? 🐿️
 

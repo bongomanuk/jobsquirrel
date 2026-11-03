@@ -288,6 +288,11 @@ const App = {
     toast(d.error ? d.error : 'existing secrets imported', !!d.error);
     if (!d.error) App.settings('secrets');
   },
+  secretEncrypt: async () => {
+    const d = await api('/api/secrets/encrypt', {});
+    toast(d.ok || d.error, !!d.error);
+    if (!d.error) App.settings('secrets');
+  },
   backupDownload: async () => {
     const docs = $('#bk-docs') && $('#bk-docs').checked ? '1' : '0';
     toast('building the backup…');
@@ -2260,11 +2265,14 @@ async function setSecrets(b) {
       <h4 style="margin:0 0 2px">${title}</h4>
       <div class="muted mini" style="margin-bottom:6px">${hint}</div>
       <div>${rows(sec)}</div>${add}</div>`;
-  b.innerHTML = `<p class="muted">Every secret the app uses lives in one store outside the repo:
-      <code>${esc(d.path)}</code> · <b>${d.exists ? esc(d.mode) : 'not created yet'}</b>.
+  b.innerHTML = `<p class="muted">Every secret the app uses lives in one encrypted store outside the repo:
+      <code>${esc(d.path)}</code> · <b>${esc(d.encryption || 'not created yet')}</b>${d.key_source ? ` · key: ${esc(d.key_source)}` : ''}.
       Only masked forms are returned here - replacing a value writes it straight to the store.
+      The key lives in the OS keyring when available, otherwise in a 0600 key file beside the store.
       Files that Google's libraries and GraphRAG read (<code>credentials.json</code>, <code>token.json</code>,
       <code>kb/graphrag/.env</code>) are regenerated from the store at 0600.</p>
+    ${d.encryption === 'plaintext' ? `<div class="row" style="margin:6px 0"><span class="bad mini">This store is still plaintext.</span>
+      <button onclick="App.secretEncrypt()">Encrypt now</button></div>` : ''}
     ${problem}
     ${needed.length ? `<div class="row" style="margin:6px 0"><span class="muted mini">Found ${needed.length} existing
         secret source(s) outside the store.</span>

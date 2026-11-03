@@ -2581,6 +2581,12 @@ def agent_env(**extra):
         env["MODEL"] = cfg["model"]               # chat + role chats use the selected model
     for k, v in cfg.get("env", {}).items():
         env.setdefault(k, v)
+    try:
+        key = SS.key_b64()          # children may not share the desktop keyring
+        if key:
+            env.setdefault(SS.KEY_ENV, key)
+    except SS.SecretsError:
+        pass
     return env
 
 
@@ -2686,6 +2692,7 @@ def secrets_info():
         return {"error": str(exc), "path": SS.path()}
     out = {"path": st["path"], "exists": st["exists"], "mode": st["mode"],
            "dir_mode": st["dir_mode"], "problems": st["problems"],
+           "encryption": st["encryption"], "key_source": st["key_source"],
            "sections": {}, "known": SECRET_KNOWN, "migration": mig,
            "google": {"credentials": False, "token": False, "token_modify": False}}
     for section, values in data["sections"].items():
@@ -2761,6 +2768,15 @@ def secrets_migrate():
         return {"error": str(exc)}
     out["info"] = secrets_info()
     return out
+
+
+def secrets_encrypt():
+    try:
+        st = SS.encrypt_store()
+    except (SS.SecretsError, OSError) as exc:
+        return {"error": str(exc)}
+    return {"ok": f"store is {st['encryption'] or 'empty'} (key: {st['key_source'] or 'none'})",
+            "info": secrets_info()}
 
 
 # ---------------------------------------------------------------- agent permissions
@@ -4061,6 +4077,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(secrets_delete(data.get("section", ""), data.get("name", "")))
         if p == "/api/secrets/migrate":
             return self._json(secrets_migrate())
+        if p == "/api/secrets/encrypt":
+            return self._json(secrets_encrypt())
         if p == "/api/register/row":
             return self._json(update_row(data.get("company", ""), data.get("role", ""),
                                          data.get("status", ""), data.get("notes", ""),

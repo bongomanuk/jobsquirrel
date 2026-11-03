@@ -22,6 +22,7 @@ HOME = Path.home()
 PRIVATE_FILES = (
     HOME / ".config" / "job-search" / "agent.json",
     HOME / ".config" / "job-search" / "secrets.json",
+    HOME / ".config" / "job-search" / "secrets.key",
     ROOT / "kb" / "graphrag" / ".env",
 )
 SECRET_NAME = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)", re.I)
@@ -64,6 +65,11 @@ def _private_values():
         try:
             text = path.read_text(encoding="utf-8")
         except OSError:
+            continue
+        if path.name == "secrets.key":
+            value = _clean(text)
+            if len(value) >= 16:
+                values.add(value)
             continue
         if path.suffix == ".json":
             try:

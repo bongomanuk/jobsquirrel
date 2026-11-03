@@ -139,7 +139,8 @@ def checks():
         import secrets_store as SS
         st = SS.check()
         mig = SS.migration_status()
-        detail = f"{st['path']} ({st['mode'] or 'not created yet'})"
+        detail = (f"{st['path']} ({st['encryption'] or 'not created yet'}, "
+                  f"key {st['key_source'] or '—'})")
         if mig.get("needed"):
             detail += f"; {len(mig['needed'])} source(s) to import"
         add("secrets", st["ok"] and not mig.get("needed"), detail,

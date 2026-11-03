@@ -210,10 +210,11 @@ and approve).
 ## 6. Secrets & privacy
 
 - Everything sensitive lives in `~/.config/job-search/`, **outside** the repo:
-  the single secrets store (`secrets.json`, 0600), the `credentials.json` /
-  `token.json` caches Google's libraries read, and the `*-profile/` browser
-  profiles. `accounts.json` is imported into the store and archived as
-  `accounts.json.migrated`.
+  the AES-256-GCM encrypted secrets store (`secrets.json`, 0600, key in the OS
+  keyring or a 0600 `secrets.key`), the `credentials.json` / `token.json`
+  caches Google's libraries read, and the `*-profile/` browser profiles.
+  `accounts.json` is imported into the store and its plaintext backups are
+  folded into an encrypted archive.
 - `.gitignore` excludes `config/*.md|json` (your data), `state/`, `documents/`
   generated content, and `kb/` sources/indices.
 - Revoke access any time: https://myaccount.google.com/permissions.
@@ -236,7 +237,8 @@ bash tools/setup_accounts.sh --check       # status of every account above
 ## The secrets store
 
 Every secret the app uses has one home: `~/.config/job-search/secrets.json`,
-mode 0600 in a 0700 directory, managed from **Settings → Secrets** or:
+AES-256-GCM encrypted, mode 0600 in a 0700 directory, managed from
+**Settings → Secrets** or:
 
 ```bash
 python3 tools/secrets_store.py --list          # masked values only
@@ -250,10 +252,20 @@ Sections are `agent` (model/API keys), `graphrag` (knowledge-graph LLM),
 `google` (OAuth client id/secret plus the serialized credential/token files),
 `accounts` (per-site logins) and `custom`. The dashboard only ever receives
 masked values. Files that third-party code must read (`credentials.json`,
-`token.json`, `kb/graphrag/.env`) are regenerated from the store with 0600.
+`token.json`, `kb/graphrag/.env`) are regenerated from the store with 0600;
+they are caches, not the canonical copy.
+
+The key is kept in the OS keyring when one is available (Linux Secret Service,
+macOS Keychain, Windows Credential Locker), otherwise in a 0600 `secrets.key`
+beside the store. `JOBSQUIRREL_SECRETS_KEY` (base64, 32 bytes) overrides both for
+CI; the dashboard passes it to its agent children so a locked keyring cannot
+strand a run. `tools/secrets_store.py --check` reports the encryption and key
+source without printing either.
 
 Existing installs are migrated automatically on the next dashboard start: agent
 keys leave `agent.json`, the Google client id/secret leave `config/google.json`,
-and `accounts.json` is archived. A timestamped copy of every touched file is
-written beside the store in `secrets-backup-*/`.
+`accounts.json` is imported, and plaintext backups (`secrets-backup-*/`,
+`accounts.json.migrated`, old token copies) are folded into one encrypted
+archive. `--decrypt-backup FILE` restores such an archive into a private
+directory if you ever need it.
 

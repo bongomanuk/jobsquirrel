@@ -130,10 +130,11 @@ reports a clean config.
    extensions unless the user explicitly says their *career* isn't the topic.
    Read their projects/sites through the gate (rule 9) to gather the facts.
 11. **Secrets live in the store.** API keys, OAuth client secrets, per-site
-    passwords and GraphRAG settings belong in `~/.config/job-search/secrets.json`
-    (0600), managed with `tools/secrets_store.py` and visible in **Settings →
-    Secrets**. Never write a secret into `config/`, a tracked `.env`, a prompt or
-    a command line. For a site login, ask `python3 tools/accounts.py --get <host>`;
+    passwords and GraphRAG settings belong in the encrypted store at
+    `~/.config/job-search/secrets.json` (AES-256-GCM, key in the OS keyring or a
+    0600 key file), managed with `tools/secrets_store.py` and visible in
+    **Settings → Secrets**. Never write a secret into `config/`, a tracked
+    `.env`, a prompt or a command line. For a site login, ask `python3 tools/accounts.py --get <host>`;
     for an API key, read the environment (the runners inject it) or
     `tools/secrets_store.py --get <section> <name>`.
 12. **The browser is Camoufox — never Chromium.** Every browser action goes through

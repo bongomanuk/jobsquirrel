@@ -134,8 +134,9 @@ a cited context pack per role (`state/kb-context/<key>.md`). The targeted CVs an
 ## 7. Per-site credentials (optional)
 
 `tools/accounts.py --for <url>` stores (or creates) a strong password per host,
-in the central secrets store (default `~/.config/job-search/secrets.json`, mode
-0600; Settings → Secrets). Use
+in the encrypted secrets store (default `~/.config/job-search/secrets.json`,
+AES-256-GCM with the key in the OS keyring or a 0600 key file; Settings →
+Secrets). Use
 `--get`, `--list`, `--random`.
 
 ## 8. Verify

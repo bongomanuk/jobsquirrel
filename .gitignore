@@ -9,6 +9,7 @@ token.json
 *.token
 .env
 secrets.json
+secrets.key
 secrets-backup-*/
 
 # Python

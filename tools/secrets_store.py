@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """One secure store for every secret the pipeline uses.
 
-The store is a JSON file outside the repo (default
+The store is an encrypted JSON file outside the repo (default
 ``~/.config/job-search/secrets.json``), mode 0600 inside a 0700 directory. It is
-the source of truth for:
+AES-256-GCM encrypted; the key lives in the OS keyring when one is available
+(Linux Secret Service via ``secret-tool``, macOS Keychain, Windows Credential
+Locker) and otherwise in a 0600 key file beside the store. It is the source of
+truth for:
 
   agent     model/API keys and env values used by the runner
   graphrag  LLM/embeddings settings for the knowledge graph
@@ -20,7 +23,9 @@ CLI (values are read from stdin so they do not land in shell history):
 
   python3 tools/secrets_store.py --list
   python3 tools/secrets_store.py --check
+  python3 tools/secrets_store.py --encrypt
   python3 tools/secrets_store.py --migrate
+  python3 tools/secrets_store.py --decrypt-backup FILE [--out DIR]
   python3 tools/secrets_store.py --set agent OPENROUTER_API_KEY   # value on stdin
   python3 tools/secrets_store.py --get agent OPENROUTER_API_KEY
   python3 tools/secrets_store.py --delete agent OPENROUTER_API_KEY
@@ -28,18 +33,35 @@ CLI (values are read from stdin so they do not land in shell history):
 from __future__ import annotations
 
 import argparse
+import base64
+import glob
 import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import time
 from pathlib import Path
 
+try:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+except ImportError:  # surfaced with a clear message when a store is used
+    AESGCM = None
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_DIR = os.path.join(os.path.expanduser("~"), ".config", "job-search")
 DEFAULT_PATH = os.path.join(DEFAULT_DIR, "secrets.json")
+STORE_FORMAT = "jobsquirrel-secrets"
+STORE_VERSION = 2
+STORE_CIPHER = "AES-256-GCM"
+STORE_AAD = b"jobsquirrel-store-v2"
+BACKUP_AAD = b"jobsquirrel-backup-v1"
+KEY_ENV = "JOBSQUIRREL_SECRETS_KEY"
+NO_KEYRING = "JOBSQUIRREL_NO_KEYRING"
+KEYRING_SERVICE = "jobsquirrel"
+KEYRING_ACCOUNT = "secrets-key"
 SECTION_RE = re.compile(r"^[a-z][a-z0-9_-]{0,40}$")
 NAME_RE = re.compile(r"^[A-Za-z0-9_.:@-]{1,160}$")
 SECRET_RE = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH)", re.I)
@@ -55,28 +77,208 @@ def path() -> str:
         os.environ.get("JOBSQUIRREL_SECRETS") or DEFAULT_PATH))
 
 
-def _empty() -> dict:
-    return {"version": 1, "updated": "", "sections": {}}
+_KEY = None                 # key that decrypted the store in this process
+_KEY_SOURCE = ""            # env | keyring | keyfile
 
 
-def load() -> dict:
-    """Read the store. A missing file is an empty store; corrupt data raises."""
+def key_path() -> str:
+    """The fallback key file beside the store."""
+    p = path()
+    return (os.path.splitext(p)[0] if p.endswith(".json") else p) + ".key"
+
+
+def _encode_key(raw: bytes) -> str:
+    return base64.b64encode(raw).decode("ascii")
+
+
+def _decode_key(text: str):
+    text = (text or "").strip()
+    if not text:
+        return None
+    for decoder in (base64.b64decode, base64.urlsafe_b64decode):
+        try:
+            raw = decoder(text, validate=True)
+        except Exception:
+            continue
+        if len(raw) == 32:
+            return raw
+    return None
+
+
+def _secret_tool(args, stdin: str = ""):
+    """Talk to the Secret Service via secret-tool, or return None."""
+    if shutil.which("secret-tool") is None:
+        return None
+    try:
+        r = subprocess.run(["secret-tool", *args], input=stdin, capture_output=True,
+                           text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def _keyring_get():
+    out = _secret_tool(["lookup", "service", KEYRING_SERVICE,
+                        "account", KEYRING_ACCOUNT])
+    return _decode_key(out) if out else None
+
+
+def _keyring_put(key: bytes) -> bool:
+    if os.environ.get(NO_KEYRING):
+        return False
+    return _secret_tool(["store", "--label=Jobsquirrel secrets key",
+                         "service", KEYRING_SERVICE, "account", KEYRING_ACCOUNT],
+                        _encode_key(key)) is not None
+
+
+def _keyfile_read():
+    try:
+        with open(key_path(), encoding="utf-8") as fh:
+            return _decode_key(fh.read())
+    except OSError:
+        return None
+
+
+def _keyfile_write(key: bytes) -> None:
+    p = key_path()
+    directory = os.path.dirname(p) or "."
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    try:
+        os.chmod(directory, 0o700)
+    except OSError:
+        pass
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".secrets-key.", suffix=".tmp")
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(_encode_key(key) + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, p)
+        os.chmod(p, 0o600)
+        _fsync_dir(directory)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+def key_candidates():
+    """Every key we can try, in preference order (env, keyring, keyfile)."""
+    seen = set()
+    env = _decode_key(os.environ.get(KEY_ENV, ""))
+    if env:
+        seen.add(env)
+        yield env, "env"
+    if not os.environ.get(NO_KEYRING):
+        k = _keyring_get()
+        if k and k not in seen:
+            seen.add(k)
+            yield k, "keyring"
+    k = _keyfile_read()
+    if k and k not in seen:
+        seen.add(k)
+        yield k, "keyfile"
+
+
+def get_key(create: bool = False):
+    """Return (32-byte key, source). With create, make one if none exists."""
+    for key, source in key_candidates():
+        return key, source
+    if not create:
+        raise SecretsError("no decryption key found (OS keyring, key file or "
+                           f"{KEY_ENV})")
+    if AESGCM is None:
+        raise SecretsError("cryptography is not installed; run pip install cryptography")
+    key = os.urandom(32)
+    if _keyring_put(key):
+        return key, "keyring"
+    _keyfile_write(key)
+    return key, "keyfile"
+
+
+def key_b64() -> str:
+    """The current key, base64, for passing to a trusted child process."""
+    if _KEY:
+        return _encode_key(_KEY)
+    for key, _source in key_candidates():
+        return _encode_key(key)
+    return ""
+
+
+def _is_encrypted(data: dict) -> bool:
+    return data.get("format") == STORE_FORMAT and bool(data.get("payload"))
+
+
+def _decrypt_store(data: dict, p: str):
+    if AESGCM is None:
+        raise SecretsError("cryptography is not installed; run pip install cryptography")
+    try:
+        nonce = base64.b64decode(data["nonce"])
+        payload = base64.b64decode(data["payload"])
+    except (KeyError, ValueError, TypeError) as exc:
+        raise SecretsError(f"{p} is not a valid encrypted store") from exc
+    tried = 0
+    for key, source in key_candidates():
+        tried += 1
+        try:
+            plain = AESGCM(key).decrypt(nonce, payload, STORE_AAD)
+        except Exception:
+            continue
+        try:
+            inner = json.loads(plain.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            continue
+        if isinstance(inner, dict):
+            return inner, key, source
+    why = "no key available" if not tried else "no available key could decrypt it"
+    raise SecretsError(f"cannot decrypt {p}: {why}")
+
+
+def _read_raw() -> dict | None:
     p = path()
     try:
         with open(p, encoding="utf-8") as fh:
             data = json.load(fh)
     except FileNotFoundError:
-        return _empty()
+        return None
     except (OSError, ValueError) as exc:
         raise SecretsError(f"cannot read {p}: {exc}") from exc
     if not isinstance(data, dict):
         raise SecretsError(f"{p} is not a JSON object")
-    sections = data.get("sections")
+    return data
+
+
+def _encrypt_payload(payload: dict, key: bytes, aad: bytes) -> dict:
+    nonce = os.urandom(12)
+    blob = AESGCM(key).encrypt(nonce, json.dumps(payload).encode("utf-8"), aad)
+    return {"format": STORE_FORMAT, "version": STORE_VERSION, "cipher": STORE_CIPHER,
+            "nonce": base64.b64encode(nonce).decode("ascii"),
+            "payload": base64.b64encode(blob).decode("ascii")}
+
+
+def _empty() -> dict:
+    return {"version": 1, "updated": "", "sections": {}}
+
+
+def load() -> dict:
+    """Read and decrypt the store. Missing is empty; corrupt data raises."""
+    global _KEY, _KEY_SOURCE
+    data = _read_raw()
+    if data is None:
+        _KEY, _KEY_SOURCE = None, ""
+        return _empty()
+    if _is_encrypted(data):
+        inner, key, source = _decrypt_store(data, path())
+        _KEY, _KEY_SOURCE = key, source
+    else:
+        inner = data          # legacy plaintext; migrate/encrypt on next save
+        _KEY, _KEY_SOURCE = None, ""
+    sections = inner.get("sections")
     if not isinstance(sections, dict):
         sections = {}
     out = _empty()
     out["sections"] = {str(k): v for k, v in sections.items() if isinstance(v, dict)}
-    out["updated"] = str(data.get("updated") or "")
+    out["updated"] = str(inner.get("updated") or "")
     return out
 
 
@@ -91,23 +293,18 @@ def _fsync_dir(directory: str) -> None:
         pass
 
 
-def save(data: dict) -> None:
-    """Atomically replace the store with 0600, in a 0700 directory."""
-    p = path()
+def _write_secure(p: str, data: dict) -> None:
     directory = os.path.dirname(p) or "."
     os.makedirs(directory, mode=0o700, exist_ok=True)
     try:
         os.chmod(directory, 0o700)
     except OSError:
         pass
-    payload = {"version": 1,
-               "updated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-               "sections": data.get("sections") if isinstance(data.get("sections"), dict) else {}}
     fd, tmp = tempfile.mkstemp(dir=directory, prefix=".secrets.", suffix=".tmp")
     try:
         os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(payload, fh, indent=2, sort_keys=False)
+            json.dump(data, fh, indent=2, sort_keys=False)
             fh.write("\n")
             fh.flush()
             os.fsync(fh.fileno())
@@ -117,6 +314,25 @@ def save(data: dict) -> None:
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
+
+
+def _write_raw(data: dict) -> None:
+    _write_secure(path(), data)
+
+
+def save(data: dict) -> None:
+    """Encrypt and atomically replace the store (0600 in a 0700 directory)."""
+    global _KEY, _KEY_SOURCE
+    payload = {"version": 1,
+               "updated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+               "sections": data.get("sections") if isinstance(data.get("sections"), dict) else {}}
+    key, source = (_KEY, _KEY_SOURCE) if _KEY else (None, "")
+    if key is None:
+        key, source = get_key(create=True)
+    if AESGCM is None:
+        raise SecretsError("cryptography is not installed; run pip install cryptography")
+    _write_raw(_encrypt_payload(payload, key, STORE_AAD))
+    _KEY, _KEY_SOURCE = key, source
 
 
 def _check_section(section: str) -> str:
@@ -221,7 +437,7 @@ def mask(value) -> str:
 
 
 def check() -> dict:
-    """File/permission health, without exposing values."""
+    """File/permission/encryption health, without exposing values."""
     p = path()
     try:
         st = os.stat(p)
@@ -234,16 +450,27 @@ def check() -> dict:
         dir_mode = oct(os.stat(os.path.dirname(p)).st_mode & 0o777)
     except OSError:
         pass
+    encrypted = False
+    if exists:
+        try:
+            encrypted = _is_encrypted(_read_raw() or {})
+        except SecretsError:
+            pass
     problems = []
     if exists and mode not in ("0o600", "0o400"):
         problems.append(f"store mode is {mode}, expected 0600")
-    if dir_mode and dir_mode not in ("0o700", "0o750", "0o750"):
+    if dir_mode and dir_mode not in ("0o700", "0o750"):
         problems.append(f"store directory mode is {dir_mode}, expected 0700")
+    if exists and not encrypted:
+        problems.append("store is plaintext; run --encrypt (the dashboard does this on start)")
     try:
         load()
     except SecretsError as exc:
         problems.append(str(exc))
     return {"path": p, "exists": exists, "mode": mode, "dir_mode": dir_mode,
+            "encrypted": encrypted,
+            "encryption": STORE_CIPHER if encrypted else ("plaintext" if exists else ""),
+            "key_source": _KEY_SOURCE,
             "problems": problems, "ok": not problems}
 
 
@@ -342,6 +569,126 @@ def migration_status() -> dict:
     needed = [k for k, v in checks.items() if v]
     return {"needed": needed, "counts": checks,
             "total": sum(v for v in checks.values() if isinstance(v, int))}
+
+
+def encrypt_store() -> dict:
+    """Encrypt a legacy plaintext store (idempotent)."""
+    raw = _read_raw()
+    if raw is None:
+        return check()
+    data = load()
+    if not _is_encrypted(raw):
+        save(data)
+    return check()
+
+
+def _legacy_plaintext_files() -> list[str]:
+    bases = {os.path.dirname(path()) or ".", DEFAULT_DIR,
+             os.path.dirname(os.path.expanduser(os.environ.get("ACCOUNTS_FILE")
+                                                or os.path.join(DEFAULT_DIR, "accounts.json"))),
+             os.path.dirname(os.path.expanduser(os.environ.get("AGENT_CFG")
+                                                or os.path.join(DEFAULT_DIR, "agent.json"))),
+             os.path.dirname(google_config_path())}
+    config_dir, _credentials, _token = _google_paths()
+    bases.add(config_dir)
+    files = set()
+    for base in bases:
+        for d in glob.glob(os.path.join(base, "secrets-backup-*")):
+            if os.path.isdir(d):
+                for root, _dirs, names in os.walk(d):
+                    files.update(os.path.join(root, n) for n in names)
+        for name in ("accounts.json.migrated", "agent.json.bak", "google.json.bak"):
+            f = os.path.join(base, name)
+            if os.path.isfile(f):
+                files.add(f)
+        files.update(f for f in glob.glob(os.path.join(base, "token.json.*"))
+                     if os.path.isfile(f) and os.path.basename(f) != "token.json")
+    return sorted(files)
+
+
+def encrypt_legacy_backups() -> dict:
+    """Fold plaintext backups/archives into one encrypted archive and remove them."""
+    files = _legacy_plaintext_files()
+    if not files:
+        return {}
+    key, _source = get_key(create=True)
+    if AESGCM is None:
+        raise SecretsError("cryptography is not installed; run pip install cryptography")
+    blob = {}
+    for f in files:
+        try:
+            raw = open(f, "rb").read()
+        except OSError:
+            continue
+        if len(raw) > 2_000_000:
+            continue
+        blob[f] = base64.b64encode(raw).decode("ascii")
+    if not blob:
+        return {}
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    out = os.path.join(os.path.dirname(path()) or ".",
+                       f"secrets-backup-{stamp}.json.enc")
+    wrapper = _encrypt_payload({"created": stamp, "files": blob}, key, BACKUP_AAD)
+    _write_secure(out, wrapper)
+    # Verify before deleting anything.
+    check = _read_json(out)
+    plain = AESGCM(key).decrypt(base64.b64decode(check["nonce"]),
+                                base64.b64decode(check["payload"]), BACKUP_AAD)
+    restored = json.loads(plain.decode("utf-8")).get("files") or {}
+    if restored != blob:
+        raise SecretsError("encrypted backup verification failed; originals kept")
+    removed = 0
+    for f in blob:
+        try:
+            os.remove(f)
+            removed += 1
+        except OSError:
+            pass
+    for base in {os.path.dirname(path()) or ".", DEFAULT_DIR}:
+        for d in glob.glob(os.path.join(base, "secrets-backup-*")):
+            if os.path.isdir(d):
+                for root, _dirs, _names in os.walk(d, topdown=False):
+                    try:
+                        os.rmdir(root)
+                    except OSError:
+                        pass
+    return {"archive": out, "files": len(blob), "removed": removed}
+
+
+def decrypt_backup(file_: str, out: str = "") -> dict:
+    """Restore an encrypted backup archive into a directory (0600 files)."""
+    data = _read_json(file_)
+    if not _is_encrypted(data):
+        raise SecretsError("not an encrypted backup archive")
+    if AESGCM is None:
+        raise SecretsError("cryptography is not installed")
+    for key, _source in key_candidates():
+        try:
+            plain = AESGCM(key).decrypt(base64.b64decode(data["nonce"]),
+                                        base64.b64decode(data["payload"]), BACKUP_AAD)
+            obj = json.loads(plain.decode("utf-8"))
+        except Exception:
+            continue
+        files = obj.get("files") if isinstance(obj.get("files"), dict) else {}
+        outdir = out or os.path.join(os.path.dirname(path()) or ".",
+                                    "secrets-restored-" + time.strftime("%Y%m%d-%H%M%S"))
+        os.makedirs(outdir, mode=0o700, exist_ok=True)
+        try:
+            os.chmod(outdir, 0o700)
+        except OSError:
+            pass
+        written = []
+        for i, (orig, b64) in enumerate(files.items()):
+            name = os.path.basename(orig) or f"file{i}"
+            dest = os.path.join(outdir, name)
+            if os.path.exists(dest):
+                dest = f"{dest}.{i}"
+            with open(dest, "wb") as fh:
+                fh.write(base64.b64decode(b64))
+            os.chmod(dest, 0o600)
+            written.append(dest)
+        return {"out": outdir, "files": len(written)}
+    raise SecretsError("cannot decrypt backup with any available key")
 
 
 def migrate() -> dict:
@@ -469,15 +816,18 @@ def migrate() -> dict:
     # Do not leave empty sections behind.
     data["sections"] = {k: v for k, v in secs.items() if v}
     save(data)
+    enc = encrypt_legacy_backups()
     return {"imported": imported, "touched": touched,
-            "backup": backup_dir if os.path.isdir(backup_dir) else "",
+            "backup": enc.get("archive") or (backup_dir if os.path.isdir(backup_dir) else ""),
+            "encrypted_backup": enc,
             "store": path()}
 
 
 # ------------------------------------------------------------------ CLI
 def _cmd_list() -> int:
     data = load()
-    print(f"store: {path()}")
+    st = check()
+    print(f"store: {path()}  ({st['encryption'] or 'empty'}, key: {st['key_source'] or '—'})")
     for section_name, values in data["sections"].items():
         print(f"\n[{section_name}]")
         for name, value in values.items():
@@ -488,8 +838,11 @@ def _cmd_list() -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description="One secure store for Jobsquirrel secrets.")
     ap.add_argument("--list", action="store_true", help="list sections and masked values")
-    ap.add_argument("--check", action="store_true", help="check file permissions and syntax")
-    ap.add_argument("--migrate", action="store_true", help="import existing secret files")
+    ap.add_argument("--check", action="store_true", help="check encryption, permissions and syntax")
+    ap.add_argument("--encrypt", action="store_true", help="encrypt a legacy plaintext store in place")
+    ap.add_argument("--migrate", action="store_true", help="import legacy files and encrypt")
+    ap.add_argument("--decrypt-backup", metavar="FILE", help="restore an encrypted backup archive")
+    ap.add_argument("--out", default="", help="directory for --decrypt-backup")
     ap.add_argument("--set", nargs=2, metavar=("SECTION", "NAME"),
                     help="store a value read from stdin")
     ap.add_argument("--get", nargs=2, metavar=("SECTION", "NAME"),
@@ -501,13 +854,28 @@ def main() -> int:
         st = check()
         print(f"store: {st['path']}")
         print(f"exists: {st['exists']}  mode: {st['mode'] or '—'}  dir: {st['dir_mode'] or '—'}")
+        print(f"encryption: {st['encryption'] or '—'}  key: {st['key_source'] or '—'}")
         for problem in st["problems"]:
             print(f"FAIL {problem}")
         print("RESULT: PASS" if st["ok"] else "RESULT: FAIL")
         return 0 if st["ok"] else 1
+    if args.encrypt:
+        st = encrypt_store()
+        print(f"encrypted: {st['encryption'] or '—'}  key: {st['key_source'] or '—'}")
+        for problem in st["problems"]:
+            print(f"FAIL {problem}")
+        return 0 if st["ok"] else 1
     if args.migrate:
         out = migrate()
         print(json.dumps(out, indent=2))
+        return 0
+    if args.decrypt_backup:
+        try:
+            out = decrypt_backup(args.decrypt_backup, args.out)
+        except SecretsError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+        print(f"restored {out['files']} file(s) to {out['out']}")
         return 0
     if args.set:
         value = sys.stdin.read()
