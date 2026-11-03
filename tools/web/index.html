@@ -139,8 +139,9 @@
       </div>
       <div id="chat" class="term grow">ask the agent anything…</div>
       <div class="row chat-in">
+        <div id="chat-hist" class="chat-hist hide" role="listbox" aria-label="previous prompts"></div>
         <input id="chatmsg" placeholder="e.g. apply to the top 5 prepared roles" style="flex:1"
-          onkeydown="if(event.key==='Enter')App.chat()"><button id="chat-send">Send</button>
+          title="↑ shows your previous prompts"><button id="chat-send">Send</button>
       </div>
     </section>
     <div class="splitter split-inner" id="split-inner" title="Drag to resize"></div>

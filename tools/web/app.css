@@ -484,3 +484,13 @@ mark.kw{background:#24405a;color:#bfe3ff;border-radius:3px;padding:0 2px}
 #grid thead th.sorted[data-dir="asc"]::after{content:"▲"}
 #grid thead th.sorted[data-dir="desc"]::after{content:"▼"}
 #grouping.on{background:var(--surface2);color:var(--accent);border-color:var(--accent)}
+
+/* agent prompt history (ArrowUp) */
+.chat-in{position:relative}
+.chat-hist{position:absolute;left:0;right:0;bottom:calc(100% + 4px);max-height:45vh;overflow:auto;
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:4px;
+  box-shadow:0 14px 36px rgba(0,0,0,.55);z-index:30}
+.ch-item{padding:6px 9px;border-radius:7px;font-size:12.5px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;cursor:pointer}
+.ch-item:hover,.ch-item.sel{background:var(--surface2)}
+.ch-empty{padding:8px 9px;font-size:12px}

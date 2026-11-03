@@ -142,6 +142,74 @@ function toast(msg, bad) {
   _toastTimer = setTimeout(() => t.classList.remove('show'), 6000);
 }
 
+const CHAT_HIST_KEY = 'agent.history';
+let HIST = { open: false, items: [], sel: 0 };
+
+function chatHistory() {
+  try {
+    const a = JSON.parse(localStorage.getItem(CHAT_HIST_KEY) || '[]');
+    return Array.isArray(a) ? a.filter(x => typeof x === 'string' && x.trim()) : [];
+  } catch (e) { return []; }
+}
+
+function rememberChat(m) {
+  const h = chatHistory().filter(x => x !== m);
+  h.unshift(m);
+  try { localStorage.setItem(CHAT_HIST_KEY, JSON.stringify(h.slice(0, 100))); } catch (e) {}
+}
+
+function histClose() {
+  HIST.open = false; HIST.items = [];
+  const el = document.getElementById('chat-hist');
+  if (el) { el.classList.add('hide'); el.innerHTML = ''; }
+}
+
+function histRender() {
+  const el = document.getElementById('chat-hist');
+  if (!el) return;
+  el.innerHTML = HIST.items.length
+    ? HIST.items.map((t, i) => `<div class="ch-item${i === HIST.sel ? ' sel' : ''}" role="option" data-i="${i}" title="${esc(t)}">${esc(t)}</div>`).join('')
+    : '<div class="ch-empty muted">no earlier prompts</div>';
+  el.classList.remove('hide');
+  const sel = el.querySelector('.ch-item.sel');
+  if (sel) sel.scrollIntoView({ block: 'nearest' });
+}
+
+function histOpen(filter) {
+  const f = (filter || '').trim().toLowerCase();
+  const all = chatHistory();
+  const recent = (f ? all.filter(x => x.toLowerCase().includes(f)) : all).slice(0, 50);
+  // Render oldest first so that pressing Up walks back in time; start on the
+  // newest (bottom).
+  HIST.items = recent.reverse();
+  HIST.sel = HIST.items.length - 1;
+  HIST.open = true;
+  histRender();
+}
+
+function chatKey(e) {
+  const inp = e.target;
+  if (e.key === 'ArrowUp') {
+    if (HIST.open) { HIST.sel = Math.max(0, HIST.sel - 1); histRender(); }
+    else histOpen(inp.value);
+    e.preventDefault(); return;
+  }
+  if (!HIST.open) {
+    if (e.key === 'Enter') { e.preventDefault(); App.chat(); }
+    return;
+  }
+  if (e.key === 'ArrowDown') { e.preventDefault(); HIST.sel = Math.min(HIST.items.length - 1, HIST.sel + 1); histRender(); return; }
+  if (e.key === 'Escape') { e.preventDefault(); histClose(); return; }
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const pick = HIST.items[HIST.sel];
+    if (pick) { inp.value = pick; inp.setSelectionRange(pick.length, pick.length); }
+    histClose();
+    return;
+  }
+  if (e.key === 'Tab') histClose();
+}
+
 const App = {
   async run(command) {
     if (command === 'submit_queue') {
@@ -369,6 +437,7 @@ const App = {
     CHAT.running = true; CHAT_STICK = true; setSpin(true); renderChat();
     const d = await api('/api/chat', { message: m });
     if (d.error) { toast(d.error, true); CHAT.running = false; setSpin(false); renderChat(); return; }  // keep your text
+    rememberChat(m);
     inp.value = '';
     if (d.queued) toast(`queued — the agent is busy (${d.pending} waiting)`);
     chatOffset = 0; clearInterval(CHAT_TIMER); CHAT_TIMER = setInterval(chatPoll, 1200);
@@ -2343,4 +2412,23 @@ $('#upd-go').onclick = async () => {
   const d = await api('/api/update/apply', { approval_token: 'APPROVE_UPDATE' });
   toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true);
 };
+(() => {
+  const cm = document.getElementById('chatmsg');
+  const hist = document.getElementById('chat-hist');
+  if (cm) {
+    cm.addEventListener('keydown', chatKey);
+    cm.addEventListener('input', () => { if (HIST.open) histOpen(cm.value); });
+    cm.addEventListener('blur', () => setTimeout(histClose, 150));
+  }
+  if (hist) {
+    hist.addEventListener('mousedown', (e) => {
+      const it = e.target.closest('.ch-item');
+      if (!it) return;
+      e.preventDefault();                       // keep the input focused
+      const v = HIST.items[+it.dataset.i];
+      if (v != null) { cm.value = v; cm.focus(); cm.setSelectionRange(v.length, v.length); }
+      histClose();
+    });
+  }
+})();
 initPanels(); initGridCols(); syncGroupingButton(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel();

@@ -243,6 +243,9 @@ Clicking a row opens a drawer with tabs:
   the conversation persists across messages (session pinned; `＋ New` resets), tool runs collapse,
   and a spinner shows while working. A message sent while the agent is busy is **queued** (never
   rejected) and runs in order; the UI keeps polling while messages wait.
+- **Prompt history:** press **↑** in the chat input for a popup of your previous prompts (newest
+  selected at the bottom; ↑ walks back in time, ↓ forward, Enter fills the input, Esc closes). Typing
+  filters the list, and clicking an entry selects it. The last 100 prompts persist in the browser.
 - The embedded agent is granted **scoped read access** to the operator's project folders
   (`~/vscode`, `~/Documents`, `~/projects`, `~/src`) and may spawn subagents, so "look at my
   projects" requests don't silently stall on `external_directory` denials; secrets
