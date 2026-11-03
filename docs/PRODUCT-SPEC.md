@@ -193,6 +193,13 @@ Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files �
   **Job ad** = a saved job description exists (✓/—).
 - The grid **auto-refreshes** (every ~8s, ~3s while a run is active) without losing scroll/sort/filter,
   and floats **in-flight** rows (🥜) and **QUEUED** rows (queued but not yet in the register) to the top.
+- **Right-click a row** for the full action menu: open details / documents / the ad / the apply page,
+  discuss the role, prepare documents, submit prepared (approval-gated), recompute the match, draft a
+  reply with the agent, set the status, flag or clear a follow-up, **pin to the top**, **dismiss from
+  the lists**, re-queue, hand to a human, unblock/remove from the queue, and copy the company, role,
+  URL or key. Keyboard: arrows move, Escape closes.
+- **Dismiss** hides a role without changing its status (`state/role-flags.json`; tick **show dismissed**
+  under Filters to bring it back). **Pin** sorts it first inside its group (📌).
 
 ### 9.4 Detail drawer (right-hand)
 Clicking a row opens a drawer with tabs:

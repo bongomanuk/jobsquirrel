@@ -629,6 +629,8 @@ function approve(purpose, callText) {
 
 /* ---------- grid ---------- */
 let GRID_TIMER = null, LIVE_RUNNING = false, IDLE_TICKS = 0, WAS_BUSY = false, BUSY_NAME = '', DTAB = 0;
+let SHOW_DISMISSED = localStorage.getItem('showDismissed') === '1';
+const shown = (r) => SHOW_DISMISSED || !r.dismissed;
 async function loadGrid() {
   const sc = document.querySelector('.scroll'), y = sc ? sc.scrollTop : 0;
   const g = await api('/api/grid');
@@ -639,9 +641,10 @@ async function loadGrid() {
 }
 function bucketCounts() {
   const c = { needs: 0, prepared: 0, ongoing: 0, pipeline: 0, done: 0 };
-  GRID.forEach(r => { const k = bucketOf(r); c[k] = (c[k] || 0) + 1; });
-  return { ...c, focus: GRID.filter(r => r.focus || r.focus_unknown).length,
-           active: c.needs + c.prepared + c.ongoing + c.pipeline, all: GRID.length };
+  GRID.forEach(r => { if (!shown(r)) return; const k = bucketOf(r); c[k] = (c[k] || 0) + 1; });
+  const live = GRID.filter(shown);
+  return { ...c, focus: live.filter(r => r.focus || r.focus_unknown).length,
+           active: c.needs + c.prepared + c.ongoing + c.pipeline, all: live.length };
 }
 function renderBuckets() {
   const el = $('#metrics'); if (!el) return;
@@ -671,7 +674,7 @@ function renderRows() {
   const payMatch = (r) => !mp || (r.salary_eur != null && r.salary_eur >= mp);
   const fitMatch = (r) => !mf || (r.match != null && r.match >= mf);
   const workMatch = (r) => !wm || (r.work_model || 'unknown') === wm;
-  const filt = (r) => statusMatch(r) && typeMatch(r) && actMatch(r) && payMatch(r) && fitMatch(r) && workMatch(r) &&
+  const filt = (r) => shown(r) && statusMatch(r) && typeMatch(r) && actMatch(r) && payMatch(r) && fitMatch(r) && workMatch(r) &&
     (!qq || r.queue === qq) &&
     (!q || (r.company + ' ' + r.role + ' ' + (r.ats || '') + ' ' + (r.action || '')).toLowerCase().includes(q));
   let rows = GRID.filter(filt);
@@ -684,6 +687,8 @@ function renderRows() {
   const rank = (r) => r.running ? 0 : (r.status === 'QUEUED' ? 1 : 2);   // in-flight + queued float to the top
   const needRank = (r) => r.status === 'OFFER' ? 0 : ((r.label || '') === 'INVITED' ? 1 : (r.action ? 2 : 3));
   const sortRows = (arr, group) => arr.slice().sort((a, b) => {
+    const pa = a.pinned ? 0 : 1, pb = b.pinned ? 0 : 1;
+    if (pa !== pb) return pa - pb;
     if (group === 'focus_pay' && k === 'date') {
       const sa = a.focus_score || 0, sb = b.focus_score || 0;
       if (sa !== sb) return sb - sa;
@@ -720,9 +725,9 @@ function renderRows() {
     const i = GRID.indexOf(r);
     const sel = (CUR && (r.key === CUR.key || (r.company === CUR.company && r.role === CUR.role))
       && PANELS.detail && PANELS.detail.open) ? ' sel' : '';
-    return `<tr class="click${sel}" onclick="App.open(${i})">` +
+    return `<tr class="click${sel}" onclick="App.open(${i})" oncontextmenu="return App.rowMenu(event, ${i})">` +
       `<td class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet — queued, not applied')}>${r.date ? esc(shortDate(r.date)) : '—'}</td>` +
-      `<td${T(r.company + '  ·  employer / recruiter')}>${r.running ? `<a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="event.stopPropagation();App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show the live log"><span class="spin">🥜</span></a> ` : (PENDING.has(r.key) ? '<span class="spin" title="Queued — waiting to start">🥜</span> ' : '')}${r.action ? `<span class="actflag"${T(r.action)}>⚑</span> ` : ''}${esc(r.company)}</td>` +
+      `<td${T(r.company + '  ·  employer / recruiter')}>${r.running ? `<a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="event.stopPropagation();App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show the live log"><span class="spin">🥜</span></a> ` : (PENDING.has(r.key) ? '<span class="spin" title="Queued — waiting to start">🥜</span> ' : '')}${r.pinned ? `<span class="pinned"${T('Pinned to the top of its group')}>📌</span> ` : ''}${r.action ? `<span class="actflag"${T(r.action)}>⚑</span> ` : ''}${esc(r.company)}</td>` +
       `<td${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}</td>` +
       `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
       `<td>${chip(r.label || r.status)}${r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : ''}</td><td>${mbadge(r)}</td>` +
@@ -795,13 +800,175 @@ function renderRows() {
     else
       $('#count').textContent = `${rows.length} ${((BUCKETS.find(b => b.k === BUCKET) || {}).label || BUCKET).toLowerCase()}`;
   }
-  if ($('#fact-count')) { const n = GRID.filter(r => r.action).length; $('#fact-count').textContent = n ? `(${n})` : ''; }
+  const dismissedN = GRID.filter(r => r.dismissed).length;
+  if (dismissedN && $('#count') && !SHOW_DISMISSED)
+    $('#count').innerHTML += ` <button type="button" class="countlink" onclick="App.toggleDismissedView(true)" title="Show the roles you dismissed from the lists">· ${dismissedN} dismissed</button>`;
+  if ($('#fact-count')) { const n = GRID.filter(r => r.action && shown(r)).length; $('#fact-count').textContent = n ? `(${n})` : ''; }
+  if ($('#fdismissed-count')) { const n = GRID.filter(r => r.dismissed).length; $('#fdismissed-count').textContent = n ? `(${n})` : ''; }
   if ($('#filt-n')) {
     const n = [st, qq, ft, fa ? '1' : '', mp, mf, wm, q].filter(Boolean).length;
     $('#filt-n').textContent = n ? `(${n})` : '';
   }
 }
 window.toggleGroup = (k) => { COLLAPSED[k] = !COLLAPSED[k]; renderRows(); };
+
+/* ---------- row context menu ---------- */
+let CTX = null;
+
+function closeCtx() {
+  document.querySelectorAll('.ctxmenu').forEach(el => el.remove());
+  CTX = null;
+}
+document.addEventListener('click', (e) => {
+  if (CTX && ![...document.querySelectorAll('.ctxmenu')].some(el => el.contains(e.target))) closeCtx();
+});
+document.addEventListener('keydown', (e) => {
+  if (!CTX) return;
+  if (e.key === 'Escape') { closeCtx(); return; }
+  const items = [...CTX.querySelectorAll('.ctx-item:not(.disabled)')];
+  const at = items.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown') { e.preventDefault(); items[(at + 1 + items.length) % items.length]?.focus(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); items[(at - 1 + items.length) % items.length]?.focus(); }
+});
+
+function ctxMenuEl(items) {
+  const el = document.createElement('div');
+  el.className = 'ctxmenu';
+  el.setAttribute('role', 'menu');
+  items.forEach(it => {
+    if (it.sep) { const s = document.createElement('div'); s.className = 'ctx-sep'; el.appendChild(s); return; }
+    const b = document.createElement('button');
+    b.type = 'button'; b.tabIndex = -1;
+    b.className = 'ctx-item' + (it.danger ? ' danger' : '') + (it.disabled ? ' disabled' : '') + (it.sub ? ' has-sub' : '');
+    b.setAttribute('role', 'menuitem');
+    b.innerHTML = `<span class="ctx-ico">${it.icon || ''}</span><span class="ctx-lbl">${esc(it.label)}</span>` +
+      (it.hint ? `<span class="ctx-hint">${esc(it.hint)}</span>` : '') +
+      (it.sub ? '<span class="ctx-arrow">›</span>' : '');
+    b.onmouseenter = () => { if (it.sub) ctxSub(b, it.sub); else ctxSubClose(); };
+    b.onclick = (ev) => {
+      ev.preventDefault(); ev.stopPropagation();
+      if (it.disabled) return;
+      if (it.sub) { ctxSub(b, it.sub); return; }
+      closeCtx(); it.run();
+    };
+    el.appendChild(b);
+  });
+  return el;
+}
+
+function ctxSubClose() { document.querySelectorAll('.ctxmenu.ctx-sub').forEach(el => el.remove()); }
+
+function ctxSub(anchor, items) {
+  ctxSubClose();
+  const el = ctxMenuEl(items);
+  el.classList.add('ctx-sub');
+  document.body.appendChild(el);
+  const r = anchor.getBoundingClientRect();
+  let left = r.right + 4;
+  if (left + 230 > innerWidth) left = r.left - el.offsetWidth - 4;
+  el.style.left = Math.max(6, left) + 'px';
+  el.style.top = Math.max(6, Math.min(r.top - 6, innerHeight - el.offsetHeight - 6)) + 'px';
+}
+
+function copyText(text) {
+  if (!text) return;
+  navigator.clipboard?.writeText(text).then(
+    () => toast('copied: ' + text),
+    () => toast('copy failed', true));
+}
+
+App.rowMenu = (ev, i) => {
+  ev.preventDefault(); ev.stopPropagation();
+  const r = GRID[i];
+  if (!r) return;
+  closeCtx();
+  const tab = (n) => { DTAB = n; App.open(i); };
+  const cur = (s) => (r.status || '').toUpperCase() === s;
+  const STATUSES = ['PREPARED', 'SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER', 'REJECTED', 'BLOCKED', 'MANUAL', 'CLOSED'];
+  const items = [
+    { icon: '📄', label: 'Open details', run: () => App.open(i) },
+    { icon: '🗂', label: 'Documents', disabled: !(r.stages && r.stages.documents), run: () => tab(6) },
+    { icon: '📋', label: 'Job ad & keywords', disabled: !r.spec, run: () => tab(3) },
+    { icon: '💬', label: 'Discuss this role', run: () => tab(1) },
+    { icon: '🌐', label: 'Open apply page', disabled: !r.url, run: () => window.open(r.url, '_blank', 'noopener') },
+    r.running ? { icon: '🥜', label: 'Show live log', run: () => App.showTaskLogFor(r.company, r.role) } : null,
+    { sep: true },
+    { icon: '⚡', label: 'Prepare documents', hint: 'CV + letter + gates', disabled: r.running, run: () => App.prepareRoles([r.key]) },
+    { icon: '🚀', label: 'Submit prepared', hint: 'sends it', danger: true, disabled: r.status !== 'PREPARED' || r.running, run: () => App.submitRoles([r.key]) },
+    { icon: '↻', label: 'Recompute match', run: () => App.matchThis(r.key) },
+    { icon: '🤖', label: 'Draft a reply with the agent', run: () => { App.open(i); App.draftAsk(); } },
+    { sep: true },
+    { icon: '🏷', label: 'Set status', sub: STATUSES.map(st => ({
+        label: (cur(st) ? '✓ ' : '') + st,
+        run: () => App.setStatus(r, st) })) },
+    { icon: '⚑', label: r.action ? 'Update follow-up flag…' : 'Flag follow-up…', run: () => App.flagAction(r) },
+    r.action ? { icon: '⚐', label: 'Clear follow-up flag', run: () => App.clearFlag(r) } : null,
+    { icon: '📌', label: r.pinned ? 'Unpin' : 'Pin to top', run: () => App.togglePin(r) },
+    { icon: '✕', label: r.dismissed ? 'Restore to list' : 'Dismiss from list', danger: r.dismissed, run: () => App.toggleDismiss(r) },
+    { sep: true },
+    { icon: '🔁', label: 'Re-queue for another attempt', disabled: r.running, run: () => App.queueAct('retry', r.company, r.role) },
+    { icon: '🖐', label: 'Hand to me (autofill & finish)', danger: true, disabled: r.running, run: () => App.queueAct('human', r.company, r.role) },
+    ['BLOCKED', 'MANUAL'].includes(r.status) ? { icon: '✓', label: 'Unblock', run: () => App.queueAct('unblock', r.company, r.role) } : null,
+    ['pending', 'human', 'retry'].includes(r.queue) ? { icon: '🗑', label: 'Remove from queue', danger: true, run: () => App.queueAct('delete', r.company, r.role) } : null,
+    { sep: true },
+    { icon: '📑', label: 'Copy', sub: [
+      { label: 'Company', run: () => copyText(r.company) },
+      { label: 'Role', run: () => copyText(r.role) },
+      { label: 'Apply URL', disabled: !r.url, run: () => copyText(r.url) },
+      { label: 'Role key', run: () => copyText(r.key) },
+    ] },
+  ].filter(Boolean);
+
+  const el = ctxMenuEl(items);
+  el.style.left = '0px'; el.style.top = '0px';
+  document.body.appendChild(el);
+  const w = el.offsetWidth, h = el.offsetHeight;
+  const x = ev.clientX || (ev.target.getBoundingClientRect().right || 40);
+  const y = ev.clientY || (ev.target.getBoundingClientRect().top || 40);
+  el.style.left = Math.max(6, Math.min(x, innerWidth - w - 8)) + 'px';
+  el.style.top = Math.max(6, Math.min(y, innerHeight - h - 8)) + 'px';
+  CTX = el;
+  el.querySelector('.ctx-item:not(.disabled)')?.focus();
+  return false;
+};
+
+App.setStatus = async (r, status) => {
+  const d = await api('/api/register/row', { company: r.company, role: r.role, status, key: r.key });
+  toast(d.ok || d.error, !!d.error);
+  if (!d.error) { await loadGrid(); if (CUR) openDetail(CUR); }
+};
+
+App.flagAction = async (r) => {
+  const text = prompt('What needs doing for this role?', r.action || '');
+  if (text === null) return;
+  const d = await api('/api/register/row', { company: r.company, role: r.role, action: text.trim(), key: r.key });
+  toast(d.ok || d.error, !!d.error);
+  if (!d.error) { await loadGrid(); if (CUR) openDetail(CUR); }
+};
+
+App.clearFlag = async (r) => {
+  const d = await api('/api/register/row', { company: r.company, role: r.role, action: '', key: r.key });
+  toast(d.ok || d.error, !!d.error);
+  if (!d.error) { await loadGrid(); if (CUR) openDetail(CUR); }
+};
+
+App.toggleDismiss = async (r) => {
+  const d = await api('/api/roles/flags', { key: r.key, dismissed: !r.dismissed });
+  toast(d.error ? d.error : (r.dismissed ? 'restored to the list' : 'dismissed from the list'), !!d.error);
+  if (!d.error) { await loadGrid(); if (CUR && CUR.key === r.key && !r.dismissed) setPanel('detail', { open: false }); }
+};
+
+App.togglePin = async (r) => {
+  const d = await api('/api/roles/flags', { key: r.key, pinned: !r.pinned });
+  toast(d.error ? d.error : (r.pinned ? 'unpinned' : 'pinned to the top'), !!d.error);
+  if (!d.error) await loadGrid();
+};
+
+App.toggleDismissedView = (on) => {
+  SHOW_DISMISSED = !!on;
+  localStorage.setItem('showDismissed', SHOW_DISMISSED ? '1' : '0');
+  renderBuckets(); renderRows();
+};
 document.querySelectorAll('#grid th[data-s]').forEach(th => th.onclick = () => { const k = th.dataset.s; SORT = { k, dir: SORT.k === k ? -SORT.dir : 1 }; renderRows(); });
 
 /* ---------- resizable columns ---------- */
@@ -2028,6 +2195,8 @@ $('#q').oninput = () => {
   el.onchange = () => { renderRows(); };      // quality filters apply within the current bucket
 });
 $('#fclear').onclick = () => App.clearFilters();
+const fd = $('#fdismissed');
+if (fd) { fd.checked = SHOW_DISMISSED; fd.onchange = () => App.toggleDismissedView(fd.checked); }
 $('#a-prepare-shown').onclick = () => App.prepareShown();
 $('#a-submit-shown').onclick = () => App.submitPrepared();
 $('#a-match').onclick = () => App.matchShown($('#a-match'));

@@ -453,3 +453,20 @@ mark.kw{background:#24405a;color:#bfe3ff;border-radius:3px;padding:0 2px}
 #perm-email .emailbody{margin-top:12px}
 #perm-email textarea{min-height:34vh;resize:vertical;white-space:pre-wrap;line-height:1.45}
 #pe-attach{margin-top:8px}
+
+/* row context menu */
+.ctxmenu{position:fixed;z-index:9999;min-width:236px;max-height:80vh;overflow:auto;background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--radius);padding:5px;box-shadow:0 18px 48px rgba(0,0,0,.6);
+  font-size:12.5px}
+.ctxmenu.ctx-sub{min-width:190px}
+.ctx-item{display:flex;align-items:center;gap:8px;width:100%;background:none;border:0;color:var(--fg);
+  text-align:left;padding:7px 9px;border-radius:7px;cursor:pointer;font:inherit}
+.ctx-item:hover,.ctx-item:focus{background:var(--surface2);outline:none}
+.ctx-item.disabled{opacity:.38;cursor:default}
+.ctx-item.danger .ctx-lbl{color:#ffb4b4}
+.ctx-ico{width:18px;text-align:center;flex:none}
+.ctx-lbl{flex:1;white-space:nowrap}
+.ctx-hint{color:var(--muted);font-size:11px;margin-left:8px;white-space:nowrap}
+.ctx-arrow{color:var(--muted);margin-left:8px}
+.ctx-sep{height:1px;background:var(--line);margin:4px 6px}
+.pinned{font-size:10px;opacity:.9}

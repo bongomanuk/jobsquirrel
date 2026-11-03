@@ -210,6 +210,41 @@ def update_row(company, role, status, note, employment=None, action=None,
     return {"ok": f"updated {company} / {role}"}
 
 
+# ---------------------------------------------------------------- triage flags
+ROLE_FLAGS = os.path.join(STATE, "role-flags.json")
+
+
+def role_flags():
+    """Per-role UI triage: dismissed from lists, pinned to the top."""
+    try:
+        with open(ROLE_FLAGS, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def set_role_flags(key, dismissed=None, pinned=None):
+    if not key:
+        return {"error": "key required"}
+    data = role_flags()
+    entry = dict(data.get(key) or {})
+    if dismissed is not None:
+        entry["dismissed"] = bool(dismissed)
+    if pinned is not None:
+        entry["pinned"] = bool(pinned)
+    if entry.get("dismissed") or entry.get("pinned"):
+        data[key] = entry
+    else:
+        data.pop(key, None)
+    tmp = ROLE_FLAGS + ".tmp"
+    os.makedirs(os.path.dirname(tmp), exist_ok=True)
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=1, sort_keys=True)
+    os.replace(tmp, ROLE_FLAGS)
+    return {"ok": "updated"}
+
+
 # ---------------------------------------------------------------- drafted replies
 def drafts_list(company="", role=""):
     sys.path.insert(0, os.path.join(ROOT, "tools"))
@@ -1331,6 +1366,7 @@ def _interview_label(status, notes):
 def grid():
     """One row per application: register ⋈ queue ⋈ in-flight running tasks ⋈ provenance."""
     apps = _rows(os.path.join(STATE, "applications.csv"))
+    flags = role_flags()
     _load_cov(); _load_emp()
     target = _salary_target()
     km, cvmap = _key_maps()
@@ -1420,6 +1456,8 @@ def grid():
                     "url": qrow.get(ck, {}).get("url", "") or subm_url.get(ck, ""),
                     "stages": stages_for(key, ck in subm, jd_key=jd_key,
                                          ats_key=ats_key, content_key=content_key),
+                    "dismissed": bool((flags.get(key) or {}).get("dismissed")),
+                    "pinned": bool((flags.get(key) or {}).get("pinned")),
                     **_pay_work_fields(jd_key, notes, status, cov, target),
                     "hint": hint})
     # queued but not yet in the register — show the work that's waiting / in flight
@@ -1461,6 +1499,8 @@ def grid():
                     "spec": key in specs, "jd_key": key, "applied": ck in subm,
                     "match": cov, "alignment": m.get("alignment", ""), "running": ck in running,
                     "notes": "", "letter": "", "action": "", "url": r.get("url", ""), "stages": st,
+                    "dismissed": bool((flags.get(key) or {}).get("dismissed")),
+                    "pinned": bool((flags.get(key) or {}).get("pinned")),
                     **_pay_work_fields(key, "", stg, cov, target),
                     "hint": _hint(stg, "")})
     _save_cov(); _save_emp(); _save_meta()
@@ -3739,6 +3779,10 @@ class H(BaseHTTPRequestHandler):
                                          data.get("key", "")))
         if p == "/api/queue/action":
             return self._json(queue_action(data.get("action", ""), data.get("company", ""), data.get("role", "")))
+        if p == "/api/roles/flags":
+            return self._json(set_role_flags(data.get("key", ""),
+                                             dismissed=data.get("dismissed"),
+                                             pinned=data.get("pinned")))
         if p == "/api/roles/discover":
             return self._json(discover(data.get("url", "")))
         if p == "/api/config":
