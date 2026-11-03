@@ -275,9 +275,14 @@ On any failure at (6): fix and re-run, never upload. On a wall at (7): record
 
 ## 5. Writing the documents (what "good" means)
 
-- **CV** (a *resume*, in US English): mirror the ad's language; include every role, the strongest
-  role-relevant bullets with their metrics and technologies; ATS-safe (single
-  column for the .docx); fill the **two pages** without exceeding them.
+- **CV** (a *resume*, in US English): mirror the ad's language; include every role and
+  every evidenced achievement, with its metrics and technologies; ATS-safe (single
+  column for the .docx); fill **both** pages (last page at least 70% full, aim for
+  85-95%) without exceeding two. Split compound achievements into separate bullets,
+  and give every role a delivery bullet (what shipped, for whom, to what deadline or
+  scale) and a team bullet (who you led or coached, how the work kept moving) wherever
+  the record supports it - no padding, no invented outcomes. `cv_target.py` prints
+  `CONTENT` and `FILL`; the pre-submit gate fails a thin PDF. See `docs/CV-CONTENT.md`.
 - **Letter**: name the company and role; in the candidate's voice; no shared or
   AI-slop sentences; no duplicated logistics; only claims the CV supports.
 - **Grounding**: draw facts from `state/kb-context/<key>.md` (GraphRAG) +

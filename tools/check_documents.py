@@ -3,7 +3,9 @@
 
 Run this before every submission. It fails (non-zero exit) if a letter has a
 placeholder identity, a missing contact line, a wrong salutation, leftover
-template tokens, banned AI-slop wording, or poor ATS keyword coverage.
+template tokens, banned AI-slop wording, or poor ATS keyword coverage. It also
+measures the rendered CV and fails a two-page CV whose last page is only half
+full (a thin CV), unless --no-cv-fill is passed.
 
 Usage:
   python3 tools/check_documents.py --letter documents/applications/X.docx \
@@ -30,6 +32,7 @@ import facts as F
 import identity as ID
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import stateio
+import cv_fill
 
 
 # Identity comes from config/profile.md (fallback config/profile.example.md).
@@ -311,6 +314,11 @@ def main():
     ap.add_argument("--answer", action="append", default=[],
                     help="free-text form answer file to validate against the authoritative CV")
     ap.add_argument("--warnings-as-errors", action="store_true")
+    ap.add_argument("--min-cv-fill", type=float, default=cv_fill.DEFAULT_MIN_FILL,
+                    help="minimum fill of the CV's last page (default 0.70); "
+                         "a two-page CV that stops halfway looks thin")
+    ap.add_argument("--no-cv-fill", action="store_true",
+                    help="skip the page-fill check (e.g. a deliberately short CV)")
     ap.add_argument("--record", action="store_true",
                     help="on PASS, write a gate receipt for the CV+letter (hash-stamped); "
                          "record_submission.py requires a matching receipt to record SUBMITTED")
@@ -348,6 +356,20 @@ def main():
     else:
         check_cv(cv_paras, NAME, facts, corpus, errors, warnings)
     check_rate(letter_paras, cv_text, args.engagement, CONTRACT_RATE, errors)
+
+    # A CV that renders to two half-empty pages reads as thin, whatever the
+    # text says. Measure the rendered PDF that sits beside the .docx.
+    if args.cv and not args.no_cv_fill:
+        pdf = os.path.splitext(args.cv)[0] + ".pdf"
+        if os.path.isfile(pdf):
+            ok, problems, m = cv_fill.assess(pdf, min_fill=args.min_cv_fill)
+            if m:
+                print(f"  CV fill: {cv_fill.summary(m)}")
+                errors += [f"CV looks thin: {p}" for p in problems]
+            else:
+                warnings.append("CV fill could not be measured (poppler-utils missing?)")
+        else:
+            warnings.append("no rendered PDF beside the CV, so page fill was not checked")
 
     if args.answer:
         for path in args.answer:

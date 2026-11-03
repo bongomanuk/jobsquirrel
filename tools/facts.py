@@ -143,13 +143,35 @@ def load():
 
 def check_text(text, facts, corpus):
     errors, warnings = [], []
+    # Check clause by clause, not sentence by sentence: a long profile sentence
+    # often mentions a past employer and then a present-tense fact about today
+    # ("... at Telia's R&D division, and I run two AI products of my own"). Only
+    # a present-tense claim in the SAME clause as a past employer is a problem.
+    # A short leading phrase ("At Anaplan, ...") is kept with the clause that
+    # follows it, so "At Anaplan, I am leading ..." is still caught.
     for sent in re.split(r"(?<=[.!?;])\s+", text):
-        if PRESENT.search(sent):
+        clauses = [c.strip() for c in re.split(r"[,;]|\band\b|\bbut\b", sent) if c.strip()]
+        merged, lead_buf = [], ""
+        for c in clauses:
+            starts_with_place = re.match(r"^(at|in|for|with|during|while|across)\b", c, re.I)
+            has_past = any(re.search(r"(?<![A-Za-z])" + re.escape(t) + r"\b", c)
+                           for t in facts.get("past_terms", []))
+            if (starts_with_place and has_past and not PRESENT.search(c)
+                    and len(c.split()) <= 8):
+                lead_buf = (lead_buf + ", " if lead_buf else "") + c
+                continue
+            merged.append((lead_buf + ", " if lead_buf else "") + c)
+            lead_buf = ""
+        if lead_buf:
+            merged.append(lead_buf)
+        for clause in merged:
+            if not PRESENT.search(clause):
+                continue
             hits = [t for t in facts.get("past_terms", [])
-                    if re.search(r"(?<![A-Za-z])" + re.escape(t) + r"\b", sent)]
+                    if re.search(r"(?<![A-Za-z])" + re.escape(t) + r"\b", clause)]
             if hits:
                 errors.append(f"present-tense claim about past work ({', '.join(hits)}): "
-                              f"\"{sent.strip()[:120]}\"")
+                              f"\"{clause.strip()[:120]}\"")
     # organisations / multi-word proper nouns not present in the CV
     for phrase in set(re.findall(r"\b[A-Z][a-zA-Z]+(?:[ ][A-Z][a-zA-Z]+)+\b", text)):
         if phrase.lower() not in corpus and phrase not in STOP:

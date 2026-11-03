@@ -59,7 +59,7 @@ sorts the queue file itself by seniority.
 
 ## Tools by role
 
-- **Build**: `cv_builder.py` (library), `build_archetypes.py`, `cv_target.py`,
+- **Build**: `cv_builder.py` (library), `build_archetypes.py`, `cv_target.py`, `cv_fill.py`,
   `make_letter.py`, `fix_letterheads.py`.
 - **Gate**: `check_alignment.py` (role family ↔ CV), `check_documents.py`
   (pre-submit), `ats_keywords.py` (coverage), `facts.py` (claim/tense checks),

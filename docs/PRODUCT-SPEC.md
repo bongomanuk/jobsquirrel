@@ -116,7 +116,7 @@ Components:
 | `check_alignment.py` | Role-family vs CV-archetype alignment gate (PASS/FAIL). |
 | `ats_keywords.py` | Extract keywords from a JD; score coverage. |
 | `facts.py` / `identity.py` | Authoritative facts; standard form answers (JSON). |
-| `cv_builder.py` / `build_archetypes.py` / `cv_target.py` / `make_letter.py` | Render CVs (docx+pdf) and letters from config. |
+| `cv_builder.py` / `build_archetypes.py` / `cv_target.py` / `cv_fill.py` / `make_letter.py` | Render CVs (docx+pdf) and letters from config. `cv_fill.py` measures whether the rendered pages are actually full; `check_documents.py` fails a thin CV. |
 | `kb_graphrag.py` | Build the cited context pack for a role. |
 | `discover.py` / `email_opportunities.py` | Find roles from LinkedIn alerts / recruiter mail. |
 | `gmail_readonly.py` / `gmail_reconcile.py` | Read-only inbox sync + reconcile the register (inbound status changes; outbound Sent mail adds dated notes only). |

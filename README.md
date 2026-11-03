@@ -259,6 +259,7 @@ tools/                      # the pipeline (language/library-free CLI tools)
   cv_builder.py             #   renders CVs + letters from config (library, not run directly)
   build_archetypes.py       #   builds one 2-page CV/resume + base letter per archetype
   cv_target.py              #   renders a role-targeted CV (.docx ATS-safe + .pdf styled)
+  cv_fill.py                #   measures page fill: a two-page CV must actually be two full pages
   make_letter.py            #   renders one cover-letter .docx
   fix_letterheads.py        #   normalise cover-letter letterheads to your identity
   check_documents.py        #   PRE-SUBMIT GATE (truthfulness, slop, ATS coverage, contract rate)
@@ -363,6 +364,7 @@ was sent; `INTERVIEW` means an interview thread exists (invited, booked or held)
 
 - [docs/SETUP.md](docs/SETUP.md), install, dependencies, configuration, Gmail.
 - [docs/WORKFLOW.md](docs/WORKFLOW.md), the per-role procedure in detail.
+- [docs/CV-CONTENT.md](docs/CV-CONTENT.md), how a CV is written: two full pages, split compound bullets, delivery and team emphasis, no padding.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), components, data model, files.
 - [docs/ATS-RECIPES.md](docs/ATS-RECIPES.md), how each ATS is driven.
 - [docs/ELIGIBILITY.md](docs/ELIGIBILITY.md), writing your eligibility + accuracy rules.

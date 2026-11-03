@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -40,6 +41,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cv_builder as B  # reuse the styling primitives (no duplicated layout code)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import stateio
+import cv_fill
 
 
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -263,23 +265,72 @@ def to_pdf(docx_path):
     return os.path.splitext(docx_path)[0] + ".pdf"
 
 
+def content_stats(data):
+    """How much real material the pack carries, so a thin pack is visible
+    before it becomes a thin PDF."""
+    roles = data.get("experience") or []
+    bullets = 0
+    words = 0
+    for e in roles:
+        bs = list(e.get("bullets") or [])
+        for g in e.get("groups") or []:
+            bs += list(g.get("bullets") or [])
+        bullets += len(bs)
+        words += sum(len(b.split()) for b in bs)
+    return {
+        "roles": len(roles),
+        "bullets": bullets,
+        "experience_words": words,
+        "profile_words": len((data.get("profile") or "").split()),
+        "selected": len(data.get("selected_work") or []),
+        "skills": len(data.get("skills") or []),
+    }
+
+
+def thin_reasons(st):
+    """What is missing from a pack before it can fill two pages."""
+    thin = []
+    if st["bullets"] < 30:
+        thin.append(f"{st['bullets']} bullets (aim for 32-38: split compound achievements)")
+    if st["profile_words"] < 140:
+        thin.append(f"profile is {st['profile_words']} words (aim for 150-180)")
+    if st["selected"] < 4:
+        thin.append(f"{st['selected']} selected-work items (aim for 5-6)")
+    if st["skills"] < 6:
+        thin.append(f"{st['skills']} skill lines (aim for 7-9)")
+    return thin
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--key", required=True)
     ap.add_argument("--content", help="path to content JSON")
     ap.add_argument("--out", default=os.path.join(_REPO, "documents", "applications"))
     ap.add_argument("--no-pdf", action="store_true")
+    ap.add_argument("--require-fill", action="store_true",
+                    help="exit 2 when the rendered PDF does not fill its two pages")
+    ap.add_argument("--min-fill", type=float, default=cv_fill.DEFAULT_MIN_FILL,
+                    help="minimum fill of the last page (default 0.70)")
     args = ap.parse_args()
     stateio.ensure_paths(args.content)
 
     data = json.load(open(args.content)) if args.content else _default_data(args.key)
     data.setdefault("key", args.key)
+    st = content_stats(data)
+    print(f"CONTENT  {st['roles']} roles · {st['bullets']} bullets · "
+          f"{st['experience_words']:,} words of experience · "
+          f"profile {st['profile_words']} words · {st['selected']} selected work")
+    thin = thin_reasons(st)
+    if thin:
+        print("  THIN  " + "; ".join(thin))
     # The profile is a high-level professional summary: flag implementation details.
     low = ["websocket", "scylladb", "talend", "apigee", "spring cloud data flow", "camel",
            "coap", "mqtt", "xmpp", "kafka", "postgres", "kubernetes", "terraform", "keycloak",
            "svelte", "prometheus", "zeromq", "0mq", "mule", "hibernate", "graphql", "sqlite",
            "monte carlo", "lp/mip", "rest api", "ci/cd", "spring boot", "mcp", "rag"]
-    hits = [t for t in low if t in (data.get("profile") or "").lower()]
+    profile_low = (data.get("profile") or "").lower()
+    hits = [t for t in low
+            if re.search(r"(?<![a-z0-9])" + re.escape(t) + r"(?![a-z0-9])", profile_low)]
     if hits:
         print(f"WARN profile contains implementation detail (move to experience): {hits}")
     os.makedirs(args.out, exist_ok=True)
@@ -290,9 +341,24 @@ def main() -> int:
         styled = os.path.join(args.out, f".styled_{args.key}.docx")
         render_styled(data, styled)
         pdf = to_pdf(styled)
-        os.replace(pdf, os.path.join(args.out, f"{B.CV_PREFIX}_CV_{args.key}.pdf"))
+        final = os.path.join(args.out, f"{B.CV_PREFIX}_CV_{args.key}.pdf")
+        os.replace(pdf, final)
         os.remove(styled)
-        print("wrote", os.path.join(args.out, f"{B.CV_PREFIX}_CV_{args.key}.pdf"))
+        print("wrote", final)
+        ok, problems, m = cv_fill.assess(final, min_fill=args.min_fill)
+        if m:
+            print(f"FILL  {cv_fill.summary(m)}")
+        for p in problems:
+            print(f"  THIN  {p}")
+        if m is None:
+            print("RESULT: FILL SKIPPED - could not measure the PDF (poppler-utils missing?)")
+        elif problems:
+            print("RESULT: FILL FAIL - add evidenced detail (split compound "
+                  "achievements, add delivery and team outcomes); do not pad")
+            if args.require_fill:
+                return 2
+        else:
+            print("RESULT: FILL PASS")
     return 0
 
 

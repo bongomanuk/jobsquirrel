@@ -24,7 +24,7 @@ python3 tools/check_alignment.py --cv documents/archetypes/<Prefix>_CV_<Archetyp
 
 # 4. Build a targeted CV (ATS-safe .docx + styled .pdf) and a per-role letter.
 #    Ground every claim in state/kb-context/<key>.md (GraphRAG) + config/cv.json.
-python3 tools/cv_target.py --key <key> --content state/cv-content/<key>.json
+python3 tools/cv_target.py --key <key> --content state/cv-content/<key>.json --require-fill
 #    ...then render the letter (see tools/make_letter.py / cv_builder.render_motivation)
 
 # 5. PRE-SUBMIT GATE: nothing is uploaded until this prints RESULT: PASS.

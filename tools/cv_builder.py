@@ -334,6 +334,9 @@ def s_text(cell, text, size=8.5, bullet=False, bold=False):
     text = dedash(text)
     p = cell.add_paragraph(); pf = p.paragraph_format
     pf.space_before = Pt(0); pf.space_after = Pt(1.0); pf.line_spacing = 1.0
+    # Never split a sidebar line across a page break: a lone half-sentence at
+    # the top of page 2 looks like a layout accident.
+    pf.keep_together = True
     if bullet:
         pf.left_indent = Cm(0.3); pf.first_line_indent = Cm(-0.3)
         r0 = p.add_run("\u2022  "); r0.font.size = Pt(size); r0.font.color.rgb = WHITE
@@ -511,9 +514,16 @@ def render_cv(role):
     m_head(right, "Profile")
     m_body(right, role["profile"], size=9.0)
     m_head(right, "Work experience")
+    budget = role.get("max_bullets")
     for e in EXPERIENCE:
         extras = [e["extra"][tag] for tag in role["tags"] if tag in e["extra"]]
-        m_entry(right, e["org"], e["dates"], "", e["core"], extras, 13.4)
+        core = list(e["core"])
+        if budget is not None:
+            room = max(1, budget)
+            core = core[:room]
+            extras = extras[:max(0, room - len(core))]
+            budget -= len(core) + len(extras)
+        m_entry(right, e["org"], e["dates"], "", core, extras, 13.4)
     m_head(right, "Selected work")
     for b in PROJECTS:
         m_bullet(right, b)
