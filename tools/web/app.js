@@ -831,10 +831,16 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowUp') { e.preventDefault(); items[(at - 1 + items.length) % items.length]?.focus(); }
 });
 
-function ctxMenuEl(items) {
+function ctxMenuEl(items, head) {
   const el = document.createElement('div');
   el.className = 'ctxmenu';
   el.setAttribute('role', 'menu');
+  if (head) {
+    const h = document.createElement('div');
+    h.className = 'ctx-head';
+    h.innerHTML = head;
+    el.appendChild(h);
+  }
   items.forEach(it => {
     if (it.sep) { const s = document.createElement('div'); s.className = 'ctx-sep'; el.appendChild(s); return; }
     const b = document.createElement('button');
@@ -884,42 +890,76 @@ App.rowMenu = (ev, i) => {
   closeCtx();
   const tab = (n) => { DTAB = n; App.open(i); };
   const cur = (s) => (r.status || '').toUpperCase() === s;
-  const STATUSES = ['PREPARED', 'SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER', 'REJECTED', 'BLOCKED', 'MANUAL', 'CLOSED'];
+  const st = (r.status || '').toUpperCase();
+  const applied = !!r.applied || ['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER', 'REJECTED'].includes(st);
+  const closed = ['REJECTED', 'CLOSED'].includes(st);
+  const blocked = ['BLOCKED', 'MANUAL'].includes(st);
+  const queued = ['pending', 'human', 'retry'].includes(r.queue);
+  const hasDocs = !!(r.stages && r.stages.documents);
+  const prepared = st === 'PREPARED';
+  const canWrite = applied && !closed;
+  const STATUSES = closed
+    ? ['IN_PROGRESS', 'PREPARED', 'SUBMITTED', 'BLOCKED', 'MANUAL']
+    : ['PREPARED', 'SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER', 'REJECTED', 'BLOCKED', 'MANUAL', 'CLOSED'];
   const items = [
     { icon: '📄', label: 'Open details', run: () => App.open(i) },
-    { icon: '🗂', label: 'Documents', disabled: !(r.stages && r.stages.documents), run: () => tab(6) },
-    { icon: '📋', label: 'Job ad & keywords', disabled: !r.spec, run: () => tab(3) },
+    hasDocs ? { icon: '🗂', label: 'Documents', run: () => tab(6) } : null,
+    r.spec ? { icon: '📋', label: 'Job ad & keywords', run: () => tab(3) } : null,
     { icon: '💬', label: 'Discuss this role', run: () => tab(1) },
-    { icon: '🌐', label: 'Open apply page', disabled: !r.url, run: () => window.open(r.url, '_blank', 'noopener') },
+    r.url ? { icon: '🌐', label: 'Open apply page', run: () => window.open(r.url, '_blank', 'noopener') } : null,
     r.running ? { icon: '🥜', label: 'Show live log', run: () => App.showTaskLogFor(r.company, r.role) } : null,
     { sep: true },
-    { icon: '⚡', label: 'Prepare documents', hint: 'CV + letter + gates', disabled: r.running, run: () => App.prepareRoles([r.key]) },
-    { icon: '🚀', label: 'Submit prepared', hint: 'sends it', danger: true, disabled: r.status !== 'PREPARED' || r.running, run: () => App.submitRoles([r.key]) },
-    { icon: '↻', label: 'Recompute match', run: () => App.matchThis(r.key) },
-    { icon: '🤖', label: 'Draft a reply with the agent', run: () => { App.open(i); App.draftAsk(); } },
+    (!applied || prepared) && !closed && !r.running
+      ? { icon: '⚡', label: hasDocs ? 'Re-prepare documents' : 'Prepare documents', hint: 'CV + letter + gates', run: () => App.prepareRoles([r.key]) }
+      : null,
+    prepared && !r.running
+      ? { icon: '🚀', label: 'Submit prepared', hint: 'sends it', danger: true, run: () => App.submitRoles([r.key]) }
+      : null,
+    (r.spec || hasDocs) ? { icon: '↻', label: 'Recompute match', run: () => App.matchThis(r.key) } : null,
+    canWrite ? { icon: '🤖', label: 'Draft a reply with the agent', run: () => { App.open(i); App.draftAsk(); } } : null,
     { sep: true },
-    { icon: '🏷', label: 'Set status', sub: STATUSES.map(st => ({
-        label: (cur(st) ? '✓ ' : '') + st,
-        run: () => App.setStatus(r, st) })) },
-    { icon: '⚑', label: r.action ? 'Update follow-up flag…' : 'Flag follow-up…', run: () => App.flagAction(r) },
+    { icon: '🏷', label: closed ? 'Reopen as' : 'Set status', sub: STATUSES.map(x => ({
+        label: (cur(x) ? '✓ ' : '') + x,
+        run: () => App.setStatus(r, x) })) },
+    (!closed && !r.running) ? { icon: '⚑', label: r.action ? 'Update follow-up flag…' : 'Flag follow-up…', run: () => App.flagAction(r) } : null,
     r.action ? { icon: '⚐', label: 'Clear follow-up flag', run: () => App.clearFlag(r) } : null,
     { icon: '📌', label: r.pinned ? 'Unpin' : 'Pin to top', run: () => App.togglePin(r) },
-    { icon: '✕', label: r.dismissed ? 'Restore to list' : 'Dismiss from list', danger: r.dismissed, run: () => App.toggleDismiss(r) },
-    { sep: true },
-    { icon: '🔁', label: 'Re-queue for another attempt', disabled: r.running, run: () => App.queueAct('retry', r.company, r.role) },
-    { icon: '🖐', label: 'Hand to me (autofill & finish)', danger: true, disabled: r.running, run: () => App.queueAct('human', r.company, r.role) },
-    ['BLOCKED', 'MANUAL'].includes(r.status) ? { icon: '✓', label: 'Unblock', run: () => App.queueAct('unblock', r.company, r.role) } : null,
-    ['pending', 'human', 'retry'].includes(r.queue) ? { icon: '🗑', label: 'Remove from queue', danger: true, run: () => App.queueAct('delete', r.company, r.role) } : null,
+    r.dismissed
+      ? { icon: '↩', label: 'Restore to list', run: () => App.toggleDismiss(r) }
+      : { icon: '✕', label: 'Dismiss from list', run: () => App.toggleDismiss(r) },
+    ((!applied && !queued) || blocked) ? { sep: true } : null,
+    (!applied && !prepared && !queued && !closed && !r.running)
+      ? { icon: '🔁', label: blocked ? 'Re-queue for another attempt' : 'Queue to apply', run: () => App.queueAct('retry', r.company, r.role) }
+      : null,
+    blocked ? { icon: '🖐', label: 'Hand to me (autofill & finish)', danger: true, disabled: r.running, run: () => App.queueAct('human', r.company, r.role) } : null,
+    queued ? { icon: '🗑', label: 'Remove from queue', danger: true, run: () => App.queueAct('delete', r.company, r.role) } : null,
     { sep: true },
     { icon: '📑', label: 'Copy', sub: [
       { label: 'Company', run: () => copyText(r.company) },
       { label: 'Role', run: () => copyText(r.role) },
-      { label: 'Apply URL', disabled: !r.url, run: () => copyText(r.url) },
+      r.url ? { label: 'Apply URL', run: () => copyText(r.url) } : null,
       { label: 'Role key', run: () => copyText(r.key) },
-    ] },
+    ].filter(Boolean) },
   ].filter(Boolean);
 
-  const el = ctxMenuEl(items);
+  // A separator must not lead, trail, or double up once items are filtered out.
+  const clean = [];
+  for (const it of items) {
+    if (it.sep) { if (clean.length && !clean[clean.length - 1].sep) clean.push(it); }
+    else clean.push(it);
+  }
+  while (clean.length && clean[clean.length - 1].sep) clean.pop();
+
+  const head = `<div class="ctx-co">${esc(r.company)}</div>` +
+    `<div class="ctx-role">${esc(r.role)}</div>` +
+    `<div class="ctx-meta">${chip(r.label || r.status)}` +
+      `${r.action ? ' <span class="actflag">⚑</span>' : ''}${r.pinned ? ' <span title="pinned">📌</span>' : ''}` +
+      `${r.match != null ? ' · ' + r.match + '% fit' : ''}` +
+      `${r.employment ? ' · ' + esc(r.employment) : ''}` +
+      `${r.interview_at ? ' · ' + esc(String(r.interview_at).slice(0, 16)) : ''}</div>` +
+    (r.action ? `<div class="ctx-note">${esc(r.action)}</div>` : '');
+
+  const el = ctxMenuEl(clean, head);
   el.style.left = '0px'; el.style.top = '0px';
   document.body.appendChild(el);
   const w = el.offsetWidth, h = el.offsetHeight;
