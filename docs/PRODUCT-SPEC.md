@@ -330,7 +330,10 @@ All POSTs require header `X-Session: <token>` (else 403); the token is injected 
   assistant's prose stays in the body; a token/cost footer closes the turn. Driven by the agent's
   structured event stream — opencode `--format json`, Claude Code `stream-json` — with a
   plain-transcript fallback for any other `AGENT=` command. Action output is compressed to a
-  headline + only the notable lines, with the full log behind a toggle.
+  headline + only the notable lines, with the full log behind a toggle. The pane shows **current**
+  activity: a finished action is a one-line "last action: <name> — finished" plus its summary, never
+  its transcript, and the header reads **idle** when nothing is running (the last action's name
+  survives a server restart, its log does not).
 
 ## 10. Configuration schemas
 

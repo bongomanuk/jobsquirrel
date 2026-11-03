@@ -1453,7 +1453,8 @@ async function liveTick() {
     lb.title = LIVE_TASKS.length ? 'Show the live log: ' + LIVE_TASKS[0].label : 'No running task';
   }
   const a = d.action || {};
-  let s = a.running ? '● ' + a.name + ' …' : (d.active ? '● running' : '○ idle');
+  const aname = (a.name || '').replace(/^action=/, '').replace(/\s*\(.*\)\s*$/, '');
+  let s = a.running ? '● ' + aname + ' …' : (d.active ? '● running' : '○ idle');
   (d.running || []).forEach(r => s += '  ▶ ' + r);
   const t = (d.tail || []).slice(-1)[0];
   if (t) s += '   ' + t.t;
@@ -1485,7 +1486,7 @@ async function liveTick() {
   }
   if (!$('#peras').classList.contains('hide')) {         // background-run monitor
     const sm = a.summary || {};
-    let h = `<div class="act-h">${a.running ? NUT : '✓'} ${esc(a.name || 'working…')} <span class="muted">${a.running ? 'running…' : 'finished'}</span></div>`;
+    let h = `<div class="act-h">${a.running ? NUT : '✓'} ${esc(aname || 'working…')} <span class="muted">${a.running ? 'running…' : 'finished'}</span></div>`;
     if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
     if ((sm.notable || []).length) h += '<ul class="act-list">' + sm.notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
     const ptasks = d.running_tasks || (d.running || []).map(x => ({ label: x, log: '' }));
@@ -1503,15 +1504,20 @@ async function liveTick() {
     ACT = a.name && (a.running || (a.log || []).length) ? a : null;
     renderChat();
   }
-  $('#act-sum').textContent = a.name ? ((a.running ? '● ' : '✓ ') + a.name) : (d.active ? 'runner active' : 'idle');
+  $('#act-sum').textContent = a.running ? ('● ' + aname) : (d.active ? '● runner active' : 'idle');
   if (document.body.dataset.act === 'open') {
     let h = '';
-    if (a.name && (a.running || (a.log || []).length)) {
-      h += `<div class="act-h">${a.running ? NUT : '✓'} ${esc(a.name)} <span class="muted">${a.running ? 'running…' : 'done'}</span></div>`;
+    if (a.name && a.running) {
+      h += `<div class="act-h">${NUT} ${esc(aname)} <span class="muted">running…</span></div>`;
       if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
       if ((sm.notable || []).length) h += '<ul class="act-list">' + sm.notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
       const total = (a.log || []).length;
       if (total > (sm.notable || []).length) h += `<details class="act-raw"><summary>full output · ${total} lines</summary><pre>${esc((a.log || []).join('\n'))}</pre></details>`;
+      h += '<div class="act-sep"></div>';
+    } else if (a.name) {
+      // Not running: this is history, not current activity.
+      h += `<div class="act-h">✓ last action: ${esc(aname)} <span class="muted">finished</span></div>`;
+      if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
       h += '<div class="act-sep"></div>';
     }
     h += d.active ? '● runner active' : '○ runner idle';

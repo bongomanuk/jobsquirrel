@@ -1617,7 +1617,10 @@ def live():
     proc = _ACT.get("proc")
     act_running = bool(proc and proc.poll() is None)
     act_lines = action_log(4000)
-    act_log = act_lines[-400:]
+    # The pane is for CURRENT activity. A finished action keeps its name and
+    # summary as "last action", but its transcript is history: sending it made
+    # the pane (and the chat) look like work was still happening.
+    act_log = act_lines[-400:] if act_running else []
     act_name = _ACT.get("name", "")
     def _running_task(k):
         co, _, role = k.partition("|")
@@ -1635,7 +1638,8 @@ def live():
             "stopping": os.path.exists(STOP_FILE),
             "build": _web_build(),
             "action": {"name": act_name, "running": act_running,
-                       "summary": summarize_action(act_name, act_log, act_running),
+                       "finished": bool(act_name and not act_running),
+                       "summary": summarize_action(act_name, act_lines, act_running),
                        "overview": action_overview(act_name, act_lines, act_running),
                        "log": act_log}}
 
