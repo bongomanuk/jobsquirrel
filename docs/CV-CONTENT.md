@@ -22,6 +22,17 @@ numbers and `check_documents.py` refuses a PDF that fails them.
 `FILL` (page count and how far down each page the text reaches). If either is
 short, add evidenced detail; never pad.
 
+## No targeting tells
+
+- **No job-title line at the top.** The CV opens with the name, contact details and a short
+  capability tagline. The profile does the positioning. An 11pt caps line that repeats the
+  advert's title is the first thing a recruiter sees, and it reads as "this was written for
+  one advert". Leave it out.
+- The tagline is a capability line ("Backend engineering · real-time distributed systems"),
+  never the job title and never the employer's name.
+- The letter names the company and role; the CV does not need to.
+- No JD phrasing copied into the profile or a heading. Mirror the language, do not echo it.
+
 ## The bullet formula
 
 > **Action + what + how + outcome or scale** (drop the outcome when the evidence

@@ -12,8 +12,9 @@ the GraphRAG context), in two outputs:
 Content pack JSON (produced by the agent from state/kb-context/<key>.md):
 {
   "key": "...", "company": "...", "role": "...",
-  "headline": "...", "role_line": "...", "tagline": "...",
-  "profile": "role-targeted summary paragraph",
+  "headline": "...", "tagline": "...",
+  "profile": "role-targeted summary paragraph (this is what positions the CV;
+              no job-title line is printed at the top)",
   "skills": ["Category: items", ...],
   "experience": [{"employer","dates","title","location","bullets":[...]}, ...],
   "selected_work": ["...", ...],
@@ -96,7 +97,7 @@ def _default_data(key):
                     "bullets": list(e["core"])})
     return {
         "key": key, "company": "", "role": "",
-        "headline": "Engineering Leader", "role_line": "ENGINEERING LEADER",
+        "headline": "Engineering Leader",
         "tagline": "Engineering leadership  ·  Platform architecture  ·  AI  ·  Security",
         "profile": "", "skills": [], "experience": exp,
         "selected_work": list(B.PROJECTS),
@@ -118,9 +119,6 @@ def render_ats(data, path):
     p = doc.add_paragraph(); p.paragraph_format.space_after = B.Pt(1)
     r = p.add_run("  |  ".join(x for x in (B._EMAIL, B._PHONE, B._LOCATION, B._LINKEDIN) if x))
     r.font.size = B.Pt(9); r.font.color.rgb = B.GREY
-    if data.get("role_line"):
-        p = doc.add_paragraph(); p.paragraph_format.space_after = B.Pt(6)
-        r = p.add_run(data["role_line"]); r.font.size = B.Pt(10); r.font.color.rgb = B.ACCENT
 
     def h(text):
         hp = doc.add_paragraph(); hp.paragraph_format.space_before = B.Pt(5); hp.paragraph_format.space_after = B.Pt(1.0)
@@ -241,8 +239,6 @@ def render_styled(data, path):
 
     p = right.paragraphs[0]; p.paragraph_format.space_after = B.Pt(0)
     r = p.add_run(B.CVD_NAME.upper()); r.bold = True; r.font.size = B.Pt(24); r.font.color.rgb = B.NAVY; B._tracking(r, 20)
-    p = right.add_paragraph(); p.paragraph_format.space_after = B.Pt(0)
-    r = p.add_run(data.get("role_line", "ENGINEERING LEADER")); r.font.size = B.Pt(11); r.font.color.rgb = B.NAVY; B._tracking(r, 40)
     p = right.add_paragraph(); p.paragraph_format.space_after = B.Pt(2)
     r = p.add_run(data.get("tagline", "")); r.italic = True; r.font.size = B.Pt(10.5); r.font.color.rgb = B.GREY
     if data.get("profile"):
