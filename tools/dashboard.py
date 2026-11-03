@@ -3494,9 +3494,11 @@ def graph_query(*args):
     if key in _gcache:
         return _gcache[key]
     py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)      # the GraphRAG venv has its own interpreter/deps
     try:
         r = subprocess.run([py, GRAPH_TOOL, *[str(a) for a in args]], cwd=ROOT,
-                           capture_output=True, text=True, timeout=90)
+                           capture_output=True, text=True, timeout=90, env=env)
         data = json.loads((r.stdout or "").strip() or "{}")
         if r.returncode != 0 and "error" not in data:
             data = {"error": (r.stderr or "graph read failed").strip()[-300:]}
