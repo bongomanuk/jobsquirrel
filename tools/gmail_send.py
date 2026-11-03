@@ -139,6 +139,7 @@ def main():
     msg.set_content(body)
 
     attached = []
+    attached_paths = []
     total = 0
     seen = set()
     for path in args.attach:
@@ -165,6 +166,7 @@ def main():
             maintype, subtype = "application", "octet-stream"
         msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=name)
         attached.append((name, len(data)))
+        attached_paths.append((resolved, name))
 
     if total > max_mb * 1024 * 1024:
         print(f"attachments total {total / 1048576:.1f} MB, over the {max_mb:g} MB limit", file=sys.stderr)
@@ -223,6 +225,26 @@ def main():
             import register as R
             if R.log_outbound(company, role, args.to, args.subject, mid):
                 print(f"register: recorded outbound email on {company} — {role}")
+            # An approved send that carries the CV/letter IS the application:
+            # advancing the row here is what stops it sitting at PREPARED.
+            row = R.find_row(company, role)
+            if row and row["status"] == "PREPARED" and attached_paths:
+                cv = next((p for p, n in attached_paths if "_CV_" in n), "")
+                letter = next((p for p, n in attached_paths if "Motivation" in n), "")
+                if cv or letter:
+                    import subprocess
+                    evidence = (f"sent email {mid} to {args.to}, subject "
+                                f"'{args.subject}', with "
+                                + ", ".join(n for _, n in attached_paths) + " attached")
+                    cmd = [sys.executable, os.path.join(ROOT, "tools", "record_submission.py"),
+                           "--company", company, "--role", role, "--ats", "Email",
+                           "--status", "SUBMITTED", "--evidence", evidence,
+                           "--inferred", "--force"]
+                    if cv:
+                        cmd += ["--cv", cv]
+                    if letter:
+                        cmd += ["--letter", letter]
+                    subprocess.run(cmd, check=False)
         except Exception as exc:
             print(f"warning: email sent but register update failed: {exc}", file=sys.stderr)
     else:

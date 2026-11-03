@@ -28,10 +28,13 @@ cycle() {
   "$PY" "$ROOT/tools/register.py" --check >> "$LOGS/reconcile.log" 2>&1
   # Capture once, then write: --stats itself writes counts.md, so redirecting a
   # block that also calls --stats into the same file would race with it.
-  local out check audit
+  local out check audit audit_rc
   out="$("$PY" "$ROOT/tools/register.py" --stats)"
   check="$("$PY" "$ROOT/tools/register.py" --check 2>&1 || true)"
-  audit="$("$PY" "$ROOT/tools/register.py" --audit 2>&1 || true)"
+  audit="$("$PY" "$ROOT/tools/register.py" --audit 2>&1)"; audit_rc=$?
+  if [ "$audit_rc" != 0 ]; then
+    { echo "AUDIT FAILED $ts"; printf '%s\n' "$audit" | grep '^FAIL'; } >> "$LOGS/reconcile.log"
+  fi
   {
     echo "# Application counts"
     echo

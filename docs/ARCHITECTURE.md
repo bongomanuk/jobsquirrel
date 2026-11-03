@@ -43,7 +43,11 @@ BLOCKED, MANUAL, CLOSED` (`PREPARED` = documents built and gated, nothing sent).
 Managed by `tools/register.py`: read with `--stats/--list/--show`, edit with
 `--set/--render/--delete`, and **audit** with `--audit` (exits non-zero on a
 duplicate row or key, a `queue.done` entry with no row, a `SUBMITTED` row with no
-provenance, or a stale `state/counts.md`). Repair with `--dedupe`,
+provenance, a stale `state/counts.md`, a PREPARED row whose application email was
+actually sent with attachments, an INTERVIEW row with no invitation in its notes,
+or a finished queue alias of a register row). `SUBMITTED` is refused without
+provenance, and the send path advances PREPARED on an application email. Repair
+with `--dedupe`,
 `--backfill`, `--backfill-done` and `--record-provenance-gaps`; `--stats`
 regenerates `state/counts.md`, which is never edited by hand.
 
@@ -69,7 +73,7 @@ sorts the queue file itself by seniority.
 - **Record**: `register.py`, `record_submission.py`, `outcomes.py`.
 - **Email**: `gmail_readonly.py`, `gmail_reconcile.py`, `gmail_calendar_auth.py`,
   `gmail_send.py`, `discover.py`, `email_opportunities.py`, `email_verify.py`.
-- **Browser**: `camoufox_server.py`, `camoufox_browser.py`.
+- **Browser**: `camoufox_server.py`, `camoufox_browser.py`, `camoufox_test.py`.
 - **Run**: `run_queue.sh` (parallel queue), `run_linkedin.sh` (serialized LinkedIn),
   `agent_run.sh` (whichever agent CLI you have), `reconcile_loop.sh`,
   `watch_queue.sh`, `build_human_queue.py`, `human_assist.sh`,

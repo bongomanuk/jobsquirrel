@@ -19,6 +19,7 @@ import argparse
 import contextlib
 import csv
 import fcntl
+import json
 import os
 import re
 import sys
@@ -32,7 +33,8 @@ LOCK_PATH = CSV_PATH + ".lock"
 COUNTS_PATH = os.environ.get("APPLICATIONS_COUNTS", os.path.join(ROOT, "state", "counts.md"))
 QUEUE_PATH = os.environ.get("QUEUE_TSV", os.path.join(ROOT, "state", "queue.tsv"))
 DONE_PATH = os.environ.get("QUEUE_DONE", os.path.join(ROOT, "state", "queue.done"))
-SUBMISSIONS_PATH = os.path.join(ROOT, "state", "submissions.csv")
+SUBMISSIONS_PATH = os.environ.get("SUBMISSIONS_CSV", os.path.join(ROOT, "state", "submissions.csv"))
+DRAFTS_DIR = os.environ.get("DRAFTS_DIR", os.path.join(ROOT, "state", "drafts"))
 FIELDS = ["date", "company", "role", "ats", "status", "letter", "notes", "employment",
           "action", "key", "apply_url"]
 STATUSES = ["QUEUED", "SUBMITTED", "INTERVIEW", "OFFER", "REJECTED", "BLOCKED", "MANUAL",
@@ -112,9 +114,49 @@ def _key(company, role):
     return (company.strip().lower(), role.strip().lower())
 
 
+def find_row(company, role):
+    """The single register row for this exact company+role, or None."""
+    k = ((company or "").strip().lower(), (role or "").strip().lower())
+    for r in load():
+        if (r["company"].strip().lower(), r["role"].strip().lower()) == k:
+            return r
+    return None
+
+
+def provenance(company, role):
+    """The submissions.csv row proving this application was sent, or None."""
+    k = ((company or "").strip().lower(), (role or "").strip().lower())
+    try:
+        with open(SUBMISSIONS_PATH, newline="", encoding="utf-8") as fh:
+            for s in csv.DictReader(fh):
+                if ((s.get("company", "").strip().lower(),
+                     s.get("role", "").strip().lower()) == k
+                        and (s.get("status") or "").upper() == "SUBMITTED"):
+                    return s
+    except OSError:
+        return None
+    return None
+
+
+def _submitted_guard(company, role, status, note=""):
+    """SUBMITTED must be backed by a provenance row, unless it is a known
+    pre-ledger backfill (annotated 'provenance not recorded')."""
+    if (status or "").upper() != "SUBMITTED":
+        return
+    if provenance(company, role):
+        return
+    if "provenance not recorded" in (note or "").lower():
+        return
+    raise ValueError(
+        "refusing SUBMITTED without a submissions.csv provenance row: send it "
+        "through record_submission.py first (or annotate 'provenance not "
+        "recorded' for a pre-ledger row)")
+
+
 def upsert(company, role, status, day="", ats="", letter="", notes="", employment="", action=None,
            key="", apply_url=""):
     """Insert or update the single row for (company, role). Returns the row."""
+    _submitted_guard(company, role, status, notes)
     with locked():
         rows = load()
         k = _key(company, role)
@@ -168,6 +210,7 @@ def set_row(company, role, status="", note="", employment=None, action=None):
 
     `action=None` leaves the flag alone; `action=""` clears it.
     """
+    _submitted_guard(company, role, status, note)
     with locked():
         rows = load()
         k = _key(company, role)
@@ -219,20 +262,27 @@ def log_outbound(company, role, to, subject, message_id="", when="", action=None
 
 
 def add_note(needle, text, status=""):
-    """Append a note (and optionally set status) on every row matching needle."""
+    """Append a note on every row matching needle.
+
+    A status is only applied when the needle identifies exactly ONE row. A
+    company-only hint can match several roles, and flipping all of them is how
+    an interview invitation for one role was once recorded against another.
+    """
+    needle = (needle or "").lower()
+    if not needle:
+        return 0
     with locked():
         rows = load()
-        changed = 0
-        for r in rows:
-            if needle.lower() in r["company"].lower() or needle.lower() in r["role"].lower():
-                r["notes"] = (r["notes"] + " | " if r["notes"] else "") + text
-                if status:
-                    r["status"] = status
-                changed += 1
-        if changed:
+        matched = [r for r in rows
+                   if needle in r["company"].lower() or needle in r["role"].lower()]
+        for r in matched:
+            r["notes"] = (r["notes"] + " | " if r["notes"] else "") + text
+        if status and len(matched) == 1:
+            matched[0]["status"] = status
+        if matched:
             save(rows)
             render(silent=True)
-        return changed
+        return len(matched)
 
 
 def stats(write=True):
@@ -449,6 +499,86 @@ def audit():
                 continue
             problems.append(f"SUBMITTED without provenance: {r['company']} / {r['role']}")
 
+    # --- evidence checks (audit v2): catch a status that contradicts the mail ---
+    def _draft_meta(path):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                head = fh.read(4000).split("---", 1)[0]
+        except OSError:
+            return {}
+        meta = {}
+        for line in head.splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                meta[k.strip().lower()] = v.strip()
+        return meta
+
+    def _row_for(company, role):
+        k = ((company or "").strip().lower(), (role or "").strip().lower())
+        for r in rows:
+            if (r["company"].strip().lower(), r["role"].strip().lower()) == k:
+                return r
+        return None
+
+    # A draft that was sent with attachments is an application, so the row
+    # cannot still be PREPARED.
+    sent_file = os.path.join(DRAFTS_DIR, "sent.json")
+    try:
+        with open(sent_file, encoding="utf-8") as fh:
+            sent_drafts = json.load(fh)
+    except (OSError, ValueError):
+        sent_drafts = {}
+    for path in sent_drafts:
+        meta = _draft_meta(path)
+        if not meta or not meta.get("attachment"):
+            continue
+        row = _row_for(meta.get("company", ""), meta.get("role", ""))
+        if row and row["status"] == "PREPARED":
+            problems.append(
+                f"PREPARED but an application email with attachments was sent: "
+                f"{row['company']} / {row['role']} ({os.path.basename(path)})")
+
+    # Backstop for older notes (draft files may have been removed).
+    for r in rows:
+        if r["status"] != "PREPARED":
+            continue
+        n = (r.get("notes") or "").lower()
+        if "email sent" in n and ("attach" in n or " cv" in n or "letter" in n):
+            problems.append(f"PREPARED but the notes record a sent application email: "
+                            f"{r['company']} / {r['role']}")
+
+    # An INTERVIEW row must name the invitation that produced it.
+    for r in rows:
+        if r["status"] != "INTERVIEW":
+            continue
+        n = (r.get("notes") or "").lower()
+        if any(k in n for k in ("gmail: interview", "interview", "invited",
+                                "invitation", "booked", "scheduled", "held",
+                                "first call", "video call", "first chat")):
+            continue
+        problems.append(f"INTERVIEW without an invitation in the notes: "
+                        f"{r['company']} / {r['role']}")
+
+    # A finished queue row that is really the same role as a register row must
+    # not exist under a second identity (the stale-alias / phantom-row bug).
+    def _token(name):
+        t = re.sub(r"\bstarting at\b.*$", "", (name or "").lower())
+        t = re.sub(r"[^a-z0-9 ]+", " ", t)
+        words = [w for w in t.split() if w not in ("the", "ab", "inc", "ltd", "group")]
+        return words[0] if words else ""
+
+    done_set = set(done)
+    reg_identities = {(r["role"].strip().lower(), _token(r["company"])) for r in rows}
+    for x in q:
+        if x["key"] in reg_keys or _key(x["company"], x["role"]) in reg_pairs:
+            continue
+        finished = (x["key"] in done_set
+                    or f"{x['company']}|{x['role']}" in done_set)
+        if finished and (x["role"].strip().lower(), _token(x["company"])) in reg_identities:
+            problems.append(
+                f"queue alias of a register row (finished twice): "
+                f"{x['company']} / {x['role']} (key {x['key']})")
+
     try:
         with open(COUNTS_PATH, encoding="utf-8") as fh:
             m = re.search(r"total:\s*(\d+)", fh.read())
@@ -654,8 +784,12 @@ def main():
     elif args.set:
         if not args.company or not args.role or not args.status:
             ap.error("--set requires --company, --role and --status")
-        row = upsert(args.company, args.role, args.status.upper(), args.date, args.ats,
-                     args.letter, args.notes, args.employment, args.action)
+        try:
+            row = upsert(args.company, args.role, args.status.upper(), args.date, args.ats,
+                         args.letter, args.notes, args.employment, args.action)
+        except ValueError as exc:
+            print(f"refused: {exc}", file=sys.stderr)
+            sys.exit(1)
         print(f"set {row['status']}: {row['company']} — {row['role']}")
     elif args.stats:
         stats()

@@ -276,8 +276,10 @@ def sync(query, apply_changes):
                 sys.path.insert(0, os.path.join(ROOT, "tools"))
                 import register as REG
                 hint = _company_hint(sender, subject)
-                status = {"INTERVIEW": "INTERVIEW", "REJECTION": "REJECTED"}.get(category, "")
-                n = REG.add_note(hint, f"gmail: {category} {headers.get('date','')}", status) if hint else 0
+                # Never change a status from a company-only hint: that is how an
+                # interview for one role gets recorded against another at the
+                # same employer. gmail_reconcile does the role-matched writes.
+                n = REG.add_note(hint, f"gmail: {category} {headers.get('date','')}") if hint else 0
                 if n:
                     print(f"    register: {n} row(s) updated")
             except Exception as exc:

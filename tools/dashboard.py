@@ -134,6 +134,15 @@ def health():
         d = json.loads(r.stdout)
         v = "PASS" if d.get("ok") else "FAIL"
         detail = "; ".join(f"{c['name']}:{c['status']}" for c in d.get("checks", []) if c["status"] != "pass") or "all ok"
+        # The register audit is part of health: a contradictory register is not
+        # a healthy system, whatever the environment checks say.
+        a = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "register.py"), "--audit"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=60)
+        if a.returncode != 0:
+            v = "FAIL"
+            last = (a.stdout or a.stderr or "").strip().splitlines()
+            reg = next((l for l in reversed(last) if "problem(s)" in l), "register audit failed")
+            detail = (detail + "; " if detail and detail != "all ok" else "") + reg
     except Exception as e:
         v, detail = "unknown", str(e)[:120]
     _HEALTH.update(t=time.time(), v=v, detail=detail)
@@ -202,8 +211,11 @@ def update_row(company, role, status, note, employment=None, action=None,
         return {"error": "company and role required"}
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import register as REG
-    REG.set_row(company, role, status=(status or "").upper(), note=note or "",
-                employment=employment, action=action)
+    try:
+        REG.set_row(company, role, status=(status or "").upper(), note=note or "",
+                    employment=employment, action=action)
+    except ValueError as exc:
+        return {"error": str(exc)}
     if work_model is not None or salary is not None:
         set_role_meta(key or _slug(f"{company}-{role}"),
                       work_model=work_model, salary=salary)

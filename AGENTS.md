@@ -94,7 +94,13 @@ reports a clean config.
    name used to create a second, orphaned row. After any reconcile or queue run:
    `python3 tools/register.py --audit` must print `0 problem(s)`; it checks for
    duplicate rows/keys, `queue.done` entries with no register row, SUBMITTED rows
-   with no `state/submissions.csv` provenance, and a stale `state/counts.md`.
+   with no `state/submissions.csv` provenance, a stale `state/counts.md`, a
+   PREPARED row whose application email was actually sent with attachments, an
+   INTERVIEW row with no invitation in its notes, and a finished queue row that
+   is really a second identity of a register role. `SUBMITTED` is refused
+   without a provenance row (annotate a pre-ledger row with "provenance not
+   recorded"), and an approved send carrying the CV/letter advances PREPARED to
+   SUBMITTED automatically.
    Repair with `--dedupe` (merge duplicates), `--backfill-done` (record handled
    roles that were never registered), `--record-provenance-gaps` (annotate rows
    that predate provenance logging) and `--backfill` (resync key/apply_url).

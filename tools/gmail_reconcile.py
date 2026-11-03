@@ -18,10 +18,12 @@ Run with the venv python:
   .venv/bin/python tools/gmail_reconcile.py --apply
 """
 import argparse
+import glob
 import gzip
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from datetime import date
@@ -510,6 +512,35 @@ def scan_outbound(service, rows, max_results=1000):
     return found, ambiguous
 
 
+def _record_provenance(row, when, subject, sender):
+    """Upgrading PREPARED -> SUBMITTED needs a ledger row, not just a note.
+
+    Find the exact CV/letter this role was prepared with, record them with the
+    confirmation email as evidence, and return True. False means no files were
+    found, and the caller annotates the row instead of claiming provenance.
+    """
+    key = row.get("key", "")
+    app = os.path.join(os.path.dirname(STATE), "documents", "applications")
+    cvs = glob.glob(os.path.join(app, f"*_CV_{key}.docx")) if key else []
+    if not cvs:
+        return False
+    letter = row.get("letter") or ""
+    if not letter or not os.path.isfile(letter):
+        letters = glob.glob(os.path.join(app, f"*_Motivation_{key}.docx")) if key else []
+        letter = letters[0] if letters else ""
+    cmd = [sys.executable, os.path.join(os.path.dirname(STATE), "tools", "record_submission.py"),
+           "--company", row["company"], "--role", row["role"], "--ats", row.get("ats") or "Email",
+           "--status", "SUBMITTED", "--date", (when or "")[:10] or str(date.today()),
+           "--evidence", f"confirmation email {when} from {sender}: {subject}",
+           "--inferred", "--force", "--cv", cvs[0]]
+    if letter:
+        cmd += ["--letter", letter]
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=120).returncode == 0
+    except Exception:
+        return False
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="write changes (default: dry run)")
@@ -704,7 +735,12 @@ def main():
             action = follow_up(category, sender, subject) if proposed == "INTERVIEW" else None
             if proposed in ("REJECTED", "CLOSED"):
                 action = ""                      # nothing to do on a dead application
-            R.set_row(row["company"], row["role"], status=proposed, note=note, action=action)
+            if proposed == "SUBMITTED" and not _record_provenance(row, date, subject, sender):
+                note += " | provenance not recorded (no prepared CV found)"
+            try:
+                R.set_row(row["company"], row["role"], status=proposed, note=note, action=action)
+            except ValueError as exc:
+                print(f"  skipped {row['company']} / {row['role']}: {exc}", file=sys.stderr)
         print(f"\napplied {len(changes)} change(s); register regenerated")
     elif changes:
         print("\n(dry run - re-run with --apply to write these)")
