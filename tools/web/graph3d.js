@@ -21,6 +21,7 @@ const S = {
   inited: false, canvas: null, labels: null, tip: null, stage: null,
   renderer: null, scene: null, camera: null, group: null, raycaster: null,
   nodes: [], links: [], byId: new Map(), meshes: [], glows: [], hits: [], lineMesh: null,
+  visibleLabels: new Set(), measureCtx: null,
   linePos: null, lineColors: null, labelEls: new Map(), top: new Set(),
   selected: null, hovered: null, hidden: new Set(), opts: {}, paused: true,
   raf: 0, alpha: 1, fitted: false, hitEls: new Map(), lastInteract: Date.now(), W: 1, H: 1, orbit: { theta: 0.72, phi: 1.12, radius: 260, target: new THREE.Vector3() },
@@ -78,6 +79,8 @@ function init() {
   S.group = new THREE.Group();
   S.scene.add(S.group);
   S.raycaster = new THREE.Raycaster();
+  const mc = document.createElement('canvas');
+  S.measureCtx = mc.getContext('2d');
   S.scene.add(new THREE.AmbientLight(0xffffff, 1.4));
   const key = new THREE.DirectionalLight(0xffffff, 3.2);
   key.position.set(180, 240, 220);
@@ -159,6 +162,7 @@ export async function show(data, opts = {}) {
   S.selected = null;
   S.hovered = null;
   S.hidden = new Set();
+  S.visibleLabels = new Set();
   clearScene();
   const raw = data.nodes || [];
   S.nodes = raw.map((n, i) => ({ ...n, color: colorOf(n), r: radiusOf(n), pos: new THREE.Vector3() }));
@@ -449,42 +453,70 @@ function paintLines(selected, neigh) {
   S.lineMesh.geometry.attributes.color.needsUpdate = true;
 }
 
+function labelWidth(text, size) {
+  if (!S.measureCtx) return text.length * size * 0.58;
+  S.measureCtx.font = `600 ${size}px ui-sans-serif, system-ui, sans-serif`;
+  return S.measureCtx.measureText(text).width + 12;
+}
+
 function updateLabels(neigh) {
-  const now = performance.now();
-  if (S.labels) S.labels.style.display = 'block';
-  S.nodes.forEach((n, i) => {
+  if (!S.labels) return;
+  S.labels.style.display = 'block';
+  const W = S.W, H = S.H;
+  const fov = THREE.MathUtils.degToRad(S.camera.fov);
+  const proj = H / (2 * Math.tan(fov / 2));
+  const candidates = [];
+  S.nodes.forEach(n => {
+    if (S.hidden.has(n.type)) return;
     const el = S.labelEls.get(n.id);
     if (!el) return;
-    const hidden = S.hidden.has(n.type);
-    const show = !hidden && (S.top.has(n.id) || n.id === S.selected || (neigh && neigh.has(n.id)) || n.id === S.hovered);
-    el.style.display = show ? '' : 'none';
-    if (!show) return;
+    let score = 50;
+    if (n.id === S.selected) score = 0;
+    else if (n.id === S.hovered) score = 1;
+    else if (neigh && neigh.has(n.id)) score = 3;
+    else if (n.kind === 'community' || n.kind === 'type') score = 5;
+    else score = 20 + (S.top.has(n.id) ? 0 : 20) - Math.min(15, (n.degree || 0) * 0.15);
+    if (S.visibleLabels.has(n.id)) score -= 4;        // hysteresis: keep what was readable
+    candidates.push({ n, el, score });
+  });
+  candidates.sort((a, b) => a.score - b.score);
+  const placed = [];
+  const visible = new Set();
+  const margin = 3;
+  for (const { n, el } of candidates) {
     const p = n.pos.clone().project(S.camera);
-    if (p.z > 1 || p.z < -1) { el.style.display = 'none'; return; }
-    let px = (p.x * 0.5 + 0.5) * S.W;
-    let py = (-p.y * 0.5 + 0.5) * S.H;
-    if (n.kind === 'entity') {
-      py += 16;
-    } else {
-      const dx = px - S.W / 2, dy = py - S.H / 2;
-      const len = Math.hypot(dx, dy) || 1;
-      px += dx / len * 18;
-      py += dy / len * 18;
+    if (p.z > 1 || p.z < -1) { el.style.display = 'none'; continue; }
+    const cx = (p.x * 0.5 + 0.5) * W;
+    const cy = (-p.y * 0.5 + 0.5) * H;
+    const dist = Math.max(1, S.camera.position.distanceTo(n.pos));
+    const sr = n.r * proj / dist;
+    const size = Math.max(9, Math.min(n.kind === 'entity' ? 13 : 16, sr * 0.55 + 7));
+    el.style.fontSize = size + 'px';
+    const text = el.textContent || '';
+    const w = labelWidth(text, size);
+    const h = size * 1.35 + 4;
+    const spots = [
+      { left: cx, top: cy + sr + 7 },                  // below
+      { left: cx, top: cy - sr - 7 - h },              // above
+      { left: cx + sr + 8 + w / 2, top: cy - h / 2 },  // right
+      { left: cx - sr - 8 - w / 2, top: cy - h / 2 }   // left
+    ];
+    let chosen = null;
+    for (const spot of spots) {
+      const rect = { x: spot.left - w / 2, y: spot.top, w, h };
+      if (rect.x < 2 || rect.y < 2 || rect.x + w > W - 2 || rect.y + h > H - 2) continue;
+      const hit = placed.some(r => !(rect.x + w < r.x - margin || rect.x > r.x + r.w + margin ||
+        rect.y + h < r.y - margin || rect.y > r.y + r.h + margin));
+      if (!hit) { chosen = { spot, rect }; break; }
     }
-    el.style.left = px + 'px';
-    el.style.top = py + 'px';
-  });
-  S.nodes.forEach(n => {
-    const hit = S.hitEls.get(n.id);
-    if (!hit) return;
-    const hidden = S.hidden.has(n.type);
-    hit.style.display = hidden ? 'none' : '';
-    if (hidden) return;
-    const p = n.pos.clone().project(S.camera);
-    if (p.z > 1 || p.z < -1) { hit.style.display = 'none'; return; }
-    hit.style.left = ((p.x * 0.5 + 0.5) * S.W) + 'px';
-    hit.style.top = ((-p.y * 0.5 + 0.5) * S.H) + 'px';
-  });
+    if (!chosen) { el.style.display = 'none'; continue; }
+    el.style.left = chosen.spot.left + 'px';
+    el.style.top = chosen.spot.top + 'px';
+    el.style.display = '';
+    placed.push(chosen.rect);
+    visible.add(n.id);
+  }
+  S.visibleLabels = visible;
 }
 
 function step() {
@@ -556,10 +588,6 @@ function neighborSet(id) {
 function animate() {
   S.raf = requestAnimationFrame(animate);
   if (S.paused || !S.renderer) return;
-  if (!S.drag && Date.now() - S.lastInteract > 7000) {
-    S.orbit.theta += 0.00045;
-    applyCamera();
-  }
   if (S.alpha > 0.015) step();
   if (!S.fitted && S.alpha <= 0.05) { S.fitted = true; fit(); }
   updateScene();
