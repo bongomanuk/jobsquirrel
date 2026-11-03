@@ -322,7 +322,7 @@ tr.grp .grp-n .countlink:hover{color:var(--accent)}
 .livestrip{flex:1;min-width:220px;color:var(--muted);font-family:var(--mono);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .runctl{display:flex;gap:6px;flex:0 0 auto}
 .toolbar{display:flex;gap:8px;align-items:center;margin:14px 0 10px;flex-wrap:wrap}
-.gridwrap{overflow:visible;border:1px solid var(--line);border-radius:var(--radius)}
+.gridwrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius)}
 /* the grid shrinks with the pane but never wraps: fixed layout + ellipsis */
 #grid{table-layout:fixed}
 #grid th,#grid td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:8px 8px}

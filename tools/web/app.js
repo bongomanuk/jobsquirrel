@@ -749,8 +749,14 @@ const SG_EDGES = [
   [150, 81, 193, 81, 'ad saved'], [325, 81, 368, 81, 'docs gated'],
   [500, 81, 543, 81, 'sent'], [675, 81, 718, 81, 'reply'],
   [850, 81, 893, 81, 'invite'], [1025, 81, 1068, 81, 'offer'],
-  [610, 112, 610, 183, 'wall'], [960, 112, 960, 183, 'no'],
-  [675, 213, 718, 213, 'hand over'],
+  [590, 112, 590, 183, 'wall'], [675, 213, 718, 213, 'hand over'],
+];
+// Rejection can follow any applied state, so it is fed by a bus from
+// SUBMITTED, IN_PROGRESS and INTERVIEW rather than a single arrow.
+const SG_PATHS = [
+  { d: 'M640,112 L640,165 L960,165 L960,183', label: 'not selected', lx: 800, ly: 159, arrow: true },
+  { d: 'M785,112 L785,165', lx: 0, ly: 0, arrow: false },
+  { d: 'M960,112 L960,165', lx: 0, ly: 0, arrow: false },
 ];
 
 function renderStateGraph() {
@@ -778,11 +784,14 @@ function renderStateGraph() {
       `<text class="sg-count" x="${n.x + SG_W - 12}" y="${y + 23}" text-anchor="end">${counts[n.s] || 0}</text>` +
       `<text class="sg-note" x="${n.x + 12}" y="${y + 44}">${esc(n.note)}</text></g>`;
   };
+  const paths = SG_PATHS.map(p =>
+    `<path class="sg-edge-path dashed" d="${p.d}"${p.arrow ? ' marker-end="url(#sg-arrow)"' : ''}/>` +
+    (p.label ? `<text class="sg-edge" x="${p.lx}" y="${p.ly}" text-anchor="middle">${esc(p.label)}</text>` : '')).join('');
   const svg = `<svg viewBox="0 0 1220 272" class="sg-svg" role="img" aria-label="Application states">` +
-    arrow + SG_EDGES.map(edge).join('') +
+    arrow + SG_EDGES.map(edge).join('') + paths +
     SG_MAIN.map(n => node(n, 50, SG_H)).join('') +
     SG_SIDE.map(n => node(n, 185, SG_H2)).join('') +
-    `<text class="sg-cap" x="20" y="262">Counts exclude dismissed roles · click a state to filter · CLOSED can follow any state</text></svg>`;
+    `<text class="sg-cap" x="20" y="262">Counts exclude dismissed roles · click a state to filter · REJECTED can follow any applied state; CLOSED any state</text></svg>`;
   box.innerHTML = svg;
   // Side states are reached from several places; say so in the caption area.
 }
@@ -1212,14 +1221,21 @@ function initGridCols() {
   });
   table.insertBefore(cg, table.querySelector('thead'));
   table.style.tableLayout = 'fixed';
+  // Percentage widths: the table always fills the same width as the toolbar and
+  // the state graph, and every column scales with the window. The saved pixel
+  // widths remain the ratio between columns.
   const applyWidth = () => {
-    table.style.width = cols.reduce((n, k) => n + widths[k], 0) + 'px';
+    const total = cols.reduce((n, k) => n + (widths[k] || 100), 0) || 1;
+    cols.forEach((k, i) => {
+      cg.children[i].style.width = (100 * (widths[k] || 100) / total).toFixed(3) + '%';
+    });
+    table.style.width = '100%';
+    table.style.minWidth = '980px';
   };
   applyWidth();
   const save = () => { try { localStorage.setItem('grid.cols', JSON.stringify(widths)); } catch (e) {} };
   const reset = (k, i) => {
     widths[k] = COL_DEFAULTS[k] || 100;
-    cg.children[i].style.width = widths[k] + 'px';
     applyWidth(); save();
   };
   ths.forEach((th, i) => {
@@ -1236,7 +1252,7 @@ function initGridCols() {
       table.classList.add('resizing');
       const move = (ev) => {
         const w = Math.max(40, Math.min(800, Math.round(startW + ev.clientX - startX)));
-        widths[k] = w; cg.children[i].style.width = w + 'px'; applyWidth();
+        widths[k] = w; applyWidth();
       };
       const up = () => {
         window.removeEventListener('pointermove', move);
