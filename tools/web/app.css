@@ -662,3 +662,6 @@ body.knowledge-open .modal{z-index:60}
 /* Knowledge toolbar: only the active view is outlined */
 .kg-toolbar button:focus,.kg-page-head button:focus,.kg-side-tabs button:focus{outline:none}
 .kg-toolbar button.on{border-color:var(--accent);color:var(--fg);background:var(--surface2)}
+
+.brand{cursor:pointer}
+.brand:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}

@@ -492,6 +492,17 @@ const App = {
       $('#kg-side-body').textContent = 'No graph index yet. Add documents and rebuild the graph.';
     }
   },
+  home: () => {
+    const page = $('#knowledge');
+    if (page && !page.classList.contains('hide')) App.closeKnowledge();
+    const cfg = $('#cfg'); if (cfg) cfg.classList.add('hide');
+    const detail = $('#detail');
+    if (detail && !detail.hasAttribute('hidden')) {
+      const close = $('#detail .panel-close'); if (close) close.click();
+    }
+    window.scrollTo(0, 0);
+    loadGrid();
+  },
   closeKnowledge: () => {
     kgStop();
     const page = $('#knowledge'); if (page) page.classList.add('hide');
@@ -2965,6 +2976,13 @@ $('#a-prepare').onclick = () => App.run('prepare');
 $('#a-submit').onclick = () => App.run('submit_queue');
 $('#a-reconcile').onclick = () => App.run('reconcile');
 $('#a-knowledge').onclick = () => App.openKnowledge();
+const brandHome = $('#brand-home');
+if (brandHome) {
+  brandHome.onclick = () => App.home();
+  brandHome.onkeydown = e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); App.home(); }
+  };
+}
 $('#a-config').onclick = () => { $('#cfg').classList.remove('hide'); App.settings(CF_SEC); };
 window.cfgClose = () => $('#cfg').classList.add('hide');
 window.legendClose = () => $('#legend-modal').classList.add('hide');
