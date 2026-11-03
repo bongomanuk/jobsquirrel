@@ -21,12 +21,19 @@ Screenshots, logs and examples must be redacted or synthetic. If in doubt, leave
   GitHub release.
 
 ## Naming
-- **Release titles must be funny AND nut/squirrel themed** — a pun or gag that nods to
-  nuts, acorns, squirrels or caching. Examples: *"Deez Nuts"*, *"Dem Nuts"*, *"Acorny Joke"*,
-  *"Hazel Nutt"*, *"Nuts to You"*, *"Go Nuts"*, *"Squirrelled Away"*, *"Bussin' Nuts"*.
-  A funny name with no nut/squirrel angle (Rizz, Skibidi, Ohio…) does **not** qualify —
-  rename it.
-- Title format: `vX.Y.Z "Funny Nut Title"` (one emoji is fine).
+- **Release titles must be funny AND squirrel-adjacent.** The well is where a squirrel
+  lives and what it lives in: dens, dreys, lodges, setts, holts, warrens and nests, or
+  tree types (oak, ash, elm, beech, yew, cedar, pine, spruce, larch, willow, holm).
+- Rotation: **patch releases (0.5.x) use den/nest words; minor releases (0.6+) use tree
+  types.** A mixed pun is fine when it earns the laugh.
+- Patch examples: *"Nest Practice"*, *"Den and Dusted"*, *"Lair Necessities"*,
+  *"Warren Peace"*, *"Sett For Life"*, *"Drey Area"*, *"Holt On"*.
+- Minor examples: *"Cedar Than Never"*, *"Fir Real"*, *"Spruce Springsteen"*,
+  *"Elm Street"*, *"The Holm Truth"*, *"Larch-itecture"*, *"Poplar Opinion"*.
+- It must actually be a joke: a plain phrase ("Room to Grow") does not qualify, and a
+  funny name with no squirrel/tree angle does not either. Rename it before publishing.
+- Title format: `vX.Y.Z "Funny Title"` (one emoji is fine). The GitHub release title can
+  be reworded after publication without moving the tag.
 
 ## Cutting one
 ```bash
