@@ -137,6 +137,7 @@ def main():
     ap.add_argument("--evidence", default="", help="confirmation text/URL proving the submission")
     ap.add_argument("--date", default="", help="YYYY-MM-DD (defaults to today)")
     ap.add_argument("--inferred", action="store_true", help="backfilled row: do not snapshot; mark confidence=inferred")
+    ap.add_argument("--key", default="", help="role key (the queue row's key); used to find the saved advert")
     ap.add_argument("--no-jd", action="store_true",
                     help="profile/network row: an application with no job advert by nature")
     ap.add_argument("--force", action="store_true",
@@ -171,7 +172,11 @@ def main():
     if args.status.upper() == "SUBMITTED" and not args.no_jd:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import register as REG
-        if not REG.profile_role(args.role) and not REG.jd_path(args.company, args.role, ""):
+        key = args.key
+        if not key:
+            row = REG.find_row(args.company, args.role)
+            key = row.get("key", "") if row else ""
+        if not REG.profile_role(args.role) and not REG.jd_path(args.company, args.role, key):
             print("ERROR: refusing to record SUBMITTED without a saved job description.", file=sys.stderr)
             print("       Save the ad to state/job-descriptions/<key>.md first (jd_guard --require),",
                   file=sys.stderr)
