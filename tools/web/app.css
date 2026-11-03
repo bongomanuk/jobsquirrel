@@ -526,3 +526,139 @@ mark.kw{background:#24405a;color:#bfe3ff;border-radius:3px;padding:0 2px}
 .sg-REJECTED .sg-rect{fill:#2a1010;stroke:#7a2d2d}
 .sg-CLOSED .sg-rect{fill:#1a1e28;stroke:#3b4252}
 .sg-DRAFTING .sg-rect{fill:#182430;stroke:#2f4a63}
+
+/* ---- GraphRAG knowledge graph ---- */
+.kg-toolbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:8px 0}
+.kg-wrap{position:relative;display:flex;gap:10px;min-height:470px}
+.kg-canvas{flex:1;min-width:0;background:#07090c;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.kg-canvas svg{display:block;width:100%;height:470px;cursor:grab;touch-action:none}
+.kg-canvas svg:active{cursor:grabbing}
+.kg-link{stroke:#4b5563;stroke-opacity:.42}
+.kg-link.hot{stroke:var(--accent);stroke-opacity:.95}
+.kg-link.dim{stroke-opacity:.07}
+.kg-node{cursor:pointer}
+.kg-node circle{fill-opacity:.24;stroke-width:1.2}
+.kg-node text{fill:var(--fg);font-size:13px;font-family:var(--sans);pointer-events:auto;
+  cursor:pointer;paint-order:stroke;stroke:#07090c;stroke-width:2.4px;stroke-opacity:.9}
+.kg-node .kg-lab{opacity:0}
+.kg-node.show .kg-lab,.kg-node:hover .kg-lab,.kg-node.sel .kg-lab,.kg-node.hot .kg-lab{opacity:1}
+.kg-node.dim{opacity:.16}
+.kg-node.sel circle{fill-opacity:.6;stroke:var(--accent);stroke-width:2.6}
+.kg-node.hot circle{fill-opacity:.42;stroke:var(--accent)}
+.kg-side{width:255px;flex:0 0 255px;background:var(--surface);border:1px solid var(--line);
+  border-radius:8px;padding:10px 12px;overflow:auto;max-height:470px}
+.kg-side h4{margin:0 0 3px;overflow-wrap:anywhere}
+.kg-desc{font-size:12px;line-height:1.45;color:var(--fg);white-space:pre-wrap;margin:6px 0 0}
+.kg-neigh{display:flex;flex-direction:column;gap:1px;margin-top:3px}
+.kg-neigh button{text-align:left;background:none;border:0;padding:3px 0;color:var(--accent);
+  font-size:12px;cursor:pointer}
+.kg-neigh button:hover{text-decoration:underline}
+.kg-neigh button .muted{font-size:10px}
+.kg-legend{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.kg-chip{display:inline-flex;align-items:center;gap:5px;font-size:10px;padding:2px 8px;
+  border:1px solid var(--line);border-radius:99px;cursor:pointer;color:var(--muted);user-select:none}
+.kg-chip i{display:inline-block;width:8px;height:8px;border-radius:50%}
+.kg-chip.on{color:var(--fg);border-color:var(--accent)}
+.kg-chip:not(.on){opacity:.5}
+@media(max-width:900px){
+  .kg-wrap{flex-direction:column}
+  .kg-side{width:auto;flex:auto;max-height:220px}
+}
+
+/* GraphRAG hierarchy: breadcrumbs and search results */
+.kg-crumbs{display:flex;align-items:center;gap:3px;flex-wrap:wrap;margin:2px 0 6px;font-size:11px}
+.kg-crumb{background:none;border:0;color:var(--muted);cursor:pointer;padding:2px 4px;border-radius:4px}
+.kg-crumb:hover{color:var(--accent);background:#0a0c10}
+.kg-crumb.on{color:var(--fg);font-weight:600}
+.kg-sep{color:#4b5563}
+.kg-results{margin:0 0 8px;border:1px solid var(--line);background:var(--surface);border-radius:8px;
+  max-height:190px;overflow:auto;padding:8px 10px}
+.kg-res-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;
+  color:var(--muted);margin-bottom:4px}
+.kg-res-group{margin-top:5px}
+.kg-res-group>b{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted)}
+.kg-res-item{display:flex;flex-direction:column;align-items:flex-start;border:0;background:none;
+  color:var(--fg);padding:4px 2px;cursor:pointer;width:100%;text-align:left}
+.kg-res-item:hover{background:#0a0c10;border-radius:4px}
+.kg-res-item b{font-size:12px}
+.kg-res-item .muted{font-size:10px}
+.kg-node.community text{font-size:12px;font-weight:600}
+.kg-link.community{stroke-opacity:.35}
+.kg-link.community.hot{stroke-opacity:1}
+
+/* Full-page knowledge graph */
+#knowledge.page{position:fixed;inset:var(--top) 0 0 0;z-index:50;background:var(--bg);
+  display:flex;flex-direction:column;gap:6px;padding:12px 18px 14px;overflow:hidden}
+#knowledge.page.hide{display:none}
+.kg-page-head{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.kg-page-head>b{font-size:16px}
+.kg-page-body{display:flex;gap:12px;flex:1;min-height:0}
+.kg-canvas.full{flex:1;min-width:0;display:flex;min-height:0}
+.kg-canvas.full svg{height:100%;width:100%;min-height:0}
+#knowledge .kg-side{max-height:none;height:100%;flex:0 0 320px;width:320px}
+#knowledge .kg-legend{flex:0 0 auto}
+#knowledge .kg-toolbar{margin:0}
+#knowledge .kg-results{max-height:150px}
+body.knowledge-open{overflow:hidden}
+
+/* Knowledge sidebar tabs and source manager */
+.kg-side-tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:-2px 0 8px;padding-bottom:4px}
+.kg-side-tabs button{background:none;border:0;color:var(--muted);cursor:pointer;font-size:11px;
+  padding:3px 7px;border-radius:4px}
+.kg-side-tabs button:hover{color:var(--accent);background:#0a0c10}
+.kg-side-tabs button.on{color:var(--fg);background:var(--surface2)}
+.kg-side-body{overflow:auto;min-height:0}
+.kg-doc-list{margin-top:6px;max-height:38vh;overflow:auto}
+.kg-doc-group{margin-bottom:8px}
+.kg-doc-group>b{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-right:5px}
+.kg-doc-row{display:flex;align-items:center;gap:4px;border-bottom:1px solid #141821;padding:2px 0}
+.kg-doc{background:none;border:0;color:var(--fg);text-align:left;cursor:pointer;font-size:11px;
+  flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 0}
+.kg-doc:hover{color:var(--accent);text-decoration:underline}
+.kg-check{max-height:150px;font-size:10px;margin-top:8px}
+.kg-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.kg-tag{font-size:10px;border:1px solid var(--line);border-radius:99px;padding:1px 7px;color:var(--muted)}
+body.knowledge-open .modal{z-index:60}
+.kg-toolbar button.on{border-color:var(--accent);color:var(--fg);background:var(--surface2)}
+
+/* Knowledge sidebar: ontology classes + roles */
+.kg-side-tabs{flex-wrap:wrap}
+.kg-class-list,.kg-rel-list{margin-top:4px}
+.kg-class-row{display:grid;grid-template-columns:10px 1fr auto auto;gap:5px;align-items:center;
+  padding:4px 0;border-bottom:1px solid #141821}
+.kg-class-row i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.kg-class-row b{font-size:12px;font-weight:600}
+.kg-class-row.empty{opacity:.45}
+.kg-class-desc{grid-column:2/5;margin-top:-1px}
+.kg-rel{display:flex;flex-direction:column;padding:3px 0;border-bottom:1px solid #141821}
+.kg-rel b{font-size:11px}
+.kg-role{padding:6px 0;border-bottom:1px solid #141821}
+.kg-role b{display:block;font-size:12px;line-height:1.25}
+.kg-role>.muted{display:block;font-size:10px}
+
+/* Three.js knowledge graph */
+#kg-stage{position:relative;background:radial-gradient(ellipse at 45% 40%,#101826 0%,#07090c 62%);overflow:hidden}
+#kg3d{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
+#kg3d:active{cursor:grabbing}
+.kg3d-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.kg3d-label{position:absolute;transform:translate(-50%,0);font-family:var(--sans);
+  font-size:10.5px;line-height:1.2;color:#cbd5e1;background:rgba(7,9,12,.62);
+  border:1px solid rgba(148,163,184,.18);border-radius:4px;padding:1px 4px;
+  pointer-events:auto;cursor:pointer;white-space:nowrap;max-width:190px;
+  overflow:hidden;text-overflow:ellipsis;backdrop-filter:blur(2px)}
+.kg3d-label:hover{color:#fff;border-color:var(--accent)}
+.kg3d-label.community,.kg3d-label.type{font-weight:600;color:#e5e7eb;
+  background:rgba(14,18,26,.82);border-color:rgba(245,158,11,.28)}
+.kg3d-tip{position:absolute;z-index:3;pointer-events:none;background:#0b0f16;
+  border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:11px;
+  color:var(--fg);box-shadow:0 6px 20px rgba(0,0,0,.5);max-width:260px}
+.kg3d-tip b{display:block;font-size:12px;margin-bottom:2px}
+.kg3d-tip span{color:var(--muted);font-size:10px}
+
+.kg3d-hit{position:absolute;transform:translate(-50%,-50%);border-radius:50%;
+  background:transparent;pointer-events:auto;cursor:pointer;z-index:1}
+.kg3d-label{z-index:2}
+
+/* Knowledge toolbar: only the active view is outlined */
+.kg-toolbar button:focus,.kg-page-head button:focus,.kg-side-tabs button:focus{outline:none}
+.kg-toolbar button.on{border-color:var(--accent);color:var(--fg);background:var(--surface2)}

@@ -167,6 +167,13 @@ That is not a footnote, it is the engine of the whole thing:
 - **Truthfulness by construction.** Every generated line is traceable to a source
   in your corpus. **No source evidence, no claim.** This is what makes "never
   fabricate" real instead of aspirational.
+**Explore and manage it.** The top-bar **Knowledge** workspace opens the graph
+as a full-page 3D map: a small ontology of classes (Person, Organisation, Role,
+Skill, Technology, Project, Metric, Certification, ...), a class and community
+hierarchy, search, source provenance, and the roles you are working on. The
+**Sources** and **Add** tabs are the same knowledge-base controls, next to the
+graph they feed; **Roles** opens a role in the application drawer.
+
 - **It compounds.** The more you add, the better *every* application gets, and
   fixing or removing one overstatement in a source fixes it *everywhere* on
   re-index.

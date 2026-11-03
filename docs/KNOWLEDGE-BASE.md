@@ -132,6 +132,35 @@ python3 tools/kb_graphrag.py --method drift --jd ...   # deeper pass (slower)
 
 The runner does this automatically (step "grounding") for each queued role.
 
+## 4b. The Knowledge workspace
+
+The dashboard's top-bar **Knowledge** page is the full-page view of the same
+index. It is deliberately more than a graph picture:
+
+- **Topics** shows the ontology classes (Person, Organisation, Role, Skill,
+  Technology, Project, Metric, Certification, ...) with counts and the links
+  between them. The classes come from `config/ontology.example.json` (override
+  with `config/ontology.json`); unknown GraphRAG types fall back to Concept.
+- **Communities** shows the generated community hierarchy. Click a bubble for
+  its summary, keywords and source documents; double-click (or use **Open
+  community**) to drill into its sub-communities until you reach entities.
+- **Entities** appear when you open a class or a leaf community. Single-click
+  for description, source documents and neighbours; double-click for its ego
+  network. The view keeps only the largest connected component, so you do not
+  get a field of disconnected dots.
+- **Classes** lists the ontology and its relation vocabulary. GraphRAG supplies
+  generic RELATED_TO edges; the application layer adds REQUIRES and SATISFIES
+  when a role is assessed.
+- **Sources** lists, opens, uploads and deletes `kb/sources/` documents and
+  rebuilds the graph. **Add** records a fact or skill as a knowledge-base source
+  for the next rebuild. **Roles** lists live roles and opens one in the job
+  drawer (or prepares a queued role) so application work stays in the same
+  workspace.
+
+Controls: drag to orbit, wheel to zoom, right-drag (or shift-drag) to pan, click
+a node for details, double-click to open it. The side panel is the source of
+truth for what a node is, where it came from and what it connects to.
+
 ## 5. Maintain it
 
 - When you add or change a source, copy it into `kb/graphrag/input/` and

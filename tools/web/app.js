@@ -456,7 +456,15 @@ const App = {
     toast(d.ok || d.error, !!d.error);
     if (!d.error) loadGmailReview();
   },
-  kbDel: async (path) => { const d = await api('/api/kb/delete', { path }); toast(d.ok || d.error, !!d.error); if (!d.error) App.settings('kb'); },
+  kbDel: async (path) => {
+    const d = await api('/api/kb/delete', { path });
+    toast(d.ok || d.error, !!d.error);
+    if (!d.error) {
+      const page = $('#knowledge');
+      if (page && !page.classList.contains('hide')) App.kgSide('sources');
+      else App.settings('kb');
+    }
+  },
   kbUpload: async () => {
     const inp = $('#kb-file'), grp = $('#kb-group').value.trim() || 'imported';
     if (!inp.files.length) { toast('choose file(s) first', true); return; }
@@ -467,23 +475,259 @@ const App = {
       const d = await r.json(); toast(d.ok || d.error, !!d.error); if (!d.error) App.settings('kb');
     } catch (e) { toast('upload failed: ' + e, true); }
   },
-  graphLoad: async () => {
-    const kind = $('#g-kind').value, q = $('#g-q').value.trim();
-    $('#g-res').innerHTML = '<span class="muted">reading the graph…</span>';
-    const d = await api(`/api/graph?kind=${kind}&q=${encodeURIComponent(q)}&limit=300`);
-    if (d.error) { $('#g-res').innerHTML = `<span class="muted">${esc(d.error)}</span>`; return; }
-    const rows = d.rows || [];
-    if (kind === 'entities') $('#g-res').innerHTML = `<div class="muted mini">${rows.length} entities</div><table><tbody>` +
-      rows.map(r => `<tr><td><b>${esc(r.title)}</b><div class="muted mini">${esc(r.type)} · degree ${r.degree}</div></td>
-        <td class="muted mini">${esc((r.description || '').slice(0, 220))}</td></tr>`).join('') + '</tbody></table>';
-    else if (kind === 'relationships') $('#g-res').innerHTML = `<div class="muted mini">${rows.length} relationships</div><table><tbody>` +
-      rows.map(r => `<tr><td class="mini"><b>${esc(r.source)}</b> → <b>${esc(r.target)}</b> <span class="muted">w${r.weight}</span></td>
-        <td class="muted mini">${esc((r.description || '').slice(0, 200))}</td></tr>`).join('') + '</tbody></table>';
-    else if (kind === 'communities') $('#g-res').innerHTML = `<div class="muted mini">${rows.length} communities</div><table><tbody>` +
-      rows.map(r => `<tr><td class="mini"><b>${esc(r.title)}</b><div class="muted">level ${r.level} · ${r.size} entities</div></td>
-        <td class="muted mini">${esc((r.summary || '').slice(0, 240))}</td></tr>`).join('') + '</tbody></table>';
-    else $('#g-res').innerHTML = `<table><tbody>` + rows.map(r =>
-      `<tr><td class="mini">${esc(r.title)}</td><td class="muted mini">${r.chars} chars</td></tr>`).join('') + '</tbody></table>';
+  openKnowledge: async () => {
+    const page = $('#knowledge'); if (!page) return;
+    const cfg = $('#cfg'); if (cfg) cfg.classList.add('hide');
+    page.classList.remove('hide');
+    document.body.classList.add('knowledge-open');
+    try { history.replaceState(null, '', '#knowledge'); } catch (e) {}
+    const d = await api('/api/graph?kind=stats');
+    const st = $('#kg-stats');
+    if (st) st.textContent = d && d.entities
+      ? `${d.entities} entities · ${d.relationships} relationships · ${d.communities} communities`
+      : 'Index not built yet';
+    if (d && d.entities) App.graphTypes();
+    else if ($('#kg-side-body')) {
+      $('#kg-side-body').className = 'kg-side-body muted mini';
+      $('#kg-side-body').textContent = 'No graph index yet. Add documents and rebuild the graph.';
+    }
+  },
+  closeKnowledge: () => {
+    kgStop();
+    const page = $('#knowledge'); if (page) page.classList.add('hide');
+    document.body.classList.remove('knowledge-open');
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  },
+  graphTypes: async () => {
+    const msg = $('#kg-msg'); if (msg) msg.textContent = 'reading topics…';
+    const d = await api('/api/graph/types?limit=24');
+    if (!d || d.error) { if (msg) msg.textContent = (d && d.error) || 'could not read the topics'; return; }
+    await kgRender(d);
+    KG.crumbs = [];
+    KG.parent = null;
+    KG.total = d.total || d.nodes.length;
+    KG.type = null;
+    kgCrumbs([], null);
+    App.graphHideResults();
+    const gall = $('#kg-all'); if (gall) gall.style.display = 'none';
+    if (msg) msg.textContent = `${d.nodes.length} topics · ${d.links.length} links between topics`;
+  },
+  graphTypeEntities: async (type) => {
+    const msg = $('#kg-msg'); if (msg) msg.textContent = 'reading entities…';
+    const d = await api('/api/graph/type?type=' + encodeURIComponent(type) + '&limit=90');
+    if (!d || d.error) { if (msg) msg.textContent = (d && d.error) || 'could not read that topic'; return; }
+    await kgRender(d);
+    KG.crumbs = [];
+    KG.parent = null;
+    KG.type = d.type;
+    kgCrumbs([], d.label);
+    App.graphHideResults();
+    const gall = $('#kg-all'); if (gall) gall.style.display = 'none';
+    if (msg) msg.textContent = `${d.nodes.length} of ${d.total} entities · ${d.links.length} relationships`;
+  },
+  openSource: async (name) => {
+    const d = await api('/api/kb/find?name=' + encodeURIComponent(name));
+    if (!d || d.error) { toast(d && d.error ? d.error : 'source not found', true); return; }
+    viewDoc(d.path, name);
+  },
+  openSourcePath: (path, name) => viewDoc(path, name),
+  kgSide: async (tab) => {
+    document.querySelectorAll('.kg-side-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
+    const body = $('#kg-side-body'); if (!body) return;
+    if (tab === 'details') {
+      if (KG && KG.selected) kgSelect(KG.selected);
+      else kgClear();
+      return;
+    }
+    if (tab === 'classes') {
+      body.className = 'kg-side-body';
+      body.innerHTML = '<span class="muted mini">reading ontology…</span>';
+      const d = await api('/api/graph/ontology');
+      if (!d || d.error) { body.innerHTML = `<span class="bad mini">${esc((d && d.error) || 'could not read the ontology')}</span>`; return; }
+      const classes = d.classes || [];
+      body.innerHTML = `<p class="muted mini">A small, explicit vocabulary for the candidate's record. Every graph entity is mapped to one class; the application layer will reuse the same classes for job requirements and evidence.</p>
+        <div class="kg-class-list">` + classes.map(c => `<div class="kg-class-row${c.count ? '' : ' empty'}">
+          <i style="background:${c.color}"></i><b>${esc(c.label)}</b><span class="muted mini">${c.count}</span>
+          ${c.count ? `<button class="small" data-id="${esc(c.id)}" onclick="App.graphTypeEntities(this.dataset.id)">Open</button>` : ''}
+          <div class="muted mini kg-class-desc">${esc(c.description || '')}</div></div>`).join('') + '</div>' +
+        `<h4 style="margin:12px 0 2px">Relations</h4><div class="kg-rel-list">` +
+        (d.relations || []).map(r => `<div class="kg-rel"><b>${esc(r.label)}</b><span class="muted mini">${esc(r.description || '')}</span></div>`).join('') +
+        `</div><p class="muted mini" style="margin-top:8px">${esc(d.note || '')}</p>`;
+      return;
+    }
+    if (tab === 'roles') {
+      body.className = 'kg-side-body';
+      body.innerHTML = '<span class="muted mini">reading roles…</span>';
+      const rows = await api('/api/grid');
+      if (!Array.isArray(rows)) { body.innerHTML = '<span class="bad mini">could not read the register</span>'; return; }
+      const rank = { PREPARED: 0, QUEUED: 1, INTERVIEW: 2, MANUAL: 3, BLOCKED: 4, IN_PROGRESS: 5, SUBMITTED: 6 };
+      const active = rows.filter(r => Object.prototype.hasOwnProperty.call(rank, r.status))
+        .sort((a, b) => (rank[a.status] - rank[b.status]) || ((b.match || 0) - (a.match || 0)));
+      body.innerHTML = `<p class="muted mini">Open a role to work on the application in the job drawer, or prepare a queued role. The same evidence graph backs these documents.</p>` +
+        (active.length ? active.slice(0, 40).map(r => `<div class="kg-role">
+          <b>${esc(r.role)}</b><span class="muted mini">${esc(r.company)}</span>
+          <div class="muted mini">${esc(r.status)}${r.match != null ? ` · match ${r.match}%` : ''}${r.action ? ' · action' : ''}</div>
+          <div class="row" style="margin-top:4px">
+            <button class="small" data-id="${esc(r.key)}" onclick="App.openRoleFromKnowledge(this.dataset.id)">Open</button>
+            ${r.status === 'QUEUED' ? `<button class="small" data-id="${esc(r.key)}" onclick="App.prepareFromKnowledge(this.dataset.id)">Prepare</button>` : ''}
+          </div></div>`).join('') :
+          '<span class="muted mini">No roles in the register yet.</span>');
+      return;
+    }
+    if (tab === 'sources') {
+      body.className = 'kg-side-body';
+      body.innerHTML = '<span class="muted mini">reading sources…</span>';
+      const d = await api('/api/kb');
+      if (!d || d.error) { body.innerHTML = `<span class="bad mini">${esc((d && d.error) || 'could not read sources')}</span>`; return; }
+      const groups = d.sources || {};
+      let list = '';
+      for (const [g, files] of Object.entries(groups)) {
+        if (!files || !files.length) continue;
+        list += `<div class="kg-doc-group"><b>${esc(g)}</b><span class="muted mini">${files.length}</span>` +
+          files.map(f => {
+            const path = `kb/sources/${g === '(root)' ? '' : g + '/'}${f.name}`;
+            return `<div class="kg-doc-row"><button class="kg-doc" data-path="${esc(path)}" data-name="${esc(f.name)}"
+              onclick="App.openSourcePath(this.dataset.path, this.dataset.name)">${esc(f.name)}</button>
+              <span class="muted mini">${fmtSize(f.size)}</span>
+              <button class="small" data-path="${esc(path)}" onclick="App.kbDel(this.dataset.path)" title="delete">✕</button></div>`;
+          }).join('') + '</div>';
+      }
+      const s = d.stats || {};
+      body.innerHTML = `<p class="muted mini">Documents in <code>kb/sources/</code> feed the graph. Delete a file here, or add more below; rebuild the index afterwards to fold changes into the graph.</p>
+        <div class="row" style="margin:6px 0"><input id="kg-kb-group" placeholder="group" style="max-width:110px">
+          <input type="file" id="kg-kb-file" multiple><button onclick="App.kgUpload()">Upload</button></div>
+        <div class="kg-doc-list">${list || '<span class="muted mini">no source documents yet</span>'}</div>
+        <div class="row" style="margin-top:8px"><button class="risky" onclick="App.rebuildKB()">Rebuild graph</button>
+          <span class="muted mini">${s.index ? `${s.entities} entities · ${s.relationships} relationships · ${s.documents} documents` : 'index not built'}</span></div>
+        <pre class="doc kg-check">${esc((d.check || '').slice(-1600))}</pre>`;
+      return;
+    }
+    body.className = 'kg-side-body';
+    body.innerHTML = `<p class="muted mini">Add a fact or skill to the knowledge base. It is written as a source document, attributed to the employer or project you name, and becomes available to the next rebuild.</p>
+      <input id="kg-fact-skill" placeholder="Skill or fact" style="width:100%;margin:4px 0">
+      <input id="kg-fact-source" placeholder="Source (employer, project, certification…)" style="width:100%;margin:4px 0">
+      <textarea id="kg-fact-detail" placeholder="Detail / evidence — what did you do, at what scale, with what result?" style="width:100%;height:78px;margin:4px 0"></textarea>
+      <div class="row"><button onclick="App.addFact()">Add fact</button>
+        <button class="small" onclick="App.kgSide('sources')">Manage documents</button></div>
+      <p class="muted mini" style="margin-top:8px">A fact is a knowledge-base source, not a graph edit. Rebuild the graph when you want the new evidence in the index and in future CVs.</p>`;
+  },
+  addFact: async () => {
+    const skill = (($('#kg-fact-skill') || {}).value || '').trim();
+    const source = (($('#kg-fact-source') || {}).value || '').trim();
+    const detail = (($('#kg-fact-detail') || {}).value || '').trim();
+    if (!skill) { toast('name the skill or fact first', true); return; }
+    const d = await api('/api/skills/evidence', { skill, source, detail });
+    toast(d.error ? d.error : 'fact added — rebuild the graph to index it', !!d.error);
+    if (!d.error) { $('#kg-fact-skill').value = ''; $('#kg-fact-source').value = ''; $('#kg-fact-detail').value = ''; }
+  },
+  kgUpload: async () => {
+    const inp = $('#kg-kb-file'), grp = ($('#kg-kb-group') || {}).value || 'imported';
+    if (!inp || !inp.files.length) { toast('choose file(s) first', true); return; }
+    const fd = new FormData(); fd.append('group', grp);
+    for (const f of inp.files) fd.append('files', f, f.name);
+    try {
+      const r = await fetch('/api/kb/upload', { method: 'POST', headers: { 'X-Session': TOKEN }, body: fd });
+      const d = await r.json(); toast(d.ok || d.error, !!d.error);
+      if (!d.error) App.kgSide('sources');
+    } catch (e) { toast('upload failed: ' + e, true); }
+  },
+  openRoleFromKnowledge: async (key) => {
+    const rows = await api('/api/grid');
+    const r = Array.isArray(rows) ? rows.find(x => x.key === key) : null;
+    if (!r) { toast('role not found', true); return; }
+    App.closeKnowledge();
+    openDetail(r);
+  },
+  prepareFromKnowledge: (key) => {
+    App.closeKnowledge();
+    App.prepareThis(key);
+  },
+  graphOverview: async (parent, limit) => {
+    const msg = $('#kg-msg'); if (msg) msg.textContent = 'reading communities…';
+    const n = limit || 16;
+    const url = '/api/graph/overview?limit=' + n + (parent != null ? '&parent=' + encodeURIComponent(parent) : '');
+    const d = await api(url);
+    if (!d || d.error) { if (msg) msg.textContent = (d && d.error) || 'could not read the graph'; return; }
+    await kgRender(d);
+    KG.crumbs = d.breadcrumb || [];
+    KG.parent = d.parent;
+    KG.total = d.total || d.nodes.length;
+    KG.limit = n;
+    kgCrumbs(KG.crumbs, null);
+    App.graphHideResults();
+    const q = $('#kg-q'); if (q) q.value = '';
+    const all = $('#kg-all'); if (all) all.style.display = (d.mode === 'communities' && KG.total > d.nodes.length) ? '' : 'none';
+    if (msg) msg.textContent = d.mode === 'communities'
+      ? `${d.nodes.length} of ${KG.total} communities · ${d.links.length} links`
+      : `${d.nodes.length} entities · ${d.links.length} relationships`;
+  },
+  graphAll: () => App.graphOverview(KG ? KG.parent : null, 60),
+  graphCommunity: async (id) => {
+    const msg = $('#kg-msg'); if (msg) msg.textContent = 'reading community…';
+    const d = await api('/api/graph/community?id=' + encodeURIComponent(id) + '&limit=90');
+    if (!d || d.error) { if (msg) msg.textContent = (d && d.error) || 'could not read the community'; return; }
+    await kgRender(d);
+    KG.crumbs = d.breadcrumb || [];
+    KG.parent = d.parent;
+    KG.total = d.total || d.nodes.length;
+    kgCrumbs(KG.crumbs, null);
+    App.graphHideResults();
+    const gall = $('#kg-all');
+    if (gall) gall.style.display = (d.mode === 'communities' && KG.total > d.nodes.length) ? '' : 'none';
+    if (msg) msg.textContent = d.mode === 'communities'
+      ? `${d.nodes.length} sub-communities · ${d.links.length} links`
+      : `${d.nodes.length} entities · ${d.links.length} relationships`;
+  },
+  graphEgo: async (q) => {
+    const msg = $('#kg-msg'); if (msg) msg.textContent = 'building the neighbourhood…';
+    const d = await api('/api/graph/ego?q=' + encodeURIComponent(q) + '&limit=50');
+    if (!d || d.error) { if (msg) msg.textContent = (d && d.error) || 'could not build that view'; return; }
+    await kgRender(d);
+    KG.crumbs = d.breadcrumb || [];
+    kgCrumbs(KG.crumbs, d.center || q);
+    App.graphHideResults();
+    const gall = $('#kg-all'); if (gall) gall.style.display = 'none';
+    if (msg) msg.textContent = `${d.nodes.length} entities · ${d.links.length} relationships · ego network`;
+  },
+  graphSearch: async (q) => {
+    q = (q || '').trim();
+    if (!q) return App.graphTop();
+    const box = $('#kg-results');
+    if (!box) return;
+    box.classList.remove('hide');
+    box.innerHTML = '<span class="muted mini">searching…</span>';
+    const d = await api('/api/graph/search?q=' + encodeURIComponent(q));
+    if (!d || d.error) { box.innerHTML = `<span class="muted mini">${esc((d && d.error) || 'search failed')}</span>`; return; }
+    const cs = d.communities || [], es = d.entities || [];
+    if (!cs.length && !es.length) {
+      box.innerHTML = `<div class="kg-res-head">No matches for “${esc(q)}” <button class="small" onclick="App.graphHideResults()">✕</button></div>`;
+      return;
+    }
+    box.innerHTML = `<div class="kg-res-head">“${esc(q)}” · ${cs.length} communities · ${es.length} entities
+        <button class="small" onclick="App.graphHideResults()">✕</button></div>` +
+      (cs.length ? `<div class="kg-res-group"><b>Communities</b>` + cs.map(c =>
+        `<button class="kg-res-item" data-id="${c.community}" onclick="App.graphCommunity(this.dataset.id)">
+          <b>${esc(c.title)}</b><span class="muted mini">level ${c.level} · ${c.size} entities</span></button>`).join('') + '</div>' : '') +
+      (es.length ? `<div class="kg-res-group"><b>Entities</b>` + es.map(e =>
+        `<button class="kg-res-item" data-id="${esc(e.title)}" onclick="App.graphEgo(this.dataset.id)">
+          <b>${esc(e.title)}</b><span class="muted mini">${esc(e.type)}${e.community_title ? ' · ' + esc(e.community_title) : ''}</span></button>`).join('') + '</div>' : '');
+  },
+  graphHideResults: () => { const b = $('#kg-results'); if (b) b.classList.add('hide'); },
+  graphTop: () => App.graphOverview(null),
+  graphBack: () => {
+    if (!KG) return App.graphTypes();
+    if (KG.view === 'types' || KG.view === 'type') return App.graphTypes();
+    const crumbs = KG.crumbs || [];
+    if (KG.mode === 'ego' && crumbs.length) return App.graphCommunity(crumbs[crumbs.length - 1].community);
+    if (crumbs.length > 1) return App.graphOverview(crumbs[crumbs.length - 2].community);
+    return App.graphOverview(null);
+  },
+  graphSelect: (id) => { if (KG && KG.byId.has(id)) kgSelect(id); else App.graphEgo(id); },
+  graphFit: () => { if (window.__kg3d) window.__kg3d.fit(); },
+  graphType: (type) => {
+    if (!KG) return;
+    if (KG.hidden.has(type)) KG.hidden.delete(type); else KG.hidden.add(type);
+    kgVisibility();
   },
   chat: async () => {
     const inp = $('#chatmsg'), m = inp.value.trim(); if (!m) return;
@@ -2347,10 +2591,12 @@ async function setKB(b) {
   let list = '';
   for (const [g, files] of Object.entries(d.sources || {})) {
     if (!files.length) continue;
-    const p = `kb/sources/${g === '(root)' ? '' : g + '/'}${f.name}`;
     list += `<div class="kb-group"><b>${esc(g)}</b> <span class="muted mini">${files.length} file(s)</span><ul>` +
-      files.map(f => `<li><span class="mini">${esc(f.name)}</span> <span class="muted mini">${fmtSize(f.size)}</span>
-        <button class="small" title="delete" onclick='App.kbDel(${JSON.stringify(p)})'>✕</button></li>`).join('') +
+      files.map(f => {
+        const p = `kb/sources/${g === '(root)' ? '' : g + '/'}${f.name}`;
+        return `<li><span class="mini">${esc(f.name)}</span> <span class="muted mini">${fmtSize(f.size)}</span>
+        <button class="small" title="delete" onclick='App.kbDel(${JSON.stringify(p)})'>✕</button></li>`;
+      }).join('') +
       '</ul></div>';
   }
   const s = d.stats || {};
@@ -2363,19 +2609,233 @@ async function setKB(b) {
     <div class="muted mini">${s.index ? `${s.entities} entities · ${s.relationships} relationships · ${s.communities} communities · ${s.documents} documents` : 'not built yet'}</div>
     <pre class="doc" style="margin-top:8px">${esc(d.check || '')}</pre>`;
 }
+/* ---------- GraphRAG: a hierarchical, navigable knowledge graph ---------- */
+const KGNS = 'http://www.w3.org/2000/svg';
+let KG = null;
+const KG_COLORS = {
+  TECHNOLOGY: '#3b82f6', SKILL: '#22c55e', METRIC: '#f59e0b', PROJECT: '#a855f7',
+  PRODUCT: '#06b6d4', ORGANIZATION: '#ef4444', ROLE: '#eab308', PLATFORM: '#8b5cf6',
+  CERTIFICATION: '#14b8a6', EDUCATION: '#64748b', PERSON: '#f97316'
+};
+const KG_LEVEL_COLORS = ['#f59e0b', '#3b82f6', '#22c55e', '#a855f7', '#06b6d4', '#ef4444', '#ec4899', '#14b8a6'];
+
+function kgColor(type) {
+  if (KG_COLORS[type]) return KG_COLORS[type];
+  let h = 0;
+  for (const c of String(type || '?')) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return `hsl(${h} 55% 58%)`;
+}
+function kgNodeColor(n) {
+  if (n.color) return n.color;
+  if (n.kind === 'community') return KG_LEVEL_COLORS[(n.level || 0) % KG_LEVEL_COLORS.length];
+  return KG_COLORS[n.type] || kgColor(n.type);
+}
+function kgTrunc(s, n) {
+  s = String(s == null ? '' : s);
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+function kgShort(s, n) {
+  const words = String(s == null ? '' : s).split(/\s+/).filter(Boolean);
+  let out = '';
+  for (const w of words) {
+    if ((out + ' ' + w).trim().length > (n || 24)) break;
+    out = (out + ' ' + w).trim();
+  }
+  return out + (out.split(/\s+/).length < words.length ? '…' : '');
+}
+function kgStop() { if (window.__kg3d) window.__kg3d.pause(); }
+
+function kgCrumbs(crumbs, extra) {
+  const el = $('#kg-crumbs'); if (!el) return;
+  const typeView = KG && (KG.view === 'types' || KG.view === 'type');
+  let h = `<button class="kg-crumb${(!crumbs || !crumbs.length) && !extra ? ' on' : ''}"
+    onclick="${typeView ? 'App.graphTypes()' : 'App.graphTop()'}">${typeView ? 'All topics' : 'All communities'}</button>`;
+  const all = crumbs || [];
+  if (all.length > 4) h += '<span class="kg-sep">›</span><span class="muted mini">…</span>';
+  (all.length > 4 ? all.slice(-3) : all).forEach(c => {
+    h += `<span class="kg-sep">›</span><button class="kg-crumb" data-id="${c.community}"
+      onclick="App.graphCommunity(this.dataset.id)">${esc(kgTrunc(c.title, 38))}</button>`;
+  });
+  if (extra) h += `<span class="kg-sep">›</span><span class="kg-crumb on">${esc(kgTrunc(extra, 38))}</span>`;
+  el.innerHTML = h;
+  const back = $('#kg-back');
+  if (back) back.style.visibility = (all.length || extra) ? 'visible' : 'hidden';
+  kgViewButtons();
+}
+
+function kgViewButtons() {
+  const v = KG ? KG.view : '';
+  const t = $('#kg-tab-types'), c = $('#kg-tab-comm');
+  if (t) t.classList.toggle('on', v === 'types' || v === 'type');
+  if (c) c.classList.toggle('on', v === 'communities' || v === 'entities' || v === 'ego');
+}
+
+function kgDefaultHint() {
+  const v = KG ? KG.view : 'types';
+  return v === 'types'
+    ? 'Click a topic to see its entities. Drag to orbit, scroll to zoom, right-drag (or shift-drag) to pan.'
+    : v === 'communities'
+      ? 'Click a community for its summary and sources; double-click to drill down. Drag to orbit, scroll to zoom.'
+      : 'Click an entity for its description, sources and neighbours. Double-click for its ego network.';
+}
+
+async function kgRender(d) {
+  const stage = $('#kg-stage');
+  const canvas = $('#kg3d');
+  if (!stage || !canvas) return;
+  let mod;
+  try {
+    mod = await import('./graph3d.js');
+  } catch (e) {
+    stage.innerHTML = `<div class="kg3d-fallback">The 3D renderer could not load: ${esc(String(e))}</div>`;
+    return;
+  }
+  window.__kg3d = mod;
+  const nodes = (d.nodes || []).map(n => ({ ...n }));
+  const links = (d.links || []).map(l => ({ ...l }));
+  const isComm = d.mode === 'communities';
+  if (isComm) nodes.forEach(n => { n.type = 'LEVEL ' + (n.level || 0); });
+  const isType = d.mode === 'types';
+  const isSpread = isComm || isType;
+  KG = {
+    nodes, links, byId: new Map(nodes.map(n => [n.id, n])),
+    top: new Set(isSpread ? nodes.map(n => n.id)
+      : [...nodes].sort((a, b) => (b.degree || 0) - (a.degree || 0)).slice(0, 14).map(n => n.id)),
+    kind: isType ? 'types' : isComm ? 'communities' : 'entities',
+    view: isType ? 'types' : isComm ? 'communities' : d.mode === 'ego' ? 'ego' : d.type ? 'type' : 'entities',
+    type: d.type || null, selected: null, hidden: new Set(),
+    crumbs: d.breadcrumb || [], center: d.center || ''
+  };
+  if (d.center) KG.top.add(d.center);
+  try {
+    await mod.show(d, {
+      onSelect: (id) => kgSelect(id),
+      onOpen: (n) => {
+        if (n.kind === 'entity') App.graphEgo(n.title);
+        else if (n.kind === 'community') App.graphCommunity(n.community);
+        else if (n.kind === 'type') App.graphTypeEntities(n.type);
+      },
+      onClear: () => kgClear()
+    });
+  } catch (e) {
+    stage.innerHTML = `<div class="kg3d-fallback">WebGL could not start: ${esc(String(e))}</div>`;
+    return;
+  }
+  const legend = $('#kg-legend');
+  if (legend) {
+    if (isType || isComm) legend.innerHTML = '';
+    else {
+      const counts = {}, colors = {};
+      nodes.forEach(n => {
+        const k = n.type || '?';
+        counts[k] = (counts[k] || 0) + 1;
+        colors[k] = n.color || (n.kind === 'community'
+          ? KG_LEVEL_COLORS[(n.level || 0) % KG_LEVEL_COLORS.length]
+          : KG_COLORS[n.type] || kgColor(n.type));
+      });
+      legend.innerHTML = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([t, c]) =>
+        `<span class="kg-chip on" data-type="${esc(t)}" onclick="App.graphType(this.dataset.type)"><i style="background:${colors[t]}"></i>${esc(t)} ${c}</span>`).join('');
+    }
+  }
+  const body = $('#kg-side-body');
+  if (body) {
+    body.className = 'kg-side-body muted mini';
+    body.innerHTML = isType
+      ? 'Each node is an ontology class; the links aggregate relationships between classes. Click a class to see the individual entities behind it.'
+      : isComm
+        ? 'Each node is a community in the generated hierarchy. Click one for its summary and sources; double-click to drill into its sub-communities.'
+        : 'Each node is an entity from your documents. Click it for its description and source documents; double-click for its ego network.';
+  }
+  document.querySelectorAll('.kg-side-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === 'details'));
+  kgViewButtons();
+}
+
+function kgSelect(id) {
+  if (!KG) return;
+  const n = KG.byId.get(id);
+  if (!n) return;
+  KG.selected = id;
+  if (window.__kg3d) window.__kg3d.select(id);
+  const body = $('#kg-side-body'); if (!body) return;
+  document.querySelectorAll('.kg-side-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === 'details'));
+  body.className = 'kg-side-body';
+  const sources = n.sources || [];
+  const srcHtml = sources.length
+    ? `<h4 style="margin:10px 0 2px">Sources (${sources.length})</h4><div class="kg-neigh">` +
+      sources.map(s => `<button data-src="${esc(s)}" onclick="App.openSource(this.dataset.src)">📄 ${esc(kgTrunc(s, 52))}</button>`).join('') + '</div>'
+    : '';
+  if (n.kind === 'community' || n.kind === 'type') {
+    const isComm = n.kind === 'community';
+    const keys = n.keywords || [];
+    body.innerHTML = `<h4>${esc(n.title || n.label)}</h4>
+      <div class="muted mini">${isComm ? 'Community' : 'Topic'} · ${n.size} entities${isComm && n.level != null ? ` · level ${n.level}` : ''}</div>
+      <p class="kg-desc">${esc(n.description || 'No summary.')}</p>
+      ${keys.length ? `<div class="kg-tags">${keys.map(k => `<span class="kg-tag">${esc(k)}</span>`).join('')}</div>` : ''}
+      ${srcHtml}
+      <div class="row" style="margin-top:10px;flex-wrap:wrap">
+        ${isComm
+          ? `<button class="small" data-id="${n.community}" onclick="App.graphCommunity(this.dataset.id)">Open community</button>`
+          : `<button class="small" data-id="${esc(n.type)}" onclick="App.graphTypeEntities(this.dataset.id)">Open topic</button>`}
+      </div>`;
+    return;
+  }
+  const neigh = new Set([id]);
+  for (const l of KG.links) {
+    if (l.source === id) neigh.add(l.target);
+    else if (l.target === id) neigh.add(l.source);
+  }
+  const neighbours = [...neigh].filter(x => x !== id).map(x => KG.byId.get(x)).filter(Boolean)
+    .sort((a, b) => (b.degree || 0) - (a.degree || 0));
+  body.innerHTML = `<h4>${esc(n.title)}</h4>
+    <div class="muted mini">${esc(n.class_label || n.type)} · degree ${n.degree} · frequency ${n.frequency}</div>
+    <p class="kg-desc">${esc(n.description || 'No description.')}</p>
+    ${srcHtml}
+    <h4 style="margin:10px 0 2px">Neighbours (${neighbours.length})</h4>
+    <div class="kg-neigh">${neighbours.length ? neighbours.map(x =>
+      `<button data-id="${esc(x.id)}" onclick="App.graphSelect(this.dataset.id)">${esc(kgTrunc(x.title, 42))}
+        <span class="muted">${esc(x.class_label || x.type)}</span></button>`).join('') :
+      '<span class="muted mini">None visible in this view.</span>'}</div>
+    <div class="row" style="margin-top:10px;flex-wrap:wrap">
+      <button class="small" data-id="${esc(n.title)}" onclick="App.graphEgo(this.dataset.id)">Focus ego network</button>
+      ${n.community != null ? `<button class="small" data-id="${n.community}" onclick="App.graphCommunity(this.dataset.id)">Open community</button>` : ''}
+    </div>`;
+}
+
+function kgClear() {
+  if (!KG) return;
+  KG.selected = null;
+  if (window.__kg3d) window.__kg3d.clearSelection();
+  const body = $('#kg-side-body');
+  document.querySelectorAll('.kg-side-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === 'details'));
+  if (body) {
+    body.className = 'kg-side-body muted mini';
+    body.innerHTML = kgDefaultHint();
+  }
+}
+
+function kgVisibility() {
+  if (!KG) return;
+  if (window.__kg3d) window.__kg3d.setHiddenTypes([...KG.hidden]);
+  document.querySelectorAll('#kg-legend .kg-chip').forEach(el => {
+    el.classList.toggle('on', !KG.hidden.has(el.dataset.type));
+  });
+}
+
 async function setGraph(b) {
   const d = await api('/api/graph?kind=stats');
   if (CF_SEC !== 'graph') return;
-  b.innerHTML = `<p class="muted">The knowledge graph built from your documents (GraphRAG index in <code>kb/graphrag/</code>).
-      ${d.entities ? `<b>${d.entities}</b> entities · <b>${d.relationships}</b> relationships · <b>${d.communities}</b> communities` : ''}</p>
-    <div class="row" style="margin:8px 0">
-      <select id="g-kind" onchange="App.graphLoad()">
-        <option value="entities">Entities</option><option value="relationships">Relationships</option>
-        <option value="communities">Communities</option><option value="documents">Documents</option></select>
-      <input id="g-q" placeholder="search the graph…" style="flex:1" onkeydown="if(event.key==='Enter')App.graphLoad()">
-      <button onclick="App.graphLoad()">Search</button></div>
-    <div id="g-res" class="g-res"><span class="muted">loading…</span></div>`;
-  App.graphLoad();
+  const built = d && d.entities;
+  b.innerHTML = `<p class="muted">The knowledge graph is a full-page workspace, not a settings pane: a hierarchy of
+      communities you can drill through to the entities and relationships behind every generated document.</p>
+    <div class="muted mini">${built
+      ? `<b>${d.entities}</b> entities · <b>${d.relationships}</b> relationships · <b>${d.communities}</b> communities`
+      : 'Not built yet.'}</div>
+    <div class="row" style="margin-top:10px">
+      <button onclick="App.openKnowledge()">Open the knowledge graph</button>
+      <button class="small" onclick="App.rebuildKB()" title="Full re-index of the knowledge graph — can take 20–30+ minutes">Rebuild graph</button>
+    </div>
+    <p class="muted mini" style="margin-top:10px">Search communities and entities, drill from the highest-level community down to
+      individual entities, and open any entity's ego network. The graph fills the page and keeps the job grid out of the way.</p>`;
 }
 async function setPerms(b) {
   const d = await api('/api/permissions');
@@ -2504,6 +2964,7 @@ function setProfile(b) {
 $('#a-prepare').onclick = () => App.run('prepare');
 $('#a-submit').onclick = () => App.run('submit_queue');
 $('#a-reconcile').onclick = () => App.run('reconcile');
+$('#a-knowledge').onclick = () => App.openKnowledge();
 $('#a-config').onclick = () => { $('#cfg').classList.remove('hide'); App.settings(CF_SEC); };
 window.cfgClose = () => $('#cfg').classList.add('hide');
 window.legendClose = () => $('#legend-modal').classList.add('hide');
@@ -2679,3 +3140,7 @@ $('#upd-go').onclick = async () => {
   }
 })();
 initPanels(); initGridCols(); syncGroupingButton(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel();
+if (location.hash === '#knowledge') setTimeout(() => App.openKnowledge(), 400);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !$('#knowledge').classList.contains('hide')) App.closeKnowledge();
+});

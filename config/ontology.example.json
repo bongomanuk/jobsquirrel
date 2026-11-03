@@ -1,0 +1,34 @@
+{
+  "classes": {
+    "PERSON": {"label": "Person", "color": "#f97316", "description": "The candidate and the people around their record."},
+    "ORGANIZATION": {"label": "Organisation", "color": "#ef4444", "description": "Employers, clients, customers and other organisations."},
+    "ROLE": {"label": "Role", "color": "#eab308", "description": "A job or position held, with dates and scope."},
+    "SKILL": {"label": "Skill", "color": "#22c55e", "description": "A capability the candidate can evidence."},
+    "TECHNOLOGY": {"label": "Technology", "color": "#3b82f6", "description": "A language, tool, framework or technical practice."},
+    "PROJECT": {"label": "Project", "color": "#a855f7", "description": "A piece of delivered work and its outcome."},
+    "PRODUCT": {"label": "Product", "color": "#06b6d4", "description": "A product or service the candidate worked on."},
+    "PLATFORM": {"label": "Platform", "color": "#8b5cf6", "description": "A platform, environment or operating context."},
+    "METRIC": {"label": "Metric", "color": "#f59e0b", "description": "A quantified outcome or scale."},
+    "CERTIFICATION": {"label": "Certification", "color": "#14b8a6", "description": "A certification or formal credential."},
+    "EDUCATION": {"label": "Education", "color": "#64748b", "description": "A degree, course or educational record."},
+    "LANGUAGE": {"label": "Language", "color": "#84cc16", "description": "A spoken or written language and level."},
+    "LOCATION": {"label": "Location", "color": "#0ea5e9", "description": "A place, market or work location."},
+    "ACHIEVEMENT": {"label": "Achievement", "color": "#ec4899", "description": "A concrete, attributable outcome."},
+    "CONCEPT": {"label": "Concept", "color": "#94a3b8", "description": "Anything the graph cannot place in a more specific class."}
+  },
+  "relations": {
+    "RELATED_TO": {"label": "Related to", "description": "Generic co-occurrence from GraphRAG; refine it in the application layer."},
+    "HELD_ROLE": {"label": "Held role", "description": "Person -> Role."},
+    "AT_ORGANIZATION": {"label": "At organisation", "description": "Role/Project -> Organisation."},
+    "DELIVERED": {"label": "Delivered", "description": "Person -> Project or Achievement."},
+    "USES": {"label": "Uses", "description": "Role/Project -> Technology or Platform."},
+    "EVIDENCED_BY": {"label": "Evidenced by", "description": "Skill/Claim -> Project, Metric or source document."},
+    "CERTIFIED_IN": {"label": "Certified in", "description": "Person -> Certification."},
+    "STUDIED_AT": {"label": "Studied at", "description": "Person -> Education/Organisation."},
+    "SPEAKS": {"label": "Speaks", "description": "Person -> Language."},
+    "SOURCED_FROM": {"label": "Sourced from", "description": "Entity or claim -> source document."},
+    "REQUIRES": {"label": "Requires", "description": "Job/Requirement -> Skill or Technology."},
+    "SATISFIES": {"label": "Satisfies", "description": "Evidence -> Job requirement."},
+    "APPLIED_TO": {"label": "Applied to", "description": "Candidate/Application -> Job."}
+  }
+}

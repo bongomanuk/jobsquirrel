@@ -3535,6 +3535,36 @@ def kb_info():
     return {"sources": kb_sources(), "stats": graph_query("stats"), "check": _kb_check["text"]}
 
 
+def kb_find_doc(name):
+    """Resolve a graph document title to a file under kb/sources/.
+
+    GraphRAG titles often carry a group prefix and a .txt extension even when
+    the source is the original .docx and the extracted text was transient, so
+    compare normalised stems as well as exact names.
+    """
+    import re
+    name = os.path.basename(str(name or "").strip())
+    if not name:
+        return {"error": "no document name"}
+    norm = lambda x: re.sub(r"[^a-z0-9]", "", str(x).lower())
+    want = norm(name)
+    exact, suffix, fuzzy = [], [], []
+    for root, _dirs, files in os.walk(KB_SOURCES):
+        for f in files:
+            rel = os.path.relpath(os.path.join(root, f), ROOT)
+            stem = norm(os.path.splitext(f)[0])
+            if f == name:
+                exact.append(rel)
+            elif stem and (want.endswith(stem) or stem.endswith(want)):
+                suffix.append(rel)
+            elif stem and (stem in want or want in stem):
+                fuzzy.append(rel)
+    found = exact or suffix or fuzzy
+    if not found:
+        return {"error": f"no source file matching {name}"}
+    return {"path": found[0], "matches": len(found)}
+
+
 def _safe_kb_path(rel):
     base = os.path.realpath(KB_SOURCES)
     p = os.path.realpath(os.path.join(ROOT, rel))
@@ -3888,7 +3918,10 @@ class H(BaseHTTPRequestHandler):
         p, qs = u.path, parse_qs(u.query)
         static = {"/": ("index.html", "text/html; charset=utf-8"),
                   "/app.css": ("app.css", "text/css; charset=utf-8"),
-                  "/app.js": ("app.js", "application/javascript; charset=utf-8")}
+                  "/app.js": ("app.js", "application/javascript; charset=utf-8"),
+                  "/graph3d.js": ("graph3d.js", "application/javascript; charset=utf-8"),
+                  "/vendor/three.module.min.js": ("vendor/three.module.min.js",
+                                                    "application/javascript; charset=utf-8")}
         if p in static:
             return self._file(os.path.join(WEB, static[p][0]), static[p][1])
         if p == "/logs":
@@ -3955,9 +3988,33 @@ class H(BaseHTTPRequestHandler):
             return self._json(check_update(refresh=qs.get("refresh", ["0"])[0] in ("1", "true")))
         if p == "/api/kb":
             return self._json(kb_info())
+        if p == "/api/kb/find":
+            return self._json(kb_find_doc(qs.get("name", [""])[0]))
         if p == "/api/graph":
             return self._json(graph_query(qs.get("kind", ["entities"])[0], qs.get("q", [""])[0],
                                           qs.get("limit", ["200"])[0]))
+        if p == "/api/graph/data":
+            return self._json(graph_query("graph", qs.get("q", [""])[0],
+                                          qs.get("limit", ["90"])[0]))
+        if p == "/api/graph/ontology":
+            return self._json(graph_query("ontology"))
+        if p == "/api/graph/types":
+            return self._json(graph_query("types", qs.get("limit", ["24"])[0]))
+        if p == "/api/graph/type":
+            return self._json(graph_query("type", qs.get("type", [""])[0],
+                                          qs.get("limit", ["90"])[0]))
+        if p == "/api/graph/overview":
+            return self._json(graph_query("overview", qs.get("parent", [""])[0],
+                                          qs.get("limit", ["60"])[0]))
+        if p == "/api/graph/community":
+            return self._json(graph_query("community", qs.get("id", ["0"])[0],
+                                          qs.get("limit", ["90"])[0]))
+        if p == "/api/graph/search":
+            return self._json(graph_query("search", qs.get("q", [""])[0],
+                                          qs.get("limit", ["12"])[0]))
+        if p == "/api/graph/ego":
+            return self._json(graph_query("ego", qs.get("q", [""])[0],
+                                          qs.get("limit", ["50"])[0]))
         if p == "/api/grounding":
             return self._json(role_grounding(qs.get("key", [""])[0]))
         if p == "/api/outcomes":
