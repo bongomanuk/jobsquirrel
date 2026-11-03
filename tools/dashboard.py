@@ -1200,6 +1200,19 @@ def _slug(s):
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
 
 
+def _company_token(name):
+    """A stable first word for an employer name, ignoring alert-suffix noise.
+
+    "Neko Health starting at $405K/year" and "Neko Health" are the same employer;
+    "neko" is the same employer too. Used only to merge a stale queue alias into
+    the register row it belongs to, never to merge two different employers.
+    """
+    s = re.sub(r"\bstarting at\b.*$", "", (name or "").lower())
+    s = re.sub(r"[^a-z0-9 ]+", " ", s)
+    words = [w for w in s.split() if w not in ("the", "ab", "inc", "ltd", "group")]
+    return words[0] if words else ""
+
+
 def _key_map():
     m = {}
     for path in ("queue.tsv", "queue-human.tsv", "queue.retry"):
@@ -1410,10 +1423,16 @@ def grid():
                     **_pay_work_fields(jd_key, notes, status, cov, target),
                     "hint": hint})
     # queued but not yet in the register — show the work that's waiting / in flight
+    reg_roles = {(r["role"].strip().lower(), _company_token(r["company"])) for r in apps}
     for ck, r in qrow.items():
         if ck in seen:
             continue
         co, role = r["company"], r["role"]
+        # A stale queue alias ("Neko Health starting at $405K/year", "neko") can
+        # survive a rename of the register row. Do not show it as a second role:
+        # same title and same employer token means the register already owns it.
+        if (role.strip().lower(), _company_token(co)) in reg_roles:
+            continue
         key = r["key"] or _slug(f"{co}-{role}")
         m = _MATCH_CACHE.get(key, {})
         cov = m.get("coverage")
@@ -1423,14 +1442,16 @@ def grid():
         stamp = _mtime(jd) or _mtime(os.path.join(STATE, "queue.tsv"))
         qdate = time.strftime("%Y-%m-%d", time.localtime(stamp)) if stamp else ""
         st = stages_for(key, ck in subm)
+        finished = f"{co}|{role}" in done
         if st["applied"]:
             stg = "SUBMITTED"
+        elif finished:
+            # Finished work must not look PREPARED just because artifacts remain.
+            stg = "NO RESULT"
         elif st["documents"]:
             stg = "PREPARED"
         elif st["ad"] or st["keywords"] or st["grounding"]:
             stg = "DRAFTING"
-        elif f"{co}|{role}" in done:
-            stg = "NO RESULT"
         else:
             stg = "QUEUED"
         out.append({"date": qdate, "company": co, "role": role, "ats": r.get("ats", ""),
