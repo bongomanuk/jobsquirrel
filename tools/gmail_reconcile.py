@@ -528,9 +528,13 @@ def _record_provenance(row, when, subject, sender):
     if not letter or not os.path.isfile(letter):
         letters = glob.glob(os.path.join(app, f"*_Motivation_{key}.docx")) if key else []
         letter = letters[0] if letters else ""
+    try:
+        when_day = parsedate_to_datetime(when).date().isoformat()
+    except Exception:
+        when_day = date.today().isoformat()
     cmd = [sys.executable, os.path.join(os.path.dirname(STATE), "tools", "record_submission.py"),
            "--company", row["company"], "--role", row["role"], "--ats", row.get("ats") or "Email",
-           "--status", "SUBMITTED", "--date", (when or "")[:10] or str(date.today()),
+           "--status", "SUBMITTED", "--date", when_day,
            "--evidence", f"confirmation email {when} from {sender}: {subject}",
            "--inferred", "--force", "--cv", cvs[0]]
     if letter:
