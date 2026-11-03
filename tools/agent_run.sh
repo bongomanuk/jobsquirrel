@@ -77,6 +77,65 @@ resolve_agent() {
   return 1
 }
 
+# Transient provider failures (HTTP 420 / 429 / 5xx, rate limits, quota) are
+# worth retrying: they abort before or during a call, and the pipeline's own
+# duplicate guards make a re-run safe. Anything else (auth, bad request) is not
+# retried, and the failure is returned unchanged.
+#
+# Env: AGENT_RETRY (default 4), AGENT_RETRY_BASE seconds (default 20; doubles).
+fatal_transient() {
+  local f="$1"
+  grep -qiE '(APIError|ProviderError|Error|status|code|HTTP)[^\n]{0,24}\b(420|429|500|502|503|504)\b|enhance your calm|too many requests|rate.?limit|overloaded|quota exceeded' "$f" \
+    || { grep -q '"type":"error"' "$f" && grep -qiE '\b(420|429)\b|rate.?limit|quota' "$f"; }
+}
+
+# Did the agent already act? A shell tool line (`$ ...`) or a JSON tool_use
+# event means a retry could repeat side effects, so it is not automatic.
+partial_work() {
+  grep -qE '"type":"tool_use"|^\$ ' "$1"
+}
+
+run_agent() {
+  local -a cmd=("$@")
+  local out rc attempt=1 wait cont=0 a has_s=0
+  local tries="${AGENT_RETRY:-4}" base="${AGENT_RETRY_BASE:-20}"
+
+  # Pin a session for opencode so a retry continues the same conversation
+  # instead of starting over and repeating tool calls. This is what makes a
+  # mid-task 420 safe to retry.
+  if [ "${cmd[0]:-}" = "opencode" ] && [ "${cmd[1]:-}" = "run" ]; then
+    for a in "${cmd[@]}"; do
+      case "$a" in -s|--session) has_s=1 ;; esac
+    done
+    if [ "$has_s" = 0 ]; then
+      cmd=(opencode run -s "retry-$(date +%s)-$RANDOM" "${cmd[@]:2}")
+    fi
+    cont=1
+  fi
+
+  out="$(mktemp "${TMPDIR:-/tmp}/agent-run.XXXXXX")" || return 1
+  while :; do
+    "${cmd[@]}" 2>&1 | tee "$out"
+    rc=${PIPESTATUS[0]}
+    if [ "$rc" -eq 0 ]; then
+      rm -f "$out"; return 0
+    fi
+    if [ "$tries" -le 0 ] || [ "$attempt" -ge "$tries" ] || ! fatal_transient "$out"; then
+      rm -f "$out"; return "$rc"
+    fi
+    # Without a resumable session, only retry when the agent has not acted yet.
+    if [ "$cont" = 0 ] && partial_work "$out"; then
+      echo "agent_run: transient provider error after tool use; not retrying automatically (partial work)" >&2
+      rm -f "$out"; return "$rc"
+    fi
+    wait=$(( base * (1 << (attempt - 1)) ))
+    wait=$(( wait + RANDOM % 10 ))
+    echo "agent_run: transient provider error (attempt $attempt/$tries); retrying in ${wait}s" >&2
+    sleep "$wait"
+    attempt=$(( attempt + 1 ))
+  done
+}
+
 agent="$(resolve_agent)" || exit 127
 if [ "${1:-}" = "--which" ]; then
   printf '%s\n' "$agent"
@@ -102,7 +161,8 @@ case "$agent" in
     fmt=()
     [ "${AGENT_JSON:-}" = "1" ] && fmt+=(--format json)
     [ -n "${AGENT_SESSION:-}" ] && fmt+=(-s "$AGENT_SESSION")
-    exec opencode run --model "local/$m" "${fmt[@]}" "$prompt"
+    run_agent opencode run --model "local/$m" "${fmt[@]}" "$prompt"
+    exit $?
     ;;
   openrouter)
     command -v opencode >/dev/null 2>&1 || {
@@ -113,16 +173,19 @@ case "$agent" in
     fmt=()
     [ "${AGENT_JSON:-}" = "1" ] && fmt+=(--format json)
     [ -n "${AGENT_SESSION:-}" ] && fmt+=(-s "$AGENT_SESSION")
-    exec opencode run --model "$m" "${fmt[@]}" "$prompt"
+    run_agent opencode run --model "$m" "${fmt[@]}" "$prompt"
+    exit $?
     ;;
   opencode)
     fmt=()
     [ "${AGENT_JSON:-}" = "1" ] && fmt+=(--format json)
     [ -n "${AGENT_SESSION:-}" ] && fmt+=(-s "$AGENT_SESSION")
     if [ -n "${MODEL:-}" ]; then
-      exec opencode run --model "$MODEL" "${fmt[@]}" "$prompt"
+      run_agent opencode run --model "$MODEL" "${fmt[@]}" "$prompt"
+      exit $?
     fi
-    exec opencode run "${fmt[@]}" "$prompt"
+    run_agent opencode run "${fmt[@]}" "$prompt"
+    exit $?
     ;;
   claude)
     # What a queue task needs: read/write files in the repo, search the web for
@@ -146,10 +209,12 @@ case "$agent" in
     # The prompt goes straight after -p: --allowedTools takes a variable number
     # of values and would otherwise swallow it.
     # shellcheck disable=SC2086  # CLAUDE_ARGS is a list of flags
-    exec claude -p "$prompt" "${args[@]}" ${CLAUDE_ARGS:-}
+    run_agent claude -p "$prompt" "${args[@]}" ${CLAUDE_ARGS:-}
+    exit $?
     ;;
   *)
     # shellcheck disable=SC2086  # AGENT may carry its own flags, e.g. "mycli run --fast"
-    exec $agent "$prompt"
+    run_agent $agent "$prompt"
+    exit $?
     ;;
 esac

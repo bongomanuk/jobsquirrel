@@ -154,8 +154,51 @@ def test_agent_run_claude_overrides(tmp_path):
 
 
 def test_agent_run_opencode(tmp_path):
-    assert _argv_of(tmp_path, "opencode", MODEL="m") == ["run", "--model", "m", "do the thing"]
-    assert _argv_of(tmp_path, "opencode") == ["run", "do the thing"]
+    a = _argv_of(tmp_path, "opencode", MODEL="m")
+    assert a[0] == "run"
+    assert a[a.index("--model") + 1] == "m"
+    assert a[-1] == "do the thing"
+    # a session is pinned so retries continue the conversation instead of
+    # repeating tool calls
+    assert a[a.index("-s") + 1].startswith("retry-")
+
+    b = _argv_of(tmp_path, "opencode")
+    assert b[0] == "run" and b[-1] == "do the thing" and "-s" in b
+
+    c = _argv_of(tmp_path, "opencode", MODEL="m", AGENT_SESSION="pinned-1")
+    assert c[c.index("-s") + 1] == "pinned-1"
+    assert c.count("-s") == 1
+
+
+def test_agent_run_retries_a_transient_provider_error(tmp_path):
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    calls = tmp_path / "calls"
+    fak = bindir / "flaky"
+    fak.write_text(f'#!/bin/sh\necho x >> "{calls}"\necho "APIError: 420 Enhance Your Calm" >&2\nexit 1\n')
+    fak.chmod(0o755)
+    env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}", AGENT="flaky",
+               AGENT_CFG=str(tmp_path / "no-agent.json"), AGENT_RETRY="2", AGENT_RETRY_BASE="1")
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), "x"],
+                       env=env, capture_output=True, text=True, timeout=30)
+    assert r.returncode != 0
+    assert calls.read_text().count("x") == 2
+    assert "retrying in" in r.stderr
+
+
+def test_agent_run_does_not_retry_an_auth_error(tmp_path):
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    calls = tmp_path / "calls"
+    fak = bindir / "denied"
+    fak.write_text(f'#!/bin/sh\necho x >> "{calls}"\necho "APIError: 401 Unauthorized" >&2\nexit 1\n')
+    fak.chmod(0o755)
+    env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}", AGENT="denied",
+               AGENT_CFG=str(tmp_path / "no-agent.json"), AGENT_RETRY="2", AGENT_RETRY_BASE="1")
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), "x"],
+                       env=env, capture_output=True, text=True, timeout=30)
+    assert r.returncode != 0
+    assert calls.read_text().count("x") == 1
 
 
 def test_queue_order_is_most_senior_first_by_whole_words(tmp_path):

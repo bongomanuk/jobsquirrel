@@ -109,6 +109,14 @@ Both write `~/.config/job-search/agent.json`:
 - Environment overrides win for one run: `MODEL=... AGENT=... bash tools/run_queue.sh`.
 - A custom agent command receives the chosen model in `$MODEL` (it decides how to
   pass it on). opencode gets `--model`, Claude Code gets `--model`.
+- **Transient provider failures are retried.** A 420/429/5xx, "rate limit", "too
+  many requests" or "quota exceeded" failure is retried up to **4** times with
+  exponential backoff (20s base, plus jitter). opencode retries continue the same
+  session, so a failure midway through a task does not repeat the tool calls
+  already made; a custom agent without a resumable session is only retried when
+  it has not acted yet. `AGENT_RETRY=0` disables it, `AGENT_RETRY_BASE=<seconds>`
+  changes the backoff. A task that succeeds after a retry keeps its STATUS and is
+  not treated as an infrastructure stop.
 - The **GraphRAG LLM is separate** (`kb/graphrag/.env`, same Settings page): the
   knowledge-graph builder does not use the coding-agent model.
 
