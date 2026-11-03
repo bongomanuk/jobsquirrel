@@ -195,6 +195,11 @@ Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files �
   **Job ad** = a saved job description exists (✓/—).
 - The grid **auto-refreshes** (every ~8s, ~3s while a run is active) without losing scroll/sort/filter,
   and floats **in-flight** rows (🥜) and **QUEUED** rows (queued but not yet in the register) to the top.
+- **Application states graph** above the grid (collapsed by default): a clickable diagram of
+  QUEUED → DRAFTING → PREPARED → SUBMITTED → IN_PROGRESS → INTERVIEW → OFFER, with BLOCKED/MANUAL
+  branches and REJECTED/CLOSED terminals. Each node shows its live count (dismissed excluded) and a
+  one-line annotation; clicking a node filters the grid to that status, and the open/closed state is
+  remembered.
 - **Right-click a row** for the full action menu: open details / documents / the ad / the apply page,
   discuss the role, prepare documents, submit prepared (approval-gated), recompute the match, draft a
   reply with the agent, set the status, flag or clear a follow-up, **pin to the top**, **dismiss from

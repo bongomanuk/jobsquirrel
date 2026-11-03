@@ -728,6 +728,91 @@ async function gridTick() {                 // keep the grid live (faster while 
   try { await loadGrid(); } catch (e) { console.warn('grid refresh failed', e); }
   setTimeout(gridTick, LIVE_RUNNING ? 3000 : 8000);
 }
+/* ---------- application state graph ---------- */
+const SG_W = 130, SG_H = 62, SG_H2 = 56;
+const SG_MAIN = [
+  { s: 'QUEUED', x: 20, note: 'queued, not applied' },
+  { s: 'DRAFTING', x: 195, note: 'ad saved, docs in progress' },
+  { s: 'PREPARED', x: 370, note: 'documents gated' },
+  { s: 'SUBMITTED', x: 545, note: 'application sent' },
+  { s: 'IN_PROGRESS', x: 720, note: 'employer reviewing' },
+  { s: 'INTERVIEW', x: 895, note: 'invited / booked / held' },
+  { s: 'OFFER', x: 1070, note: 'offer received' },
+];
+const SG_SIDE = [
+  { s: 'BLOCKED', x: 545, note: 'wall: captcha / login' },
+  { s: 'MANUAL', x: 720, note: 'needs you' },
+  { s: 'REJECTED', x: 895, note: 'not selected' },
+  { s: 'CLOSED', x: 1070, note: 'withdrawn / expired / dup' },
+];
+const SG_EDGES = [
+  [150, 81, 193, 81, 'ad saved'], [325, 81, 368, 81, 'docs gated'],
+  [500, 81, 543, 81, 'sent'], [675, 81, 718, 81, 'reply'],
+  [850, 81, 893, 81, 'invite'], [1025, 81, 1068, 81, 'offer'],
+  [610, 112, 610, 183, 'wall'], [960, 112, 960, 183, 'no'],
+  [675, 213, 718, 213, 'hand over'],
+];
+
+function renderStateGraph() {
+  const box = document.getElementById('sg-body');
+  if (!box) return;
+  const counts = {};
+  GRID.forEach(r => { if (shown(r)) counts[r.status] = (counts[r.status] || 0) + 1; });
+  const active = ($('#fstatus') || {}).value || '';
+  const arrow = '<defs><marker id="sg-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#4b5563"/></marker></defs>';
+  const edge = ([x1, y1, x2, y2, label]) => {
+    const midx = (x1 + x2) / 2, midy = (y1 + y2) / 2;
+    const horiz = y1 === y2;
+    const dashed = !horiz ? ' dashed' : '';
+    const labelPos = horiz
+      ? `x="${midx}" y="${midy - 5}" text-anchor="middle"`
+      : `x="${x1 + 8}" y="${midy + 3}" text-anchor="start"`;
+    return `<path class="sg-edge-path${dashed}" d="M${x1},${y1} L${x2},${y2}" marker-end="url(#sg-arrow)"/>` +
+      `<text class="sg-edge" ${labelPos}>${esc(label)}</text>`;
+  };
+  const node = (n, y, h) => {
+    const on = active === n.s;
+    return `<g class="sg-node sg-${n.s}${on ? ' active' : ''}" data-status="${n.s}" role="button" tabindex="0" aria-label="Filter the grid by ${n.s}">` +
+      `<rect class="sg-rect" x="${n.x}" y="${y}" width="${SG_W}" height="${h}" rx="9"/>` +
+      `<text class="sg-title" x="${n.x + 12}" y="${y + 23}">${n.s}</text>` +
+      `<text class="sg-count" x="${n.x + SG_W - 12}" y="${y + 23}" text-anchor="end">${counts[n.s] || 0}</text>` +
+      `<text class="sg-note" x="${n.x + 12}" y="${y + 44}">${esc(n.note)}</text></g>`;
+  };
+  const svg = `<svg viewBox="0 0 1220 272" class="sg-svg" role="img" aria-label="Application states">` +
+    arrow + SG_EDGES.map(edge).join('') +
+    SG_MAIN.map(n => node(n, 50, SG_H)).join('') +
+    SG_SIDE.map(n => node(n, 185, SG_H2)).join('') +
+    `<text class="sg-cap" x="20" y="262">Counts exclude dismissed roles · click a state to filter · CLOSED can follow any state</text></svg>`;
+  box.innerHTML = svg;
+  // Side states are reached from several places; say so in the caption area.
+}
+(() => {
+  const sg = document.getElementById('sg');
+  if (!sg) return;
+  try { sg.open = localStorage.getItem('sg.open') === '1'; } catch (e) {}
+  sg.addEventListener('toggle', () => {
+    try { localStorage.setItem('sg.open', sg.open ? '1' : '0'); } catch (e) {}
+    if (sg.open) renderStateGraph();
+  });
+  const body = document.getElementById('sg-body');
+  if (!body) return;
+  body.addEventListener('click', (e) => {
+    const g = e.target.closest('.sg-node');
+    if (!g) return;
+    const sel = $('#fstatus');
+    if (!sel) return;
+    sel.value = g.dataset.status;
+    BUCKET = 'all'; BUCKET_BEFORE_SEARCH = null;
+    renderBuckets(); renderRows();
+  });
+  body.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const g = e.target.closest('.sg-node');
+    if (!g) return;
+    e.preventDefault(); g.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+})();
+
 function renderRows() {
   const q = $('#q').value.toLowerCase(), st = $('#fstatus').value, qq = $('#fqueue').value;
   const ft = $('#ftype') ? $('#ftype').value : '';
@@ -847,6 +932,7 @@ function renderRows() {
   VISIBLE = rendered.map(r => r.key);
   $('#rows').innerHTML = html;
   sortIndicators();
+  renderStateGraph();
   if ($('#count')) {
     const c = { needs: 0, prepared: 0, ongoing: 0, pipeline: 0, done: 0 };
     rows.forEach(r => { const b = bucketOf(r); c[b] = (c[b] || 0) + 1; });
