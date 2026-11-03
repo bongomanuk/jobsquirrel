@@ -226,10 +226,12 @@ Clicking a row opens a drawer with tabs:
   open either in the viewer and to open the CV PDF; the raw content pack is behind a toggle.
 
 ### 9.5 Settings panel (⚙ Config)
-- Sections: **Accounts** (status + Gmail/Calendar authorisation), **AI & agent** (which agent CLI +
-  model picker + API-token env, and the GraphRAG LLM `.env`), **Knowledge base** (list / upload /
-  delete sources, rebuild the index), **GraphRAG** (browse entities / relationships / communities /
-  documents), **Agent permissions** (per-category allow/ask/deny), **Profile & CV** (edit files, regenerate).
+- Sections: **Accounts** (status + Gmail/Calendar authorisation), **Secrets** (the encrypted
+  store: agent keys, GraphRAG, Google OAuth, per-site logins and custom entries, masked),
+  **AI & agent** (which agent CLI + model picker + API-token env, and the GraphRAG LLM settings),
+  **Knowledge base** (list / upload / delete sources, rebuild the index), **GraphRAG** (a status card
+  and launcher for the full-page Knowledge workspace), **Agent permissions**
+  (per-category allow/ask/deny), **Profile & CV** (edit files, regenerate), **Backup & data**.
 
 ### 9.5b Agent permission gate (agent-agnostic)
 - Policy in `config/agent-permissions.json`: `read_repo`/`write_repo` (default **allow**),
@@ -276,6 +278,16 @@ Clicking a row opens a drawer with tabs:
 | GET | `/api/accounts` | — | credential status (runs `setup_accounts.sh --check`) |
 | GET | `/api/kb` | — | {sources, stats, check} |
 | GET | `/api/graph` | `kind,q,limit` | graph rows from the index (entities/relationships/communities/documents) |
+| GET | `/api/graph/ontology` | — | ontology classes, relation vocabulary and counts |
+| GET | `/api/graph/types` | `limit` | canonical classes with aggregate links |
+| GET | `/api/graph/type` | `type,limit` | largest connected component for one class |
+| GET | `/api/graph/overview` | `parent,limit` | community hierarchy (roots or children) |
+| GET | `/api/graph/community` | `id,limit` | children of a community or its leaf entities |
+| GET | `/api/graph/search` | `q,limit` | matching communities and entities |
+| GET | `/api/graph/ego` | `q,limit` | one entity plus its 1-hop network |
+| GET | `/api/kb/find` | `name` | resolve a graph document title to a `kb/sources/` file |
+| GET/POST | `/api/secrets` | — / `{section,name,value}` | masked secrets store read / write |
+| POST | `/api/secrets/delete` · `/api/secrets/encrypt` · `/api/secrets/migrate` | — | remove, encrypt or import |
 | GET | `/api/grounding` | `key` | a role's context pack + the entities/sources it cited, resolved |
 | GET | `/api/runs` · `/api/log` · `/api/live` · `/api/tasks` · `/api/logs/tail` · `/api/agent` · `/api/chat/stream` | — | as named |
 | POST | `/api/register/row` | `{company,role,status,notes}` | update a register row |
@@ -309,12 +321,27 @@ All POSTs require header `X-Session: <token>` (else 403); the token is injected 
 - **Regenerate archetype CVs:** `build_archetypes.py`. Safe.
 - Runs are detached and logged to `state/logs/dashboard-action.log`.
 
-### 9.9b Settings panel & knowledge graph
-- **Settings** (⚙ Config) has sections: **Accounts** (credential status + Gmail/Calendar
-  authorisation), **Knowledge base** (list/upload/delete source documents, rebuild the index),
-  **GraphRAG** (browse entities / relationships / communities / documents from the index), and
-  **Profile & CV** (edit `profile.md` / `cv.json` / `archetypes.json`, regenerate archetypes).
-- Each role's detail drawer has a **Grounding** tab: the GraphRAG context pack plus the
+### 9.9b Knowledge workspace (top-bar **Knowledge**)
+- A **full-page** workspace, not a settings pane. It fills the area below the header and keeps the
+  job grid out of the way.
+- **Topics** — the ontology classes (Person, Organisation, Role, Skill, Technology, Project,
+  Metric, Certification, Education, Language, Location, Achievement, Concept), sized by entity
+  count, with links aggregated between classes. **Communities** — the generated GraphRAG hierarchy;
+  drill from a root community through its sub-communities to the entities. **Entities** — the
+  largest connected component for the selected class/community/ego network, so no disconnected
+  dots.
+- **3D scene** — Three.js with orbit/zoom/pan, drag, hover tooltip, glowing nodes, labelled edges and
+  a slow auto-rotate. Single-click selects and shows details; double-click opens the entity's ego
+  network, the community, or the class. Every node also has an HTML hotspot so clicking works even
+  on a small sphere.
+- **Details** shows class, description, source documents (click to open the original file) and
+  neighbours, with **Open community**, **Open topic** and **Focus ego network** actions.
+- **Classes** lists the ontology and relation vocabulary; **Sources** opens/uploads/deletes the
+  `kb/sources/` documents and rebuilds the index; **Add** records a fact or skill as a KB source;
+  **Roles** lists live roles and opens one in the job drawer (or prepares a queued role).
+- The ontology is editable in `config/ontology.json` (copy `config/ontology.example.json`). Unknown
+  GraphRAG types fall back to Concept.
+- Each role's detail drawer still has a **Grounding** tab: the GraphRAG context pack plus the
   entities and source documents it cited, resolved from the index.
 
 ### 9.10 Theming & UX

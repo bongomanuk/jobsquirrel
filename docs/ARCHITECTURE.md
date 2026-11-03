@@ -85,7 +85,27 @@ sorts the queue file itself by seniority.
 - **Approval and access**: `approval.py` (risky actions), `send_receipt.py`
   (one-time human receipts for a specific send), `agent_access.py` (the gate for
   anything outside the repo: read, write, run).
-- **Grounding (required)**: `kb_graphrag.py` (+ `kb/`), `embeddings.sh`.
+- **Grounding (required)**: `kb_graphrag.py` (+ `kb/`), `embeddings.sh`,
+  `graph_explore.py` (read the index), `ontology.py` (+ `config/ontology.example.json`),
+  `web/graph3d.js` (the Three.js Knowledge workspace).
+- **Secrets**: `secrets_store.py` (encrypted 0600 store; OS keyring or key file),
+  `accounts.py`, `google_config.py`, `diagnostics` via `doctor.py`.
+
+## Knowledge workspace
+
+The top-bar **Knowledge** page is a full-page Three.js view over the same
+GraphRAG index. `graph_explore.py` exposes class aggregates, the community
+hierarchy, connected entity subgraphs and ego networks; `ontology.py` maps
+GraphRAG types to the classes shown in `config/ontology.example.json`. The
+frontend (`web/graph3d.js`) owns the scene, orbit/zoom/pan, raycast and HTML
+hotspots; `dashboard.py` owns the breadcrumbs, search, source management and
+role links. Entity views keep the largest connected component so the picture
+does not fill with floating, disconnected nodes.
+
+The **Roles** tab in the workspace is the bridge to applications: it lists
+register rows and opens one in the existing job drawer, or prepares a queued
+role. The ontology's `REQUIRES` / `SATISFIES` vocabulary is the place to grow
+role-to-evidence edges without changing the graph renderer.
 
 ## Machine-local state and compression
 

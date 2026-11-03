@@ -68,6 +68,10 @@ demo data: a sample candidate and fictional companies.)
 |---|
 | ![Application states graph with a count for every stage](docs/screenshots/pipeline.png) |
 
+| The knowledge workspace — a full-page 3D map of ontology classes, communities and entities |
+|---|
+| ![Knowledge workspace: a 3D graph of classes with a selected class and its details](docs/screenshots/knowledge.png) |
+
 | Context menu — actions that fit the role's current state | Agent console — chat, delegated work and live activity |
 |---|---|
 | ![Right-click context menu on a role](docs/screenshots/context-menu.png) | ![Agent console with chat and activity](docs/screenshots/agent.png) |
@@ -76,13 +80,13 @@ demo data: a sample candidate and fictional companies.)
 |---|---|
 | ![Documents tab with the embedded CV](docs/screenshots/documents.png) | ![Evidence overlay: green lines are backed by the knowledge base, amber lines name a requirement it cannot confirm](docs/screenshots/evidence.png) |
 
-| Settings — model, accounts and permissions | Backup & restore — what is saved, and a safe restore |
+| Secrets — one encrypted store, masked values | Settings — model, accounts and permissions |
 |---|---|
-| ![Settings](docs/screenshots/settings.png) | ![Backup and restore](docs/screenshots/backup.png) |
+| ![Secrets tab: encrypted store with masked values](docs/screenshots/secrets.png) | ![Settings](docs/screenshots/settings.png) |
 
-| Legend — what every status, mark and queue state means |
-|---|
-| ![Status and queue legend](docs/screenshots/legend.png) |
+| Backup & restore — what is saved, and a safe restore | Legend — what every status, mark and queue state means |
+|---|---|
+| ![Backup and restore](docs/screenshots/backup.png) | ![Status and queue legend](docs/screenshots/legend.png) |
 
 ---
 
@@ -310,6 +314,7 @@ tools/                      # the pipeline (language/library-free CLI tools)
   identity.py               #   print your standard form answers (JSON)
   camoufox_server.py        #   one Camoufox browser behind a small HTTP API
   camoufox_browser.py       #   the agent-facing browser CLI (nav/snap/click/fill/...)
+  camoufox_test.py          #   browser test harness (health/detection checks)
   run_queue.sh              #   the queue runner: applies to each queued role end-to-end
   agent_run.sh              #   runs one headless task with opencode, Claude Code or any CLI agent
   compat/                   #   portable flock/setsid/timeout for macOS
@@ -335,6 +340,8 @@ tools/                      # the pipeline (language/library-free CLI tools)
   stateio.py                #   transparent gzip for state artifacts, so packed reads like plain
   dashboard.py              #   slick web UI over the register, queue, runs + curated logs, live view, chat (agent-agnostic)
   graph_explore.py          #   reads the GraphRAG index (entities/relationships/communities) for the web UI
+  ontology.py               #   the classes/relations used by the knowledge workspace
+  secrets_store.py          #   encrypted secrets store (OS keyring or 0600 key file)
   setup_kb.sh               #   explain + build the GraphRAG knowledge base
   kb_graphrag.py            #   build the cited grounding pack per role (required)
   kb_update.sh              #   incremental GraphRAG update from new kb/sources/

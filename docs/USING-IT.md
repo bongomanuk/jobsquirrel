@@ -95,6 +95,21 @@ Everything is observable. Useful things to ask for, or run yourself:
 - **Human-only items**: `state/queue-human.tsv`, opened with
   `bash tools/human_assist.sh`.
 
+## The Knowledge workspace
+
+The top-bar **Knowledge** page is the full-page view of your knowledge base.
+**Topics** shows the ontology classes and their links; **Communities** drills
+through the generated community hierarchy; clicking an entity shows its
+description, neighbours and source documents, and double-clicking opens its ego
+network. The **Classes** tab lists the ontology, **Sources** uploads/deletes/
+rebuilds the documents, **Add** records a fact or skill, and **Roles** opens a
+role in the application drawer (or prepares a queued role). Drag to orbit,
+scroll to zoom, right-drag to pan.
+
+The graph and the application drawer share the same evidence: a claim you add
+under **Add** becomes a knowledge-base source for the next rebuild, and a role
+you open under **Roles** uses the same grounding and gates as a queue run.
+
 ## Backup, restore and start over
 
 Settings → **Backup & data** covers the three things you do around the edges of
