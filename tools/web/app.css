@@ -641,7 +641,8 @@ body.knowledge-open .modal{z-index:60}
 #kg3d{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
 #kg3d:active{cursor:grabbing}
 .kg3d-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
-.kg3d-label{position:absolute;transform:translate(-50%,0);font-family:var(--sans);
+.kg3d-label{position:absolute;left:0;top:0;transform:translate3d(0,0,0) translate(-50%,0);
+  will-change:transform;font-family:var(--sans);
   font-size:10.5px;line-height:1.2;color:#cbd5e1;background:rgba(7,9,12,.62);
   border:1px solid rgba(148,163,184,.18);border-radius:4px;padding:1px 4px;
   pointer-events:auto;cursor:pointer;white-space:nowrap;max-width:190px;
@@ -655,7 +656,8 @@ body.knowledge-open .modal{z-index:60}
 .kg3d-tip b{display:block;font-size:12px;margin-bottom:2px}
 .kg3d-tip span{color:var(--muted);font-size:10px}
 
-.kg3d-hit{position:absolute;transform:translate(-50%,-50%);border-radius:50%;
+.kg3d-hit{position:absolute;left:0;top:0;transform:translate3d(0,0,0) translate(-50%,-50%);
+  will-change:transform;border-radius:50%;
   background:transparent;pointer-events:auto;cursor:pointer;z-index:1}
 .kg3d-label{z-index:2}
 

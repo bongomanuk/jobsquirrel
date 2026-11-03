@@ -22,7 +22,7 @@ const S = {
   renderer: null, scene: null, camera: null, group: null, raycaster: null,
   nodes: [], links: [], byId: new Map(), meshes: [], glows: [], hits: [], lineMesh: null,
   visibleLabels: new Set(), labelAnchors: new Map(), measureCtx: null,
-  interacting: false, interactTimer: 0, lastLabelRelayout: 0,
+  interacting: false, interactTimer: 0, lastLabelRelayout: 0, labelDirty: true,
   linePos: null, lineColors: null, labelEls: new Map(), top: new Set(),
   selected: null, hovered: null, hidden: new Set(), opts: {}, paused: true,
   raf: 0, alpha: 1, fitted: false, hitEls: new Map(), lastInteract: Date.now(), W: 1, H: 1, orbit: { theta: 0.72, phi: 1.12, radius: 260, target: new THREE.Vector3() },
@@ -166,6 +166,7 @@ export async function show(data, opts = {}) {
   S.visibleLabels = new Set();
   S.labelAnchors = new Map();
   S.interacting = false;
+  S.labelDirty = true;
   clearTimeout(S.interactTimer);
   clearScene();
   const raw = data.nodes || [];
@@ -283,6 +284,7 @@ export function select(id) {
     g.material.opacity = neigh.has(nn.id) ? (nn.id === id ? 0.8 : 0.36) : 0.04;
   });
   paintLines(id, neigh);
+  S.labelDirty = true;
   updateLabels(neigh, true);
 }
 
@@ -295,6 +297,7 @@ export function clearSelection() {
   });
   S.glows.forEach(g => { g.material.opacity = 0.6; });
   paintLines(null, null);
+  S.labelDirty = true;
   updateLabels(null, true);
 }
 
@@ -307,6 +310,7 @@ export function setHiddenTypes(types) {
     if (S.hits[i]) S.hits[i].visible = !hidden;
   });
   S.links.forEach((l, i) => { /* line visibility handled by positions below */ });
+  S.labelDirty = true;
   updateLabels(S.selected ? new Set([S.selected]) : null, true);
 }
 
@@ -348,6 +352,7 @@ function applyCamera() {
     o.target.z + o.radius * sp * Math.cos(o.theta)
   );
   S.camera.lookAt(o.target);
+  S.camera.updateMatrixWorld();
 }
 
 function pointerNdc(e) {
@@ -404,7 +409,8 @@ function bindControls() {
     const d = S.drag;
     S.drag = null;
     S.interacting = false;
-    updateLabels(S.selected ? new Set(neighborSet(S.selected)) : null, true);
+    // Keep the chosen sides after an orbit/pan: reassigning them here is what
+    // made labels visibly jump at the end of a drag.
     if (!d || d.moved) return;
     const n = pick(e);
     if (n) {
@@ -429,6 +435,7 @@ function bindControls() {
     clearTimeout(S.interactTimer);
     S.interactTimer = setTimeout(() => {
       S.interacting = false;
+      S.labelDirty = true;
       updateLabels(S.selected ? new Set(neighborSet(S.selected)) : null, true);
     }, 140);
     S.orbit.radius = Math.max(30, Math.min(1600, S.orbit.radius * Math.exp(e.deltaY * 0.0012)));
@@ -490,13 +497,13 @@ function placeLabel(n, el, mode, cx, cy, sr, size, w, h, W, H) {
   const spot = labelSpot(mode, cx, cy, sr, w, h);
   const rect = { x: spot.left - w / 2, y: spot.top, w, h };
   if (rect.x < 2 || rect.y < 2 || rect.x + w > W - 2 || rect.y + h > H - 2) return null;
-  el.style.left = spot.left + 'px';
-  el.style.top = spot.top + 'px';
+  el.style.transform = `translate3d(${spot.left}px,${spot.top}px,0) translate(-50%,0)`;
   return rect;
 }
 
 function updateLabels(neigh, relayout = false) {
   if (!S.labels) return;
+  S.camera.updateMatrixWorld();
   S.labels.style.display = 'block';
   const W = S.W, H = S.H;
   const fov = THREE.MathUtils.degToRad(S.camera.fov);
@@ -505,7 +512,7 @@ function updateLabels(neigh, relayout = false) {
   if (!relayout) {
     // While the camera is moving, keep the chosen side and only move with
     // the node. This is what makes labels track instead of swapping sides.
-    S.labelAnchors.forEach((mode, id) => {
+    S.labelAnchors.forEach((a, id) => {
       const n = S.byId.get(id), el = S.labelEls.get(id);
       if (!n || !el) return;
       if (S.hidden.has(n.type)) { el.style.display = 'none'; return; }
@@ -513,11 +520,9 @@ function updateLabels(neigh, relayout = false) {
       if (p.z > 1 || p.z < -1) { el.style.display = 'none'; return; }
       const cx = (p.x * 0.5 + 0.5) * W;
       const cy = (-p.y * 0.5 + 0.5) * H;
-      const { size, sr } = labelSize(n, proj);
-      el.style.fontSize = size + 'px';
-      const w = labelWidth(el.textContent || '', size);
-      const h = size * 1.35 + 4;
-      if (!placeLabel(n, el, mode, cx, cy, sr, size, w, h, W, H)) el.style.display = 'none';
+      const { sr } = labelSize(n, proj);
+      el.style.fontSize = a.size + 'px';
+      if (!placeLabel(n, el, a.mode, cx, cy, sr, a.size, a.w, a.h, W, H)) el.style.display = 'none';
       else el.style.display = '';
     });
     return;
@@ -565,7 +570,7 @@ function updateLabels(neigh, relayout = false) {
     el.style.display = '';
     placed.push(chosen.rect);
     visible.add(n.id);
-    anchors.set(n.id, chosen.mode);
+    anchors.set(n.id, { mode: chosen.mode, size, w, h });
   }
   S.visibleLabels = visible;
   S.labelAnchors = anchors;
@@ -626,8 +631,10 @@ function updateScene() {
     S.lineMesh.geometry.attributes.position.needsUpdate = true;
   }
   const now = Date.now();
-  const relayout = !S.interacting && (now - S.lastLabelRelayout > 120);
-  if (relayout) S.lastLabelRelayout = now;
+  const moving = S.alpha > 0.03;
+  const relayout = !S.interacting &&
+    (S.labelDirty || (moving && now - S.lastLabelRelayout > 180));
+  if (relayout) { S.lastLabelRelayout = now; S.labelDirty = false; }
   updateLabels(S.selected ? new Set(neighborSet(S.selected)) : null, relayout);
 }
 
