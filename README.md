@@ -57,24 +57,32 @@ keep it cheap with opencode + DeepSeek Flash, and **what it costs to run**.
 ## Screenshots
 
 A local, single-page dashboard over the whole pipeline. Every action is
-auditable, and nothing is sent without the gates passing. (Company names are
-blurred in these shots.)
+auditable, and nothing is sent without the gates passing. (The screenshots use
+demo data: a sample candidate and fictional companies.)
 
 | The grid — every role, its stage and its fit | Role drawer — pipeline stage, gates, type, one-click action |
 |---|---|
 | ![Application grid](docs/screenshots/grid.png) | ![Role detail drawer](docs/screenshots/drawer.png) |
 
-| Documents — the rendered, gated CV in place | Agent console — chat and live activity |
-|---|---|
-| ![Documents tab with the embedded CV](docs/screenshots/documents.png) | ![Agent console](docs/screenshots/agent.png) |
-
-| Evidence overlay — every CV line scored against the job's requirements and the knowledge base |
+| The pipeline as a graph — click a state to filter the grid |
 |---|
-| ![Evidence overlay: green lines are backed by the knowledge base, amber lines name a requirement it cannot confirm](docs/screenshots/evidence.png) |
+| ![Application states graph with a count for every stage](docs/screenshots/pipeline.png) |
 
-| Legend — what every status and queue state means | Settings — accounts, knowledge base, agent permissions |
+| Context menu — actions that fit the role's current state | Agent console — chat, delegated work and live activity |
 |---|---|
-| ![Status and queue legend](docs/screenshots/legend.png) | ![Settings](docs/screenshots/settings.png) |
+| ![Right-click context menu on a role](docs/screenshots/context-menu.png) | ![Agent console with chat and activity](docs/screenshots/agent.png) |
+
+| Documents — the rendered, gated CV in place | Evidence overlay — every CV line scored against the ad and the knowledge base |
+|---|---|
+| ![Documents tab with the embedded CV](docs/screenshots/documents.png) | ![Evidence overlay: green lines are backed by the knowledge base, amber lines name a requirement it cannot confirm](docs/screenshots/evidence.png) |
+
+| Settings — model, accounts and permissions | Backup & restore — what is saved, and a safe restore |
+|---|---|
+| ![Settings](docs/screenshots/settings.png) | ![Backup and restore](docs/screenshots/backup.png) |
+
+| Legend — what every status, mark and queue state means |
+|---|
+| ![Status and queue legend](docs/screenshots/legend.png) |
 
 ---
 
