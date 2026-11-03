@@ -13,6 +13,11 @@ def _env(tmp):
     e["SUBMISSIONS_DIR"] = str(tmp / "snapshot")
     e["APPLICATIONS_CSV"] = str(tmp / "applications.csv")
     e["APPLICATIONS_MD"] = str(tmp / "applications-register.md")
+    jd = tmp / "jds"
+    jd.mkdir(exist_ok=True)
+    (jd / "acme-eng.md").write_text("# Ad\n")
+    (jd / "acme-eng2.md").write_text("# Ad\n")
+    e["JOB_DESCRIPTIONS_DIR"] = str(jd)
     return e
 
 

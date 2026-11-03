@@ -334,6 +334,13 @@ def main():
             sys.exit(2)
 
     errors, warnings = [], []
+    # A targeted application must be gated against its saved advert: no role
+    # should reach PREPARED without one.
+    if args.letter and args.cv:
+        if not args.jd:
+            errors.append("no --jd: gate a targeted application with its saved job description")
+        elif not os.path.isfile(args.jd):
+            errors.append(f"job description not found: {args.jd}")
     cv_paras = docx_all_paragraphs(args.cv) if args.cv else []
     cv_text = " ".join(cv_paras)
 

@@ -34,6 +34,8 @@ def _sandbox(tmp_path):
     os.symlink(os.path.join(ROOT, "tools"), root / "tools")
     (root / "config" / "profile.md").write_text(PROFILE)
     (root / "config" / "cv.json").write_text(CV_JSON)
+    (root / "state" / "job-descriptions").mkdir()
+    (root / "state" / "job-descriptions" / "acme-engineer.md").write_text("# Engineer\n")
     return root
 
 
@@ -56,6 +58,7 @@ def _env(root):
         env.pop(k, None)
     # `python3` in the runner and the stub must be this interpreter (it has python-docx).
     env["PATH"] = os.path.dirname(sys.executable) + os.pathsep + env["PATH"]
+    env["JOB_DESCRIPTIONS_DIR"] = str(root / "state" / "job-descriptions")
     return env
 
 

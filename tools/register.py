@@ -35,6 +35,7 @@ QUEUE_PATH = os.environ.get("QUEUE_TSV", os.path.join(ROOT, "state", "queue.tsv"
 DONE_PATH = os.environ.get("QUEUE_DONE", os.path.join(ROOT, "state", "queue.done"))
 SUBMISSIONS_PATH = os.environ.get("SUBMISSIONS_CSV", os.path.join(ROOT, "state", "submissions.csv"))
 DRAFTS_DIR = os.environ.get("DRAFTS_DIR", os.path.join(ROOT, "state", "drafts"))
+JD_DIR = os.environ.get("JOB_DESCRIPTIONS_DIR", os.path.join(ROOT, "state", "job-descriptions"))
 FIELDS = ["date", "company", "role", "ats", "status", "letter", "notes", "employment",
           "action", "key", "apply_url"]
 STATUSES = ["QUEUED", "SUBMITTED", "INTERVIEW", "OFFER", "REJECTED", "BLOCKED", "MANUAL",
@@ -121,6 +122,47 @@ def find_row(company, role):
         if (r["company"].strip().lower(), r["role"].strip().lower()) == k:
             return r
     return None
+
+
+PROFILE_ROLE = re.compile(
+    r"talent network|consultant profile|consultant network|consultant hub|"
+    r"aggregator of konsultuppdrag|hiring opportunity fit|intro meeting|"
+    r"independent consultant network|consultant feed",
+    re.I)
+
+
+def profile_role(role):
+    """A network/profile row has no job advert by nature, so it is exempt from
+    the 'every live role has a job spec' rule."""
+    return bool(PROFILE_ROLE.search(role or ""))
+
+
+def jd_path(company, role, key=""):
+    """Find the saved job description for a role, tolerating key-style drift.
+
+    Lookup order: the exact key, the key with hyphens/underscores swapped, the
+    generated company-role key, then an exact company-slug file (e.g.
+    redpine.md for a role keyed redpine-senior-knowledge-graph-engineer).
+    """
+    def variants(k):
+        k = (k or "").strip()
+        if not k:
+            return []
+        return list(dict.fromkeys([k, k.replace("_", "-"), k.replace("-", "_")]))
+
+    folder = JD_DIR
+    for cand in variants(key) + variants(make_key(company, role)):
+        for ext in (".md", ".md.gz"):
+            p = os.path.join(folder, cand + ext)
+            if os.path.isfile(p):
+                return p
+    slug = _slug(company or "")
+    if slug:
+        for ext in (".md", ".md.gz"):
+            p = os.path.join(folder, slug + ext)
+            if os.path.isfile(p):
+                return p
+    return ""
 
 
 def provenance(company, role):
@@ -562,6 +604,18 @@ def audit():
                                 "first call", "video call", "first chat")):
             continue
         problems.append(f"INTERVIEW without an invitation in the notes: "
+                        f"{r['company']} / {r['role']}")
+
+    # Every live role must have its advert saved; a profile/network row has none
+    # by nature, and historical rows may carry the pre-guard annotation.
+    for r in rows:
+        if r["status"] not in ("QUEUED", "PREPARED", "SUBMITTED", "INTERVIEW", "IN_PROGRESS"):
+            continue
+        if profile_role(r["role"]) or jd_path(r["company"], r["role"], r["key"]):
+            continue
+        if "jd not recorded" in (r.get("notes") or "").lower():
+            continue
+        problems.append(f"live role without a saved job description: "
                         f"{r['company']} / {r['role']}")
 
     # A finished queue row that is really the same role as a register row must

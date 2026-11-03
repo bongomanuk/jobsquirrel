@@ -45,7 +45,10 @@ Managed by `tools/register.py`: read with `--stats/--list/--show`, edit with
 duplicate row or key, a `queue.done` entry with no row, a `SUBMITTED` row with no
 provenance, a stale `state/counts.md`, a PREPARED row whose application email was
 actually sent with attachments, an INTERVIEW row with no invitation in its notes,
-or a finished queue alias of a register row). `SUBMITTED` is refused without
+a live role with no saved job description, or a finished queue alias of a register
+row). `record_submission.py` and the pre-submit gate both refuse a SUBMITTED row
+without the saved advert (`--no-jd` is the explicit exception for a network
+profile). `SUBMITTED` is refused without
 provenance, which is written by the submission action itself (hash, snapshot,
 gate receipt, then ledger + status); an application email does the same
 automatically. Repair with `--dedupe`,

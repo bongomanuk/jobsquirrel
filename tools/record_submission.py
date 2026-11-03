@@ -137,6 +137,8 @@ def main():
     ap.add_argument("--evidence", default="", help="confirmation text/URL proving the submission")
     ap.add_argument("--date", default="", help="YYYY-MM-DD (defaults to today)")
     ap.add_argument("--inferred", action="store_true", help="backfilled row: do not snapshot; mark confidence=inferred")
+    ap.add_argument("--no-jd", action="store_true",
+                    help="profile/network row: an application with no job advert by nature")
     ap.add_argument("--force", action="store_true",
                     help="record SUBMITTED even with placeholder/empty evidence (not recommended)")
     ap.add_argument("--show", metavar="COMPANY", help="print recorded submissions matching COMPANY and exit")
@@ -164,6 +166,16 @@ def main():
             print("       --evidence must be the exact thank-you text/URL or the confirmation email.", file=sys.stderr)
             print("       For 'submitted but awaiting email verification' use --status BLOCKED instead.", file=sys.stderr)
             print("       (override only if you truly have confirmation: --force)", file=sys.stderr)
+            sys.exit(2)
+
+    if args.status.upper() == "SUBMITTED" and not args.no_jd:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import register as REG
+        if not REG.profile_role(args.role) and not REG.jd_path(args.company, args.role, ""):
+            print("ERROR: refusing to record SUBMITTED without a saved job description.", file=sys.stderr)
+            print("       Save the ad to state/job-descriptions/<key>.md first (jd_guard --require),",
+                  file=sys.stderr)
+            print("       or pass --no-jd for a profile/network row that has no advert.", file=sys.stderr)
             sys.exit(2)
 
     date = args.date or datetime.now(timezone.utc).strftime("%Y-%m-%d")

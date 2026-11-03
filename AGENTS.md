@@ -96,7 +96,8 @@ reports a clean config.
    duplicate rows/keys, `queue.done` entries with no register row, SUBMITTED rows
    with no `state/submissions.csv` provenance, a stale `state/counts.md`, a
    PREPARED row whose application email was actually sent with attachments, an
-   INTERVIEW row with no invitation in its notes, and a finished queue row that
+   INTERVIEW row with no invitation in its notes, a live role with no saved job
+   description (profile/network rows excepted), and a finished queue row that
    is really a second identity of a register role. `SUBMITTED` is refused
    without a provenance row, and provenance is created by the submission itself:
    `record_submission.py` hashes and snapshots the exact files, verifies the gate

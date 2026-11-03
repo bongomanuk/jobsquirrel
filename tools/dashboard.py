@@ -1062,8 +1062,17 @@ def _content_key_for(cvrel, key):
     return key
 
 
-def _jd_key_for(ats_key, key):
-    return ats_key if _present(os.path.join(STATE, "job-descriptions", ats_key + ".md")) else key
+def _jd_key_for(ats_key, key, company="", role=""):
+    """The stem of the saved job description, tolerating key-style drift
+    (hyphens vs underscores) and a file named for the employer (redpine.md)."""
+    for cand in (ats_key, key):
+        for v in (cand, cand.replace("_", "-"), cand.replace("-", "_")):
+            if v and _present(os.path.join(STATE, "job-descriptions", v + ".md")):
+                return v
+    slug = _slug(company or "")
+    if slug and _present(os.path.join(STATE, "job-descriptions", slug + ".md")):
+        return slug
+    return key
 
 
 def _cov_sig(key, cvrel, ats_key=None, content_key=None):
@@ -1442,7 +1451,7 @@ def grid():
         cvrel = _prepared_cv_note(notes, key, cv_index) or cvmap.get(key, "") or subm_cv.get(ck, "")
         ats_key = _ats_key_for(co, role, key, stems=ats_stems)
         content_key = _content_key_for(cvrel, key)
-        jd_key = _jd_key_for(ats_key, key)
+        jd_key = _jd_key_for(ats_key, key, co, role)
         m = _MATCH_CACHE.get(key, {})
         cov = m.get("coverage")
         if cov is None:

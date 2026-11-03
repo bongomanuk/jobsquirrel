@@ -27,6 +27,11 @@ def reg(tmp_path, monkeypatch):
     monkeypatch.setattr(R, "DONE_PATH", path("queue.done"))
     monkeypatch.setattr(R, "SUBMISSIONS_PATH", path("subs.csv"))
     monkeypatch.setattr(R, "DRAFTS_DIR", path("drafts"))
+    monkeypatch.setattr(R, "JD_DIR", path("job-descriptions"))
+    os.makedirs(path("job-descriptions"), exist_ok=True)
+    # a saved advert for the fixture roles that reach a live status
+    for slug in ("acme-engineer", "neko-health-director-of-engineering"):
+        (tmp_path / "job-descriptions" / f"{slug}.md").write_text("# Ad\n")
     open(path("apps.csv"), "w").write(",".join(R.FIELDS) + "\n")
     open(path("queue.tsv"), "w").write("")
     open(path("queue.done"), "w").write("")
