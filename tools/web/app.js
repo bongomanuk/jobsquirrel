@@ -630,6 +630,7 @@ function approve(purpose, callText) {
 /* ---------- grid ---------- */
 let GRID_TIMER = null, LIVE_RUNNING = false, IDLE_TICKS = 0, WAS_BUSY = false, BUSY_NAME = '', DTAB = 0;
 let SHOW_DISMISSED = localStorage.getItem('showDismissed') === '1';
+let GROUPED = localStorage.getItem('grid.grouped') !== '0';
 const shown = (r) => SHOW_DISMISSED || !r.dismissed;
 async function loadGrid() {
   const sc = document.querySelector('.scroll'), y = sc ? sc.scrollTop : 0;
@@ -746,7 +747,7 @@ function renderRows() {
   let rendered = [];
   const advanced = !!(st || qq || ft || fa || mp || mf || wm || q);
   let groups = null;
-  if (BUCKET === 'active' || BUCKET === 'all') {
+  if (GROUPED && (BUCKET === 'active' || BUCKET === 'all')) {
     groups = BUCKET_GROUPS.filter(g => BUCKET === 'all' || g.k !== 'done')
       .map(g => ({ ...g, test: r => bucketOf(r) === g.k }));
     if (BUCKET === 'active' && !advanced && !rows.some(r => bucketOf(r) === 'needs'))
@@ -776,6 +777,7 @@ function renderRows() {
   }
   VISIBLE = rendered.map(r => r.key);
   $('#rows').innerHTML = html;
+  sortIndicators();
   if ($('#count')) {
     const c = { needs: 0, prepared: 0, ongoing: 0, pipeline: 0, done: 0 };
     rows.forEach(r => { const b = bucketOf(r); c[b] = (c[b] || 0) + 1; });
@@ -1009,7 +1011,30 @@ App.toggleDismissedView = (on) => {
   localStorage.setItem('showDismissed', SHOW_DISMISSED ? '1' : '0');
   renderBuckets(); renderRows();
 };
-document.querySelectorAll('#grid th[data-s]').forEach(th => th.onclick = () => { const k = th.dataset.s; SORT = { k, dir: SORT.k === k ? -SORT.dir : 1 }; renderRows(); });
+function sortIndicators() {
+  document.querySelectorAll('#grid thead th[data-s]').forEach(th => {
+    const on = th.dataset.s === SORT.k;
+    th.classList.toggle('sorted', on);
+    th.dataset.dir = on ? (SORT.dir === 1 ? 'asc' : 'desc') : '';
+    th.setAttribute('aria-sort', on ? (SORT.dir === 1 ? 'ascending' : 'descending') : 'none');
+  });
+}
+function syncGroupingButton() {
+  const b = $('#grouping');
+  if (!b) return;
+  b.textContent = GROUPED ? '☰ Grouped' : '▤ Flat';
+  b.classList.toggle('on', !GROUPED);
+}
+document.querySelectorAll('#grid th[data-s]').forEach(th => th.onclick = () => {
+  const k = th.dataset.s;
+  SORT = { k, dir: SORT.k === k ? -SORT.dir : (k === 'date' ? -1 : 1) };
+  // A column sort is a whole-list sort: leave the bucket grouping so the order
+  // is not hidden inside collapsed sections.
+  GROUPED = false;
+  localStorage.setItem('grid.grouped', '0');
+  syncGroupingButton();
+  renderRows();
+});
 
 /* ---------- resizable columns ---------- */
 const COL_DEFAULTS = { date: 90, company: 195, role: 320, ats: 110, status: 160,
@@ -2240,6 +2265,12 @@ if (fd) { fd.checked = SHOW_DISMISSED; fd.onchange = () => App.toggleDismissedVi
 $('#a-prepare-shown').onclick = () => App.prepareShown();
 $('#a-submit-shown').onclick = () => App.submitPrepared();
 $('#a-match').onclick = () => App.matchShown($('#a-match'));
+$('#grouping').onclick = () => {
+  GROUPED = !GROUPED;
+  localStorage.setItem('grid.grouped', GROUPED ? '1' : '0');
+  syncGroupingButton();
+  renderRows();
+};
 $('#export').onclick = () => {
   const cs = ['date', 'company', 'role', 'employment', 'work_model', 'salary_label', 'ats', 'status', 'action', 'match', 'focus', 'queue', 'applied', 'spec', 'key'];
   const body = GRID.map(r => cs.map(c => JSON.stringify(r[c] == null ? '' : r[c])).join(',')).join('\n');
@@ -2312,4 +2343,4 @@ $('#upd-go').onclick = async () => {
   const d = await api('/api/update/apply', { approval_token: 'APPROVE_UPDATE' });
   toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true);
 };
-initPanels(); initGridCols(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel();
+initPanels(); initGridCols(); syncGroupingButton(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel();

@@ -186,7 +186,9 @@ same record is never duplicated across separate pages.
 ### 9.3 Master grid (the one table)
 Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files · Job ad**
 (every header/cell/chip has a hover tooltip; **ⓘ Legend** explains them all).
-- Search / filter / sort (click a header); **Export CSV**.
+- Search / filter / sort: **click any column header** to sort the whole list (the grid switches to a flat
+  view so the order is not hidden inside collapsed groups), click again to reverse, and **☰ Grouped** in
+  the toolbar returns to the bucket sections. The active sort carries an arrow. **Export CSV**.
 - **Match** = ATS-keyword coverage % of the CV (computed for every role that has a saved ad;
   shown with an `align✗` badge when the alignment gate failed).
 - **Queue** = `pending | human | retry | done`; **Files** = provenance recorded (✓/—);
