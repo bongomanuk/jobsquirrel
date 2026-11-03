@@ -5,7 +5,9 @@ truth for every live process, pipeline or not.
 
 Scans recent mail from people/agencies (not ATS auto-responders) that look like
 direct opportunities, drops anything whose company is already in the register,
-and (with --apply) adds the rest as PREPARED rows.
+and (with --apply) adds the rest as MANUAL leads. A recruiter email is not a job
+advert: the message is saved as a lead brief under state/job-descriptions/ and
+the row stays MANUAL until a real spec exists.
 
 Usage:
   .venv/bin/python tools/email_opportunities.py                 # dry run (list)
@@ -76,7 +78,8 @@ def main() -> int:
         if mu:
             url = mu.group(0)[:140]
         found.append({"company": who, "role": subj[:120] or "(role in email)",
-                      "date": date[:31], "url": url, "note": txt[:180]})
+                      "date": date[:31], "url": url, "note": txt[:180],
+                      "id": m["id"], "sender": frm, "subject": subj, "body": txt})
 
     if not found:
         print("no new external opportunities")
@@ -85,11 +88,26 @@ def main() -> int:
     for f in found:
         print(f"[{f['date']}] {f['company']}\n   {f['role']}\n   {f['note']}\n")
     if args.apply:
+        os.makedirs(REG.JD_DIR, exist_ok=True)
         for f in found:
-            REG.upsert(f["company"], f["role"], "PREPARED",
+            key = REG.make_key(f["company"], f["role"])
+            brief = (
+                f"# {f['company']} — {f['role']}\n"
+                f"Source: Gmail message {f['id']} from {f['sender']}\n"
+                f"Received: {f['date']}\n"
+                "Spec status: lead brief — no job advert supplied\n"
+                "---\n"
+                f"{f['body']}\n"
+            )
+            with open(os.path.join(REG.JD_DIR, f"{key}.md"), "w", encoding="utf-8") as fh:
+                fh.write(brief)
+            REG.upsert(f["company"], f["role"], "MANUAL",
                        day=time.strftime("%Y-%m-%d"), ats="Agency",
-                       notes=f"external (Gmail): {f['note']}")
-        print(f"recorded {len(found)} row(s) as PREPARED")
+                       notes=(f"external (Gmail) lead {f['id']}: {f['subject']} — "
+                              f"no advert supplied; lead brief saved to "
+                              f"state/job-descriptions/{key}.md; reply to request the "
+                              f"full spec before preparing documents. {f['note']}"))
+        print(f"recorded {len(found)} external lead(s) as MANUAL (no spec yet)")
     else:
         print("(dry run — re-run with --apply to record these)")
     return 0

@@ -26,6 +26,8 @@ import sys
 import tempfile
 from datetime import date, datetime
 
+import jd_guard as JD
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSV_PATH = os.environ.get("APPLICATIONS_CSV", os.path.join(ROOT, "state", "applications.csv"))
 MD_PATH = os.environ.get("APPLICATIONS_MD", os.path.join(ROOT, "state", "applications-register.md"))
@@ -126,7 +128,7 @@ def find_row(company, role):
 
 PROFILE_ROLE = re.compile(
     r"talent network|consultant profile|consultant network|consultant hub|"
-    r"aggregator of konsultuppdrag|hiring opportunity fit|intro meeting|"
+    r"aggregator of konsultuppdrag|intro meeting|"
     r"independent consultant network|consultant feed",
     re.I)
 
@@ -163,6 +165,34 @@ def jd_path(company, role, key=""):
             if os.path.isfile(p):
                 return p
     return ""
+
+
+LIVE_JD_STATUSES = ("PREPARED", "SUBMITTED", "INTERVIEW", "IN_PROGRESS")
+
+
+def _jd_guard(company, role, status):
+    """A live role must have a real advert, not just a recruiter email.
+
+    This closes the hole that let email_opportunities.py record a lead as
+    PREPARED with no spec: every transition into a live state now has to point
+    at a substantive saved job description. Network/profile rows are exempt
+    because they have no advert by nature.
+    """
+    st = (status or "").upper()
+    if st not in LIVE_JD_STATUSES or profile_role(role):
+        return
+    existing = find_row(company, role)
+    if existing and (existing.get("status") or "").upper() == st:
+        # Re-affirming a status is not a new claim; legacy rows keep working.
+        return
+    path = jd_path(company, role)
+    if path and JD.has_spec_at(path):
+        return
+    raise ValueError(
+        f"refusing {st} without a saved job spec: save the advert to "
+        f"state/job-descriptions/<key>.md first (python3 tools/jd_guard.py "
+        f"--fetch --key <key> --url <url>), then set {st}. A recruiter email "
+        f"or a lead brief does not count.")
 
 
 def provenance(company, role):
@@ -204,6 +234,7 @@ def upsert(company, role, status, day="", ats="", letter="", notes="", employmen
            key="", apply_url=""):
     """Insert or update the single row for (company, role). Returns the row."""
     _submitted_guard(company, role, status, notes)
+    _jd_guard(company, role, status)
     with locked():
         rows = load()
         k = _key(company, role)
@@ -258,6 +289,7 @@ def set_row(company, role, status="", note="", employment=None, action=None):
     `action=None` leaves the flag alone; `action=""` clears it.
     """
     _submitted_guard(company, role, status, note)
+    _jd_guard(company, role, status)
     with locked():
         rows = load()
         k = _key(company, role)
@@ -611,7 +643,8 @@ def audit():
     for r in rows:
         if r["status"] not in ("QUEUED", "PREPARED", "SUBMITTED", "INTERVIEW", "IN_PROGRESS"):
             continue
-        if profile_role(r["role"]) or jd_path(r["company"], r["role"], r["key"]):
+        saved = jd_path(r["company"], r["role"], r["key"])
+        if profile_role(r["role"]) or (saved and JD.has_spec_at(saved)):
             continue
         if "jd not recorded" in (r.get("notes") or "").lower():
             continue

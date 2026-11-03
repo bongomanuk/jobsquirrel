@@ -15,8 +15,9 @@ def _env(tmp):
     e["APPLICATIONS_MD"] = str(tmp / "applications-register.md")
     jd = tmp / "jds"
     jd.mkdir(exist_ok=True)
-    (jd / "acme-eng.md").write_text("# Ad\n")
-    (jd / "acme-eng2.md").write_text("# Ad\n")
+    ad = "# Ad\n\n" + ("We are looking for an experienced engineer to join our team. " * 8)
+    (jd / "acme-eng.md").write_text(ad)
+    (jd / "acme-eng2.md").write_text(ad)
     e["JOB_DESCRIPTIONS_DIR"] = str(jd)
     return e
 

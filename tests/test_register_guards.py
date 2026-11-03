@@ -30,8 +30,10 @@ def reg(tmp_path, monkeypatch):
     monkeypatch.setattr(R, "JD_DIR", path("job-descriptions"))
     os.makedirs(path("job-descriptions"), exist_ok=True)
     # a saved advert for the fixture roles that reach a live status
-    for slug in ("acme-engineer", "neko-health-director-of-engineering"):
-        (tmp_path / "job-descriptions" / f"{slug}.md").write_text("# Ad\n")
+    ad = "# Ad\n\n" + ("We are looking for an experienced engineer to join our team. " * 8)
+    for slug in ("acme-engineer", "acme-architect", "beta-architect",
+                 "neko-health-director-of-engineering"):
+        (tmp_path / "job-descriptions" / f"{slug}.md").write_text(ad)
     open(path("apps.csv"), "w").write(",".join(R.FIELDS) + "\n")
     open(path("queue.tsv"), "w").write("")
     open(path("queue.done"), "w").write("")
@@ -122,3 +124,22 @@ def test_add_note_never_flips_several_rows(reg):
     # a unique match still transitions
     R.add_note("Engineer", "gmail: INTERVIEW", status="INTERVIEW")
     assert R.find_row("Acme", "Engineer")["status"] == "INTERVIEW"
+
+
+def test_prepared_requires_a_job_spec(reg):
+    with pytest.raises(ValueError):
+        R.upsert("NoSpec", "Engineer", "PREPARED")
+
+
+def test_lead_brief_is_not_a_job_spec(reg):
+    key = R.make_key("Lead Co", "Engineer")
+    (reg / "job-descriptions" / f"{key}.md").write_text(
+        "# Lead Co — Engineer\nSpec status: lead brief — no job advert supplied\n---\n"
+        + "A recruiter mentioned a role. " * 20)
+    with pytest.raises(ValueError):
+        R.upsert("Lead Co", "Engineer", "PREPARED")
+
+
+def test_profile_role_needs_no_advert(reg):
+    row = R.upsert("Network Co", "Talent network", "PREPARED")
+    assert row["status"] == "PREPARED"

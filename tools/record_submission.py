@@ -183,7 +183,8 @@ def main():
         if not key:
             row = REG.find_row(args.company, args.role)
             key = row.get("key", "") if row else ""
-        if not REG.profile_role(args.role) and not REG.jd_path(args.company, args.role, key):
+        saved = REG.jd_path(args.company, args.role, key)
+        if not REG.profile_role(args.role) and not (saved and REG.JD.has_spec_at(saved)):
             print("ERROR: refusing to record SUBMITTED without a saved job description.", file=sys.stderr)
             print("       Save the ad to state/job-descriptions/<key>.md first (jd_guard --require),",
                   file=sys.stderr)

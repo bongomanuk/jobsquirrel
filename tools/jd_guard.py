@@ -37,17 +37,50 @@ def clean(key):
     return key[:160]
 
 
+LEAD_MARKERS = ("spec status: lead brief", "no advert supplied",
+                "no job advert supplied")
+
+
+def _head(path, limit=2000):
+    try:
+        if path.endswith(stateio.SUFFIX):
+            return stateio.read_text(path)[:limit]
+        with open(path, encoding="utf-8", errors="ignore") as fh:
+            return fh.read(limit)
+    except OSError:
+        return ""
+
+
+def is_lead_brief(path):
+    """A saved recruiter email is a lead, not a job advert.
+
+    Lead briefs are stored under state/job-descriptions/ so the source is kept,
+    but they must never satisfy the "every role has a spec" gate.
+    """
+    text = _head(path).lower()
+    return any(marker in text for marker in LEAD_MARKERS)
+
+
+def has_spec_at(path):
+    """True when this exact file is a substantive job advert (not a lead note)."""
+    if not path:
+        return False
+    if path.endswith(stateio.SUFFIX):
+        text = stateio.read_text(path)
+        return len(text) >= 200 and not is_lead_brief(path)
+    try:
+        if os.stat(path).st_size < 200:
+            return False
+    except OSError:
+        return False
+    return not is_lead_brief(path)
+
+
 def has_jd(key):
     found = stateio.resolve(str(jd_path(clean(key))))
     if not found:
         return False
-    if found.endswith(stateio.SUFFIX):
-        # A packed ad's file size says nothing about the ad; judge the text.
-        return len(stateio.read_text(found)) >= 200
-    try:
-        return os.stat(found).st_size >= 200
-    except OSError:
-        return False
+    return has_spec_at(found)
 
 
 def text_from_html(raw):
@@ -154,7 +187,14 @@ def main():
         if has_jd(args.key):
             print(f"RESULT: PASS - job description exists for {clean(args.key)}")
             return 0
-        print(f"RESULT: FAIL - no job description for {clean(args.key)}", file=sys.stderr)
+        found = stateio.resolve(str(jd_path(clean(args.key))))
+        if found and is_lead_brief(found):
+            print(f"RESULT: FAIL - {clean(args.key)} is a recruiter lead brief, not a "
+                  f"job advert; save the full spec before preparing documents",
+                  file=sys.stderr)
+        else:
+            print(f"RESULT: FAIL - no job description for {clean(args.key)}",
+                  file=sys.stderr)
         return 2
 
     if args.fetch:
