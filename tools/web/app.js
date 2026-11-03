@@ -2176,6 +2176,7 @@ function discuss(r) {
 /* ---------- settings sections ---------- */
 async function setData(b) {
   const d = await api('/api/backup?info=1');
+  if (CF_SEC !== 'data') return;
   if (d.error) { b.innerHTML = `<span class="muted">${esc(d.error)}</span>`; return; }
   const p = d.parts || {};
   const docs = (p.documents || {}).bytes || 0;
@@ -2243,6 +2244,7 @@ function secretRowHTML(sec, r) {
 
 async function setSecrets(b) {
   const d = await api('/api/secrets');
+  if (CF_SEC !== 'secrets') return;
   if (!d || d.error) {
     b.innerHTML = `<p class="bad">${esc((d && d.error) || 'could not read the secrets store')}</p>`;
     return;
@@ -2301,6 +2303,7 @@ async function setSecrets(b) {
 
 async function setAccounts(b) {
   const [d, g] = await Promise.all([api('/api/accounts'), api('/api/google')]);
+  if (CF_SEC !== 'accounts') return;
   const sc = g.scopes || [];
   const dot = (ok) => `<span class="pill" style="background:${ok ? '#1f6f43' : '#7a2e2e'}">${ok ? '✓' : '✗'}</span>`;
   const scopeName = (s) => s.split('/').pop();
@@ -2332,6 +2335,7 @@ async function setAccounts(b) {
 }
 async function setKB(b) {
   const d = await api('/api/kb');
+  if (CF_SEC !== 'kb') return;
   let list = '';
   for (const [g, files] of Object.entries(d.sources || {})) {
     if (!files.length) continue;
@@ -2353,6 +2357,7 @@ async function setKB(b) {
 }
 async function setGraph(b) {
   const d = await api('/api/graph?kind=stats');
+  if (CF_SEC !== 'graph') return;
   b.innerHTML = `<p class="muted">The knowledge graph built from your documents (GraphRAG index in <code>kb/graphrag/</code>).
       ${d.entities ? `<b>${d.entities}</b> entities · <b>${d.relationships}</b> relationships · <b>${d.communities}</b> communities` : ''}</p>
     <div class="row" style="margin:8px 0">
@@ -2366,6 +2371,7 @@ async function setGraph(b) {
 }
 async function setPerms(b) {
   const d = await api('/api/permissions');
+  if (CF_SEC !== 'perms') return;
   const cats = Object.keys(d.defaults || {});
   const help = { read_repo: 'read files in this repo', read_external: 'read files outside the repo',
     write_repo: 'write files in this repo', write_external: 'write files outside the repo',
@@ -2379,6 +2385,7 @@ async function setPerms(b) {
 }
 async function setAI(b) {
   const [a, g, gr] = await Promise.all([api('/api/agent/config'), api('/api/graphrag/env'), api('/api/gmail/review')]);
+  if (CF_SEC !== 'ai') return;
   const detected = (a.detected || []);
   const orKey = (a.env || {}).OPENROUTER_API_KEY || '';
   const knownAgents = [['', 'Auto (OpenCode, else Claude)'], ['opencode', 'OpenCode'],
