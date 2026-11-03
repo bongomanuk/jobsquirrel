@@ -81,6 +81,21 @@ def test_gate_enforce_off_bypasses(tmp_path):
     assert r.returncode == 0
 
 
+def test_review_run_cannot_record_anything(tmp_path):
+    cv = tmp_path / "cv.txt"
+    cv.write_text("cv")
+    letter = tmp_path / "letter.txt"
+    letter.write_text("letter")
+    env = _env(tmp_path)
+    env["REVIEW"] = "1"
+    cmd = [sys.executable, "tools/record_submission.py", "--company", "Acme",
+           "--role", "Eng", "--cv", str(cv), "--letter", str(letter),
+           "--status", "SUBMITTED", "--evidence", EVIDENCE]
+    r = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True)
+    assert r.returncode == 2
+    assert "REVIEW run" in r.stderr
+
+
 def _confidence(tmp):
     import csv
     with open(tmp / "submissions.csv", newline="") as fh:

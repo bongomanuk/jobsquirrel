@@ -146,6 +146,13 @@ def main():
     ap.add_argument("--verify", metavar="COMPANY", help="check live files/snapshots against recorded hashes and exit")
     args = ap.parse_args()
 
+    # A REVIEW run prepares documents; it must never record anything against an
+    # application, least of all SUBMITTED.
+    if os.environ.get("REVIEW") == "1":
+        print("ERROR: refusing to record: this is a REVIEW run (documents only).", file=sys.stderr)
+        print("       Record the row as PREPARED with register.py --set --status PREPARED.", file=sys.stderr)
+        sys.exit(2)
+
     if args.show:
         show(args.show)
         return

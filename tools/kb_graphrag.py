@@ -105,14 +105,27 @@ def main() -> int:
 
     ensure_embeddings()
 
-    query = f"{INSTR}\n\n---\nROLE / JOB DESCRIPTION:\n{jd[:12000]}"
+    # The embeddings backend has a hard token cap (2048 by default). A full JD
+    # used to exceed it and GraphRAG would fail - and the traceback was written
+    # into the context pack as if it were evidence. Keep the head (context) and
+    # the tail (requirements) within a safe character budget.
+    budget = max(1200, int(os.environ.get("KB_QUERY_CHARS", "5200")))
+    if len(jd) > budget:
+        head = int(budget * 0.6)
+        tail = budget - head - 5
+        jd_query = jd[:head] + "\n...\n" + jd[-tail:]
+    else:
+        jd_query = jd
+    query = f"{INSTR}\n\n---\nROLE / JOB DESCRIPTION:\n{jd_query}"
     cmd = [GRAPHRAG, "query", "--root", CFG, "--method", args.method, query]
     p = subprocess.run(cmd, capture_output=True, text=True)
     if p.returncode != 0:
         print(p.stderr[-1500:], file=sys.stderr)
+        return 1
     pack = _clean(p.stdout)
-    if not pack:
-        pack = _clean(p.stderr[-2000:])
+    if not pack.strip():
+        print("GraphRAG returned no context (nothing written)", file=sys.stderr)
+        return 1
 
     # Always include operator-recorded skill evidence (dashboard "add evidence"),
     # so a newly-evidenced skill is grounded immediately, without a graph rebuild.
@@ -129,7 +142,10 @@ def main() -> int:
     header = f"<!-- GraphRAG {args.method} context; index: kb/graphrag. Grounding only. -->\n"
     if args.out:
         os.makedirs(os.path.dirname(args.out), exist_ok=True)
-        open(args.out, "w").write(header + pack + "\n")
+        tmp = args.out + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(header + pack + "\n")
+        os.replace(tmp, args.out)
         print(f"wrote {args.out} ({len(pack)} chars)")
     else:
         print(header + pack)
