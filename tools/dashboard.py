@@ -1616,6 +1616,7 @@ def live():
             tail = read_task_log(tail_name)["curated"][-150:]
     proc = _ACT.get("proc")
     act_running = bool(proc and proc.poll() is None)
+    delegated = delegated_live()
     act_lines = action_log(4000)
     # The pane is for CURRENT activity. A finished action keeps its name and
     # summary as "last action", but its transcript is history: sending it made
@@ -1632,7 +1633,10 @@ def live():
             age, size = None, 0
         return {"label": k.replace("|", " — "), "log": name, "age": age, "size": size}
     return {"active": active, "running": [k.replace("|", " — ") for k in running],
-            "running_tasks": [_running_task(k) for k in running],
+            "running_tasks": [_running_task(k) for k in running] +
+                             [{"label": d["title"], "log": d["log"], "age": d["age"],
+                               "size": d["size"]} for d in delegated],
+            "delegated": delegated,
             "tail_name": tail_name, "tail": tail,
             "paused": os.path.exists(PAUSE_FILE),
             "stopping": os.path.exists(STOP_FILE),
@@ -3046,6 +3050,85 @@ def _spawn(purpose, argv, env=None):
     return proc
 
 
+DELEGATED_DIR = os.path.join(STATE, "delegated")
+DELEGATED_MAX = 4
+
+
+def _pid_alive(pid):
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def delegated_live():
+    """Background subagents that are still running, newest last."""
+    out = []
+    try:
+        names = sorted(os.listdir(DELEGATED_DIR))
+    except OSError:
+        return out
+    for f in names:
+        if not f.endswith(".json"):
+            continue
+        path = os.path.join(DELEGATED_DIR, f)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                rec = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if not _pid_alive(rec.get("pid")):
+            continue
+        log = rec.get("log", "")
+        age = size = None
+        try:
+            st = os.stat(os.path.join(LOGS, log + ".log"))
+            age, size = int(time.time() - st.st_mtime), st.st_size
+        except OSError:
+            pass
+        out.append({"id": rec.get("id", ""), "title": rec.get("title", "subagent"),
+                    "log": log, "age": age, "size": size, "pid": rec.get("pid")})
+    return out
+
+
+def delegate_start(prompt, title=""):
+    """Spawn a detached agent task for the chat to hand work to."""
+    prompt = (prompt or "").strip()[:12000]
+    if not prompt:
+        return {"error": "empty task"}
+    live = delegated_live()
+    if len(live) >= DELEGATED_MAX:
+        return {"error": f"{len(live)} subagents are already running (max {DELEGATED_MAX}); wait for one to finish"}
+    sid = time.strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(2)
+    title = (title or prompt.splitlines()[0])[:80]
+    log = f"delegated-{sid}"
+    wrapped = (
+        "You are a background subagent started from the dashboard chat. "
+        f"Work autonomously in {ROOT} and follow AGENTS.md. Do not ask questions; "
+        "if something blocks you, say exactly what.\n"
+        f"Task: {prompt}\n"
+        "When finished, print one line: RESULT: <what you did or found>.")
+    try:
+        os.makedirs(DELEGATED_DIR, exist_ok=True)
+        os.makedirs(LOGS, exist_ok=True)
+        with open(os.path.join(LOGS, log + ".log"), "a", encoding="utf-8") as lf:
+            lf.write(f"=== {time.strftime('%Y-%m-%dT%H:%M:%S')} subagent: {title} ===\n")
+            lf.flush()
+            proc = subprocess.Popen(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), wrapped],
+                                    cwd=ROOT, env=agent_env(), stdout=lf,
+                                    stderr=subprocess.STDOUT, start_new_session=True)
+        rec = {"id": sid, "title": title, "log": log, "pid": proc.pid,
+               "started": time.time()}
+        tmp = os.path.join(DELEGATED_DIR, sid + ".json.tmp")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(rec, fh)
+        os.replace(tmp, os.path.join(DELEGATED_DIR, sid + ".json"))
+    except OSError as exc:
+        return {"error": f"could not start the subagent: {exc}"}
+    return {"ok": "started", "id": sid, "title": title, "log": log}
+
+
 STOP_FILE = os.path.join(STATE, "queue.stop")
 PAUSE_FILE = os.path.join(STATE, "queue.pause")
 
@@ -3804,6 +3887,8 @@ class H(BaseHTTPRequestHandler):
                                          data.get("key", "")))
         if p == "/api/queue/action":
             return self._json(queue_action(data.get("action", ""), data.get("company", ""), data.get("role", "")))
+        if p == "/api/delegate":
+            return self._json(delegate_start(data.get("prompt", ""), data.get("title", "")))
         if p == "/api/roles/flags":
             return self._json(set_role_flags(data.get("key", ""),
                                              dismissed=data.get("dismissed"),

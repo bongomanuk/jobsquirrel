@@ -155,6 +155,23 @@ they have not been set up, tell the human and stop (do not invent their details)
 
 ---
 
+## 2a. Delegating work from the dashboard chat
+
+The chat is for conversation and quick checks. When a request is a job of work —
+preparing documents, applying, reconciling mail, a discovery sweep, research that
+takes more than a minute — hand it to a background subagent instead of doing it
+inside the chat turn:
+
+```bash
+python3 tools/delegate.py --title "Short label" --prompt "Full, self-contained task…"
+```
+
+It returns immediately with a task id. The subagent runs detached, follows this
+file, and appears in the dashboard's **Activity** pane with its own log, so the
+chat stays free for the next question. Tell the user it is running and what it
+will touch. Keep questions, explanations and one-step answers in the chat. Do not
+start a second subagent for the same work: check the Activity pane first.
+
 ## 2. Run modes: explain these to the user and let them choose
 
 Do **not** send the user to the documentation. Briefly present the modes below and

@@ -334,6 +334,11 @@ All POSTs require header `X-Session: <token>` (else 403); the token is injected 
   activity: a finished action is a one-line "last action: <name> — finished" plus its summary, never
   its transcript, and the header reads **idle** when nothing is running (the last action's name
   survives a server restart, its log does not).
+- **Background subagents.** The chat agent hands long work to `tools/delegate.py`, which posts to
+  `/api/delegate`; the dashboard spawns `agent_run.sh` detached, logs it to
+  `state/logs/delegated-<id>.log`, and tracks it in `state/delegated/<id>.json`. Up to four run at
+  once. They appear in the Activity pane (and the console's ▶ list) with their own log, while the
+  chat stays responsive; a finished one is pruned from the live list but its log remains.
 
 ## 10. Configuration schemas
 

@@ -1454,8 +1454,10 @@ async function liveTick() {
   }
   const a = d.action || {};
   const aname = (a.name || '').replace(/^action=/, '').replace(/\s*\(.*\)\s*$/, '');
+  const delegated = d.delegated || [];
   let s = a.running ? '● ' + aname + ' …' : (d.active ? '● running' : '○ idle');
   (d.running || []).forEach(r => s += '  ▶ ' + r);
+  delegated.forEach(x => s += '  ▶ ' + (x.title || 'subagent'));
   const t = (d.tail || []).slice(-1)[0];
   if (t) s += '   ' + t.t;
   const busy = !!a.running || d.active;
@@ -1504,7 +1506,9 @@ async function liveTick() {
     ACT = a.name && (a.running || (a.log || []).length) ? a : null;
     renderChat();
   }
-  $('#act-sum').textContent = a.running ? ('● ' + aname) : (d.active ? '● runner active' : 'idle');
+  $('#act-sum').textContent = a.running ? ('● ' + aname)
+    : (d.active ? '● runner active'
+       : (delegated.length ? `● ${delegated.length} subagent${delegated.length === 1 ? '' : 's'}` : 'idle'));
   if (document.body.dataset.act === 'open') {
     let h = '';
     if (a.name && a.running) {
@@ -1520,7 +1524,9 @@ async function liveTick() {
       if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
       h += '<div class="act-sep"></div>';
     }
-    h += d.active ? '● runner active' : '○ runner idle';
+    h += d.active ? '● runner active'
+      : (delegated.length ? `▶ ${delegated.length} subagent${delegated.length === 1 ? '' : 's'} running`
+                          : '○ runner idle');
     const tasks = d.running_tasks || (d.running || []).map(x => ({ label: x, log: '' }));
     tasks.forEach(t => {
       h += t.log

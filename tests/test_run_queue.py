@@ -160,7 +160,7 @@ def test_agent_run_opencode(tmp_path):
     assert a[-1] == "do the thing"
     # a session is pinned so retries continue the conversation instead of
     # repeating tool calls
-    assert a[a.index("-s") + 1].startswith("retry-")
+    assert a[a.index("-s") + 1].startswith("ses_")
 
     b = _argv_of(tmp_path, "opencode")
     assert b[0] == "run" and b[-1] == "do the thing" and "-s" in b

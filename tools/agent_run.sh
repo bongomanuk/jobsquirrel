@@ -108,7 +108,7 @@ run_agent() {
       case "$a" in -s|--session) has_s=1 ;; esac
     done
     if [ "$has_s" = 0 ]; then
-      cmd=(opencode run -s "retry-$(date +%s)-$RANDOM" "${cmd[@]:2}")
+      cmd=(opencode run -s "ses_retry_$(date +%s)_$RANDOM" "${cmd[@]:2}")
     fi
     cont=1
   fi
