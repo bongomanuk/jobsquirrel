@@ -50,12 +50,24 @@ def _ledger(tmp_path, company, role, status="SUBMITTED"):
 def test_submitted_requires_provenance(reg):
     with pytest.raises(ValueError):
         R.upsert("Acme", "Engineer", "SUBMITTED")
-    # a pre-ledger row may be annotated instead
-    R.upsert("Acme", "Engineer", "SUBMITTED", notes="provenance not recorded")
+    # the annotation is not a shortcut on a new claim either
+    with pytest.raises(ValueError):
+        R.upsert("Acme", "Engineer", "SUBMITTED", notes="provenance not recorded")
     # a real ledger row unblocks it
     R.upsert("Beta", "Architect", "PREPARED")
     _ledger(reg, "Beta", "Architect")
     R.upsert("Beta", "Architect", "SUBMITTED")
+
+
+def test_existing_pre_ledger_annotation_is_accepted(reg):
+    # a row written before the ledger existed, annotated by --record-provenance-gaps
+    with open(reg / "apps.csv", "a", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=R.FIELDS)
+        w.writerow({"date": "2026-10-01", "company": "Legacy", "role": "Engineer",
+                    "status": "SUBMITTED", "notes": "provenance not recorded",
+                    "key": R.make_key("Legacy", "Engineer")})
+    R.set_row("Legacy", "Engineer", status="SUBMITTED", note="re-affirmed")
+    assert R.find_row("Legacy", "Engineer")["status"] == "SUBMITTED"
 
 
 def test_audit_flags_prepared_that_was_emailed(reg, capsys):
@@ -96,7 +108,7 @@ def test_audit_flags_finished_queue_alias(reg, capsys):
 
 
 def test_add_note_never_flips_several_rows(reg):
-    R.upsert("Acme", "Engineer", "SUBMITTED", notes="provenance not recorded")
+    R.upsert("Acme", "Engineer", "PREPARED")
     R.upsert("Acme", "Architect", "PREPARED")
     R.add_note("Acme", "gmail: INTERVIEW", status="INTERVIEW")
     rows = R.load()

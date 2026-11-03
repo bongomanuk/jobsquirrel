@@ -46,8 +46,9 @@ duplicate row or key, a `queue.done` entry with no row, a `SUBMITTED` row with n
 provenance, a stale `state/counts.md`, a PREPARED row whose application email was
 actually sent with attachments, an INTERVIEW row with no invitation in its notes,
 or a finished queue alias of a register row). `SUBMITTED` is refused without
-provenance, and the send path advances PREPARED on an application email. Repair
-with `--dedupe`,
+provenance, which is written by the submission action itself (hash, snapshot,
+gate receipt, then ledger + status); an application email does the same
+automatically. Repair with `--dedupe`,
 `--backfill`, `--backfill-done` and `--record-provenance-gaps`; `--stats`
 regenerates `state/counts.md`, which is never edited by hand.
 

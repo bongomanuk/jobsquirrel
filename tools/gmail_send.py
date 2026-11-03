@@ -238,8 +238,7 @@ def main():
                                 + ", ".join(n for _, n in attached_paths) + " attached")
                     cmd = [sys.executable, os.path.join(ROOT, "tools", "record_submission.py"),
                            "--company", company, "--role", role, "--ats", "Email",
-                           "--status", "SUBMITTED", "--evidence", evidence,
-                           "--inferred", "--force"]
+                           "--status", "SUBMITTED", "--evidence", evidence]
                     if cv:
                         cmd += ["--cv", cv]
                     if letter:

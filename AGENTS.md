@@ -98,9 +98,12 @@ reports a clean config.
    PREPARED row whose application email was actually sent with attachments, an
    INTERVIEW row with no invitation in its notes, and a finished queue row that
    is really a second identity of a register role. `SUBMITTED` is refused
-   without a provenance row (annotate a pre-ledger row with "provenance not
-   recorded"), and an approved send carrying the CV/letter advances PREPARED to
-   SUBMITTED automatically.
+   without a provenance row, and provenance is created by the submission itself:
+   `record_submission.py` hashes and snapshots the exact files, verifies the gate
+   receipt, then writes the ledger and the status. An approved email carrying
+   the CV/letter does the same automatically. The only exemption is a row that
+   already carries "provenance not recorded" from `--record-provenance-gaps`; it
+   cannot be used as a shortcut on a new claim.
    Repair with `--dedupe` (merge duplicates), `--backfill-done` (record handled
    roles that were never registered), `--record-provenance-gaps` (annotate rows
    that predate provenance logging) and `--backfill` (resync key/apply_url).

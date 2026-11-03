@@ -139,13 +139,18 @@ def provenance(company, role):
 
 
 def _submitted_guard(company, role, status, note=""):
-    """SUBMITTED must be backed by a provenance row, unless it is a known
-    pre-ledger backfill (annotated 'provenance not recorded')."""
+    """SUBMITTED must be backed by a provenance row.
+
+    The only exemption is a row that ALREADY carries the pre-ledger annotation
+    "provenance not recorded" (written by --record-provenance-gaps), so the
+    annotation cannot be used as a shortcut on a new claim.
+    """
     if (status or "").upper() != "SUBMITTED":
         return
     if provenance(company, role):
         return
-    if "provenance not recorded" in (note or "").lower():
+    existing = find_row(company, role)
+    if existing and "provenance not recorded" in (existing.get("notes") or "").lower():
         return
     raise ValueError(
         "refusing SUBMITTED without a submissions.csv provenance row: send it "
