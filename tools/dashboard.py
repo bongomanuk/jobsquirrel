@@ -1614,8 +1614,30 @@ def live():
         if cand:
             tail_name = max(cand)[1]
             tail = read_task_log(tail_name)["curated"][-150:]
-    proc = _ACT.get("proc")
-    act_running = bool(proc and proc.poll() is None)
+    if (action_alive() or active) and not tail:
+        # A dashboard action (or its scoped queue) is running (prepare/submit), which
+        # the queue watcher does not see. Show the newest role log it is writing,
+        # so the Activity pane is not blank while the agent works.
+        act_proc = _ACT.get("proc")
+        act_started = _ACT.get("t0") or 0
+        recent = []
+        try:
+            now = time.time()
+            for f in os.listdir(LOGS):
+                if not f.endswith(".log"):
+                    continue
+                if f.startswith(("dashboard-", "chat-", "delegated-")):
+                    continue
+                path = os.path.join(LOGS, f)
+                mt = os.path.getmtime(path)
+                if mt >= act_started - 5 and now - mt < 900:
+                    recent.append((mt, f[:-4]))
+        except OSError:
+            recent = []
+        if recent:
+            tail_name = max(recent)[1]
+            tail = read_task_log(tail_name)["curated"][-60:]
+    act_running = action_alive()
     delegated = delegated_live()
     act_lines = action_log(4000)
     # The pane is for CURRENT activity. A finished action keeps its name and
@@ -2961,13 +2983,15 @@ ACTIONS = {
 }
 
 
-_ACT = {"name": "", "proc": None, "offset": 0, "t0": 0}
+_ACT = {"name": "", "proc": None, "offset": 0, "t0": 0, "pid": 0}
 ACT_FILE = os.path.join(LOGS, "dashboard-activity.json")
 
 
 def _act_save():
     try:
-        json.dump({k: _ACT.get(k) for k in ("name", "offset", "t0")}, open(ACT_FILE, "w"))
+        _ACT["pid"] = _ACT["proc"].pid if _ACT.get("proc") else _ACT.get("pid", 0)
+        json.dump({k: _ACT.get(k) for k in ("name", "offset", "t0", "pid")},
+                  open(ACT_FILE, "w"))
     except OSError:
         pass
 
@@ -2979,10 +3003,19 @@ def _act_load():
     try:
         with open(ACT_FILE, encoding="utf-8") as fh:
             d = json.load(fh)
-        for k in ("name", "offset", "t0"):
+        for k in ("name", "offset", "t0", "pid"):
             _ACT[k] = d.get(k, _ACT.get(k))
     except (OSError, ValueError):
         pass
+
+
+def action_alive():
+    """True if the action process is ours, including after a server restart
+    (the pid is restored from dashboard-activity.json)."""
+    p = _ACT.get("proc")
+    if p is not None:
+        return p.poll() is None
+    return _pid_alive(_ACT.get("pid")) if _ACT.get("pid") else False
 
 
 def action_log(n=100):
@@ -3134,8 +3167,7 @@ PAUSE_FILE = os.path.join(STATE, "queue.pause")
 
 
 def process_running():
-    p = _ACT.get("proc")
-    return bool(p and p.poll() is None)
+    return action_alive()
 
 
 def stop_action():
