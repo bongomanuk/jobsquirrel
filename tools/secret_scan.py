@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 HOME = Path.home()
 PRIVATE_FILES = (
     HOME / ".config" / "job-search" / "agent.json",
+    HOME / ".config" / "job-search" / "secrets.json",
     ROOT / "kb" / "graphrag" / ".env",
 )
 SECRET_NAME = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)", re.I)
@@ -41,6 +42,22 @@ def _clean(value):
     return value
 
 
+def _walk_secret_values(node, key=""):
+    """Strings inside the central store that are actually secret."""
+    out = set()
+    if isinstance(node, dict):
+        for k, v in node.items():
+            out |= _walk_secret_values(v, str(k))
+    elif isinstance(node, list):
+        for v in node:
+            out |= _walk_secret_values(v, key)
+    elif (isinstance(node, str) and SECRET_NAME.search(key) and len(node) >= 16
+          and not key.lower().endswith(("_uri", "_url", "_type"))
+          and not node.startswith(("http://", "https://"))):
+        out.add(node)
+    return out
+
+
 def _private_values():
     values = set()
     for path in PRIVATE_FILES:
@@ -52,6 +69,10 @@ def _private_values():
             try:
                 data = json.loads(text)
             except ValueError:
+                continue
+            if isinstance(data.get("sections"), dict):
+                for sec in data["sections"].values():
+                    values |= {_clean(v) for v in _walk_secret_values(sec)}
                 continue
             env = data.get("env") if isinstance(data.get("env"), dict) else {}
             for name, value in env.items():

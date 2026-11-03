@@ -127,14 +127,15 @@ pipeline can add interview events. `--check --days N` lists upcoming events.
 To ground generated documents in **your own documents** (with citations), set up
 the knowledge base, see [KNOWLEDGE-BASE.md](KNOWLEDGE-BASE.md) and `kb/README.md`:
 put your docs in `kb/sources/`, configure `kb/graphrag/settings.yaml` +
-`kb/graphrag/.env`, then build the index with
+the secrets store (mirrored to `kb/graphrag/.env`), then build the index with
 `python3 -m graphrag index --root kb/graphrag`. `tools/kb_graphrag.py` then builds
 a cited context pack per role (`state/kb-context/<key>.md`). The targeted CVs and letters are generated from it.
 
 ## 7. Per-site credentials (optional)
 
 `tools/accounts.py --for <url>` stores (or creates) a strong password per host,
-outside the repo (default `~/.config/job-search/accounts.json`, mode 0600). Use
+in the central secrets store (default `~/.config/job-search/secrets.json`, mode
+0600; Settings → Secrets). Use
 `--get`, `--list`, `--random`.
 
 ## 8. Verify

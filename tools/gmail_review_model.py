@@ -5,7 +5,11 @@ import json
 import gzip
 import os
 import re
+import sys
 import urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import secrets_store as SS  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE = os.path.join(ROOT, "state")
@@ -15,9 +19,13 @@ CFG = os.path.join(os.path.expanduser("~"), ".config", "job-search", "agent.json
 def _cfg():
     try:
         with open(CFG, encoding="utf-8") as fh:
-            return json.load(fh)
+            cfg = json.load(fh)
     except (OSError, ValueError):
-        return {}
+        cfg = {}
+    legacy = cfg.get("env") if isinstance(cfg.get("env"), dict) else {}
+    cfg["env"] = {**legacy, **{k: v for k, v in SS.section("agent").items()
+                              if isinstance(v, str)}}
+    return cfg
 
 
 def _plain(body):

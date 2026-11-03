@@ -134,6 +134,19 @@ def checks():
     add("browser:camoufox", _has_module("camoufox"),
         "" if _has_module("camoufox") else "pip install camoufox && camoufox fetch", warn=True)
 
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import secrets_store as SS
+        st = SS.check()
+        mig = SS.migration_status()
+        detail = f"{st['path']} ({st['mode'] or 'not created yet'})"
+        if mig.get("needed"):
+            detail += f"; {len(mig['needed'])} source(s) to import"
+        add("secrets", st["ok"] and not mig.get("needed"), detail,
+            warn=True)
+    except Exception as exc:
+        add("secrets", False, f"secrets store unreadable: {exc}", warn=True)
+
     reg = os.path.join(ROOT, "tools", "register.py")
     csvp = os.environ.get("APPLICATIONS_CSV", os.path.join(STATE, "applications.csv"))
     if not os.path.isfile(csvp):

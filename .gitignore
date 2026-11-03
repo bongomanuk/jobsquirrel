@@ -8,6 +8,8 @@ credentials.json
 token.json
 *.token
 .env
+secrets.json
+secrets-backup-*/
 
 # Python
 .venv/

@@ -28,7 +28,8 @@ walk you through the steps below either way.
 You need a capable coding agent and a model key to drive the pipeline (opencode,
 Claude Code, Cursor, …). If you also use the knowledge base (GraphRAG), it needs
 its own LLM + embeddings key, see [KNOWLEDGE-BASE.md](KNOWLEDGE-BASE.md). Keep
-those keys in the agent's environment and in `kb/graphrag/.env`; never commit them.
+those keys in the central secrets store (**Settings → Secrets**); GraphRAG reads a
+0600 mirror at `kb/graphrag/.env`. Never commit them.
 
 ## 1. Camoufox browser (required to apply)
 
@@ -83,7 +84,7 @@ pipeline anywhere. `config/google.json` (see `config/google.example.json`):
 | `config_dir` | folder holding the client/token (default `~/.config/job-search`) |
 | `credentials` | `credentials.json`, absolute or relative to `config_dir` |
 | `token` | `token.json`, absolute or relative to `config_dir` |
-| `client_id` / `client_secret` | paste these here (Settings → Accounts) and the pipeline writes `credentials.json` |
+| `client_id` / `client_secret` | paste these in Settings → Accounts; they are stored in the secrets store and `credentials.json` is written from it |
 
 Environment overrides win over the file: `GMAIL_CONFIG_DIR`, `GMAIL_CREDENTIALS`,
 `GMAIL_TOKEN` (and `JOBSQUIRREL_GOOGLE_CONFIG` to relocate `google.json` itself).
@@ -208,8 +209,11 @@ and approve).
 
 ## 6. Secrets & privacy
 
-- Everything sensitive lives in `~/.config/job-search/` (`credentials.json`,
-  `token.json`, `accounts.json`, `*-profile/`), **outside** the repo.
+- Everything sensitive lives in `~/.config/job-search/`, **outside** the repo:
+  the single secrets store (`secrets.json`, 0600), the `credentials.json` /
+  `token.json` caches Google's libraries read, and the `*-profile/` browser
+  profiles. `accounts.json` is imported into the store and archived as
+  `accounts.json.migrated`.
 - `.gitignore` excludes `config/*.md|json` (your data), `state/`, `documents/`
   generated content, and `kb/` sources/indices.
 - Revoke access any time: https://myaccount.google.com/permissions.
@@ -228,3 +232,28 @@ bash tools/setup_accounts.sh --check       # status of every account above
 | Google Calendar | optional | `gmail_calendar_auth.py --check` |
 | LinkedIn | optional | login persists in the profile |
 | Per-site credentials | as needed | `accounts.py --list` |
+
+## The secrets store
+
+Every secret the app uses has one home: `~/.config/job-search/secrets.json`,
+mode 0600 in a 0700 directory, managed from **Settings → Secrets** or:
+
+```bash
+python3 tools/secrets_store.py --list          # masked values only
+python3 tools/secrets_store.py --check         # permissions + syntax
+python3 tools/secrets_store.py --migrate       # import legacy files once
+printf '%s' "$KEY" | python3 tools/secrets_store.py --set agent OPENROUTER_API_KEY
+python3 tools/accounts.py --get jobs.example.com
+```
+
+Sections are `agent` (model/API keys), `graphrag` (knowledge-graph LLM),
+`google` (OAuth client id/secret plus the serialized credential/token files),
+`accounts` (per-site logins) and `custom`. The dashboard only ever receives
+masked values. Files that third-party code must read (`credentials.json`,
+`token.json`, `kb/graphrag/.env`) are regenerated from the store with 0600.
+
+Existing installs are migrated automatically on the next dashboard start: agent
+keys leave `agent.json`, the Google client id/secret leave `config/google.json`,
+and `accounts.json` is archived. A timestamped copy of every touched file is
+written beside the store in `secrets-backup-*/`.
+

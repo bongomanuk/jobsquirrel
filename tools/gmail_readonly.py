@@ -63,6 +63,7 @@ def _import_google():
 
 def authenticate(force=False):
     Credentials, InstalledAppFlow, Request, build = _import_google()
+    GC.hydrate()                     # recreate credentials/token from the secrets store
     if not os.path.isfile(CREDENTIALS):
         print(f"credentials.json not found at {CREDENTIALS}\n"
               f"See state/gmail-setup.md for how to create it.", file=sys.stderr)
@@ -93,6 +94,11 @@ def authenticate(force=False):
         with open(TOKEN, "w") as fh:
             fh.write(creds.to_json())
         os.chmod(TOKEN, 0o600)
+        try:
+            GC.capture()
+        except Exception as exc:      # the file is still usable; just warn
+            print(f"warning: could not copy the token into the secrets store: {exc}",
+                  file=sys.stderr)
     return build("gmail", "v1", credentials=creds)
 
 

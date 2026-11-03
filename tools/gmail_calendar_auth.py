@@ -37,6 +37,7 @@ def _import_google():
 
 def authenticate():
     Credentials, InstalledAppFlow, Request, build = _import_google()
+    GC.hydrate()                     # recreate credentials/token from the secrets store
     creds = None
     if os.path.exists(TOKEN):
         creds = Credentials.from_authorized_user_file(TOKEN, CALENDAR_SCOPES)
@@ -52,6 +53,12 @@ def authenticate():
             creds = flow.run_local_server(port=0)
         with open(TOKEN, "w") as f:
             f.write(creds.to_json())
+        os.chmod(TOKEN, 0o600)
+        try:
+            GC.capture()
+        except Exception as exc:
+            print(f"warning: could not copy the token into the secrets store: {exc}",
+                  file=sys.stderr)
     return creds
 
 

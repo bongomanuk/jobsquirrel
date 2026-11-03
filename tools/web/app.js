@@ -231,6 +231,7 @@ const App = {
     document.querySelectorAll('.set-nav a').forEach(a => a.classList.toggle('on', a.dataset.s === CF_SEC));
     const b = $('#set-body'); b.innerHTML = '<span class="muted">loading…</span>';
     if (CF_SEC === 'accounts') return setAccounts(b);
+    if (CF_SEC === 'secrets') return setSecrets(b);
     if (CF_SEC === 'ai') return setAI(b);
     if (CF_SEC === 'kb') return setKB(b);
     if (CF_SEC === 'graph') return setGraph(b);
@@ -239,6 +240,54 @@ const App = {
     return setProfile(b);
   },
   auth: async (kind) => { const d = await api('/api/accounts/auth', { kind }); toast(d.ok || d.error, !!d.error); },
+  secretSave: async (section, name, value, user) => {
+    const v = section === 'accounts' ? { password: value, username: user || '' } : value;
+    const d = await api('/api/secrets', { section, name, value: v });
+    toast(d.ok || d.error, !!d.error);
+    if (!d.error) App.settings('secrets');
+  },
+  secretAdd: async (section) => {
+    if (section === 'accounts') {
+      const host = ($('#add-accounts-host') || {}).value || '';
+      const user = ($('#add-accounts-user') || {}).value || '';
+      const pass = ($('#add-accounts-pass') || {}).value || '';
+      if (!host.trim() || !pass) return toast('host and password are required', true);
+      return App.secretSave('accounts', host.trim(), pass, user.trim());
+    }
+    if (section === 'custom') {
+      const sec = (($('#add-custom-section') || {}).value || 'custom').trim().toLowerCase();
+      const name = (($('#add-custom-name') || {}).value || '').trim();
+      const val = ($('#add-custom-value') || {}).value || '';
+      if (!name || !val) return toast('name and value are required', true);
+      return App.secretSave(sec || 'custom', name, val);
+    }
+    const name = (($('#add-' + section + '-name') || {}).value || '').trim();
+    const val = ($('#add-' + section + '-value') || {}).value || '';
+    if (!name || !val) return toast('name and value are required', true);
+    return App.secretSave(section, name, val);
+  },
+  secretEdit: (btn) => {
+    const row = btn.closest('[data-sec]'); if (!row) return;
+    const inp = row.querySelector('[data-new]');
+    if (!inp) return;
+    if (inp.style.display === 'none') {
+      inp.style.display = ''; inp.focus(); btn.textContent = 'Save'; return;
+    }
+    if (!inp.value) return toast('type a new value first', true);
+    App.secretSave(row.dataset.sec, row.dataset.name, inp.value, row.dataset.user || '');
+  },
+  secretDel: async (btn) => {
+    const row = btn.closest('[data-sec]'); if (!row) return;
+    if (!window.confirm(`Delete ${row.dataset.name} from the secrets store?`)) return;
+    const d = await api('/api/secrets/delete', { section: row.dataset.sec, name: row.dataset.name });
+    toast(d.ok || d.error, !!d.error);
+    if (!d.error) App.settings('secrets');
+  },
+  secretMigrate: async () => {
+    const d = await api('/api/secrets/migrate', {});
+    toast(d.error ? d.error : 'existing secrets imported', !!d.error);
+    if (!d.error) App.settings('secrets');
+  },
   backupDownload: async () => {
     const docs = $('#bk-docs') && $('#bk-docs').checked ? '1' : '0';
     toast('building the backup…');
@@ -2181,6 +2230,75 @@ async function setData(b) {
     </div>`;
 }
 const fmtSize = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n > 1024 ? (n / 1024).toFixed(0) + ' KB' : n + ' B';
+function secretRowHTML(sec, r) {
+  return `<div class="row" data-sec="${sec}" data-name="${esc(r.name)}" data-user="${esc(r.username || '')}" style="margin:3px 0;align-items:center">
+    <code style="min-width:210px">${esc(r.name)}</code>
+    ${r.username ? `<span class="muted mini" style="max-width:190px;overflow:hidden;text-overflow:ellipsis">${esc(r.username)}</span>` : ''}
+    <span class="muted mini" data-mask>${r.set ? esc(r.value) : 'not set'}</span>
+    <input type="password" data-new autocomplete="new-password" placeholder="new value" style="flex:1;display:none">
+    <button class="small" onclick="App.secretEdit(this)">Replace</button>
+    <button class="small" onclick="App.secretDel(this)" title="delete">✕</button>
+  </div>`;
+}
+
+async function setSecrets(b) {
+  const d = await api('/api/secrets');
+  if (!d || d.error) {
+    b.innerHTML = `<p class="bad">${esc((d && d.error) || 'could not read the secrets store')}</p>`;
+    return;
+  }
+  const known = d.known || {}, secs = d.sections || {};
+  const rows = (s) => (secs[s] || []).map(r => secretRowHTML(s, r)).join('') ||
+    '<span class="muted mini">nothing stored</span>';
+  const problem = (d.problems || []).map(x => `<div class="bad mini">${esc(x)}</div>`).join('');
+  const needed = ((d.migration || {}).needed || []);
+  const opt = (k) => `<option>${esc(k)}</option>`;
+  const extra = Object.keys(secs).filter(s => !['agent', 'graphrag', 'google', 'accounts'].includes(s));
+  const block = (title, hint, sec, add) => `<div style="margin-top:16px">
+      <h4 style="margin:0 0 2px">${title}</h4>
+      <div class="muted mini" style="margin-bottom:6px">${hint}</div>
+      <div>${rows(sec)}</div>${add}</div>`;
+  b.innerHTML = `<p class="muted">Every secret the app uses lives in one store outside the repo:
+      <code>${esc(d.path)}</code> · <b>${d.exists ? esc(d.mode) : 'not created yet'}</b>.
+      Only masked forms are returned here - replacing a value writes it straight to the store.
+      Files that Google's libraries and GraphRAG read (<code>credentials.json</code>, <code>token.json</code>,
+      <code>kb/graphrag/.env</code>) are regenerated from the store at 0600.</p>
+    ${problem}
+    ${needed.length ? `<div class="row" style="margin:6px 0"><span class="muted mini">Found ${needed.length} existing
+        secret source(s) outside the store.</span>
+      <button onclick="App.secretMigrate()">Import existing secrets</button></div>` : ''}
+    ${block('Model &amp; agent keys', 'Used by the dashboard, the queue and every agent run.',
+      'agent', `<div class="row" style="margin-top:6px">
+        <input id="add-agent-name" list="secret-agent-known" placeholder="KEY name" style="max-width:230px">
+        <datalist id="secret-agent-known">${(known.agent || []).map(opt).join('')}</datalist>
+        <input id="add-agent-value" type="password" autocomplete="new-password" placeholder="value" style="flex:1">
+        <button onclick="App.secretAdd('agent')">＋ Add</button></div>`)}
+    ${block('GraphRAG', 'The LLM/embeddings endpoint for the knowledge graph.',
+      'graphrag', `<div class="row" style="margin-top:6px">
+        <input id="add-graphrag-name" list="secret-graphrag-known" placeholder="KEY name" style="max-width:230px">
+        <datalist id="secret-graphrag-known">${(known.graphrag || []).map(opt).join('')}</datalist>
+        <input id="add-graphrag-value" type="password" autocomplete="new-password" placeholder="value" style="flex:1">
+        <button onclick="App.secretAdd('graphrag')">＋ Add</button></div>`)}
+    ${block('Google OAuth', 'The client id/secret and the serialized token. Paste a new client in Accounts; authorise there too.',
+      'google', `<div class="muted mini" style="margin-top:4px">credentials: ${d.google && d.google.credentials ? 'in store' : 'not in store'}
+        · token: ${d.google && d.google.token ? 'in store' : 'not in store'}
+        · token-modify: ${d.google && d.google.token_modify ? 'in store' : 'not in store'}</div>`)}
+    ${block('Per-site logins', 'Used when an application form asks you to sign in.',
+      'accounts', `<div class="row" style="margin-top:6px">
+        <input id="add-accounts-host" placeholder="site host" style="max-width:220px">
+        <input id="add-accounts-user" placeholder="username / email" style="max-width:210px">
+        <input id="add-accounts-pass" type="password" autocomplete="new-password" placeholder="password" style="flex:1">
+        <button onclick="App.secretAdd('accounts')">＋ Add</button></div>`)}
+    ${extra.length ? extra.map(s => `<div style="margin-top:16px"><h4 style="margin:0 0 4px">${esc(s)}</h4>${rows(s)}</div>`).join('') : ''}
+    <div style="margin-top:16px"><h4 style="margin:0 0 2px">Other secrets</h4>
+      <div class="muted mini" style="margin-bottom:6px">Free-form entries for anything else a tool needs.</div>
+      <div class="row" style="margin-top:6px">
+        <input id="add-custom-section" placeholder="section (custom)" style="max-width:160px">
+        <input id="add-custom-name" placeholder="name" style="max-width:200px">
+        <input id="add-custom-value" type="password" autocomplete="new-password" placeholder="value" style="flex:1">
+        <button onclick="App.secretAdd('custom')">＋ Add</button></div></div>`;
+}
+
 async function setAccounts(b) {
   const [d, g] = await Promise.all([api('/api/accounts'), api('/api/google')]);
   const sc = g.scopes || [];
@@ -2276,8 +2394,8 @@ async function setAI(b) {
   const grRows = (g.keys || []).map(k =>
     `<div class="row" style="margin:3px 0"><code style="min-width:190px">${esc(k)}</code>
       <input data-gr="${esc(k)}" placeholder="${esc(g.vars[k])} (blank = keep)" style="flex:1" onchange="App.saveGR()"></div>`).join('');
-  b.innerHTML = `<p class="muted">Which LLM/agent runs the pipeline. Changes save automatically. Token values are stored outside the repo
-      (<code>${esc(a.config_path)}</code>, 0600) and shown masked.</p>
+  b.innerHTML = `<p class="muted">Which LLM/agent runs the pipeline. Changes save automatically. Keys live in the central
+      secrets store (<code>${esc(a.secrets_path || '')}</code>, 0600) and are shown masked.</p>
     <div class="row" style="margin:6px 0"><b>Detected:</b>
       ${detected.length ? detected.map(x => `<span class="pill">${esc(x)}</span>`).join(' ')
         : '<span class="muted">none on PATH</span>'}
@@ -2315,7 +2433,7 @@ async function setAI(b) {
       <datalist id="ai-known">${(a.known_keys || []).map(k => `<option>${esc(k)}</option>`).join('')}</datalist>
       <input id="ai-env-v" placeholder="value" style="flex:1"><button onclick="App.aiAdd()">＋ Add</button></div>
     <div class="row" style="margin-top:10px"><span class="muted mini">Agent/model are saved automatically and read by every runner via tools/agent_run.sh.</span></div>
-    <h4 style="margin:18px 0 4px">GraphRAG LLM (<code>kb/graphrag/.env</code>)</h4>
+    <h4 style="margin:18px 0 4px">GraphRAG LLM (stored in Secrets, mirrored to <code>kb/graphrag/.env</code>)</h4>
     <div id="ai-gr">${grRows || '<span class="muted mini">no .env yet</span>'}</div>
     <div class="row" style="margin-top:8px"><span class="muted mini">Changes save immediately. Used by the knowledge graph (same OPENCODE_API_KEY works for both).</span></div>`;
   const initialModel = $('#ai-model-sel');

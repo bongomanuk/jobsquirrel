@@ -14,10 +14,21 @@ fi
 CFG="${GMAIL_CONFIG_DIR:-$CONFIG_DIR}"
 CREDS="${CREDENTIALS:-$CFG/credentials.json}"
 TOKENP="${TOKEN:-$CFG/token.json}"
-ACCOUNTS="${ACCOUNTS_FILE:-$CFG/accounts.json}"
 
 echo "Account / credential status"
 echo "  config dir: $CFG"
+if "$PY" "$ROOT/tools/secrets_store.py" --check >/dev/null 2>&1; then
+  STORE="$("$PY" - "$ROOT" <<'EOF'
+import sys
+sys.path.insert(0, sys.argv[1] + "/tools")
+import secrets_store as S
+print(S.path())
+EOF
+)"
+  echo "  OK    Secrets store ($STORE)"
+else
+  echo "  TODO  Secrets store needs attention: python3 tools/secrets_store.py --check"
+fi
 echo
 
 ok()   { echo "  OK    $1"; }
@@ -72,15 +83,18 @@ else
 fi
 
 # 4. Per-site credentials
-if [ -f "$ACCOUNTS" ]; then
-  n="$("$PY" - "$ACCOUNTS" <<'EOF' 2>/dev/null
-import json,sys
+n="$("$PY" - "$ROOT" <<'EOF' 2>/dev/null
+import sys
+sys.path.insert(0, sys.argv[1] + "/tools")
 try:
-    d=json.load(open(sys.argv[1])); print(len(d) if isinstance(d,dict) else 0)
-except Exception: print(0)
+    import secrets_store as S
+    print(len(S.section("accounts")))
+except Exception:
+    print(0)
 EOF
 )"
-  ok "Per-site credentials ($n host(s) in $ACCOUNTS)"
+if [ "${n:-0}" -gt 0 ]; then
+  ok "Per-site credentials ($n host(s) in the secrets store)"
 else
   echo "  --    No per-site credentials yet (fine) — created on demand:"
   echo "        python3 tools/accounts.py --for <url>"
@@ -91,7 +105,7 @@ if [ -n "${GRAPHRAG_API_KEY:-}${OPENAI_API_KEY:-}${ANTHROPIC_API_KEY:-}${OPENCOD
   ok "An LLM API key is present in the environment"
 else
   echo "  --    No LLM key detected in this shell (the agent host may provide it elsewhere)."
-  echo "        GraphRAG uses kb/graphrag/.env (GRAPHRAG_API_KEY, GRAPHRAG_API_BASE, GRAPHRAG_LLM_MODEL)."
+  echo "        GraphRAG keys live in the secrets store (mirrored to kb/graphrag/.env)."
 fi
 
 echo

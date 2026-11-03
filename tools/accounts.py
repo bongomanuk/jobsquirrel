@@ -3,8 +3,8 @@
 
 Platform-agnostic: keyed by the site's host, so it works for whatever platform an
 agent lands on (Workday tenant, SuccessFactors, Ashby, a company's own careers
-site, ...). Stored OUTSIDE the repo at ~/.config/job-search/accounts.json (0600),
-so passwords are never committed.
+site, ...). Stored in the central secrets store (tools/secrets_store.py), which
+lives outside the repo at ~/.config/job-search/secrets.json (0600).
 
 Usage:
   # ask for credentials for a site; creates a strong password if none exists
@@ -22,6 +22,9 @@ import os
 import secrets
 import string
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import secrets_store as SS  # noqa: E402  central 0600 store, outside the repo
 from datetime import date
 from urllib.parse import urlparse
 
@@ -31,17 +34,23 @@ ALPHABET = string.ascii_letters + string.digits + "!@#$%^&*-_=+"
 
 
 def load():
-    if not os.path.isfile(PATH):
-        return {}
-    with open(PATH, encoding="utf-8") as fh:
-        return json.load(fh)
+    """Per-site logins from the central store (legacy file fallback on first run)."""
+    data = SS.section("accounts")
+    if data:
+        return data
+    if os.path.isfile(PATH):          # not migrated yet
+        try:
+            with open(PATH, encoding="utf-8") as fh:
+                legacy = json.load(fh)
+            if isinstance(legacy, dict):
+                return legacy
+        except (OSError, ValueError):
+            pass
+    return {}
 
 
 def save(data):
-    os.makedirs(os.path.dirname(PATH), exist_ok=True)
-    with open(PATH, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
-    os.chmod(PATH, 0o600)
+    SS.set_section("accounts", data)
 
 
 def gen_password(n=20):

@@ -129,7 +129,14 @@ reports a clean config.
    read "skills" as coding-agent skill packages, plugins, MCP servers or IDE
    extensions unless the user explicitly says their *career* isn't the topic.
    Read their projects/sites through the gate (rule 9) to gather the facts.
-11. **The browser is Camoufox — never Chromium.** Every browser action goes through
+11. **Secrets live in the store.** API keys, OAuth client secrets, per-site
+    passwords and GraphRAG settings belong in `~/.config/job-search/secrets.json`
+    (0600), managed with `tools/secrets_store.py` and visible in **Settings →
+    Secrets**. Never write a secret into `config/`, a tracked `.env`, a prompt or
+    a command line. For a site login, ask `python3 tools/accounts.py --get <host>`;
+    for an API key, read the environment (the runners inject it) or
+    `tools/secrets_store.py --get <section> <name>`.
+12. **The browser is Camoufox — never Chromium.** Every browser action goes through
    `tools/camoufox_server.py` + `tools/camoufox_browser.py`. Do **not** use
    Playwright, Chromium, Chrome, headless_shell or pinchtab anywhere in this
    project (applying, verifying, screenshots, testing the dashboard). Playwright's

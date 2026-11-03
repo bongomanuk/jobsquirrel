@@ -58,3 +58,27 @@ def test_which_errors_when_configured_agent_is_missing(tmp_path):
     r = _which(tmp_path, agent="definitely-not-installed-xyz")
     assert r.returncode == 127
     assert "is not installed" in r.stderr
+
+
+def test_secret_store_feeds_agent_env(tmp_path):
+    import json
+    agent = tmp_path / "mycli"
+    agent.write_text("#!/bin/sh\necho \"KEY=${OPENROUTER_API_KEY:-missing}\"\n"
+                     "echo \"BASE=${LOCAL_LLM_BASE_URL:-missing}\"\n")
+    agent.chmod(agent.stat().st_mode | stat.S_IXUSR)
+    (tmp_path / "agent.json").write_text(json.dumps(
+        {"agent": str(agent), "model": "m", "models": {str(agent): "m"}}))
+    store = {"version": 1, "sections": {"agent": {
+        "OPENROUTER_API_KEY": "sk-test-1234567890",
+        "LOCAL_LLM_BASE_URL": "http://127.0.0.1:8080/v1"}}}
+    (tmp_path / "secrets.json").write_text(json.dumps(store))
+    env = dict(os.environ)
+    env.pop("AGENT", None)
+    env.pop("OPENROUTER_API_KEY", None)
+    env.pop("LOCAL_LLM_BASE_URL", None)
+    env["AGENT_CFG"] = str(tmp_path / "agent.json")
+    env["JOBSQUIRREL_SECRETS"] = str(tmp_path / "secrets.json")
+    r = subprocess.run([BASH, AGENT_RUN, "test"], capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stderr
+    assert "KEY=sk-test-1234567890" in r.stdout
+    assert "BASE=http://127.0.0.1:8080/v1" in r.stdout

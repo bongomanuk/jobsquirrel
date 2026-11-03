@@ -33,6 +33,7 @@ from urllib.parse import urlparse, parse_qs, quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import stateio  # noqa: E402  transparent gzip for state/ artifacts
+import secrets_store as SS  # noqa: E402  central 0600 store, outside the repo
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE = os.environ.get("DASHBOARD_STATE", os.path.join(ROOT, "state"))
@@ -1614,7 +1615,12 @@ def live():
         if cand:
             tail_name = max(cand)[1]
             tail = read_task_log(tail_name)["curated"][-150:]
-    if (action_alive() or active) and not tail:
+    if not tail:
+        dl = delegated_live()
+        if dl:
+            tail_name = dl[-1]["log"]
+            tail = [{"t": l} for l in read_task_log(tail_name)["raw"][-20:] if l.strip()]
+    if not tail and (action_alive() or active):
         # A dashboard action (or its scoped queue) is running (prepare/submit), which
         # the queue watcher does not see. Show the newest role log it is writing,
         # so the Activity pane is not blank while the agent works.
@@ -1771,7 +1777,8 @@ def _safe_path(rel):
             return None
     elif not p.startswith(home + os.sep):
         return None
-    if any(x in p.lower() for x in ("token", "credential", ".env", "accounts.json", ".ssh", ".gnupg")):
+    if any(x in p.lower() for x in ("token", "credential", ".env", "accounts.json",
+                                   "secrets.json", ".ssh", ".gnupg")):
         return None
     return p
 
@@ -2202,6 +2209,15 @@ GMAIL_REVIEW_ACK = os.path.join(STATE, "gmail-review-ack.json")
 GMAIL_REVIEW_CFG = os.path.join(ROOT, "config", "gmail-review.json")
 
 
+def _stored_agent_env():
+    """Agent secrets from the central store (strings only)."""
+    try:
+        return {str(k): str(v) for k, v in SS.section("agent").items()
+                if v is not None and not isinstance(v, (dict, list))}
+    except SS.SecretsError:
+        return {}
+
+
 def load_agent_cfg():
     try:
         with open(AGENT_CFG_FILE, encoding="utf-8") as fh:
@@ -2210,10 +2226,12 @@ def load_agent_cfg():
         models = {str(k)[:200]: str(v)[:200] for k, v in models.items() if v}
         agent = d.get("agent", "") or ""
         model = (d.get("model", "") or "").strip() or models.get(agent, "")
-        return {"agent": agent, "model": model, "models": models,
-                "env": d.get("env", {}) or {}}
+        legacy = d.get("env") if isinstance(d.get("env"), dict) else {}
+        env = {str(k): str(v) for k, v in legacy.items() if v is not None}
+        env.update(_stored_agent_env())        # the store wins
+        return {"agent": agent, "model": model, "models": models, "env": env}
     except (OSError, ValueError):
-        return {"agent": "", "model": "", "models": {}, "env": {}}
+        return {"agent": "", "model": "", "models": {}, "env": _stored_agent_env()}
 
 
 def save_agent_cfg(d):
@@ -2236,20 +2254,22 @@ def save_agent_cfg(d):
         model = prev["model"]
         if agent and not model:
             model = models.get(agent, "")
-    env = dict(prev["env"])
     for k, v in (d.get("env") or {}).items():
         k = re.sub(r"[^A-Za-z0-9_]", "", str(k))[:80]
         if not k:
             continue
-        if v in ("", None):
-            env.pop(k, None)                      # blank clears
-        else:
-            env[k] = str(v)[:1000]
-    out = {"agent": agent, "model": model, "models": models, "env": env}
+        try:
+            SS.put("agent", k, "" if v in ("", None) else str(v)[:8192])
+        except SS.SecretsError as exc:
+            return {"agent": agent, "model": model, "models": models,
+                    "env": _stored_agent_env(), "error": str(exc)}
+    # agent.json keeps the non-secret choice only; keys live in the store.
+    out = {"agent": agent, "model": model, "models": models}
     os.makedirs(os.path.dirname(AGENT_CFG_FILE), exist_ok=True)
     fd = os.open(AGENT_CFG_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         json.dump(out, fh, indent=2)
+    out["env"] = _stored_agent_env()
     _MODEL_CACHE.update(t=0.0, key="", data={})
     if (prev.get("agent"), prev.get("model")) != (out["agent"], out["model"]):
         # A new provider/model must not resume a conversation built for the old
@@ -2477,47 +2497,73 @@ def agent_config():
     return {"agent": cfg["agent"], "model": cfg["model"], "models": cfg.get("models", {}),
             "env": {k: (v if re.search(r"BASE_URL$", k) else _mask(v)) for k, v in cfg["env"].items()},
             "env_keys": sorted(cfg["env"]), "detected": detected, "which": which,
-            "config_path": AGENT_CFG_FILE,
+            "config_path": AGENT_CFG_FILE, "secrets_path": SS.path(),
             "known_keys": ["OPENROUTER_API_KEY", "LOCAL_LLM_BASE_URL", "LOCAL_LLM_API_KEY",
                            "LLAMACPP_BASE_URL", "OPENCODE_API_KEY",
                            "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]}
 
 
-def graphrag_env():
-    vars_, order = {}, []
+def _graphrag_section():
+    try:
+        sec = SS.section("graphrag")
+    except SS.SecretsError:
+        sec = {}
+    if sec:
+        return sec
+    # First run after upgrading: read the old .env, then migrate() moves it.
+    sec = {}
     for ln in _read(GRAPHRAG_ENV).splitlines():
         s = ln.strip()
         if not s or s.startswith("#") or "=" not in s:
             continue
         k, v = s.split("=", 1)
-        k, v = k.strip(), v.strip()
-        order.append(k)
+        sec[k.strip()] = v.strip()
+    return sec
+
+
+def _write_graphrag_env(sec):
+    """Materialize kb/graphrag/.env (0600) for GraphRAG's own dotenv loader."""
+    os.makedirs(os.path.dirname(GRAPHRAG_ENV), exist_ok=True)
+    lines = ["# Materialized from the secrets store (Settings -> Secrets).",
+             "# Edit there, not here; this file is rewritten."]
+    for k, v in sec.items():
+        if v is None or str(v) == "":
+            continue
+        lines.append(f"{k}={v}")
+    fd = os.open(GRAPHRAG_ENV, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+
+
+def graphrag_env():
+    sec = _graphrag_section()
+    vars_ = {}
+    for k, v in sec.items():
         secret = bool(re.search(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL", k, re.I))
-        vars_[k] = _mask(v) if secret else v
-    return {"path": GRAPHRAG_ENV, "vars": vars_, "keys": order, "exists": os.path.isfile(GRAPHRAG_ENV)}
+        vars_[k] = _mask(str(v)) if secret else str(v)
+    return {"path": GRAPHRAG_ENV, "vars": vars_, "keys": list(sec),
+            "exists": bool(sec) or os.path.isfile(GRAPHRAG_ENV),
+            "store": SS.path()}
 
 
 def save_graphrag_env(updates):
-    lines = _read(GRAPHRAG_ENV).splitlines()
-    updates = {re.sub(r"[^A-Za-z0-9_]", "", str(k))[:80]: str(v)[:1000]
-               for k, v in (updates or {}).items()}
-    seen, out = set(), []
-    for ln in lines:
-        s = ln.strip()
-        if s and not s.startswith("#") and "=" in s:
-            k = s.split("=", 1)[0].strip()
-            if k in updates:
-                seen.add(k)
-                if updates[k] != "":
-                    out.append(f"{k}={updates[k]}")
-                continue
-        out.append(ln)
-    for k, v in updates.items():
-        if k not in seen and v != "":
-            out.append(f"{k}={v}")
-    os.makedirs(os.path.dirname(GRAPHRAG_ENV), exist_ok=True)
-    with open(GRAPHRAG_ENV, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(out).rstrip("\n") + "\n")
+    try:
+        sec = _graphrag_section()
+    except SS.SecretsError as exc:
+        return {"error": str(exc)}
+    for k, v in (updates or {}).items():
+        k = re.sub(r"[^A-Za-z0-9_]", "", str(k))[:80]
+        if not k:
+            continue
+        if v in ("", None):
+            sec.pop(k, None)
+        else:
+            sec[k] = str(v)[:8192]
+    try:
+        SS.set_section("graphrag", sec)
+        _write_graphrag_env(sec)
+    except (SS.SecretsError, OSError) as exc:
+        return {"error": str(exc)}
     return graphrag_env()
 
 
@@ -2613,12 +2659,108 @@ def google_save(data):
     if not upd:
         return {"error": "nothing to save"}
     GC.save(upd)
-    msg = "saved config/google.json"
+    msg = "saved Google settings"
     if GC.load().get("client_id") and GC.load().get("client_secret"):
         written = GC.write_credentials()
         if written:
             msg += f"; wrote {written}"
     return {"ok": msg}
+
+
+# ---------------------------------------------------------------- secrets store
+SECRET_KNOWN = {
+    "agent": ["OPENROUTER_API_KEY", "OPENCODE_API_KEY", "ANTHROPIC_API_KEY",
+              "OPENAI_API_KEY", "LOCAL_LLM_API_KEY", "LLAMACPP_API_BASE",
+              "LOCAL_LLM_BASE_URL"],
+    "graphrag": ["GRAPHRAG_API_KEY", "GRAPHRAG_API_BASE", "GRAPHRAG_LLM_MODEL"],
+    "google": ["client_id", "client_secret"],
+}
+
+
+def secrets_info():
+    try:
+        st = SS.check()
+        data = SS.load()
+        mig = SS.migration_status()
+    except SS.SecretsError as exc:
+        return {"error": str(exc), "path": SS.path()}
+    out = {"path": st["path"], "exists": st["exists"], "mode": st["mode"],
+           "dir_mode": st["dir_mode"], "problems": st["problems"],
+           "sections": {}, "known": SECRET_KNOWN, "migration": mig,
+           "google": {"credentials": False, "token": False, "token_modify": False}}
+    for section, values in data["sections"].items():
+        rows = []
+        if section == "accounts":
+            for name, entry in values.items():
+                entry = entry if isinstance(entry, dict) else {}
+                rows.append({"name": name, "set": bool(entry.get("password")),
+                             "value": "••••••" if entry.get("password") else "",
+                             "username": entry.get("username") or entry.get("email") or "",
+                             "email": entry.get("email") or "",
+                             "created": entry.get("created") or ""})
+        else:
+            for name, value in values.items():
+                rows.append({"name": name, "set": bool(value), "value": SS.mask(value),
+                             "username": "", "email": "", "created": ""})
+                if section == "google" and name in ("credentials", "token", "token_modify"):
+                    out["google"][name] = bool(value)
+        out["sections"][section] = rows
+    return out
+
+
+def secrets_set(section, name, value):
+    section = str(section or "").strip()
+    name = str(name or "").strip()
+    if not section or not name:
+        return {"error": "section and name are required"}
+    try:
+        if section == "accounts":
+            entry = SS.get("accounts", name)
+            entry = dict(entry) if isinstance(entry, dict) else {}
+            if isinstance(value, dict):
+                for k in ("username", "email", "password"):
+                    if value.get(k) not in (None, ""):
+                        entry[k] = str(value[k])[:8192]
+            elif value not in (None, ""):
+                entry["password"] = str(value)[:8192]
+            entry.setdefault("created", time.strftime("%Y-%m-%d"))
+            if not entry.get("password"):
+                return {"error": "a password is required"}
+            SS.put("accounts", name, entry)
+        else:
+            if section == "google" and name in ("credentials", "token", "token_modify") \
+                    and not isinstance(value, dict):
+                return {"error": "that entry must be a JSON object"}
+            SS.put(section, name, value)
+            if section == "google" and name in ("client_id", "client_secret"):
+                sec = SS.section("google")
+                if sec.get("client_id") and sec.get("client_secret"):
+                    sys.path.insert(0, os.path.join(ROOT, "tools"))
+                    import google_config as GC
+                    GC.write_credentials(str(sec.get("client_id")),
+                                         str(sec.get("client_secret")))
+            if section == "agent":
+                _MODEL_CACHE.update(t=0.0, key="", data={})
+    except SS.SecretsError as exc:
+        return {"error": str(exc)}
+    return {"ok": f"saved {section}/{name}", "info": secrets_info()}
+
+
+def secrets_delete(section, name):
+    try:
+        ok = SS.delete(str(section or ""), str(name or ""))
+    except SS.SecretsError as exc:
+        return {"error": str(exc)}
+    return {"ok": "deleted" if ok else "not found", "info": secrets_info()}
+
+
+def secrets_migrate():
+    try:
+        out = SS.migrate()
+    except (SS.SecretsError, OSError) as exc:
+        return {"error": str(exc)}
+    out["info"] = secrets_info()
+    return out
 
 
 # ---------------------------------------------------------------- agent permissions
@@ -3427,13 +3569,10 @@ def accounts():
         text = ANSI.sub("", (r.stdout or "") + (r.stderr or "")).strip()
     except (OSError, subprocess.SubprocessError) as e:
         text = f"check failed: {e}"
-    n = 0
-    acc = os.path.join(ROOT, "config", "accounts.json")
-    if os.path.isfile(acc):
-        try:
-            n = len(json.load(open(acc, encoding="utf-8")))
-        except (OSError, ValueError):
-            n = 0
+    try:
+        n = len(SS.section("accounts"))
+    except SS.SecretsError:
+        n = 0
     return {"text": text, "sites": n}
 
 
@@ -3774,6 +3913,10 @@ class H(BaseHTTPRequestHandler):
             return self._json(accounts())
         if p == "/api/google":
             return self._json(google_info())
+        if p == "/api/secrets":
+            if not self._authed():
+                return
+            return self._json(secrets_info())
         if p == "/api/drafts":
             return self._json(drafts_list(qs.get("company", [""])[0], qs.get("role", [""])[0]))
         if p == "/api/draft":
@@ -3911,6 +4054,13 @@ class H(BaseHTTPRequestHandler):
             data = self._body()
             return self._json(backup_clear(data.get("scope", "data"), data.get("confirm", "")))
         data = self._body()
+        if p == "/api/secrets":
+            return self._json(secrets_set(data.get("section", ""), data.get("name", ""),
+                                          data.get("value", "")))
+        if p == "/api/secrets/delete":
+            return self._json(secrets_delete(data.get("section", ""), data.get("name", "")))
+        if p == "/api/secrets/migrate":
+            return self._json(secrets_migrate())
         if p == "/api/register/row":
             return self._json(update_row(data.get("company", ""), data.get("role", ""),
                                          data.get("status", ""), data.get("notes", ""),
@@ -4093,6 +4243,10 @@ def main():
         return 2
     if not args.serve and not args.no_reload and os.environ.get("JOBSQUIRREL_NO_RELOAD") != "1":
         return _supervise(args.host, args.port, args.open)
+    try:
+        SS.migrate()          # idempotent: import legacy secrets once
+    except (SS.SecretsError, OSError) as exc:
+        print(f"warning: could not migrate secrets: {exc}", file=sys.stderr)
     url = f"http://{args.host}:{args.port}/"
     DASH["url"] = f"http://{args.host}:{args.port}"       # handed to the agent so it can ask for approval
     srv = ThreadingHTTPServer((args.host, args.port), H)

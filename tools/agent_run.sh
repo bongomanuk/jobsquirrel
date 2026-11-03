@@ -23,7 +23,7 @@ set -u
 AGENT_CFG_FILE="${AGENT_CFG:-$HOME/.config/job-search/agent.json}"
 if [ -f "$AGENT_CFG_FILE" ]; then
   eval "$(python3 - "$AGENT_CFG_FILE" <<'PY' 2>/dev/null
-import json, re, shlex, sys
+import json, os, re, shlex, sys
 try:
     d = json.load(open(sys.argv[1]))
 except Exception:
@@ -37,7 +37,16 @@ if agent:
     print("CFG_AGENT=" + shlex.quote(agent))
 if model:
     print("CFG_MODEL=" + shlex.quote(model))
-env = d.get("env") if isinstance(d.get("env"), dict) else {}
+legacy = d.get("env") if isinstance(d.get("env"), dict) else {}
+# Secrets live in the central store; agent.json keeps only the agent/model choice.
+sec_file = os.path.expanduser(os.environ.get(
+    "JOBSQUIRREL_SECRETS", "~/.config/job-search/secrets.json"))
+try:
+    with open(sec_file, encoding="utf-8") as fh:
+        stored = (json.load(fh).get("sections") or {}).get("agent") or {}
+except Exception:
+    stored = {}
+env = {**(legacy if isinstance(legacy, dict) else {}), **(stored if isinstance(stored, dict) else {})}
 for k, v in env.items():
     k = re.sub(r"[^A-Za-z0-9_]", "", str(k))[:80]
     if not k or k in ("AGENT", "MODEL") or v is None or str(v) == "":
