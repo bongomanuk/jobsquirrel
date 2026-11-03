@@ -48,8 +48,10 @@ git tag -a vX.Y.Z -m 'vX.Y.Z "Funny Title"' && git push origin vX.Y.Z
 # 3. create the GitHub Release with the same name and notes (via the API; gh isn't required)
 ```
 Never publish notes that fail `release_lint.py`. The release notes follow the house
-voice: a one-line gag, a theme sentence, then **The nuts we added** (bullets) and,
-when relevant, a *Cracked shells* section for behaviour that changed.
+voice: a one-line gag, a theme sentence, then **What we dragged into the drey**
+(bullets) and, when relevant, a **Loose bark** section for behaviour that changed.
+(Earlier releases used "The nuts we added" / "Cracked shells"; leave them as they
+are.)
 
 `secret_scan.py` checks tracked/untracked files and git history for live key
 formats and for the exact values in the private agent/GraphRAG config. It never
