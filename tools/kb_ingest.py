@@ -13,11 +13,15 @@ python-docx for DOCX, and LibreOffice (soffice) for legacy DOC/ODT. Text/Markdow
 files are copied as-is; GraphRAG-native .csv/.json/.txt are handled directly.
 """
 import argparse
+import fnmatch
+import hashlib
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _SOURCES = ""  # set in main(); used for naming converted outputs
@@ -135,11 +139,36 @@ def convert(path, out_dir):
     return None
 
 
+def _norm_text(t):
+    return re.sub(r"\s+", " ", str(t or "").lower()).strip()
+
+
+def _sha(t):
+    return hashlib.sha256(t.encode("utf-8", "ignore")).hexdigest()
+
+
+def _shingles(t, n=5, cap=4000):
+    w = t.split()
+    return set(tuple(w[i:i + n]) for i in range(min(max(0, len(w) - n + 1), cap)))
+
+
+def _jaccard(a, b):
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
 def main():
     global _SOURCES
     ap = argparse.ArgumentParser(description="Convert kb/sources/ into GraphRAG text input.")
     ap.add_argument("--sources", default=os.path.join(ROOT, "kb", "sources"))
     ap.add_argument("--out", default=os.path.join(ROOT, "kb", "graphrag", "input"))
+    ap.add_argument("--clean", action="store_true",
+                    help="clear the generated input folder before writing")
+    ap.add_argument("--keep-duplicates", action="store_true",
+                    help="do not collapse exact/near-duplicate documents")
+    ap.add_argument("--similarity", type=float, default=0.90,
+                    help="near-duplicate threshold (5-word shingle Jaccard; default 0.90)")
     args = ap.parse_args()
     _SOURCES = os.path.abspath(args.sources)
     out_dir = os.path.abspath(args.out)
@@ -149,27 +178,114 @@ def main():
         print(f"no sources dir: {_SOURCES}")
         return 0
 
-    ok, skipped, failed = 0, 0, 0
+    ignore = []
+    ignore_path = os.path.join(_SOURCES, ".ingestignore")
+    if os.path.isfile(ignore_path):
+        for line in open(ignore_path, encoding="utf-8", errors="ignore"):
+            line = line.strip()
+            if line and not line.startswith("#"):
+                ignore.append(line)
+
+    if args.clean:
+        for f in os.listdir(out_dir):
+            fp = os.path.join(out_dir, f)
+            if os.path.isfile(fp) and not f.startswith("."):
+                os.remove(fp)
+
+    # newest first: when two CVs say the same thing, keep the current one
+    cands = []
     for dirpath, _dirs, files in os.walk(_SOURCES):
         for fn in sorted(files):
             if fn.startswith("."):
                 continue
             path = os.path.join(dirpath, fn)
-            ext = os.path.splitext(fn)[1].lower()
-            try:
-                dest = convert(path, out_dir)
-            except Exception as exc:
-                print(f"  FAIL  {os.path.relpath(path, _SOURCES)}: {exc}")
-                failed += 1
+            rel = os.path.relpath(path, _SOURCES).replace(os.sep, "/")
+            if any(fnmatch.fnmatch(rel, pat) for pat in ignore):
                 continue
-            if dest:
-                print(f"  ok    {os.path.relpath(path, _SOURCES)} -> {os.path.relpath(dest, out_dir)}")
-                ok += 1
-            else:
-                print(f"  skip  {os.path.relpath(path, _SOURCES)} (unsupported {ext or 'no ext'})")
+            try:
+                cands.append((os.path.getmtime(path), path))
+            except OSError:
+                pass
+    cands.sort(key=lambda x: -x[0])
+
+    ok, skipped, failed, exact_dups, near_dups = 0, 0, 0, 0, 0
+    kept = []          # {path, dest, sha, shingles, text}
+    manifest = {"kept": [], "exact_duplicates": [], "near_duplicates": []}
+    tmp_root = tempfile.mkdtemp(prefix="kb-ingest-")
+    try:
+        for _mtime, path in cands:
+            rel = os.path.relpath(path, _SOURCES)
+            ext = os.path.splitext(path)[1].lower()
+            tmpdir = tempfile.mkdtemp(dir=tmp_root)
+            try:
+                dest_tmp = convert(path, tmpdir)
+            except Exception as exc:
+                print(f"  FAIL  {rel}: {exc}")
+                failed += 1
+                shutil.rmtree(tmpdir, ignore_errors=True)
+                continue
+            if not dest_tmp:
+                print(f"  skip  {rel} (unsupported {ext or 'no ext'})")
                 skipped += 1
+                shutil.rmtree(tmpdir, ignore_errors=True)
+                continue
+            with open(dest_tmp, encoding="utf-8", errors="ignore") as fh:
+                text = fh.read()
+            ntext = _norm_text(text)
+            if not ntext:
+                print(f"  skip  {rel} (no text)")
+                skipped += 1
+                shutil.rmtree(tmpdir, ignore_errors=True)
+                continue
+            digest = _sha(ntext)
+            dup = None
+            if not args.keep_duplicates:
+                exact = next((k for k in kept if k["sha"] == digest), None)
+                if exact:
+                    dup = ("exact", exact)
+                else:
+                    sh = _shingles(ntext)
+                    best, match = 0.0, None
+                    for k in kept:
+                        score = _jaccard(sh, k["shingles"])
+                        if score > best:
+                            best, match = score, k
+                    if match and best >= args.similarity:
+                        dup = ("near", match, best)
+            if dup:
+                kind = dup[0]
+                if kind == "exact":
+                    exact_dups += 1
+                    manifest["exact_duplicates"].append({"skipped": rel, "kept": dup[1]["path"]})
+                    print(f"  dup   {rel} == {dup[1]['path']}")
+                else:
+                    near_dups += 1
+                    manifest["near_duplicates"].append({
+                        "skipped": rel, "kept": dup[1]["path"], "similarity": round(dup[2], 3)})
+                    print(f"  near  {rel} ~ {dup[1]['path']} ({dup[2]:.2f})")
+                shutil.rmtree(tmpdir, ignore_errors=True)
+                continue
+            dest = os.path.join(out_dir, os.path.basename(dest_tmp))
+            if os.path.exists(dest):
+                stem, ext2 = os.path.splitext(os.path.basename(dest_tmp))
+                dest = os.path.join(out_dir, f"{stem}-{digest[:8]}{ext2}")
+            shutil.move(dest_tmp, dest)
+            kept.append({"path": rel, "dest": os.path.basename(dest), "sha": digest,
+                         "shingles": _shingles(ntext)})
+            manifest["kept"].append({"source": rel, "input": os.path.basename(dest)})
+            print(f"  ok    {rel} -> {os.path.basename(dest)}")
+            ok += 1
+            shutil.rmtree(tmpdir, ignore_errors=True)
+    finally:
+        shutil.rmtree(tmp_root, ignore_errors=True)
+
+    manifest["summary"] = {"kept": ok, "exact_duplicates": exact_dups,
+                           "near_duplicates": near_dups, "skipped": skipped,
+                           "failed": failed, "ignored": len(ignore)}
+    with open(os.path.join(out_dir, ".ingest.json"), "w", encoding="utf-8") as fh:
+        json.dump(manifest, fh, indent=2)
     print(f"\ningested {ok} file(s) into {os.path.relpath(out_dir, ROOT)} "
-          f"({skipped} skipped, {failed} failed)")
+          f"({exact_dups} exact dup, {near_dups} near dup, {skipped} skipped, {failed} failed)")
     print("next: build the index ->  python3 -m graphrag index --root kb/graphrag")
     return 0
 

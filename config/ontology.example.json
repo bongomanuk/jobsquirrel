@@ -2,6 +2,7 @@
   "classes": {
     "PERSON": {"label": "Person", "color": "#f97316", "description": "The candidate and the people around their record."},
     "ORGANIZATION": {"label": "Organisation", "color": "#ef4444", "description": "Employers, clients, customers and other organisations."},
+    "TEAM": {"label": "Team", "color": "#ec4899", "description": "A named team or department, and its scope."},
     "ROLE": {"label": "Role", "color": "#eab308", "description": "A job or position held, with dates and scope."},
     "SKILL": {"label": "Skill", "color": "#22c55e", "description": "A capability the candidate can evidence."},
     "TECHNOLOGY": {"label": "Technology", "color": "#3b82f6", "description": "A language, tool, framework or technical practice."},

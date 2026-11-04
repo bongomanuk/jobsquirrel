@@ -20,11 +20,11 @@ G="$(gr)"
 [ -f "$GR/output/entities.parquet" ] || { echo "no existing index — run a full build first (tools/setup_kb.sh)" >&2; exit 1; }
 
 echo "== ingest kb/sources -> kb/graphrag/input =="
-python3 "$ROOT/tools/kb_ingest.py" --sources "$ROOT/kb/sources" --out "$GR/input" \
+python3 "$ROOT/tools/kb_ingest.py" --sources "$ROOT/kb/sources" --out "$GR/input" --clean \
   || { echo "ingest failed" >&2; exit 1; }
 
 echo "== graphrag update (incremental; only new/changed docs) =="
-"$G" update --root "$GR" || { echo "graphrag update failed" >&2; exit 1; }
+"$G" update --root "$GR" --method standard-update || { echo "graphrag update failed" >&2; exit 1; }
 
 # Promote the updated index so queries use it.
 # GraphRAG v2 wrote a flat update_output/; v3 writes update_output/<timestamp>/{delta,previous}

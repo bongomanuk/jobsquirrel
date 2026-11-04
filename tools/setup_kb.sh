@@ -70,7 +70,7 @@ fi
 
 # 2. stage + ingest sources (any format -> text/GraphRAG-native)
 if [ -f "$ROOT/tools/kb_ingest.py" ]; then
-  python3 "$ROOT/tools/kb_ingest.py" --sources "$KB/sources" --out "$GR/input" || {
+  python3 "$ROOT/tools/kb_ingest.py" --sources "$KB/sources" --out "$GR/input" --clean || {
     echo "ingest failed; falling back to copying .txt/.md only"
     for f in "$KB"/sources/*.txt "$KB"/sources/*.md; do [ -e "$f" ] && cp "$f" "$GR/input/"; done
   }
