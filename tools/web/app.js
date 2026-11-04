@@ -515,7 +515,7 @@ const App = {
       if (window.__kg3d) window.__kg3d.pause();
       if (uni) uni.classList.remove('hide');
       try {
-        const mod = window.__uni || (window.__uni = await import('./graph-universe.js?u=' + Date.now()));
+        const mod = window.__uni || (window.__uni = await import('./graph-universe.js'));
         await mod.open();
       } catch (e) { if (us) us.textContent = 'could not load the universe: ' + e; }
     } else {
