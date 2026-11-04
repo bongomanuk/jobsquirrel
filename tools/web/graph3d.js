@@ -61,6 +61,57 @@ function glowTexture() {
   return S.glowTex;
 }
 
+let SOFT_TEX = null;
+function softTexture() {
+  if (SOFT_TEX) return SOFT_TEX;
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(255,255,255,.62)');
+  grad.addColorStop(.34, 'rgba(255,255,255,.2)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
+  SOFT_TEX = new THREE.CanvasTexture(c);
+  return SOFT_TEX;
+}
+
+function pointMaterial(map, sizeMul, alphaMul) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uMap: { value: map }, uPixel: { value: 900 },
+      uSize: { value: sizeMul }, uAlpha: { value: alphaMul }
+    },
+    vertexShader: `
+      attribute float size;
+      attribute float alpha;
+      attribute vec3 color;
+      varying vec3 vColor;
+      varying float vAlpha;
+      uniform float uPixel;
+      uniform float uSize;
+      void main() {
+        vColor = color;
+        vAlpha = alpha;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = clamp(size * uSize * uPixel / max(1.0, -mv.z), 1.5, 380.0);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      uniform sampler2D uMap;
+      uniform float uAlpha;
+      varying vec3 vColor;
+      varying float vAlpha;
+      void main() {
+        vec4 t = texture2D(uMap, gl_PointCoord);
+        float a = t.a * vAlpha * uAlpha;
+        if (a < 0.01) discard;
+        gl_FragColor = vec4(vColor * t.rgb, a);
+      }`,
+    transparent: true, depthWrite: false, depthTest: true,
+    blending: THREE.AdditiveBlending
+  });
+}
+
 function init() {
   if (S.inited) return;
   S.canvas = document.getElementById('kg3d');
@@ -70,43 +121,53 @@ function init() {
   if (!S.canvas) throw new Error('no graph canvas');
   S.renderer = new THREE.WebGLRenderer({ canvas: S.canvas, antialias: true, alpha: true });
   S.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  S.renderer.setClearColor(0x07090c, 1);
+  S.renderer.setClearColor(0x05070c, 1);
   S.renderer.toneMapping = THREE.ACESFilmicToneMapping;
   S.renderer.toneMappingExposure = 1.35;
   if ('outputColorSpace' in S.renderer) S.renderer.outputColorSpace = THREE.SRGBColorSpace;
   S.scene = new THREE.Scene();
-  S.scene.fog = new THREE.FogExp2(0x07090c, 0.00045);
-  S.camera = new THREE.PerspectiveCamera(38, 1, 1, 8000);
+  S.scene.background = new THREE.Color(0x05070c);
+  S.scene.fog = new THREE.FogExp2(0x05070c, 0.0003);
+  S.camera = new THREE.PerspectiveCamera(38, 1, 1, 12000);
   S.group = new THREE.Group();
   S.scene.add(S.group);
   S.raycaster = new THREE.Raycaster();
   const mc = document.createElement('canvas');
   S.measureCtx = mc.getContext('2d');
-  S.scene.add(new THREE.AmbientLight(0xffffff, 1.4));
-  const key = new THREE.DirectionalLight(0xffffff, 3.2);
-  key.position.set(180, 240, 220);
-  S.scene.add(key);
-  const rim = new THREE.PointLight(0x3b82f6, 1800, 1600);
-  rim.position.set(-260, -160, -220);
-  S.scene.add(rim);
-  const warm = new THREE.PointLight(0xf59e0b, 1400, 1400);
-  warm.position.set(260, -120, 160);
-  S.scene.add(warm);
   const starGeo = new THREE.BufferGeometry();
-  const starPos = new Float32Array(1100 * 3);
-  for (let i = 0; i < 1100; i++) {
-    const r = 700 + Math.random() * 1400;
+  const NSTAR = 1900, starPos = new Float32Array(NSTAR * 3), starCol = new Float32Array(NSTAR * 3);
+  for (let i = 0; i < NSTAR; i++) {
+    const r = 900 + Math.random() * 2400;
     const th = Math.random() * Math.PI * 2;
     const ph = Math.acos(2 * Math.random() - 1);
     starPos[i * 3] = r * Math.sin(ph) * Math.cos(th);
     starPos[i * 3 + 1] = r * Math.cos(ph);
     starPos[i * 3 + 2] = r * Math.sin(ph) * Math.sin(th);
+    const c = new THREE.Color().setHSL(0.52 + Math.random() * 0.16, 0.35, 0.6 + Math.random() * 0.3);
+    starCol[i * 3] = c.r; starCol[i * 3 + 1] = c.g; starCol[i * 3 + 2] = c.b;
   }
   starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+  starGeo.setAttribute('color', new THREE.BufferAttribute(starCol, 3));
   S.stars = new THREE.Points(starGeo, new THREE.PointsMaterial({
-    color: 0x64748b, size: 2.2, transparent: true, opacity: 0.8, sizeAttenuation: true
+    size: 7, vertexColors: true, map: glowTexture(), transparent: true,
+    opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true
   }));
   S.scene.add(S.stars);
+  // faint deep-space clouds behind the graph
+  const bg = new THREE.Group();
+  ['#1d4ed8', '#7c3aed', '#0e7490', '#be123c'].forEach((tint, i) => {
+    const m = new THREE.SpriteMaterial({
+      map: softTexture(), color: new THREE.Color(tint), transparent: true,
+      opacity: 0.07, depthWrite: false, blending: THREE.AdditiveBlending
+    });
+    const sp = new THREE.Sprite(m);
+    const a = i * 1.57, r = 1400;
+    sp.position.set(Math.cos(a) * r, (i % 2 ? -1 : 1) * 500, Math.sin(a) * r);
+    sp.scale.setScalar(1800 + i * 220);
+    bg.add(sp);
+  });
+  S.backdrop = bg;
+  S.scene.add(bg);
   bindControls();
   new ResizeObserver(resize).observe(S.stage);
   resize();
@@ -121,26 +182,29 @@ function resize() {
   S.camera.aspect = S.W / S.H;
   S.camera.updateProjectionMatrix();
   S.renderer.setSize(S.W, S.H, false);
+  const px = S.renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(S.camera.fov) / 2));
+  [S.core, S.halo].forEach(p => { if (p) p.material.uniforms.uPixel.value = px; });
 }
 
 function clearScene() {
-  for (const m of S.meshes) {
-    if (m.material) m.material.dispose();
-    S.group.remove(m);
-  }
-  for (const g of S.glows) S.group.remove(g);
   for (const h of S.hits) {
+    if (h.geometry) h.geometry.dispose();
     if (h.material) h.material.dispose();
     S.group.remove(h);
   }
+  if (S.nebulae) {
+    S.nebulae.traverse(o => { if (o.material) o.material.dispose(); });
+    S.group.remove(S.nebulae); S.nebulae = null;
+  }
+  if (S.core) { S.group.remove(S.core); S.core = null; }
+  if (S.halo) { S.group.remove(S.halo); S.halo = null; }
+  if (S.ptGeo) { S.ptGeo.dispose(); S.ptGeo = null; }
   if (S.lineMesh) {
     S.group.remove(S.lineMesh);
     S.lineMesh.geometry.dispose();
     S.lineMesh.material.dispose();
     S.lineMesh = null;
   }
-  S.meshes = [];
-  S.glows = [];
   S.hits = [];
   if (S.labels) S.labels.innerHTML = '';
   S.labelEls.clear();
@@ -190,34 +254,56 @@ export async function show(data, opts = {}) {
     : [...S.nodes].sort((a, b) => (b.degree || 0) - (a.degree || 0)).slice(0, 14).map(n => n.id));
   if (data.center) S.top.add(data.center);
 
-  const sphere = new THREE.SphereGeometry(1, 22, 16);
-  const glow = glowTexture();
+  // one geometry shared by the core and halo point clouds
+  const N = S.nodes.length;
+  const gpos = new Float32Array(N * 3), gcol = new Float32Array(N * 3);
+  const gsize = new Float32Array(N), galpha = new Float32Array(N);
+  S.nodes.forEach((n, i) => {
+    gpos[i * 3] = n.pos.x; gpos[i * 3 + 1] = n.pos.y; gpos[i * 3 + 2] = n.pos.z;
+    const c = new THREE.Color(n.color);
+    gcol[i * 3] = c.r; gcol[i * 3 + 1] = c.g; gcol[i * 3 + 2] = c.b;
+    gsize[i] = n.r;
+    galpha[i] = 1;
+  });
+  const pgeo = new THREE.BufferGeometry();
+  pgeo.setAttribute('position', new THREE.BufferAttribute(gpos, 3));
+  pgeo.setAttribute('color', new THREE.BufferAttribute(gcol, 3));
+  pgeo.setAttribute('size', new THREE.BufferAttribute(gsize, 1));
+  pgeo.setAttribute('alpha', new THREE.BufferAttribute(galpha, 1));
+  S.ptGeo = pgeo;
+  S.halo = new THREE.Points(pgeo, pointMaterial(softTexture(), 6.0, 0.4));
+  S.halo.frustumCulled = false;
+  S.halo.renderOrder = 1;
+  S.group.add(S.halo);
+  S.core = new THREE.Points(pgeo, pointMaterial(glowTexture(), 1.35, 1.0));
+  S.core.frustumCulled = false;
+  S.core.renderOrder = 2;
+  S.group.add(S.core);
+
+  // island nebulae in the spread views (communities/topics)
+  if (isSpread) {
+    const neb = new THREE.Group();
+    for (const n of S.nodes) {
+      if (n.kind !== 'community' && n.kind !== 'type') continue;
+      const m = new THREE.SpriteMaterial({
+        map: softTexture(), color: new THREE.Color(n.color), transparent: true,
+        opacity: 0.26, depthWrite: false, blending: THREE.AdditiveBlending
+      });
+      const sp = new THREE.Sprite(m);
+      sp.position.copy(n.pos);
+      sp.scale.setScalar(Math.max(170, n.r * 10));
+      neb.add(sp);
+    }
+    S.nebulae = neb;
+    S.group.add(neb);
+  }
+
   const labelFrag = document.createDocumentFragment();
   for (const n of S.nodes) {
-    const mat = new THREE.MeshStandardMaterial({
-      color: n.color, emissive: n.color, emissiveIntensity: 0.95,
-      roughness: 0.26, metalness: 0.28, transparent: true, opacity: 0.98
-    });
-    const mesh = new THREE.Mesh(sphere, mat);
-    mesh.position.copy(n.pos);
-    mesh.scale.setScalar(n.r);
-    mesh.userData.id = n.id;
-    S.group.add(mesh);
-    S.meshes.push(mesh);
-    const sm = new THREE.SpriteMaterial({
-      map: glow, color: n.color, transparent: true, opacity: 0.6,
-      blending: THREE.AdditiveBlending, depthWrite: false
-    });
-    const sprite = new THREE.Sprite(sm);
-    sprite.position.copy(n.pos);
-    sprite.scale.setScalar(n.r * 4.8);
-    S.group.add(sprite);
-    S.glows.push(sprite);
-    const hit = new THREE.Mesh(sphere, new THREE.MeshBasicMaterial({
-      transparent: true, opacity: 0, depthWrite: false
-    }));
+    const hit = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
     hit.position.copy(n.pos);
-    hit.scale.setScalar(Math.max(n.r * 1.7, 5.5));
+    hit.scale.setScalar(Math.max(n.r * 1.8, 5.5));
     hit.userData.id = n.id;
     S.group.add(hit);
     S.hits.push(hit);
@@ -232,15 +318,15 @@ export async function show(data, opts = {}) {
       el.addEventListener('dblclick', e => { e.stopPropagation(); S.opts.onOpen && S.opts.onOpen(n); });
       labelFrag.appendChild(el);
       S.labelEls.set(n.id, el);
-      const hit = document.createElement('span');
-      hit.className = 'kg3d-hit';
-      hit.dataset.id = n.id;
-      hit.style.width = hit.style.height = (n.kind === 'entity' ? 24 : 38) + 'px';
-      hit.addEventListener('pointerdown', e => e.stopPropagation());
-      hit.addEventListener('click', e => { e.stopPropagation(); S.opts.onSelect && S.opts.onSelect(n.id); });
-      hit.addEventListener('dblclick', e => { e.stopPropagation(); S.opts.onOpen && S.opts.onOpen(n); });
-      labelFrag.appendChild(hit);
-      S.hitEls.set(n.id, hit);
+      const hitEl = document.createElement('span');
+      hitEl.className = 'kg3d-hit';
+      hitEl.dataset.id = n.id;
+      hitEl.style.width = hitEl.style.height = (n.kind === 'entity' ? 24 : 38) + 'px';
+      hitEl.addEventListener('pointerdown', e => e.stopPropagation());
+      hitEl.addEventListener('click', e => { e.stopPropagation(); S.opts.onSelect && S.opts.onSelect(n.id); });
+      hitEl.addEventListener('dblclick', e => { e.stopPropagation(); S.opts.onOpen && S.opts.onOpen(n); });
+      labelFrag.appendChild(hitEl);
+      S.hitEls.set(n.id, hitEl);
     }
   }
   if (S.labels) S.labels.appendChild(labelFrag);
@@ -252,7 +338,7 @@ export async function show(data, opts = {}) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  const lmat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.62 });
+  const lmat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending });
   S.lineMesh = new THREE.LineSegments(geo, lmat);
   S.group.add(S.lineMesh);
   paintLines(null, null);
@@ -264,25 +350,24 @@ export async function show(data, opts = {}) {
   return { nodes: S.nodes.length, links: links.length };
 }
 
+function repaintNodes(id, neigh) {
+  if (!S.ptGeo) return;
+  const alpha = S.ptGeo.attributes.alpha, size = S.ptGeo.attributes.size;
+  S.nodes.forEach((n, i) => {
+    const active = !id || (neigh && neigh.has(n.id));
+    alpha.array[i] = S.hidden.has(n.type) ? 0 : (active ? 1 : 0.1);
+    size.array[i] = n.r * (n.id === id ? 1.6 : 1);
+  });
+  alpha.needsUpdate = true;
+  size.needsUpdate = true;
+}
+
 export function select(id) {
   S.selected = id;
   const n = S.byId.get(id);
   if (!n) return;
-  const neigh = new Set([id]);
-  for (const l of S.links) {
-    if (l.source === id) neigh.add(l.target);
-    else if (l.target === id) neigh.add(l.source);
-  }
-  S.meshes.forEach((m, i) => {
-    const nn = S.nodes[i], active = neigh.has(nn.id);
-    m.material.opacity = active ? 1 : 0.14;
-    m.material.emissiveIntensity = nn.id === id ? 1.1 : active ? 0.5 : 0.08;
-    m.scale.setScalar(nn.r * (nn.id === id ? 1.35 : 1));
-  });
-  S.glows.forEach((g, i) => {
-    const nn = S.nodes[i];
-    g.material.opacity = neigh.has(nn.id) ? (nn.id === id ? 0.8 : 0.36) : 0.04;
-  });
+  const neigh = neighborSet(id);
+  repaintNodes(id, neigh);
   paintLines(id, neigh);
   S.labelDirty = true;
   updateLabels(neigh, true);
@@ -290,12 +375,7 @@ export function select(id) {
 
 export function clearSelection() {
   S.selected = null;
-  S.meshes.forEach((m, i) => {
-    m.material.opacity = 0.98;
-    m.material.emissiveIntensity = 0.95;
-    m.scale.setScalar(S.nodes[i].r);
-  });
-  S.glows.forEach(g => { g.material.opacity = 0.6; });
+  repaintNodes(null, null);
   paintLines(null, null);
   S.labelDirty = true;
   updateLabels(null, true);
@@ -303,13 +383,8 @@ export function clearSelection() {
 
 export function setHiddenTypes(types) {
   S.hidden = new Set(types || []);
-  S.meshes.forEach((m, i) => {
-    const hidden = S.hidden.has(S.nodes[i].type);
-    m.visible = !hidden;
-    if (S.glows[i]) S.glows[i].visible = !hidden;
-    if (S.hits[i]) S.hits[i].visible = !hidden;
-  });
-  S.links.forEach((l, i) => { /* line visibility handled by positions below */ });
+  S.hits.forEach((h, i) => { h.visible = !S.hidden.has(S.nodes[i].type); });
+  repaintNodes(S.selected, S.selected ? neighborSet(S.selected) : null);
   S.labelDirty = true;
   updateLabels(S.selected ? new Set([S.selected]) : null, true);
 }
@@ -462,7 +537,7 @@ function escapeHtml(s) {
 function paintLines(selected, neigh) {
   if (!S.lineMesh) return;
   const pos = S.linePos, col = S.lineColors;
-  const accent = new THREE.Color(ACCENT), dim = new THREE.Color(DIM), base = new THREE.Color(0x64748b);
+  const accent = new THREE.Color(ACCENT), dim = new THREE.Color(0x0b1220), base = new THREE.Color(0x93a4bd);
   S.links.forEach((l, i) => {
     const hot = selected && (l.source === selected || l.target === selected);
     const active = !selected || (neigh && (neigh.has(l.source) || neigh.has(l.target)));
@@ -619,8 +694,13 @@ function step() {
 }
 
 function updateScene() {
-  S.meshes.forEach((m, i) => { m.position.copy(S.nodes[i].pos); });
-  S.glows.forEach((g, i) => { g.position.copy(S.nodes[i].pos); });
+  if (S.ptGeo) {
+    const p = S.ptGeo.attributes.position;
+    S.nodes.forEach((n, i) => {
+      p.array[i * 3] = n.pos.x; p.array[i * 3 + 1] = n.pos.y; p.array[i * 3 + 2] = n.pos.z;
+    });
+    p.needsUpdate = true;
+  }
   S.hits.forEach((h, i) => { h.position.copy(S.nodes[i].pos); });
   if (S.lineMesh) {
     const pos = S.linePos;

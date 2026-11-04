@@ -563,6 +563,28 @@ def graph(q, limit):
     return {"nodes": nodes, "links": links, "query": q, "total": len(ents) + len(_skill_overlay())}
 
 
+def universe():
+    """The whole indexed graph, for the space-view explorer."""
+    ents, rels = _load("entities"), _load("relationships")
+    comms = _load("communities")
+    if ents is None or rels is None:
+        return {"error": "no index"}
+    cmap = _deepest_community(comms, ents) if comms is not None else {}
+    nodes = []
+    for r in ents.itertuples():
+        meta = ONT.class_meta(r.type)
+        nodes.append({"id": _s(r.title, 140), "title": _s(r.title, 140),
+                      "type": _s(r.type, 40), "class": meta["id"],
+                      "color": meta["color"], "degree": int(r.degree),
+                      "frequency": int(r.frequency),
+                      "community": cmap.get(str(r.id)),
+                      "description": _s(r.description, 260)})
+    links = [{"source": _s(r.source, 140), "target": _s(r.target, 140),
+              "weight": round(float(r.weight), 1)} for r in rels.itertuples()]
+    _add_skill_links(nodes, links, _overlay_nodes("", 60))
+    return {"nodes": nodes, "links": links, "total": len(nodes)}
+
+
 def documents():
     df = _load("documents")
     if df is None:
@@ -600,6 +622,8 @@ def main():
             res = relationships((a[0] if a else "").lower(), int(a[1]) if len(a) > 1 else 200)
         elif cmd == "communities":
             res = communities((a[0] if a else "").lower(), int(a[1]) if len(a) > 1 else 200)
+        elif cmd == "universe":
+            res = universe()
         elif cmd == "documents":
             res = documents()
         elif cmd == "graph":

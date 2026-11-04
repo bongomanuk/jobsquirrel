@@ -475,23 +475,58 @@ const App = {
       const d = await r.json(); toast(d.ok || d.error, !!d.error); if (!d.error) App.settings('kb');
     } catch (e) { toast('upload failed: ' + e, true); }
   },
-  openKnowledge: async () => {
+  openKnowledge: async (mode) => {
     const page = $('#knowledge'); if (!page) return;
     const cfg = $('#cfg'); if (cfg) cfg.classList.add('hide');
     page.classList.remove('hide');
     document.body.classList.add('knowledge-open');
-    try { history.replaceState(null, '', '#knowledge'); } catch (e) {}
+    const wantUni = mode === 'universe';
+    try { history.replaceState(null, '', wantUni ? '#universe' : '#knowledge'); } catch (e) {}
     const d = await api('/api/graph?kind=stats');
     const st = $('#kg-stats');
     if (st) st.textContent = d && d.entities
       ? `${d.entities} entities · ${d.relationships} relationships · ${d.communities} communities`
       : 'Index not built yet';
-    if (d && d.entities) App.graphTypes();
-    else if ($('#kg-side-body')) {
-      $('#kg-side-body').className = 'kg-side-body muted mini';
-      $('#kg-side-body').textContent = 'No graph index yet. Add documents and rebuild the graph.';
+    if (!d || !d.entities) {
+      if ($('#kg-side-body')) {
+        $('#kg-side-body').className = 'kg-side-body muted mini';
+        $('#kg-side-body').textContent = 'No graph index yet. Add documents and rebuild the graph.';
+      }
+      if (wantUni) App.setKGMode('universe');
+      return;
+    }
+    if (wantUni) await App.setKGMode('universe');
+    else { App.setKGMode('map'); if (!KG) App.graphTypes(); }
+  },
+  setKGMode: async (mode) => {
+    const page = $('#knowledge'); if (!page) return;
+    KGMODE = mode === 'universe' ? 'universe' : 'map';
+    page.classList.toggle('uni-mode', KGMODE === 'universe');
+    const bm = $('#kg-mode-map'), bu = $('#kg-mode-uni');
+    if (bm) bm.classList.toggle('on', KGMODE === 'map');
+    if (bu) bu.classList.toggle('on', KGMODE === 'universe');
+    const st = $('#kg-stats'), us = $('#uni-stats');
+    if (st) st.classList.toggle('hide', KGMODE === 'universe');
+    if (us) us.classList.toggle('hide', KGMODE !== 'universe');
+    const q = $('#kg-q');
+    if (q) q.placeholder = KGMODE === 'universe' ? 'find a star, skill, person…' : 'search communities, entities, types…';
+    const uni = $('#kg-universe');
+    if (KGMODE === 'universe') {
+      if (window.__kg3d) window.__kg3d.pause();
+      if (uni) uni.classList.remove('hide');
+      try {
+        const mod = window.__uni || (window.__uni = await import('./graph-universe.js?u=' + Date.now()));
+        await mod.open();
+      } catch (e) { if (us) us.textContent = 'could not load the universe: ' + e; }
+    } else {
+      if (window.__uni) window.__uni.close();
+      if (uni) uni.classList.add('hide');
+      if (window.__kg3d) window.__kg3d.resume();
+      if (!KG) App.graphTypes();
     }
   },
+  kgSearch: (q) => KGMODE === 'universe' ? App.universeSearch(q) : App.graphSearch(q),
+  kgReset: () => KGMODE === 'universe' ? App.universeReset() : App.graphFit(),
   home: () => {
     const page = $('#knowledge');
     if (page && !page.classList.contains('hide')) App.closeKnowledge();
@@ -505,10 +540,17 @@ const App = {
   },
   closeKnowledge: () => {
     kgStop();
-    const page = $('#knowledge'); if (page) page.classList.add('hide');
+    if (window.__uni) window.__uni.close();
+    const uni = $('#kg-universe'); if (uni) uni.classList.add('hide');
+    const page = $('#knowledge'); if (page) { page.classList.add('hide'); page.classList.remove('uni-mode'); }
+    KGMODE = 'map';
     document.body.classList.remove('knowledge-open');
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
   },
+  openUniverse: async () => { await App.openKnowledge('universe'); },
+  closeUniverse: () => { App.setKGMode('map'); },
+  universeSearch: (q) => { if (window.__uni) window.__uni.search(q); },
+  universeReset: () => { if (window.__uni) window.__uni.reset(); },
   graphTypes: async () => {
     const msg = $('#kg-msg'); if (msg) msg.textContent = 'reading topics…';
     const d = await api('/api/graph/types?limit=24');
@@ -2650,6 +2692,7 @@ async function setKB(b) {
 /* ---------- GraphRAG: a hierarchical, navigable knowledge graph ---------- */
 const KGNS = 'http://www.w3.org/2000/svg';
 let KG = null;
+let KGMODE = 'map';
 const KG_COLORS = {
   TECHNOLOGY: '#3b82f6', SKILL: '#22c55e', METRIC: '#f59e0b', PROJECT: '#a855f7',
   PRODUCT: '#06b6d4', ORGANIZATION: '#ef4444', ROLE: '#eab308', PLATFORM: '#8b5cf6',
@@ -3002,7 +3045,8 @@ function setProfile(b) {
 $('#a-prepare').onclick = () => App.run('prepare');
 $('#a-submit').onclick = () => App.run('submit_queue');
 $('#a-reconcile').onclick = () => App.run('reconcile');
-$('#a-knowledge').onclick = () => App.openKnowledge();
+$('#a-knowledge').onclick = () => App.openKnowledge('map');
+$('#a-universe').onclick = () => App.openKnowledge('universe');
 const brandHome = $('#brand-home');
 if (brandHome) {
   brandHome.onclick = () => App.home();
@@ -3185,7 +3229,10 @@ $('#upd-go').onclick = async () => {
   }
 })();
 initPanels(); initGridCols(); syncGroupingButton(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel();
-if (location.hash === '#knowledge') setTimeout(() => App.openKnowledge(), 400);
+if (location.hash === '#knowledge') setTimeout(() => App.openKnowledge('map'), 400);
+if (location.hash === '#universe') setTimeout(() => App.openKnowledge('universe'), 400);
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && !$('#knowledge').classList.contains('hide')) App.closeKnowledge();
+  if (e.key === 'Escape' && !$('#knowledge').classList.contains('hide')) {
+    if (KGMODE === 'universe') App.setKGMode('map'); else App.closeKnowledge();
+  }
 });

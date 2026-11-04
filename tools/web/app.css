@@ -667,3 +667,60 @@ body.knowledge-open .modal{z-index:60}
 
 .brand{cursor:pointer}
 .brand:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}
+
+/* ---------- full graph universe ---------- */
+.kg-universe{position:relative;flex:1;min-width:0;display:flex;background:#03050a;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.kg-universe.hide{display:none}
+.uni-body{position:relative;flex:1;min-height:0;overflow:hidden}
+#uni3d{width:100%;height:100%;display:block;cursor:grab;flex:1;min-width:0}
+#uni3d:active{cursor:grabbing}
+.uni-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}
+.uni-label{will-change:transform;position:absolute;left:0;top:0;transform:translate3d(0,0,0) translate(-50%,-50%);
+  pointer-events:auto;cursor:pointer;white-space:nowrap;font-family:var(--sans);
+  font-size:10.5px;line-height:1.15;color:#cbd5e1;background:rgba(7,9,12,.55);
+  border:1px solid rgba(148,163,184,.14);border-radius:5px;padding:2px 5px;
+  text-shadow:0 1px 8px #000;transition:opacity .15s}
+.uni-label.extra{color:#fff;border-color:rgba(245,158,11,.45);background:rgba(14,18,26,.82)}
+.uni-tip{position:absolute;z-index:4;pointer-events:none;background:#0b0f16;border:1px solid var(--line);
+  border-radius:6px;padding:6px 9px;font-size:11px;box-shadow:0 8px 30px rgba(0,0,0,.6);max-width:280px}
+.uni-tip b{display:block;font-size:12px;margin-bottom:2px}
+.uni-tip span{color:var(--muted);font-size:10px}
+.uni-side{position:absolute;right:14px;top:14px;width:300px;max-height:calc(100% - 28px);overflow:auto;
+  background:rgba(9,13,20,.88);border:1px solid var(--line);border-radius:10px;padding:14px;
+  backdrop-filter:blur(8px);z-index:3}
+.uni-side h3{margin:4px 0 6px;font-size:15px;line-height:1.25;text-transform:none;letter-spacing:0;color:#f8fafc}
+.uni-side p{font-size:11.5px;line-height:1.55;color:#cbd5e1}
+.uni-kind{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.uni-meta{font-size:10px;color:var(--muted);margin-bottom:8px}
+.uni-side-hint{font-size:11px;line-height:1.6;color:var(--muted)}
+.uni-side-hint b{color:#e2e8f0}
+.uni-hud{position:absolute;left:14px;bottom:14px;z-index:3;display:flex;align-items:center;gap:8px;
+  background:rgba(9,13,20,.82);border:1px solid var(--line);border-radius:999px;padding:6px 14px;
+  font-size:10.5px;color:var(--muted);backdrop-filter:blur(6px)}
+.uni-hud label{letter-spacing:.08em;text-transform:uppercase;font-size:9.5px}
+.uni-hud input[type=range]{width:120px;accent-color:var(--accent);cursor:pointer}
+.uni-hud-v{color:#e2e8f0;font-variant-numeric:tabular-nums;min-width:34px;text-align:right}
+.uni-hud-sep{opacity:.4}
+.uni-hud b{color:#e2e8f0}
+.uni-cluster-label{font-size:10px}
+.uni-side h3{margin:4px 0 6px}
+.uni-actions{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.uni-cluster-label{will-change:transform;position:absolute;left:0;top:0;z-index:1;pointer-events:auto;cursor:pointer;
+  transform:translate3d(0,0,0) translate(-50%,-50%);white-space:nowrap;text-align:center;
+  font-family:var(--sans);line-height:1.2;padding:3px 8px;border-radius:999px;
+  border:1px solid rgba(148,163,184,.18);background:rgba(6,10,16,.42);
+  backdrop-filter:blur(2px);transition:background .15s,border-color .15s}
+.uni-cluster-label b{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  color:#dbe4ef;font-weight:600;max-width:190px;overflow:hidden;text-overflow:ellipsis}
+.uni-cluster-label span{display:block;font-size:9px;color:#7f8ea3;letter-spacing:.04em}
+.uni-cluster-label:hover{background:rgba(14,20,30,.85);border-color:rgba(245,158,11,.5)}
+.uni-cluster-label:hover b{color:#fff}
+@media (max-width:760px){.uni-side{position:absolute;left:10px;right:10px;top:auto;bottom:10px;width:auto;max-height:32vh}}
+/* Knowledge page view switch */
+.kg-modes{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#0a0d12}
+.kg-modes button{background:none;border:0;color:var(--muted);font-size:11px;padding:4px 11px;cursor:pointer;letter-spacing:.02em}
+.kg-modes button:hover{color:var(--fg)}
+.kg-modes button.on{background:var(--accent);color:#0b0d10;font-weight:600}
+#knowledge.uni-mode #kg-back,#knowledge.uni-mode #kg-tab-types,#knowledge.uni-mode #kg-tab-comm,
+#knowledge.uni-mode #kg-all,#knowledge.uni-mode #kg-crumbs,#knowledge.uni-mode #kg-results,
+#knowledge.uni-mode #kg-stage,#knowledge.uni-mode #kg-side,#knowledge.uni-mode #kg-legend,#knowledge.uni-mode #kg-msg{display:none!important}

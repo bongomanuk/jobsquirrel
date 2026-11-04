@@ -19,6 +19,7 @@
     <button id="a-reconcile" title="Reconcile the register with Gmail (read-only).">📥 Reconcile</button>
     <button id="a-gmail-review" title="Emails that could not be confidently classified or matched; review and mark Done">📬 Review <b id="review-count">0</b></button>
     <button id="a-knowledge" title="Open the knowledge graph">🕸️ Knowledge</button>
+    <button id="a-universe" title="Open the whole graph as a navigable 3D universe">🌌 Universe</button>
     <button id="a-config" title="Edit profile / CV / archetypes">⚙ Config</button>
     <button id="a-drawer" title="Agent console + live run">💬 Agent</button>
   </div>
@@ -181,19 +182,24 @@
   <div class="kg-page-head">
     <button class="small" onclick="App.closeKnowledge()" title="Back to the job grid">← Jobs</button>
     <b>Knowledge graph</b>
+    <div class="kg-modes" role="tablist" aria-label="View">
+      <button id="kg-mode-map" class="on" onclick="App.setKGMode('map')" title="Drill down through communities and topics">🕸️ Map</button>
+      <button id="kg-mode-uni" onclick="App.setKGMode('universe')" title="Fly through the entire graph as a 3D universe">🌌 Universe</button>
+    </div>
     <span id="kg-stats" class="muted mini"></span>
+    <span id="uni-stats" class="muted mini hide"></span>
     <span style="flex:1"></span>
     <button class="small" onclick="App.rebuildKB()" title="Full re-index of the knowledge graph — can take 20–30+ minutes">Rebuild graph</button>
   </div>
   <div class="kg-toolbar">
     <button id="kg-back" class="small" onclick="App.graphBack()" title="Up one level" style="visibility:hidden">← Back</button>
     <input id="kg-q" placeholder="search communities, entities, types…" style="flex:1;max-width:380px"
-      onkeydown="if(event.key==='Enter')App.graphSearch(this.value)">
-    <button onclick="App.graphSearch($('#kg-q').value)">Search</button>
+      onkeydown="if(event.key==='Enter')App.kgSearch(this.value)">
+    <button id="kg-search-btn" onclick="App.kgSearch($('#kg-q').value)">Search</button>
     <button id="kg-tab-types" onclick="App.graphTypes()">Topics</button>
     <button id="kg-tab-comm" onclick="App.graphTop()">Communities</button>
     <button id="kg-all" onclick="App.graphAll()" style="display:none">Show all</button>
-    <button onclick="App.graphFit()">Reset view</button>
+    <button id="kg-reset" onclick="App.kgReset()">Reset view</button>
     <span id="kg-msg" class="muted mini"></span>
   </div>
   <div id="kg-crumbs" class="kg-crumbs"></div>
@@ -214,6 +220,21 @@
       </div>
       <div id="kg-side-body" class="kg-side-body muted mini">Each bubble is a community. Click one to see its details, then open it to drill down through its sub-communities to the entities inside.</div>
     </aside>
+    <div id="kg-universe" class="kg-universe hide">
+      <canvas id="uni3d"></canvas>
+      <div id="uni-labels" class="uni-labels"></div>
+      <div id="uni-tip" class="uni-tip hide"></div>
+      <aside id="uni-side" class="uni-side">
+        <div class="uni-side-hint">Click a star to inspect it. Drag to orbit · scroll to zoom · right-drag to pan · WASD/QE to fly · double-click a star to travel there.</div>
+      </aside>
+      <div class="uni-hud">
+        <label for="uni-range">label reach</label>
+        <input id="uni-range" type="range" min="300" max="7000" step="100" value="2600" title="How far from the centre of the view labels are drawn; it tightens automatically as you zoom in">
+        <span id="uni-range-v" class="uni-hud-v">2600</span>
+        <span class="uni-hud-sep">·</span>
+        <span class="muted"><b id="uni-labelcount">0</b> labels</span>
+      </div>
+    </div>
   </div>
   <div id="kg-legend" class="kg-legend"></div>
 </section>
@@ -376,13 +397,21 @@
 </div></div>
 
 <script>window.__bootfail = '';</script>
-<script src="/app.js?v={{ASSET}}" onerror="window.__bootfail='app.js failed to load'; setTimeout(function(){location.reload()},1200)"></script>
+<script src="/app.js?v={{ASSET}}" onerror="window.__bootfail='app.js failed to load';(function(){try{var n=+(sessionStorage.getItem('js-boot-retry')||0);if(n<2){sessionStorage.setItem('js-boot-retry',String(n+1));setTimeout(function(){location.reload()},1200)}}catch(e){}})()"></script>
 <script>
-  // If app.js fails to load or never renders the grid (e.g. the dashboard was
-  // restarting mid-load), recover with a fresh page and fresh asset URLs.
-  setTimeout(function () {
-    if (window.__bootfail || !document.querySelectorAll('#metrics .bucket').length) location.reload();
-  }, 5000);
+  // Recover only from a genuine boot failure (app.js failed to load), never
+  // from a slow /api/grid: reloading a graph page just threw away the view.
+  (function () {
+    setTimeout(function () {
+      var buckets = document.querySelectorAll('#metrics .bucket').length;
+      if (buckets) { try { sessionStorage.removeItem('js-boot-retry'); } catch (e) {} return; }
+      if (!window.__bootfail) return;   // still loading data: leave it alone
+      var n = 0; try { n = +(sessionStorage.getItem('js-boot-retry') || 0); } catch (e) {}
+      if (n >= 2) return;
+      try { sessionStorage.setItem('js-boot-retry', String(n + 1)); } catch (e) {}
+      location.reload();
+    }, 5000);
+  })();
 </script>
 </body>
 </html>

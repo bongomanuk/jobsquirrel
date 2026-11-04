@@ -3533,12 +3533,14 @@ GRAPH_PY = os.path.join(ROOT, ".venv-graphrag", "bin", "python")
 GRAPH_TOOL = os.path.join(ROOT, "tools", "graph_explore.py")
 KB_SOURCES = os.path.join(ROOT, "kb", "sources")
 _gcache = {}
+_GCACHE_TTL = 120          # seconds; keeps the graph views fresh after a re-index
 
 
 def graph_query(*args):
     key = "|".join(str(a) for a in args)
-    if key in _gcache:
-        return _gcache[key]
+    hit = _gcache.get(key)
+    if hit and time.time() - hit[0] < _GCACHE_TTL:
+        return hit[1]
     py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)      # the GraphRAG venv has its own interpreter/deps
@@ -3550,7 +3552,7 @@ def graph_query(*args):
             data = {"error": (r.stderr or "graph read failed").strip()[-300:]}
     except (OSError, subprocess.SubprocessError, ValueError) as e:
         data = {"error": f"{type(e).__name__}: {e}"}
-    _gcache[key] = data
+    _gcache[key] = (time.time(), data)
     return data
 
 
@@ -3969,6 +3971,7 @@ class H(BaseHTTPRequestHandler):
                   "/app.css": ("app.css", "text/css; charset=utf-8"),
                   "/app.js": ("app.js", "application/javascript; charset=utf-8"),
                   "/graph3d.js": ("graph3d.js", "application/javascript; charset=utf-8"),
+                  "/graph-universe.js": ("graph-universe.js", "application/javascript; charset=utf-8"),
                   "/vendor/three.module.min.js": ("vendor/three.module.min.js",
                                                     "application/javascript; charset=utf-8")}
         if p in static:
@@ -4045,6 +4048,8 @@ class H(BaseHTTPRequestHandler):
         if p == "/api/graph/data":
             return self._json(graph_query("graph", qs.get("q", [""])[0],
                                           qs.get("limit", ["90"])[0]))
+        if p == "/api/graph/universe":
+            return self._json(graph_query("universe"))
         if p == "/api/graph/ontology":
             return self._json(graph_query("ontology"))
         if p == "/api/graph/types":
