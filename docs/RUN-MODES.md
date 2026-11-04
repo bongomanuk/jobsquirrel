@@ -3,6 +3,13 @@
 The pipeline can be run several ways. **The agent should explain these to the
 user and let them choose**, the user should never have to read this file.
 
+## Run completion
+
+Every finished queue appends a summary of each task's outcome to the **Agent**
+pane (and `state/logs/run-complete.log`). A detached run no longer disappears
+silently when its badge clears: you see what was prepared, submitted, blocked or
+closed, with the reason.
+
 ## 1. Discover (find roles, no applications)
 
 Find new roles and feed the queue; generate nothing.

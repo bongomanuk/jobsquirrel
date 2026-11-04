@@ -16,6 +16,7 @@ Every command prints one JSON object on stdout.
 """
 import json
 import os
+import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -36,6 +37,55 @@ def _s(v, n):
     return "" if v is None else str(v)[:n]
 
 
+SKILLS_FILE = os.path.join(ROOT, "kb", "sources", "personal", "skills_evidence.md")
+
+
+def _skill_overlay():
+    """Skill evidence added from the dashboard, shown live without a graph rebuild."""
+    rows = []
+    try:
+        lines = open(SKILLS_FILE, encoding="utf-8", errors="ignore").read().splitlines()
+    except OSError:
+        return rows
+    for line in lines:
+        line = line.strip()
+        m = re.match(r"^-\s+\*\*(.+?)\*\*\s*(?:—\s*(.*))?$", line)
+        if not m:
+            continue
+        title = m.group(1).strip()[:140]
+        detail = (m.group(2) or "").strip()[:700]
+        if title:
+            rows.append({"title": title, "description": detail or "operator-recorded skill evidence",
+                         "type": "SKILL", "degree": 1, "frequency": 1})
+    return rows
+
+
+def _overlay_nodes(q="", limit=12):
+    rows = _skill_overlay()
+    if q:
+        rows = [r for r in rows if q in (r["title"] + " " + r["description"]).lower()]
+    return rows[:max(1, min(int(limit or 12), 40))]
+
+
+def _norm(s):
+    return re.sub(r"[^a-z0-9]+", " ", str(s or "").lower()).strip()
+
+
+def _add_skill_links(nodes, links, rows):
+    titles = {_norm(n.get("title", "")) for n in nodes}
+    person = "Peter Hollas"
+    if person.lower() not in titles:
+        nodes.append({"id": person, "title": person, "type": "PERSON", "degree": len(rows),
+                      "frequency": len(rows), "description": "Candidate"})
+    for i, r in enumerate(rows):
+        if _norm(r["title"]) in titles:
+            continue
+        nodes.append({"id": r["title"], "title": r["title"], "type": "SKILL",
+                      "degree": 1, "frequency": 1, "description": r["description"]})
+        links.append({"source": person, "target": r["title"], "weight": 1,
+                      "description": r["description"][:400]})
+
+
 def stats():
     out = {"index": os.path.exists(OUT)}
     for name in ("entities", "relationships", "communities", "community_reports", "documents", "text_units"):
@@ -46,6 +96,7 @@ def stats():
             out["runtime_s"] = round(json.load(fh).get("total_runtime", 0))
     except (OSError, ValueError):
         pass
+    out["skills_overlay"] = len(_skill_overlay())
     return out
 
 
@@ -59,9 +110,14 @@ def entities(q, limit):
             df["type"].str.lower().str.contains(q, regex=False)
         df = df[m]
     df = df.sort_values("degree", ascending=False).head(limit)
-    return {"rows": [{"id": int(r.human_readable_id), "title": _s(r.title, 120), "type": _s(r.type, 40),
-                      "degree": int(r.degree), "frequency": int(r.frequency),
-                      "description": _s(r.description, 500)} for r in df.itertuples()]}
+    rows = [{"id": int(r.human_readable_id), "title": _s(r.title, 120), "type": _s(r.type, 40),
+             "degree": int(r.degree), "frequency": int(r.frequency),
+             "description": _s(r.description, 500)} for r in df.itertuples()]
+    seen = {_norm(r["title"]) for r in rows}
+    for i, r in enumerate(_overlay_nodes(q, 20)):
+        if _norm(r["title"]) not in seen:
+            rows.append({"id": -1000 - i, **r, "description": r["description"][:500]})
+    return {"rows": rows[:limit]}
 
 
 def relationships(q, limit):
@@ -74,8 +130,12 @@ def relationships(q, limit):
             df["description"].str.lower().str.contains(q, regex=False)
         df = df[m]
     df = df.sort_values("weight", ascending=False).head(limit)
-    return {"rows": [{"source": _s(r.source, 90), "target": _s(r.target, 90), "weight": round(float(r.weight), 1),
-                      "description": _s(r.description, 400)} for r in df.itertuples()]}
+    rows = [{"source": _s(r.source, 90), "target": _s(r.target, 90), "weight": round(float(r.weight), 1),
+             "description": _s(r.description, 400)} for r in df.itertuples()]
+    for r in _overlay_nodes(q, 20):
+        rows.append({"source": "Peter Hollas", "target": r["title"], "weight": 1,
+                     "description": r["description"][:400]})
+    return {"rows": rows[:limit]}
 
 
 def communities(q, limit):
@@ -421,7 +481,15 @@ def search(q, limit=12):
                          "degree": int(r.degree), "description": _s(r.description, 400),
                          "community": c,
                          "community_title": reports_title(c) if c is not None else ""})
-    return {"communities": communities, "entities": entities, "query": q}
+    seen = {_norm(e.get("title", "")) for e in entities}
+    for r in _overlay_nodes(q, limit):
+        if _norm(r["title"]) in seen:
+            continue
+        entities.append({"id": r["title"], "title": r["title"], "type": "SKILL",
+                         "class": "SKILL", "class_label": "Skill", "degree": 1,
+                         "description": r["description"][:400], "community": None,
+                         "community_title": ""})
+    return {"communities": communities, "entities": entities[:limit], "query": q}
 
 
 def ego(q, limit=50):
@@ -491,7 +559,8 @@ def graph(q, limit):
     links = [{"source": _s(r.source, 140), "target": _s(r.target, 140),
               "weight": round(float(r.weight), 1), "description": _s(r.description, 400)}
              for r in rel.itertuples()]
-    return {"nodes": nodes, "links": links, "query": q, "total": len(ents)}
+    _add_skill_links(nodes, links, _overlay_nodes(q, 10))
+    return {"nodes": nodes, "links": links, "query": q, "total": len(ents) + len(_skill_overlay())}
 
 
 def documents():

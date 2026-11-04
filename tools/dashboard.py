@@ -2958,7 +2958,7 @@ def chat_start(message):
 
 CHAT_USER = re.compile(r"^>\s?(.*)$")
 CHAT_TOOL = re.compile(r"^\$\s?(.*)$")
-CHAT_STATUS = re.compile(r"^>\s*build\b.*$", re.I)
+CHAT_STATUS = re.compile(r"^>\s*(build\b.*|\[run\].*)$", re.I)
 
 
 CHAT_TOOL_BODY_MAX = 900        # tool output kept per step (the UI collapses it; keep the payload small)
@@ -3018,7 +3018,10 @@ def chat_parse_json(text):
     segs, tokens, cost = [], None, None
     for ln in text.splitlines():
         s = ln.strip()
-        if s.startswith(">") and not CHAT_STATUS.match(s):
+        if CHAT_STATUS.match(s):
+            segs.append({"t": "status", "body": s[1:].strip()})
+            continue
+        if s.startswith(">"):
             segs.append({"t": "user", "body": s[1:].strip()})
             continue
         if not s.startswith("{"):
@@ -3074,7 +3077,10 @@ def chat_parse_claude(text):
     segs, tokens, cost = [], None, None
     for ln in text.splitlines():
         s = ln.strip()
-        if s.startswith(">") and not CHAT_STATUS.match(s):
+        if CHAT_STATUS.match(s):
+            segs.append({"t": "status", "body": s[1:].strip()})
+            continue
+        if s.startswith(">"):
             segs.append({"t": "user", "body": s[1:].strip()})
             continue
         if not s.startswith("{"):
@@ -3698,8 +3704,8 @@ def add_skill_evidence(skill, source="", detail="", key=""):
     with open(SKILLS_FILE, "a", encoding="utf-8") as fh:
         fh.write(line + "\n")
     return {"ok": f"evidence recorded for “{skill}”", "file": os.path.relpath(SKILLS_FILE, ROOT),
-            "hint": "Re-prepare the role to fold it into the CV; no graph rebuild is needed "
-                    "(the evidence is appended to every grounding pack)."}
+            "hint": ("The graph view shows this immediately through the live skill overlay; "
+                     "re-prepare the role to fold it into the CV. No rebuild is needed.")}
 
 
 def role_grounding(key):

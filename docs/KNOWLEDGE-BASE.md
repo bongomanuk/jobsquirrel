@@ -153,8 +153,9 @@ index. It is deliberately more than a graph picture:
   when a role is assessed.
 - **Sources** lists, opens, uploads and deletes `kb/sources/` documents and
   rebuilds the graph. **Add** records a fact or skill as a supplementary grounded source. It is
-  appended to every GraphRAG context immediately, so no rebuild is needed;
-  re-prepare the role to fold it into the CV. **Roles** lists live roles and opens one in the job
+  appended to every GraphRAG context immediately and appears in the graph
+  view through a live skill overlay, so no rebuild is needed; re-prepare the
+  role to fold it into the CV. **Roles** lists live roles and opens one in the job
   drawer (or prepares a queued role) so application work stays in the same
   workspace.
 

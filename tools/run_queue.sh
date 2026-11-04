@@ -28,6 +28,8 @@ PATH="$PATH:$ROOT/tools/compat"; export PATH
 QUEUE="${QUEUE:-$ROOT/state/queue.tsv}"
 DONE="${DONE:-$ROOT/state/queue.done}"
 LOGS="$ROOT/state/logs"
+SUMMARY_FILE="${SUMMARY_FILE:-$LOGS/run-summary-$$.md}"
+: > "$SUMMARY_FILE"
 PARALLEL="${PARALLEL:-5}"
 TASK_TIMEOUT="${TASK_TIMEOUT:-1200}"
 RETRY_LIMIT="${RETRY_LIMIT:-1}"
@@ -345,6 +347,14 @@ run_task() {
   else
     echo "${key:-$company|$role}" >> "$DONE"
   fi
+  sum_status="${outcome:-}"
+  if [ -z "$sum_status" ]; then
+    if [ "$rc" -eq 124 ]; then sum_status="TIMEOUT"
+    elif [ -n "$reason" ]; then sum_status="INFRA_FAIL"
+    else sum_status="FINISHED"; fi
+  fi
+  printf -- '- %s — %s: %s%s\n' "$company" "$role" "$sum_status" \
+    "${reason:+ ($reason)}" >> "$SUMMARY_FILE"
   tail -1 "$log" >> "$LOGS/run_queue.out" 2>/dev/null
   echo "DONE  $(date +%H:%M:%S) $company | $role (rc=$rc)" >> "$LOGS/run_queue.out"
   # The role is finished: its transcript is history, so pack it.
@@ -490,6 +500,12 @@ if [ -e "$STOP_FILE" ]; then
   echo "queue stopped early (agent budget/rate limit/sign-in) $(date +%H:%M:%S)" >> "$LOGS/run_queue.out"
 else
   echo "queue complete $(date +%H:%M:%S)" >> "$LOGS/run_queue.out"
+fi
+
+# Tell the Agent pane what this run did.
+if [ -s "$SUMMARY_FILE" ]; then
+  python3 "$ROOT/tools/notify_agent.py" --queue "$QUEUE" --summary "$SUMMARY_FILE" \
+    --parallel "$PARALLEL" >> "$LOGS/run_queue.out" 2>&1 || true
 fi
 
 # Pack the artifacts from earlier runs that this one did not touch.
