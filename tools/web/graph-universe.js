@@ -172,9 +172,10 @@ function layout(nodes) {
     const center = new THREE.Vector3(Math.cos(th) * rad * rr, y * rr * 0.86, Math.sin(th) * rad * rr);
     const spread = Math.min(215, 14 + Math.sqrt(list.length) * 17);
     const dom = list.reduce((a, b) => ((b.degree || 0) > (a.degree || 0) ? b : a), list[0]);
+    const titled = list.find(x => x.community_title);
     const cluster = {
       key, center, spread, list, size: list.length, color: colorOf(dom),
-      name: dom.title, top: dom
+      name: dom.title, title: (titled && titled.community_title) || dom.title, top: dom
     };
     S.clusters.push(cluster);
     list.forEach(n => S.clusterOf.set(n.id, cluster));
@@ -500,6 +501,7 @@ function assignLabels() {
   const target = S.orbit.target;
   const tier = labelTier();
   const minDeg = tier === 'major' ? 80 : tier === 'strong' ? 25 : tier === 'detail' ? 8 : 0;
+  const placed = [];
 
   const onScreen = n => {
     const p = n.pos.clone().project(S.camera);
@@ -508,6 +510,8 @@ function assignLabels() {
     if (x < -150 || x > W + 150 || y < -20 || y > H + 20) return null;
     return { x, y };
   };
+  const inRange = n => n === S.selected || n === S.hovered
+    || n.pos.distanceTo(target) <= range;
   const represented = n => {
     const cl = S.clusterOf.get(n.id);
     return !S.activeClusters || !cl || S.activeClusters.has(cl);
@@ -516,15 +520,67 @@ function assignLabels() {
     if (n === S.selected || n === S.hovered) return true;
     if (!inRange(n) || !represented(n)) return false;
     const cl = S.clusterOf.get(n.id);
-    const isTop = cl && cl.top === n;
-    return (n.degree || 0) >= minDeg || isTop;
+    return (n.degree || 0) >= minDeg || (cl && cl.top === n);
   };
-  const inRange = n => n === S.selected || n === S.hovered
-    || n.pos.distanceTo(target) <= range;
 
-  const placed = [];
+  // ---- islands are assigned first at the overview: the theme names explain
+  // the organisation before the individual stars do
+  const prevClusters = S.clusterAssigned.slice();
+  const prevSet = new Set(prevClusters.map(a => a.c));
+  let ci = 0;
+  const tryCluster = c => {
+    if (S.activeClusters && !S.activeClusters.has(c)) return false;
+    if (c.center.distanceTo(target) > range * 1.2) return false;
+    const p = c.center.clone().project(S.camera);
+    if (p.z > 1 || p.z < -1) return false;
+    const x = (p.x * 0.5 + 0.5) * W, y = (-p.y * 0.5 + 0.5) * H;
+    const el = S.clusterPool[ci];
+    el._cluster = c;
+    el.innerHTML = `<b>${esc(islandTitle(c))}</b><span>${c.size} ${c.size === 1 ? 'entity' : 'entities'}</span>`;
+    el.style.display = '';
+    const w = el.offsetWidth || 130, h = el.offsetHeight || 30;
+    for (const [dx, dy] of [[0, -38], [0, 38], [-90, 0], [90, 0], [0, 0]]) {
+      const xx = x + dx, yy = y + dy;
+      if (xx + w / 2 < 0 || xx - w / 2 > W || yy + h / 2 < 0 || yy - h / 2 > H) continue;
+      let clash = false;
+      for (const r of placed) {
+        if (!(xx + w / 2 < r.x - r.w / 2 || xx - w / 2 > r.x + r.w / 2 ||
+              yy + h / 2 < r.y - r.h / 2 || yy - h / 2 > r.y + r.h / 2)) { clash = true; break; }
+      }
+      if (clash) continue;
+      placed.push({ x: xx, y: yy, w: w + 8, h: h + 4 });
+      el.style.display = '';
+      S.clusterAssigned.push({ c, el, dx, dy });
+      ci++;
+      return true;
+    }
+    el.style.display = 'none'; el._cluster = null;
+    return false;
+  };
+  const doClusters = (max = S.clusterPool.length) => {
+    S.clusterAssigned = [];
+    ci = 0;
+    const cl = [...S.clusters]
+      .filter(c => (!S.activeClusters || S.activeClusters.has(c))
+        && c.center.distanceTo(target) <= range * 1.2)
+      .sort((a, b) => b.size - a.size);
+    for (const { c } of prevClusters) {
+      if (ci >= max) break;
+      if (!prevSet.has(c)) continue;
+      tryCluster(c);
+    }
+    for (const c of cl) {
+      if (ci >= max) break;
+      if (prevSet.has(c)) continue;
+      tryCluster(c);
+    }
+    for (; ci < S.clusterPool.length; ci++) {
+      S.clusterPool[ci]._cluster = null; S.clusterPool[ci].style.display = 'none';
+    }
+  };
+  if (tier === 'major') doClusters(10);
 
-  // ---- node labels first: the important nodes are what you should see first
+  // ---- node labels fill the remaining space (or lead at closer zooms)
   const cands = [];
   for (const n of S.nodes) {
     if (!eligible(n)) continue;
@@ -543,7 +599,6 @@ function assignLabels() {
     if (!seen.has(n.id)) { seen.add(n.id); ordered.push(n); }
   }
   const assigned = [];
-  const labelled = new Set();
   for (const n of ordered) {
     if (assigned.length >= S.labelPool.length) break;
     const spot = onScreen(n);
@@ -563,62 +618,13 @@ function assignLabels() {
     if (clash) { el.style.display = 'none'; el._node = null; continue; }
     placed.push({ x: spot.x, y: spot.y, w: w + 10, h: h + 6 });
     assigned.push({ n, el });
-    labelled.add(n.id);
   }
   S.labelAssigned = assigned;
   for (let i = assigned.length; i < S.labelPool.length; i++) {
     S.labelPool[i]._node = null; S.labelPool[i].style.display = 'none';
   }
 
-  // ---- island beacons fill the gaps the node labels left
-  const prevClusters = S.clusterAssigned.slice();
-  S.clusterAssigned = [];
-  const cl = [...S.clusters]
-    .filter(c => (!S.activeClusters || S.activeClusters.has(c))
-      && c.center.distanceTo(target) <= range * 1.2)
-    .sort((a, b) => b.size - a.size);
-  const prevSet = new Set(prevClusters.map(a => a.c));
-  let ci = 0;
-  const tryCluster = c => {
-    if (c.top && labelled.has(c.top.id)) return false;   // its key node already speaks for it
-    if (c.center.distanceTo(target) > range * 1.2) return false;
-    const p = c.center.clone().project(S.camera);
-    if (p.z > 1 || p.z < -1) return false;
-    const x = (p.x * 0.5 + 0.5) * W, y = (-p.y * 0.5 + 0.5) * H;
-    if (x < -90 || x > W + 90 || y < -20 || y > H + 20) return false;
-    const el = S.clusterPool[ci];
-    el._cluster = c;
-    el.innerHTML = `<b>${esc(c.name)}</b><span>${c.size} ${c.size === 1 ? 'entity' : 'entities'}</span>`;
-    el.style.display = '';
-    const w = el.offsetWidth || 130, h = el.offsetHeight || 30;
-    if (x + w / 2 < 0 || x - w / 2 > W || y + h / 2 < 0 || y - h / 2 > H) {
-      el.style.display = 'none'; el._cluster = null; return false;
-    }
-    for (const r of placed) {
-      if (!(x + w / 2 < r.x - r.w / 2 || x - w / 2 > r.x + r.w / 2 ||
-            y + h / 2 < r.y - r.h / 2 || y - h / 2 > r.y + r.h / 2)) {
-        el.style.display = 'none'; el._cluster = null; return false;
-      }
-    }
-    placed.push({ x, y, w: w + 8, h: h + 4 });
-    el.style.display = '';
-    S.clusterAssigned.push({ c, el });
-    ci++;
-    return true;
-  };
-  for (const { c } of prevClusters) {
-    if (ci >= S.clusterPool.length) break;
-    if (!prevSet.has(c)) continue;
-    tryCluster(c);
-  }
-  for (const c of cl) {
-    if (ci >= S.clusterPool.length) break;
-    if (prevSet.has(c)) continue;
-    tryCluster(c);
-  }
-  for (; ci < S.clusterPool.length; ci++) {
-    S.clusterPool[ci]._cluster = null; S.clusterPool[ci].style.display = 'none';
-  }
+  if (tier !== 'major') doClusters();
   const cnt = document.getElementById('uni-labelcount');
   if (cnt) cnt.textContent = String(assigned.length + S.clusterAssigned.length);
 }
@@ -629,17 +635,28 @@ function updateLabels(force = false) {
   if (!force && now - S.lastLabel < 33) return;
   S.lastLabel = now;
   const W = S.W, H = S.H;
-  const place = (n, el) => {
+  const place = (n, el, dx = 0, dy = 0) => {
     if (!n || !n.pos) { el.style.display = 'none'; return; }
     const p = n.pos.clone().project(S.camera);
     if (p.z > 1 || p.z < -1) { el.style.display = 'none'; return; }
-    const x = (p.x * 0.5 + 0.5) * W, y = (-p.y * 0.5 + 0.5) * H;
+    const x = (p.x * 0.5 + 0.5) * W + dx, y = (-p.y * 0.5 + 0.5) * H + dy;
     if (x < -150 || x > W + 150 || y < -20 || y > H + 20) { el.style.display = 'none'; return; }
     el.style.display = '';
     el.style.transform = `translate3d(${x}px,${y}px,0) translate(-50%,-50%)`;
   };
   for (const { n, el } of S.labelAssigned) place(n, el);
-  for (const { c, el } of S.clusterAssigned) place({ pos: c.center }, el);
+  for (const { c, el, dx, dy } of S.clusterAssigned) place({ pos: c.center }, el, dx, dy);
+}
+
+function islandTitle(c) {
+  let t = String((c && (c.title || c.name)) || '');
+  t = t.replace(/\s+Community$/i, '')
+       .replace(/^(Peter Liam Hollas|Peter Hollas)\s*(?:[:\-–,]\s*|\band\s+)?/i, '')
+       .replace(/,?\s+and\s+/gi, ' & ')
+       .replace(/\s+/g, ' ')
+       .trim();
+  if (t.length > 52) t = t.slice(0, 49).replace(/[\s,;:&-]+\S*$/, '') + '…';
+  return t || (c && c.name) || '';
 }
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
@@ -783,7 +800,7 @@ function setSide(n) {
   }
   box.innerHTML = `<div class="uni-kind">${esc(n.class || n.type || 'entity')}</div>
     <h3>${esc(n.title)}</h3>
-    <div class="uni-meta">${n.degree || 0} links · ${n.community != null ? 'island ' + n.community : 'no community'}</div>
+    <div class="uni-meta">${n.degree || 0} links · ${n.community != null ? esc(n.community_title || ('island ' + n.community)) : 'no community'}</div>
     <p>${esc(n.description || 'No description in the index.')}</p>
     <div class="uni-actions">
       <button class="small" onclick="window.__uni && window.__uni.focusSelected()">Fly here</button>
@@ -795,7 +812,7 @@ function setSideCluster(c) {
   const box = document.getElementById('uni-side');
   if (!box) return;
   box.innerHTML = `<div class="uni-kind">island</div>
-    <h3>${esc(c.name)}</h3>
+    <h3>${esc(islandTitle(c))}</h3>
     <div class="uni-meta">${c.size} entities · community ${String(c.key).replace(/^c/, '')}</div>
     <p>The island is named after its best-connected entity. Its neighbours orbit it; click any star or use search to jump straight to one.</p>
     <div class="uni-actions"><button class="small" onclick="window.__uni && window.__uni.reset()">Reset view</button></div>`;
@@ -946,6 +963,12 @@ export function search(q) {
     return 0;
   }
   const hits = S.nodes.filter(n => (n.title + ' ' + (n.description || '')).toLowerCase().includes(q));
+  const rank = n => {
+    const t = (n.title || '').toLowerCase();
+    return (t === q ? 100 : t.startsWith(q) ? 70 : t.includes(q) ? 45 : 0)
+      + Math.min(30, (n.degree || 0) / 12);
+  };
+  hits.sort((a, b) => rank(b) - rank(a));
   S.highlight = new Set(hits.map(n => n.id));
   if (S.hits) { S.scene.remove(S.hits); S.hits.geometry.dispose(); S.hits.material.dispose(); S.hits = null; }
   if (hits.length) {
@@ -958,7 +981,7 @@ export function search(q) {
       opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true
     }));
     S.scene.add(S.hits);
-    select(hits.slice().sort((a, b) => (b.degree || 0) - (a.degree || 0))[0]);
+    select(hits[0]);
   }
   if (st) st.textContent = `${hits.length} match${hits.length === 1 ? '' : 'es'} for “${q}” · ${S.nodes.length} entities`;
   return hits.length;

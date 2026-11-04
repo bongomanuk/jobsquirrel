@@ -710,8 +710,8 @@ body.knowledge-open .modal{z-index:60}
   font-family:var(--sans);line-height:1.2;padding:3px 8px;border-radius:999px;
   border:1px solid rgba(148,163,184,.18);background:rgba(6,10,16,.42);
   backdrop-filter:blur(2px);transition:background .15s,border-color .15s}
-.uni-cluster-label b{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;
-  color:#dbe4ef;font-weight:600;max-width:190px;overflow:hidden;text-overflow:ellipsis}
+.uni-cluster-label b{display:block;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;
+  color:#dbe4ef;font-weight:600;max-width:235px;overflow:hidden;text-overflow:ellipsis}
 .uni-cluster-label span{display:block;font-size:9px;color:#7f8ea3;letter-spacing:.04em}
 .uni-cluster-label:hover{background:rgba(14,20,30,.85);border-color:rgba(245,158,11,.5)}
 .uni-cluster-label:hover b{color:#fff}

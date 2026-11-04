@@ -219,6 +219,9 @@ def _breadcrumb(comms, community):
 
 
 def reports_title(n):
+    global _REPORTS
+    if not _REPORTS:
+        _REPORTS = _reports()
     return _REPORTS.get(int(n), {}).get("title") or f"Community {int(n)}"
 
 
@@ -229,6 +232,15 @@ def _deepest_community(comms, ents):
     """entity uuid -> the smallest/deepest community that contains it."""
     out = {}
     for r in comms.sort_values("level", ascending=False).itertuples():
+        for uid in r.entity_ids:
+            out.setdefault(str(uid), int(r.community))
+    return out
+
+
+def _community_at_level(comms, level):
+    """entity uuid -> its community at one level of the hierarchy."""
+    out = {}
+    for r in comms[comms["level"] == level].itertuples():
         for uid in r.entity_ids:
             out.setdefault(str(uid), int(r.community))
     return out
@@ -427,18 +439,43 @@ def type_entities(type_name, limit=90):
     if sub_all.empty:
         return {"error": f"no entities of type {type_name}"}
     limit = max(10, min(int(limit or 90), 160))
+    comms = _load("communities")
+    comm_of = _community_at_level(comms, 0) if comms is not None else {}
     titles_all = set(str(x) for x in sub_all["title"])
     rel_all = rels[rels["source"].isin(titles_all) & rels["target"].isin(titles_all)]
-    sub, rel, connected = _connected_subgraph(sub_all, rel_all, limit)
+    ordered = sub_all.sort_values(["degree", "frequency"], ascending=False)
+    if len(ordered) > limit:
+        # do not hand the whole topic to whichever employer has the largest
+        # connected blob: take the strongest entities with a per-theme cap
+        cap = max(5, limit // 8)
+        picked, per = [], {}
+        for r in ordered.itertuples():
+            c = comm_of.get(str(r.id))
+            if c is not None and per.get(c, 0) >= cap:
+                continue
+            picked.append(str(r.title))
+            if c is not None:
+                per[c] = per.get(c, 0) + 1
+            if len(picked) >= limit:
+                break
+        sub = ordered[ordered["title"].astype(str).isin(set(picked))]
+    else:
+        sub = ordered
+    titles = set(str(x) for x in sub["title"])
+    rel = rel_all[rel_all["source"].isin(titles) & rel_all["target"].isin(titles)]
     rel = rel.sort_values("weight", ascending=False).head(limit * 2)
     docs = _doc_map()
-    nodes = [_entity_node(r, None, docs) for r in sub.itertuples()]
+    nodes = []
+    for r in sub.itertuples():
+        n = _entity_node(r, comm_of.get(str(r.id)), docs)
+        n["community_title"] = reports_title(n.get("community")) if n.get("community") is not None else ""
+        nodes.append(n)
     links = [{"source": _s(r.source, 140), "target": _s(r.target, 140),
               "weight": round(float(r.weight), 1)} for r in rel.itertuples()]
     meta = ONT.class_meta(t)
     return {"mode": "entities", "type": t, "label": meta["label"], "color": meta["color"],
             "nodes": nodes, "links": links, "total": len(sub_all),
-            "connected": connected, "shown": len(nodes)}
+            "shown": len(nodes)}
 
 
 def ontology_view():
@@ -565,19 +602,26 @@ def graph(q, limit):
 
 def universe():
     """The whole indexed graph, for the space-view explorer."""
+    global _REPORTS
+    _REPORTS = _reports()
     ents, rels = _load("entities"), _load("relationships")
     comms = _load("communities")
     if ents is None or rels is None:
         return {"error": "no index"}
-    cmap = _deepest_community(comms, ents) if comms is not None else {}
+    # Level 0 is the theme/employer level (Anaplan, Telia, Thomson Reuters,
+    # HAUD, EuroCompliant...). Using the deepest community fragmented the map
+    # into hundreds of tiny islands and hid that structure.
+    cmap = _community_at_level(comms, 0) if comms is not None else {}
     nodes = []
     for r in ents.itertuples():
         meta = ONT.class_meta(r.type)
+        c = cmap.get(str(r.id))
         nodes.append({"id": _s(r.title, 140), "title": _s(r.title, 140),
                       "type": _s(r.type, 40), "class": meta["id"],
                       "color": meta["color"], "degree": int(r.degree),
                       "frequency": int(r.frequency),
-                      "community": cmap.get(str(r.id)),
+                      "community": c,
+                      "community_title": reports_title(c) if c is not None else "",
                       "description": _s(r.description, 260)})
     links = [{"source": _s(r.source, 140), "target": _s(r.target, 140),
               "weight": round(float(r.weight), 1)} for r in rels.itertuples()]
