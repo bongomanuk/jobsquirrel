@@ -40,6 +40,9 @@ ALIASES = {
     "DIVX API TEAM": "DIVISION X API TEAM",
     "BSS TEAMS": "BSS TEAM",
     "IOT TEAMS": "IOT TEAM",
+    "CALLER FRAUD DETECTION PIPELINE": "CALLER-FRAUD DETECTION PIPELINE",
+    "REAL-TIME CALLER FRAUD DETECTION PIPELINE": "CALLER-FRAUD DETECTION PIPELINE",
+    "APMG AGILEPM DSDM ATERN CERTIFIED AGILE PROJECT MANAGER": "AGILEPM DSDM ATERN CERTIFIED AGILE PROJECT MANAGER",
 }
 
 
@@ -52,10 +55,11 @@ def load(name):
 def safe_key(title):
     """Punctuation-insensitive, but symbols that carry meaning are kept."""
     t = str(title or "").strip().lower()
-    t = t.replace("&", " and ")
+    t = t.replace("&", " ")
     t = re.sub(r"[\u2013\u2014]", "-", t)
     t = t.replace("-", " ").replace("_", " ").replace("/", " ")
-    t = re.sub(r"[,;:()\[\]]", " ", t)
+    t = re.sub(r"[,;:()\[\]\.]", " ", t)
+    t = re.sub(r"\band\b", " ", t)
     t = re.sub(r"\s+", " ", t).strip()
     return t
 
@@ -69,46 +73,72 @@ def pick_survivor(rows):
 
 
 def merge_groups(ents):
-    """Return title -> survivor row, plus a human-readable merge report."""
-    by_key = defaultdict(list)
+    """Return title -> survivor row using transitive, cycle-free grouping."""
+    rows_by_title = {}
     for r in ents.itertuples():
-        by_key[safe_key(r.title)].append(r)
-    mapping = {}
-    merges = []
-    for key, rows in by_key.items():
-        if len(rows) < 2:
-            continue
-        classes = {class_of(r.type) for r in rows}
-        if len(classes) > 1:
-            continue        # a metric and an organisation with the same name are not the same thing
-        survivor = pick_survivor(rows)
-        for r in rows:
-            if r.title != survivor.title:
-                mapping[r.title] = survivor
-        merges.append((survivor.title, sorted({r.title for r in rows})))
+        rows_by_title.setdefault(str(r.title), []).append(r)
+    titles = list(rows_by_title)
+    parent = {t: t for t in titles}
 
-    # plural team variants, only when the singular exists and neither is a metric
-    by_title = {str(r.title).upper(): r for r in ents.itertuples()}
-    for title, r in list(by_title.items()):
-        if not title.endswith("S") or class_of(r.type) == "METRIC":
-            continue
-        singular = by_title.get(title[:-1])
-        if not singular or class_of(singular.type) == "METRIC":
-            continue
-        if "TEAM" not in title:
-            continue
-        if title in mapping:
-            continue
-        mapping[r.title] = singular
-        merges.append((singular.title, [r.title]))
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
 
-    # explicit aliases win over fuzzy choices
-    for title, target in ALIASES.items():
-        src = by_title.get(title)
-        dst = by_title.get(target)
-        if src and dst and src.title != dst.title:
-            mapping[src.title] = dst
-            merges.append((dst.title, [src.title]))
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
+
+    def row_for(title):
+        return max(rows_by_title[title], key=lambda r: (int(r.degree), len(str(r.description or ""))))
+
+    # 1. punctuation/spacing variants, when the ontology class agrees
+    by_key = defaultdict(list)
+    for title in titles:
+        by_key[safe_key(title)].append(title)
+    for group in by_key.values():
+        if len(group) < 2:
+            continue
+        classes = {class_of(row_for(t).type) for t in group}
+        if len(classes) == 1:
+            for t in group[1:]:
+                union(group[0], t)
+
+    # 2. plural team variants, never metrics
+    for title in titles:
+        up = title.upper()
+        if not up.endswith("S") or "TEAM" not in up:
+            continue
+        singular = next((t for t in titles if t.upper() == up[:-1]), None)
+        if not singular:
+            continue
+        a, b = row_for(title), row_for(singular)
+        if class_of(a.type) == "METRIC" or class_of(b.type) == "METRIC":
+            continue
+        union(title, singular)
+
+    # 3. explicit aliases (may cross classes)
+    for src, dst in ALIASES.items():
+        a = next((t for t in titles if t.upper() == src.upper()), None)
+        b = next((t for t in titles if t.upper() == dst.upper()), None)
+        if a and b and a != b:
+            union(a, b)
+
+    comps = defaultdict(list)
+    for t in titles:
+        comps[find(t)].append(t)
+    mapping, merges = {}, []
+    for group in comps.values():
+        if len(group) < 2:
+            continue
+        survivors = [row_for(t) for t in group]
+        survivor = max(survivors, key=lambda r: (int(r.degree), len(str(r.description or ""))))
+        for t in group:
+            if t != survivor.title:
+                mapping[t] = survivor
+        merges.append((survivor.title, sorted(group)))
     return mapping, merges
 
 
@@ -172,7 +202,7 @@ def main():
             merged_rows[sid] = {
                 "id": sid, "title": str(r.title), "type": str(r.type),
                 "description": str(r.description or ""),
-                "text_unit_ids": list(r.text_unit_ids or []),
+                "text_unit_ids": list(r.text_unit_ids) if r.text_unit_ids is not None else [],
                 "frequency": int(r.frequency),
             }
         else:
@@ -180,7 +210,7 @@ def main():
                 base["description"] = str(r.description or "")
                 base["title"] = str(r.title)
                 base["type"] = str(r.type)
-            base["text_unit_ids"] = list(dict.fromkeys(base["text_unit_ids"] + list(r.text_unit_ids or [])))
+            base["text_unit_ids"] = list(dict.fromkeys(base["text_unit_ids"] + (list(r.text_unit_ids) if r.text_unit_ids is not None else [])))
             base["frequency"] = max(base["frequency"], int(r.frequency))
 
     rows = []
@@ -203,7 +233,7 @@ def main():
         key = (s, t)
         if key not in recs or float(r.weight) > float(recs[key]["weight"]):
             recs[key] = {"source": s, "target": t, "description": str(r.description or ""),
-                         "weight": float(r.weight), "text_unit_ids": list(r.text_unit_ids or [])}
+                         "weight": float(r.weight), "text_unit_ids": list(r.text_unit_ids) if r.text_unit_ids is not None else []}
     new_rels = pd.DataFrame(list(recs.values()))
 
     # recompute degree from the merged relationships
@@ -216,13 +246,14 @@ def main():
     # remap UUID references in communities and text units
     if comms is not None:
         def remap_ids(ids):
-            return list(dict.fromkeys(uuid_map.get(str(x), str(x)) for x in (ids or [])))
+            return list(dict.fromkeys(uuid_map.get(str(x), str(x)) for x in (ids if ids is not None else [])))
         comms = comms.copy()
         comms["entity_ids"] = comms["entity_ids"].map(remap_ids)
+        comms["size"] = comms["entity_ids"].map(lambda ids: len(list(ids)))
     if units is not None:
         units = units.copy()
         units["entity_ids"] = units["entity_ids"].map(
-            lambda ids: list(dict.fromkeys(uuid_map.get(str(x), str(x)) for x in (ids or []))))
+            lambda ids: list(dict.fromkeys(uuid_map.get(str(x), str(x)) for x in (ids if ids is not None else []))))
 
     new_ents.to_parquet(os.path.join(OUT, "entities.parquet"), index=False)
     new_rels.to_parquet(os.path.join(OUT, "relationships.parquet"), index=False)
