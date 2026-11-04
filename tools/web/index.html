@@ -189,6 +189,7 @@
     <span id="kg-stats" class="muted mini"></span>
     <span id="uni-stats" class="muted mini hide"></span>
     <span style="flex:1"></span>
+    <button class="small" onclick="App.openEnrich()" title="Find grounded gaps in the graph and add the ones you approve">✨ Enrich</button>
     <button class="small" onclick="App.rebuildKB()" title="Full re-index of the knowledge graph — can take 20–30+ minutes">Rebuild graph</button>
   </div>
   <div class="kg-toolbar">
@@ -238,6 +239,13 @@
   </div>
   <div id="kg-legend" class="kg-legend"></div>
 </section>
+
+<div id="enrich" class="modal hide"><div class="modal-box" style="width:min(980px,96vw);height:min(780px,92vh);display:flex;flex-direction:column">
+  <div class="row"><b style="flex:1">✨ Graph enrichment</b><button class="small" onclick="App.closeEnrich()">✕</button></div>
+  <p class="muted mini" style="margin:4px 0 8px">Grounded gaps found in your own documents. Nothing is added until you tick it and press <b>Add selected</b>.</p>
+  <div id="enrich-body" class="grow" style="overflow:auto"></div>
+  <div class="row" style="margin-top:8px"><span id="enrich-msg" class="muted mini" style="flex:1"></span><button class="small" onclick="App.enrichAll(true)">Select all</button><button class="small" onclick="App.enrichAll(false)">Clear</button><button class="risky" onclick="App.enrichApply()">Add selected</button></div>
+</div></div>
 
 <div id="cfg" class="modal hide"><div class="modal-box" style="width:min(1040px,96vw);height:min(760px,92vh);display:flex;flex-direction:column">
   <div class="row"><b style="flex:1">Settings</b><button class="small" onclick="window.cfgClose()">✕</button></div>

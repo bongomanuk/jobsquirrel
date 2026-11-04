@@ -15,6 +15,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -24,11 +25,127 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import stateio
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# The graphrag query subprocess needs the provider key. Prefer the environment
+# (the runners inject it); fall back to the encrypted store without printing it.
+try:
+    if not os.environ.get("OPENCODE_API_KEY"):
+        import secrets_store as _SS
+        _key = _SS.get("graphrag", "OPENCODE_API_KEY")
+        if _key:
+            os.environ["OPENCODE_API_KEY"] = _key
+except Exception:
+    pass
+
 GRAPHRAG = os.environ.get("GRAPHRAG_BIN") or (
     os.path.join(ROOT, ".venv-graphrag", "bin", "graphrag")
     if os.path.exists(os.path.join(ROOT, ".venv-graphrag", "bin", "graphrag")) else "graphrag")
 CFG = os.path.join(ROOT, "kb", "graphrag")
 EMB_URL = os.environ.get("EMBEDDINGS_URL", "http://127.0.0.1:11435")
+
+STOP = set("""a an and are as at be by for from has have in into is it its of on or that the their this to was were will with you your we our role job description candidate experience work working strong able etc using use used across within including include""".split())
+
+
+def _tokens(text):
+    return {w for w in re.findall(r"[a-z0-9+#.]+", str(text).lower())
+            if len(w) >= 3 and w not in STOP}
+
+
+def weighted_highlights(jd, limit=12):
+    """High-impact entities ranked by graph importance and role relevance."""
+    import pandas as pd
+    try:
+        ents = pd.read_parquet(os.path.join(CFG, "output", "entities.parquet"))
+        units = pd.read_parquet(os.path.join(CFG, "output", "text_units.parquet"))
+        docs = pd.read_parquet(os.path.join(CFG, "output", "documents.parquet"))
+        comms = pd.read_parquet(os.path.join(CFG, "output", "communities.parquet"))
+        import graph_importance as GI
+        imp = GI.scores()
+    except Exception:
+        return ""
+    cmap = {}
+    for c in comms[comms["level"] == 0].itertuples():
+        for uid in c.entity_ids:
+            cmap.setdefault(str(uid), int(c.community))
+    doc_title = {str(i): str(t) for i, t in zip(docs["id"], docs["title"])}
+    unit_doc = {str(i): str(d) for i, d in zip(units["id"], units["document_id"])}
+    jd_tokens = _tokens(jd)
+    picked = []
+    for r in ents.itertuples():
+        title = str(r.title)
+        importance = float(imp.get(title, 0.0))
+        body = (title + " " + str(r.description or "")).lower()
+        overlap = len(jd_tokens & _tokens(body))
+        rel = min(1.0, overlap / 8.0)
+        if importance < 0.80 and rel < 0.25:
+            continue
+        text = (title + " " + str(r.description or "")).lower()
+        landmark = 0.0
+        if rel >= 0.10:
+            for phrase, bonus in (("world register", 0.12), ("first ever", 0.10),
+                                  ("world's first", 0.08), ("worlds first", 0.08),
+                                  ("official world", 0.06), ("world's largest", 0.05),
+                                  ("worlds largest", 0.05)):
+                if phrase in text:
+                    landmark += bonus
+        score = 0.70 * importance + 0.30 * rel + min(0.12, landmark)
+        sources = []
+        for uid in (r.text_unit_ids if r.text_unit_ids is not None else []):
+            d = doc_title.get(unit_doc.get(str(uid), ""), "")
+            if d and d not in sources:
+                sources.append(d)
+        picked.append((score, importance, rel, title, str(r.type or ""),
+                       str(r.description or "")[:340], sources[:2], cmap.get(str(r.id))))
+    picked.sort(reverse=True)
+    out, seen, per_comm = [], [], {}
+    for row in picked:
+        t = _tokens(row[3])
+        if any((len(t & s) / max(1, len(t | s))) >= 0.82 for s in seen):
+            continue
+        c = row[7]
+        if c is not None and per_comm.get(c, 0) >= 3:
+            continue
+        seen.append(t)
+        out.append(row)
+        if c is not None:
+            per_comm[c] = per_comm.get(c, 0) + 1
+        if len(out) >= limit:
+            break
+    if not out:
+        return ""
+    lines = ["## Weighted graph highlights (high impact; grounded)",
+             "These are the strongest facts by graph importance and role relevance. "
+             "Attribute each to the named employer/project; do not inflate the level.\n"]
+    for score, importance, rel, title, typ, desc, sources, _c in out:
+        src = f"; source: {', '.join(sources)}" if sources else ""
+        lines.append(f"- **{title}** [{typ or 'entity'}, impact {importance:.2f}, "
+                     f"relevance {rel:.2f}{src}]: {desc}")
+    return "\n".join(lines)
+
+
+def overlay_context():
+    """Operator-approved additions, each with its exact evidence sentence."""
+    try:
+        with open(os.path.join(CFG, "enrichment.json"), encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return ""
+    nodes = data.get("nodes") or []
+    links = data.get("links") or []
+    if not nodes and not links:
+        return ""
+    lines = ["## Grounded additions (operator-approved, cite the evidence)",
+             "Use these only when relevant; they were added because the source text supports them.\n"]
+    for n in nodes[:40]:
+        src = n.get("source") or n.get("source_doc") or "operator-approved"
+        lines.append(f"- **{n.get('title')}** [{n.get('type','entity')}; source: {src}]: "
+                     f"{n.get('description','')} Evidence: {n.get('evidence','')[:300]}")
+    for l in links[:40]:
+        src = l.get("source_doc") or "operator-approved"
+        lines.append(f"- **{l.get('source')} -> {l.get('target')}** [link; source: {src}]: "
+                     f"{l.get('description') or l.get('evidence','')[:300]}")
+    return "\n".join(lines)
+
 
 INSTR = (
     "Using only the knowledge base, extract the candidate's most relevant, verifiable "
@@ -123,6 +240,12 @@ def main() -> int:
         print(p.stderr[-1500:], file=sys.stderr)
         return 1
     pack = _clean(p.stdout)
+    highlights = weighted_highlights(jd)
+    if highlights:
+        pack += "\n\n" + highlights
+    extra = overlay_context()
+    if extra:
+        pack += "\n\n" + extra
     if not pack.strip():
         print("GraphRAG returned no context (nothing written)", file=sys.stderr)
         return 1

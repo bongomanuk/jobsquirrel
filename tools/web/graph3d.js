@@ -39,7 +39,8 @@ function colorOf(n) {
 function radiusOf(n) {
   if (n.kind === 'community') return 8 + Math.min(18, Math.sqrt(Math.max(1, n.size || 1)) * 0.72);
   if (n.kind === 'type') return 8 + Math.min(14, Math.sqrt(Math.max(1, n.size || 1)) * 0.34);
-  return 2.2 + Math.min(5.5, Math.sqrt(Math.max(1, n.degree || 1)) * 0.34);
+  return 2.2 + Math.min(5.5, Math.sqrt(Math.max(1, n.degree || 1)) * 0.34)
+    + (Number(n.importance) || 0) * 4.5;
 }
 function short(s, n) {
   s = String(s == null ? '' : s);
@@ -646,7 +647,8 @@ function updateLabels(neigh, relayout = false) {
     else if (n.id === S.hovered) score = 1;
     else if (neigh && neigh.has(n.id)) score = 3;
     else if (n.kind === 'community' || n.kind === 'type') score = 5;
-    else score = 20 + (S.top.has(n.id) ? 0 : 20) - Math.min(15, (n.degree || 0) * 0.15);
+    else score = 20 + (S.top.has(n.id) ? 0 : 20) - Math.min(15, (n.degree || 0) * 0.15)
+      - (Number(n.importance) || 0) * 12;
     if (S.visibleLabels.has(n.id)) score -= 4;
     candidates.push({ n, el, score });
   });

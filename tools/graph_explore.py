@@ -22,7 +22,22 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "kb", "graphrag", "output")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import ontology as ONT  # noqa: E402
+import ontology as ONT
+try:
+    import graph_importance as GIMP
+except Exception:
+    GIMP = None
+_IMP = None
+
+
+def _importance():
+    global _IMP
+    if _IMP is None:
+        try:
+            _IMP = GIMP.scores() if GIMP else {}
+        except Exception:
+            _IMP = {}
+    return _IMP  # noqa: E402
 
 
 def _load(name):
@@ -38,6 +53,17 @@ def _s(v, n):
 
 
 SKILLS_FILE = os.path.join(ROOT, "kb", "sources", "personal", "skills_evidence.md")
+ENRICH_FILE = os.path.join(ROOT, "kb", "graphrag", "enrichment.json")
+
+
+def _enrichment():
+    """Operator-approved, grounded additions (kb/graphrag/enrichment.json)."""
+    try:
+        with open(ENRICH_FILE, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return {"nodes": data.get("nodes") or [], "links": data.get("links") or []}
+    except (OSError, ValueError):
+        return {"nodes": [], "links": []}
 
 
 def _skill_overlay():
@@ -97,6 +123,8 @@ def stats():
     except (OSError, ValueError):
         pass
     out["skills_overlay"] = len(_skill_overlay())
+    ov = _enrichment()
+    out["enrichment"] = {"nodes": len(ov["nodes"]), "links": len(ov["links"])}
     return out
 
 
@@ -252,8 +280,24 @@ def _entity_node(r, community=None, docs=None):
             "type": _s(r.type, 40), "class": meta["id"], "class_label": meta["label"],
             "color": meta["color"],
             "degree": int(r.degree), "frequency": int(r.frequency),
+            "importance": round(float(_importance().get(_s(r.title, 140), 0.0)), 3),
             "description": _s(r.description, 700), "community": community,
             "sources": (docs or {}).get(str(r.id), [])[:6]}
+
+
+def _overlay_entity_node(x, community=None):
+    title = _s(x.get("title"), 140)
+    meta = ONT.class_meta(x.get("type") or "CONCEPT")
+    return {"id": title, "title": title, "kind": "entity",
+            "type": _s(x.get("type") or "CONCEPT", 40), "class": meta["id"],
+            "class_label": meta["label"], "color": meta["color"],
+            "degree": 1, "frequency": 1,
+            "importance": round(float(_importance().get(title, 0.0)), 3),
+            "description": _s(x.get("description") or x.get("evidence"), 700),
+            "community": community,
+            "community_title": reports_title(community) if community is not None else "",
+            "sources": [x.get("source") or x.get("source_doc")] if (x.get("source") or x.get("source_doc")) else [],
+            "grounded": True, "evidence": _s(x.get("evidence"), 500)}
 
 
 def overview(parent=None, limit=60):
@@ -443,7 +487,9 @@ def type_entities(type_name, limit=90):
     comm_of = _community_at_level(comms, 0) if comms is not None else {}
     titles_all = set(str(x) for x in sub_all["title"])
     rel_all = rels[rels["source"].isin(titles_all) & rels["target"].isin(titles_all)]
-    ordered = sub_all.sort_values(["degree", "frequency"], ascending=False)
+    imp = _importance()
+    ordered = sub_all.assign(_imp=[imp.get(str(t), 0.0) for t in sub_all["title"]])
+    ordered = ordered.sort_values(["_imp", "degree", "frequency"], ascending=False)
     if len(ordered) > limit:
         # do not hand the whole topic to whichever employer has the largest
         # connected blob: take the strongest entities with a per-theme cap
@@ -472,6 +518,32 @@ def type_entities(type_name, limit=90):
         nodes.append(n)
     links = [{"source": _s(r.source, 140), "target": _s(r.target, 140),
               "weight": round(float(r.weight), 1)} for r in rel.itertuples()]
+    ov = _enrichment()
+    if ov["nodes"]:
+        seen = {n["title"] for n in nodes}
+        for x in ov["nodes"]:
+            if ONT.class_for(x.get("type") or "CONCEPT") != t:
+                continue
+            title = _s(x.get("title"), 140)
+            if not title or title in seen:
+                continue
+            meta_x = ONT.class_meta(x.get("type") or t)
+            nodes.append({"id": title, "title": title, "type": _s(x.get("type") or t, 40),
+                          "class": meta_x["id"], "class_label": meta_x["label"],
+                          "color": meta_x["color"], "degree": 1, "frequency": 1,
+                          "importance": round(float(_importance().get(title, 0.0)), 3),
+                          "description": _s(x.get("description") or x.get("evidence"), 700),
+                          "community": None, "community_title": "",
+                          "grounded": True, "evidence": _s(x.get("evidence"), 500),
+                          "source": _s(x.get("source") or x.get("source_doc"), 200)})
+            seen.add(title)
+        have = {(_norm(l.get("source")), _norm(l.get("target"))) for l in links}
+        for x in ov["links"]:
+            a, b = _s(x.get("source"), 140), _s(x.get("target"), 140)
+            if a in seen and b in seen and (_norm(a), _norm(b)) not in have:
+                links.append({"source": a, "target": b, "weight": round(float(x.get("weight") or 1), 1),
+                              "description": _s(x.get("description"), 400), "grounded": True})
+                have.add((_norm(a), _norm(b)))
     meta = ONT.class_meta(t)
     return {"mode": "entities", "type": t, "label": meta["label"], "color": meta["color"],
             "nodes": nodes, "links": links, "total": len(sub_all),
@@ -509,13 +581,16 @@ def search(q, limit=12):
     m = (ents["title"].str.lower().str.contains(q, regex=False) |
          ents["type"].str.lower().str.contains(q, regex=False) |
          ents["description"].str.lower().str.contains(q, regex=False))
-    sub = ents[m].sort_values("degree", ascending=False).head(limit)
+    imp = _importance()
+    sub = ents[m].assign(_imp=[imp.get(str(t), 0.0) for t in ents[m]["title"]])
+    sub = sub.sort_values(["_imp", "degree"], ascending=False).head(limit)
     entities = []
     for r in sub.itertuples():
         c = cmap.get(str(r.id))
         entities.append({"id": _s(r.title, 140), "title": _s(r.title, 140), "type": _s(r.type, 40),
                          "class": ONT.class_for(r.type), "class_label": ONT.class_meta(r.type)["label"],
-                         "degree": int(r.degree), "description": _s(r.description, 400),
+                         "degree": int(r.degree), "importance": round(float(_importance().get(_s(r.title, 140), 0.0)), 3),
+                         "description": _s(r.description, 400),
                          "community": c,
                          "community_title": reports_title(c) if c is not None else ""})
     seen = {_norm(e.get("title", "")) for e in entities}
@@ -526,6 +601,21 @@ def search(q, limit=12):
                          "class": "SKILL", "class_label": "Skill", "degree": 1,
                          "description": r["description"][:400], "community": None,
                          "community_title": ""})
+    for x in _enrichment()["nodes"]:
+        title = _s(x.get("title"), 140)
+        if not title or _norm(title) in seen:
+            continue
+        hay = (title + " " + str(x.get("description") or "") + " " + str(x.get("evidence") or "")).lower()
+        if q not in hay:
+            continue
+        meta = ONT.class_meta(x.get("type") or "CONCEPT")
+        entities.append({"id": title, "title": title, "type": _s(x.get("type"), 40),
+                         "class": meta["id"], "class_label": meta["label"], "degree": 1,
+                         "importance": round(float(_importance().get(title, 0.0)), 3),
+                         "description": _s(x.get("description") or x.get("evidence"), 400),
+                         "community": None, "community_title": "",
+                         "grounded": True})
+        seen.add(_norm(title))
     return {"communities": communities, "entities": entities[:limit], "query": q}
 
 
@@ -538,18 +628,50 @@ def ego(q, limit=50):
     if comms is None or ents is None or rels is None:
         return {"error": "no index"}
     _REPORTS = _reports()
+    ov = _enrichment()
+    ov_by = {str(x.get("title") or "").lower(): x for x in ov["nodes"]}
     exact = ents[ents["title"].str.lower() == q.lower()]
     row = exact.iloc[0] if len(exact) else None
     if row is None:
         m = ents["title"].str.lower().str.contains(q.lower(), regex=False)
-        if not m.any():
+        if m.any():
+            row = ents[m].sort_values("degree", ascending=False).iloc[0]
+        elif q.lower() in ov_by:
+            x = ov_by[q.lower()]
+            title = str(x["title"])
+            edges = rels[(rels["source"] == title) | (rels["target"] == title)]
+            neigh = set(edges["source"]) | set(edges["target"])
+            ov_neigh = set()
+            for l in ov["links"]:
+                if l.get("source") == title:
+                    ov_neigh.add(str(l.get("target")))
+                elif l.get("target") == title:
+                    ov_neigh.add(str(l.get("source")))
+            titles = {title} | neigh | ov_neigh
+            sub = ents[ents["title"].isin(neigh)].sort_values("degree", ascending=False).head(max(1, limit - 1))
+            nodes = [_overlay_entity_node(x)] + [_entity_node(r, None, _doc_map()) for r in sub.itertuples()]
+            for t in ov_neigh:
+                if t in ov_by and not any(n["title"] == t for n in nodes):
+                    nodes.append(_overlay_entity_node(ov_by[t]))
+            links = [{"source": _s(r.source, 140), "target": _s(r.target, 140),
+                      "weight": round(float(r.weight), 1)} for r in edges.itertuples()]
+            for l in ov["links"]:
+                if l.get("source") in titles and l.get("target") in titles:
+                    links.append({"source": _s(l.get("source"), 140), "target": _s(l.get("target"), 140),
+                                  "weight": round(float(l.get("weight") or 1), 1),
+                                  "description": _s(l.get("description"), 400), "grounded": True})
+            return {"mode": "ego", "center": title, "community": None,
+                    "breadcrumb": [], "nodes": nodes[:limit], "links": links[:limit * 2],
+                    "total": len(nodes)}
+        else:
             return {"error": f"no entity matching {q}"}
-        row = ents[m].sort_values("degree", ascending=False).iloc[0]
     title = str(row.title)
     edges = rels[(rels["source"] == title) | (rels["target"] == title)]
     neigh = set(edges["source"]) | set(edges["target"])
     neigh.discard(title)
-    sub = ents[ents["title"].isin(neigh)].sort_values("degree", ascending=False).head(limit - 1)
+    imp = _importance()
+    ne = ents[ents["title"].isin(neigh)].assign(_imp=[imp.get(str(t), 0.0) for t in ents[ents["title"].isin(neigh)]["title"]])
+    sub = ne.sort_values(["_imp", "degree"], ascending=False).head(limit - 1)
     titles = set(sub["title"]) | {title}
     links_df = rels[rels["source"].isin(titles) & rels["target"].isin(titles)]
     links_df = links_df.sort_values("weight", ascending=False).head(limit * 3)
@@ -559,6 +681,16 @@ def ego(q, limit=50):
     nodes += [_entity_node(r, center_c, docs) for r in sub.itertuples()]
     links = [{"source": _s(r.source, 140), "target": _s(r.target, 140),
               "weight": round(float(r.weight), 1)} for r in links_df.itertuples()]
+    seen_titles = {n["title"] for n in nodes}
+    for l in ov["links"]:
+        if l.get("source") == title or l.get("target") == title:
+            add = str(l.get("target") if l.get("source") == title else l.get("source"))
+            if add and add not in seen_titles and add.lower() in ov_by:
+                nodes.append(_overlay_entity_node(ov_by[add.lower()], center_c))
+                seen_titles.add(add)
+            links.append({"source": _s(l.get("source"), 140), "target": _s(l.get("target"), 140),
+                          "weight": round(float(l.get("weight") or 1), 1),
+                          "description": _s(l.get("description"), 400), "grounded": True})
     return {"mode": "ego", "center": title, "community": center_c,
             "breadcrumb": ([{"community": center_c, "title": reports_title(center_c)}] if center_c is not None else []),
             "nodes": nodes, "links": links, "total": len(nodes)}
@@ -575,23 +707,25 @@ def graph(q, limit):
         m = (ents["title"].str.lower().str.contains(q, regex=False) |
              ents["description"].str.lower().str.contains(q, regex=False) |
              ents["type"].str.lower().str.contains(q, regex=False))
-        seed = ents[m].sort_values("degree", ascending=False)
+        imp = _importance()
+        seed = ents[m].assign(_imp=[imp.get(str(t), 0.0) for t in ents[m]["title"]]).sort_values(["_imp", "degree"], ascending=False)
         if seed.empty:
             return {"nodes": [], "links": [], "query": q, "total": 0}
         seeds = set(seed["title"].head(max(6, limit // 6)))
         rel = rels[rels["source"].isin(seeds) | rels["target"].isin(seeds)]
         rel = rel.sort_values("weight", ascending=False).head(limit * 2)
         titles = seeds | set(rel["source"]) | set(rel["target"])
-        nodes_df = ents[ents["title"].isin(titles)].sort_values("degree", ascending=False).head(limit)
+        nodes_df = ents[ents["title"].isin(titles)].assign(_imp=[_importance().get(str(t), 0.0) for t in ents[ents["title"].isin(titles)]["title"]]).sort_values(["_imp", "degree"], ascending=False).head(limit)
         titles = set(nodes_df["title"])
         rel = rel[rel["source"].isin(titles) & rel["target"].isin(titles)].head(limit * 2)
     else:
-        nodes_df = ents.sort_values("degree", ascending=False).head(limit)
+        nodes_df = ents.assign(_imp=[_importance().get(str(t), 0.0) for t in ents["title"]]).sort_values(["_imp", "degree"], ascending=False).head(limit)
         titles = set(nodes_df["title"])
         rel = rels[rels["source"].isin(titles) & rels["target"].isin(titles)]
         rel = rel.sort_values("weight", ascending=False).head(limit * 2)
     nodes = [{"id": _s(r.title, 140), "title": _s(r.title, 140), "type": _s(r.type, 40),
               "degree": int(r.degree), "frequency": int(r.frequency),
+              "importance": round(float(_importance().get(_s(r.title, 140), 0.0)), 3),
               "description": _s(r.description, 700)} for r in nodes_df.itertuples()]
     links = [{"source": _s(r.source, 140), "target": _s(r.target, 140),
               "weight": round(float(r.weight), 1), "description": _s(r.description, 400)}
@@ -620,12 +754,54 @@ def universe():
                       "type": _s(r.type, 40), "class": meta["id"],
                       "color": meta["color"], "degree": int(r.degree),
                       "frequency": int(r.frequency),
+                      "importance": round(float(_importance().get(_s(r.title, 140), 0.0)), 3),
                       "community": c,
                       "community_title": reports_title(c) if c is not None else "",
                       "description": _s(r.description, 260)})
     links = [{"source": _s(r.source, 140), "target": _s(r.target, 140),
               "weight": round(float(r.weight), 1)} for r in rels.itertuples()]
     _add_skill_links(nodes, links, _overlay_nodes("", 60))
+    ov = _enrichment()
+    if ov["nodes"] or ov["links"]:
+        by_title = {n["title"]: n for n in nodes}
+        imp = _importance()
+        for x in ov["nodes"]:
+            title = _s(x.get("title"), 140)
+            if not title or title in by_title:
+                continue
+            meta = ONT.class_meta(x.get("type") or "CONCEPT")
+            rel = by_title.get(_s(x.get("related"), 140))
+            c = rel.get("community") if rel else None
+            ct = rel.get("community_title") if rel else ""
+            node = {"id": title, "title": title, "type": _s(x.get("type") or "CONCEPT", 40),
+                    "class": meta["id"], "color": meta["color"],
+                    "degree": 1, "frequency": 1,
+                    "importance": round(float(imp.get(title, 0.0)), 3),
+                    "community": c, "community_title": ct or "",
+                    "description": _s(x.get("description"), 260),
+                    "grounded": True, "evidence": _s(x.get("evidence"), 500),
+                    "source": _s(x.get("source") or x.get("source_doc"), 200)}
+            nodes.append(node); by_title[title] = node
+        have = {(_norm(l.get("source")), _norm(l.get("target"))) for l in links}
+        for x in ov["links"]:
+            a, b = _s(x.get("source"), 140), _s(x.get("target"), 140)
+            if not a or not b or a not in by_title or b not in by_title:
+                continue
+            key = (_norm(a), _norm(b))
+            if key in have:
+                continue
+            links.append({"source": a, "target": b, "weight": round(float(x.get("weight") or 1), 1),
+                          "description": _s(x.get("description"), 400), "grounded": True})
+            have.add(key)
+        deg = {n["id"]: int(n.get("degree") or 0) for n in nodes}
+        for l in ov["links"]:
+            a, b = l.get("source"), l.get("target")
+            if a in deg and b in deg:
+                deg[a] += 1
+                deg[b] += 1
+        for n in nodes:
+            if n["id"] in deg:
+                n["degree"] = deg[n["id"]]
     return {"nodes": nodes, "links": links, "total": len(nodes)}
 
 

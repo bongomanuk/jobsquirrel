@@ -3531,6 +3531,7 @@ def start_action(command, approval_token=""):
 # ---------------------------------------------------------------- knowledge base + graph
 GRAPH_PY = os.path.join(ROOT, ".venv-graphrag", "bin", "python")
 GRAPH_TOOL = os.path.join(ROOT, "tools", "graph_explore.py")
+GRAPH_ENRICH = os.path.join(ROOT, "tools", "graph_enrich.py")
 KB_SOURCES = os.path.join(ROOT, "kb", "sources")
 _gcache = {}
 _GCACHE_TTL = 120          # seconds; keeps the graph views fresh after a re-index
@@ -3554,6 +3555,33 @@ def graph_query(*args):
         data = {"error": f"{type(e).__name__}: {e}"}
     _gcache[key] = (time.time(), data)
     return data
+
+
+def graph_enrich_propose():
+    py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    try:
+        r = subprocess.run([py, GRAPH_ENRICH, "propose"], cwd=ROOT,
+                           capture_output=True, text=True, timeout=120, env=env)
+        return json.loads((r.stdout or "").strip() or "{}")
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def graph_enrich_apply(ids):
+    ids = [str(x) for x in (ids or []) if str(x).strip()]
+    if not ids:
+        return {"error": "select at least one proposal"}
+    py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    try:
+        r = subprocess.run([py, GRAPH_ENRICH, "apply", "--ids", ",".join(ids)], cwd=ROOT,
+                           capture_output=True, text=True, timeout=120, env=env)
+        return json.loads((r.stdout or "").strip() or "{}")
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"}
 
 
 def kb_sources():
@@ -4050,6 +4078,8 @@ class H(BaseHTTPRequestHandler):
                                           qs.get("limit", ["90"])[0]))
         if p == "/api/graph/universe":
             return self._json(graph_query("universe"))
+        if p == "/api/graph/enrich":
+            return self._json(graph_enrich_propose())
         if p == "/api/graph/ontology":
             return self._json(graph_query("ontology"))
         if p == "/api/graph/types":
@@ -4181,6 +4211,8 @@ class H(BaseHTTPRequestHandler):
             data = self._body()
             return self._json(backup_clear(data.get("scope", "data"), data.get("confirm", "")))
         data = self._body()
+        if p == "/api/graph/enrich":
+            return self._json(graph_enrich_apply(data.get("selected") or []))
         if p == "/api/secrets":
             return self._json(secrets_set(data.get("section", ""), data.get("name", ""),
                                           data.get("value", "")))

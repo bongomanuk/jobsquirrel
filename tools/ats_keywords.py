@@ -26,7 +26,6 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import stateio
 
-from docx import Document
 
 # Terms that matter to roles in this search. Matched case-insensitively on word
 # boundaries; add to this list as new roles appear.
@@ -104,6 +103,7 @@ THAT HAVE WILL WITH YOUR FROM THEY WHAT WHEN WHERE""".split())
 
 
 def docx_text(path):
+    from docx import Document
     return " ".join(p.text for p in Document(path).paragraphs)
 
 

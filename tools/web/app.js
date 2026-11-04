@@ -525,6 +525,36 @@ const App = {
       if (!KG) App.graphTypes();
     }
   },
+  openEnrich: async () => {
+    const m = $('#enrich'); if (!m) return;
+    m.classList.remove('hide');
+    const b = $('#enrich-body'), msg = $('#enrich-msg');
+    if (b) b.innerHTML = '<span class="muted mini">scanning the graph for grounded gaps…</span>';
+    const d = await api('/api/graph/enrich');
+    if (!b) return;
+    if (!d || d.error) { b.textContent = (d && d.error) || 'could not scan the graph'; return; }
+    const ps = d.proposals || [];
+    if (!ps.length) { b.innerHTML = '<span class="muted">No grounded gaps found.</span>'; return; }
+    b.innerHTML = ps.map(p => `<label class="enrich-item" style="display:block;padding:9px 0;border-bottom:1px solid var(--line);cursor:pointer">
+      <input type="checkbox" data-id="${esc(p.id)}" style="margin-right:6px;vertical-align:top">
+      <b>${esc(p.title || '')}</b> <span class="mini muted">${esc(p.type || p.kind || '')}</span>
+      <div class="mini" style="margin:4px 0 0 22px">${esc(p.evidence || p.description || '')}</div>
+      <div class="mini muted" style="margin-left:22px">${esc(p.source || p.source_doc || '')}</div>
+    </label>`).join('');
+    if (msg) msg.textContent = `${ps.length} grounded proposal(s) · ${(d.overlay && d.overlay.nodes) || 0} node(s), ${(d.overlay && d.overlay.links) || 0} link(s) already added`;
+  },
+  closeEnrich: () => { const m = $('#enrich'); if (m) m.classList.add('hide'); },
+  enrichAll: (on) => { document.querySelectorAll('#enrich-body input[type=checkbox]').forEach(x => { x.checked = !!on; }); },
+  enrichApply: async () => {
+    const ids = [...document.querySelectorAll('#enrich-body input:checked')].map(x => x.dataset.id);
+    if (!ids.length) { toast('select at least one proposal', true); return; }
+    const d = await api('/api/graph/enrich', { selected: ids });
+    toast((d && (d.ok || d.error)) || 'done', !!(d && d.error));
+    if (!d || d.error) return;
+    App.closeEnrich();
+    if (KGMODE === 'universe' && window.__uni) await window.__uni.reload();
+    else if (KGMODE === 'map') await App.graphTypes();
+  },
   kgSearch: (q) => KGMODE === 'universe' ? App.universeSearch(q) : App.graphSearch(q),
   kgReset: () => KGMODE === 'universe' ? App.universeReset() : App.graphFit(),
   home: () => {

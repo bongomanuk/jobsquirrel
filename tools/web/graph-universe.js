@@ -188,7 +188,8 @@ function layout(nodes) {
         center.x + r * Math.sin(b) * Math.cos(a),
         center.y + r * Math.cos(b) * 0.82,
         center.z + r * Math.sin(b) * Math.sin(a));
-      n.radius = 2.6 + Math.min(21, Math.sqrt(Math.max(1, n.degree || 1)) * 0.68);
+      n.radius = 2.6 + Math.min(21, Math.sqrt(Math.max(1, n.degree || 1)) * 0.68)
+        + (Number(n.importance) || 0) * 9;
       n.colorObj = colorOf(n);
       S.maxDist = Math.max(S.maxDist, n.pos.length());
     });
@@ -800,7 +801,7 @@ function setSide(n) {
   }
   box.innerHTML = `<div class="uni-kind">${esc(n.class || n.type || 'entity')}</div>
     <h3>${esc(n.title)}</h3>
-    <div class="uni-meta">${n.degree || 0} links · ${n.community != null ? esc(n.community_title || ('island ' + n.community)) : 'no community'}</div>
+    <div class="uni-meta">${n.degree || 0} links · impact ${Math.round((n.importance || 0) * 100)}% · ${n.community != null ? esc(n.community_title || ('island ' + n.community)) : 'no community'}</div>
     <p>${esc(n.description || 'No description in the index.')}</p>
     <div class="uni-actions">
       <button class="small" onclick="window.__uni && window.__uni.focusSelected()">Fly here</button>
@@ -947,6 +948,12 @@ export async function open() {
 
 export function close() {
   if (S.raf) cancelAnimationFrame(S.raf), S.raf = 0;
+}
+
+export async function reload() {
+  if (!S.inited) return;
+  S.data = null;
+  await load();
 }
 
 export function reset() { if (S.data) resetView(); }

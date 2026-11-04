@@ -200,7 +200,8 @@ def main():
         base = merged_rows.get(sid)
         if base is None:
             merged_rows[sid] = {
-                "id": sid, "title": str(r.title), "type": str(r.type),
+                "id": sid, "human_readable_id": int(r.human_readable_id),
+                "title": str(r.title), "type": str(r.type),
                 "description": str(r.description or ""),
                 "text_unit_ids": list(r.text_unit_ids) if r.text_unit_ids is not None else [],
                 "frequency": int(r.frequency),
@@ -232,9 +233,13 @@ def main():
             continue
         key = (s, t)
         if key not in recs or float(r.weight) > float(recs[key]["weight"]):
-            recs[key] = {"source": s, "target": t, "description": str(r.description or ""),
+            recs[key] = {"id": str(r.id), "human_readable_id": int(r.human_readable_id),
+                         "source": s, "target": t, "description": str(r.description or ""),
                          "weight": float(r.weight), "text_unit_ids": list(r.text_unit_ids) if r.text_unit_ids is not None else []}
     new_rels = pd.DataFrame(list(recs.values()))
+    rel_cols = ["id", "human_readable_id", "source", "target", "description",
+                "weight", "combined_degree", "text_unit_ids"]
+    new_rels = new_rels[[c for c in rel_cols if c in new_rels.columns]]
 
     # recompute degree from the merged relationships
     deg = defaultdict(int)
@@ -242,6 +247,9 @@ def main():
         deg[str(s)] += 1
         deg[str(t)] += 1
     new_ents["degree"] = [deg.get(str(t), 0) for t in new_ents["title"]]
+    title_degree = dict(zip(new_ents["title"], new_ents["degree"]))
+    new_rels["combined_degree"] = [int(title_degree.get(str(a), 0)) + int(title_degree.get(str(b), 0))
+                                   for a, b in zip(new_rels["source"], new_rels["target"])]
 
     # remap UUID references in communities and text units
     if comms is not None:
