@@ -14,12 +14,18 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG = os.environ.get("DASHBOARD_CHAT_LOG") or os.path.join(
     ROOT, "state", "logs", "dashboard-chat.log")
 HISTORY = os.path.join(ROOT, "state", "logs", "run-complete.log")
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+try:
+    import register as REG
+except Exception:  # notification must never break the runner
+    REG = None
 
 
 def clean(text, limit=400):
@@ -39,7 +45,27 @@ def read_summary(path):
         if not line.startswith("- "):
             continue
         body = line[2:]
-        key = body.split(":", 1)[0]
+        # "Company — Role: STATUS (reason)"; the register is the source of truth
+        # if an orphaned worker finished after the runner's own outcome line.
+        company, role, status, reason = "", "", "", ""
+        if " — " in body and ": " in body.split(" — ", 1)[1]:
+            company, rest = body.split(" — ", 1)
+            role, status_reason = rest.split(": ", 1)
+            status, _, reason = status_reason.partition(" (")
+            reason = reason.rstrip(")")
+            if REG is not None:
+                try:
+                    row = REG.find_row(company, role)
+                    if row and row.get("status"):
+                        if (row["status"] != status and
+                                row["status"] in ("PREPARED", "SUBMITTED", "INTERVIEW",
+                                                  "OFFER", "IN_PROGRESS")):
+                            reason = ""
+                        status = row["status"]
+                except Exception:
+                    pass
+            body = f"{company} — {role}: {status}" + (f" ({reason})" if reason else "")
+        key = (company + "|" + role) if company else body.split(":", 1)[0]
         if key not in rows:
             order.append(key)
         rows[key] = body
