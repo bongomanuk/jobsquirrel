@@ -1197,6 +1197,41 @@ def match_info(key):
             "archetype": os.path.basename(_archetype_for(key) or "")}
 
 
+def ats_add(key, term):
+    """Append one requirement term to a role's ATS list, so the drawer can fix a gap."""
+    key = os.path.basename(str(key or ""))[:120]
+    term = str(term or "").strip().replace("\n", " ")[:80]
+    if not key or len(term) < 2 or term.startswith("#"):
+        return {"error": "need a role key and a keyword"}
+    path = os.path.join(STATE, "ats", key + ".txt")
+    if not os.path.exists(stateio.resolve(path) or path):
+        return {"error": f"no ATS list for {key}; prepare or re-extract keywords first"}
+    text = stateio.read_text(stateio.resolve(path) or path)
+    lines = [l.rstrip() for l in text.splitlines()]
+    if any(l.strip().lower() == term.lower() for l in lines):
+        return {"ok": f"{term} is already listed"}
+    lines.append(term)
+    stateio.write(path, ("\n".join(lines) + "\n").encode())
+    _COV.pop(key, None)
+    return {"ok": f"added {term}", "match": match_info(key)}
+
+
+def ats_refresh(key):
+    """Re-extract a role's ATS keywords from its saved JD (new term lists apply)."""
+    key = os.path.basename(str(key or ""))[:120]
+    jd = os.path.join(STATE, "job-descriptions", key + ".md")
+    out = os.path.join(STATE, "ats", key + ".txt")
+    if not os.path.exists(jd):
+        return {"error": f"no job description for {key}"}
+    r = subprocess.run([sys.executable, "tools/ats_keywords.py", "--jd", jd, "--out", out],
+                       cwd=ROOT, capture_output=True, text=True)
+    if r.returncode:
+        return {"error": (r.stdout + r.stderr).strip()[:300] or "keyword extraction failed"}
+    _COV.pop(key, None)
+    return {"ok": "keywords re-extracted", "match": match_info(key),
+            "count": len([l for l in _lines(out) if l.strip()])}
+
+
 def role_detail(key):
     key = os.path.basename(key)[:120]
     return {"key": key,
@@ -4230,6 +4265,10 @@ class H(BaseHTTPRequestHandler):
             return self._json(submit_roles(data.get("keys") or [], data.get("approval_token", "")))
         if p == "/api/match/recompute":
             return self._json(recompute_match(data.get("keys")))
+        if p == "/api/ats/add":
+            return self._json(ats_add(data.get("key", ""), data.get("term", "")))
+        if p == "/api/ats/refresh":
+            return self._json(ats_refresh(data.get("key", "")))
         if p == "/api/open":
             return self._json(open_apply(data.get("company", ""), data.get("role", "")))
         if p == "/api/action/stop":

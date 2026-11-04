@@ -840,6 +840,19 @@ const App = {
     if (CUR) openDetail(CUR);
     toast('saved — the fit across roles now counts it (no re-prepare needed)');
   },
+  addKeyword: async () => {
+    if (!CUR) return;
+    const t = ($('#dt-addkw') || {}).value || '';
+    const d = await api('/api/ats/add', { key: CUR.key, term: t });
+    toast(d.ok || d.error, !!d.error);
+    if (!d.error) { openDetail(CUR); loadGrid(); }
+  },
+  refreshKeywords: async () => {
+    if (!CUR) return;
+    const d = await api('/api/ats/refresh', { key: CUR.key });
+    toast(d.ok || d.error, !!d.error);
+    if (!d.error) { openDetail(CUR); loadGrid(); }
+  },
   updateKB: async () => {
     if (!await warn(LONG.update)) return;
     starting('updating the knowledge graph'); working('Updating the knowledge graph (incremental — only the new source)…');
@@ -1614,7 +1627,9 @@ function summary(r) {
   const notes = (r.notes || '').trim();
   const hist = notes ? notes.split(/\s*\|\s*/).filter(Boolean).map(x => `<li>${md(x)}</li>`).join('') : '';
   const act = (r.action || '').trim();
+  const kbGap = /no direct evidence|not evidenced|unmet/i.test(D.kb || '');
   return (act ? `<div class="actionbox"><span class="actflag">⚑</span> <b>Action:</b> ${esc(act)}</div>` : '') +
+    (kbGap ? `<div class="muted mini" style="color:#ffd479;margin:6px 0">⚠ The grounding report flags requirements with no direct evidence. Check the missing skills below before treating this as a fit.</div>` : '') +
     `<div class="row" style="margin:6px 0 10px"><input id="dt-action" placeholder="needs a reply or follow-up? describe it…" value="${esc(act)}" style="flex:1">
       <button onclick="App.saveAction()">${act ? 'Update flag' : '⚑ Flag action'}</button>
       ${act ? '<button onclick="App.clearAction()">Clear</button>' : ''}</div>` +
@@ -1662,6 +1677,9 @@ function summary(r) {
       }).join('')}</div></div>
       ${(m.evidenced || []).length ? `<div class="row" style="margin-top:6px"><span class="muted mini">${m.evidenced.length} skill(s) have evidence — re-prepare this role to fold them into the CV (grounding includes them now).</span>
         <button class="small" onclick='App.prepareThis(${JSON.stringify(r.key)})'>↻ Re-prepare with the new evidence</button></div>` : ''}` : '') +
+    `<div class="row" style="margin-top:8px"><input id="dt-addkw" placeholder="add a requirement from the job ad" style="flex:1">
+      <button class="small" onclick="App.addKeyword()">Add keyword</button>
+      <button class="small" onclick="App.refreshKeywords()" title="Re-extract keywords from the saved job ad with the current term list">↻ Re-extract</button></div>` +
     `<div class="why" style="margin-top:12px"><div class="why-h"><span class="muted mini">WHY / HISTORY</span></div>
       ${hist ? `<ul class="hist">${hist}</ul>` : '<div class="muted">no notes recorded for this row</div>'}
       ${P.evidence ? `<div class="muted mini" style="margin-top:6px">submission evidence: ${esc(String(P.evidence).slice(0, 240))}</div>` : ''}</div>` +
