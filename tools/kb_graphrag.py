@@ -23,6 +23,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import stateio
+import sensitive as SENS
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -292,6 +293,7 @@ def main() -> int:
     extra = overlay_context()
     if extra:
         pack += "\n\n" + extra
+    pack = SENS.redact(pack)
     if not pack.strip():
         print("GraphRAG returned no context (nothing written)", file=sys.stderr)
         return 1

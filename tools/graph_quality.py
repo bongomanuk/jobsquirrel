@@ -26,6 +26,9 @@ import re
 import sys
 from collections import Counter, defaultdict
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'tools'))
+import sensitive as SENS
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "kb", "graphrag", "output")
 INPUT = os.path.join(ROOT, "kb", "graphrag", "input")
@@ -92,6 +95,8 @@ def main():
     ap = argparse.ArgumentParser(description="Knowledge-graph quality report")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--top", type=int, default=10)
+    ap.add_argument("--fail-sensitive", action="store_true",
+                    help="exit non-zero if sensitive employment-contract terms remain")
     args = ap.parse_args()
 
     ents = load("entities")
@@ -160,6 +165,16 @@ def main():
 
     # relationships
     pairs = Counter((str(a), str(b)) for a, b in zip(rels["source"], rels["target"]))
+    report["sensitive"] = {
+        "blocked_titles": sum(1 for t in ents["title"] if SENS.blocked_title(t)),
+        "sensitive_descriptions": sum(1 for d in ents["description"] if SENS.sensitive(d)),
+        "sensitive_reports": 0,
+    }
+    reports = load("community_reports")
+    if reports is not None:
+        report["sensitive"]["sensitive_reports"] = sum(
+            1 for r in reports.itertuples()
+            if SENS.sensitive(str(r.title)) or SENS.sensitive(str(r.summary)))
     report["relationships_quality"] = {
         "self_loops": sum(1 for a, b in zip(rels["source"], rels["target"]) if str(a) == str(b)),
         "duplicate_pairs": sum(1 for v in pairs.values() if v > 1),
@@ -192,6 +207,12 @@ def main():
             f"{k}:{v['count']}" for k, v in report["community_levels"].items()))
     rq = report["relationships_quality"]
     print(f"relationships   self-loops:{rq['self_loops']}  duplicate pairs:{rq['duplicate_pairs']}")
+    se = report["sensitive"]
+    print(f"sensitive       blocked titles:{se['blocked_titles']}  "
+          f"descriptions:{se['sensitive_descriptions']}  reports:{se['sensitive_reports']}")
+    if args.fail_sensitive and any(report["sensitive"].values()):
+        print("\nFAIL: sensitive employment-contract material remains", file=sys.stderr)
+        return 2
     if t["examples"]:
         print("\nlargest near-duplicate title groups:")
         for g in t["examples"][:args.top]:

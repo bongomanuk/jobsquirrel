@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""Sensitive employment-contract terms that must not shape the job-search graph.
+
+The knowledge graph should contain evidence of work, skills and outcomes, not
+the legal machinery of an employment contract (garden leave, pay in lieu of
+notice, probation, grievances, exact salary/bonus, etc.). These terms are
+personal and can read negatively in a job-search context.
+
+Two lists:
+  TITLE_TERMS   - an entity whose title matches is removed
+  REDACT_TERMS  - sentences containing these are removed from surviving text
+"""
+from __future__ import annotations
+
+import re
+
+# Drop the entity if its title contains one of these phrases.
+TITLE_TERMS = [
+    "garden leave", "pay in lieu of notice", "lieu of notice", "notice period",
+    "probation", "probationary", "disciplinary", "grievance",
+    "restrictive covenant", "restrictive covenants", "non-compete",
+    "non-solicitation", "non-solicit", "severance", "redundancy",
+    "termination", "employment agreement", "employment contract",
+    "employee handbook", "pension scheme", "pension", "salary", "bonus",
+    "annual leave", "holiday entitlement", "sick leave", "medical certificate",
+    "payroll", "deductions", "key information document", "assignment confirmation",
+    "uppsägningstid", "uppsagningstid", "opt out", "opt-out", "rehire period",
+    "privacy notice", "alternative agreement", "these terms", "wfs terms",
+    "contract for services", "employment business", "employment agency",
+    "working hours", "sickness compensation", "tax authority", "hr department",
+    "specified services", "work finding services", "recruitment services",
+]
+
+# Extra exact/generic titles produced by contract documents.
+GENERIC_TITLES = {
+    "COMPANY", "EMPLOYEE", "AGENT", "SUPPLIER", "CUSTOMER", "LINE MANAGER",
+    "DIRECT MANAGER", "ASSIGNMENT", "TERMS", "EMPLOYMENT AGREEMENT",
+    "EMPLOYMENT CONTRACT", "EMPLOYEE HANDBOOK", "KEY INFORMATION DOCUMENT",
+    "NOTICE PERIOD", "PAY IN LIEU OF NOTICE", "GARDEN LEAVE",
+    "SERVICES", "SPECIFIED SERVICES", "WORK FINDING SERVICES", "RECRUITMENT SERVICES",
+    "ALTERNATIVE AGREEMENT", "THESE TERMS", "WFS TERMS", "AGREEMENT",
+    "CONTRACT FOR SERVICES", "PRIVACY NOTICE", "NOTICE OF OPT OUT", "REHIRE PERIOD",
+    "EMPLOYMENT BUSINESS", "HR DEPARTMENT", "CLIENT", "TAX AUTHORITY",
+    "EXTERNAL CONTRACTOR", "REGISTERED CONTRACTOR",
+    "NORMAL WEEKLY WORKING HOURS OF 40 HOURS",
+    "SICKNESS COMPENSATION FROM FIFTEENTH DAY",
+    "UPDATED VERSION OF THESE TERMS",
+    "CONDUCT OF EMPLOYMENT AGENCIES AND EMPLOYMENT BUSINESSES REGULATIONS 2003",
+    "EMPLOYMENT AGENCY STANDARDS (EAS) INSPECTORATE",
+    "ADDRESSEE", "WORKER", "HIRER", "END USER",
+}
+
+# Remove sentences/lines that carry these terms from surviving descriptions
+# and reports. Kept narrower than TITLE_TERMS so ordinary words such as
+# "company" are not redacted.
+REDACT_TERMS = [
+    "garden leave", "pay in lieu of notice", "lieu of notice", "notice period",
+    "probation", "probationary", "disciplinary", "grievance",
+    "restrictive covenant", "restrictive covenants", "non-compete",
+    "non-solicitation", "non-solicit", "severance", "redundancy",
+    "termination", "employment agreement", "employment contract",
+    "employee handbook", "pension scheme", "pension", "salary", "bonus",
+    "annual leave", "holiday entitlement", "sick leave", "medical certificate",
+    "payroll", "deductions", "key information document", "assignment confirmation",
+    "uppsägningstid", "uppsagningstid", "opt out", "opt-out", "rehire period",
+    "privacy notice", "employment agency", "working hours", "sickness compensation",
+    "tax authority",
+]
+
+_TITLE_RE = re.compile("|".join(r"\b" + re.escape(t) + r"\b" for t in TITLE_TERMS), re.I)
+_REDACT_RE = re.compile("|".join(r"\b" + re.escape(t) + r"\b" for t in REDACT_TERMS), re.I)
+
+
+def blocked_title(title: str) -> bool:
+    t = str(title or "").strip()
+    if t.upper() in GENERIC_TITLES:
+        return True
+    return bool(_TITLE_RE.search(t))
+
+
+def sensitive(text: str) -> bool:
+    return bool(_REDACT_RE.search(str(text or "")))
+
+
+def redact(text: str) -> str:
+    """Remove lines and sentences that contain a sensitive term."""
+    out = []
+    for line in str(text or "").splitlines():
+        if not line.strip():
+            out.append(line)
+            continue
+        if _REDACT_RE.search(line):
+            keep = [s for s in re.split(r"(?<=[.!?])\s+", line) if not _REDACT_RE.search(s)]
+            if keep:
+                out.append(" ".join(keep).strip())
+            continue
+        out.append(line)
+    return "\n".join(out).strip()

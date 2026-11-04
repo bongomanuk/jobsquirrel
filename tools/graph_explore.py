@@ -25,6 +25,7 @@ EMB_URL = os.environ.get("EMBEDDINGS_URL", "http://127.0.0.1:11435")
 EMB_MODEL = os.environ.get("EMBED_MODEL", "nomic-embed-text")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ontology as ONT
+import sensitive as SENS
 try:
     import graph_importance as GIMP
 except Exception:
@@ -248,7 +249,7 @@ def _reports():
         return {}
     out = {}
     for r in rep.itertuples():
-        out[int(r.community)] = {"title": _s(r.title, 120), "summary": _s(r.summary, 700)}
+        out[int(r.community)] = {"title": _s(SENS.redact(str(r.title or "")), 120), "summary": _s(SENS.redact(str(r.summary or "")), 700)}
     return out
 
 
@@ -301,7 +302,7 @@ def _entity_node(r, community=None, docs=None):
             "color": meta["color"],
             "degree": int(r.degree), "frequency": int(r.frequency),
             "importance": round(float(_importance().get(_s(r.title, 140), 0.0)), 3),
-            "description": _s(desc, 700), "community": community,
+            "description": _s(SENS.redact(str(desc or "")), 700), "community": community,
             "sources": (docs or {}).get(str(r.id), [])[:6]}
 
 
@@ -637,7 +638,7 @@ def role_evidence(key):
             matched[kw].append(title)
             rec = evidence.setdefault(title, {
                 "title": title, "type": str(r.type), "importance": round(float(imp.get(title, 0)), 3),
-                "description": _s(r.description, 400),
+                "description": _s(SENS.redact(str(r.description or "")), 400),
                 "sources": docs.get(str(r.id), [])[:3],
                 "community": cmap.get(str(r.id)), "keywords": [],
             })
@@ -687,7 +688,7 @@ def semantic(q, limit=14):
                     "importance": round(float(imp.get(title, 0)), 3),
                     "score": round(1.0 - float(row.get("_distance") or 1.0), 4),
                     "degree": int(r.degree),
-                    "description": _s(ed.get("description") or r.description, 500),
+                    "description": _s(SENS.redact(str(ed.get("description") or r.description or "")), 500),
                     "community": c,
                     "community_title": reports_title(c) if c is not None else ""})
         if len(out) >= limit:
@@ -773,7 +774,7 @@ def node_details(title):
         neighbours.append({"title": b, "type": str(ntype), "weight": round(w, 1),
                           "distance": 1,
                           "importance": round(float(imp.get(b, 0)), 3),
-                          "description": _s((nr.description if nr is not None else (nx or {}).get("description")), 300)})
+                          "description": _s(SENS.redact(str(nr.description if nr is not None else (nx or {}).get("description") or "")), 300)})
     neighbours.sort(key=lambda x: (-x["weight"], -x["importance"]))
     connections = []
     seen = set()
@@ -790,7 +791,7 @@ def node_details(title):
                 continue
             seen.add(key)
             connections.append({"source": a, "target": b, "weight": round(w, 1),
-                                "description": _s(d, 300)})
+                                "description": _s(SENS.redact(str(d or "")), 300)})
     connections.sort(key=lambda x: -x["weight"])
 
     return {
@@ -801,10 +802,10 @@ def node_details(title):
         "frequency": int(row.frequency) if row is not None else 1,
         "community": c,
         "community_title": reports_title(c) if c is not None else "",
-        "description": _s(desc, 1200),
+        "description": _s(SENS.redact(str(desc or "")), 1200),
         "sources": sources[:8],
         "grounded": bool((ov_node or {}).get("grounded") or row is None),
-        "evidence": _s((ov_node or {}).get("evidence"), 700),
+        "evidence": _s(SENS.redact(str((ov_node or {}).get("evidence") or "")), 700),
         "edited": bool(ed),
         "subgraph": {
             "nodes": len(dist),
@@ -854,7 +855,7 @@ def search(q, limit=12):
         entities.append({"id": _s(r.title, 140), "title": _s(r.title, 140), "type": _s(gtype, 40),
                          "class": meta["id"], "class_label": meta["label"],
                          "degree": int(r.degree), "importance": round(float(_importance().get(_s(r.title, 140), 0.0)), 3),
-                         "description": _s(ed.get("description") or r.description, 400),
+                         "description": _s(SENS.redact(str(ed.get("description") or r.description or "")), 400),
                          "community": c,
                          "community_title": reports_title(c) if c is not None else ""})
     seen = {_norm(e.get("title", "")) for e in entities}
@@ -1023,7 +1024,7 @@ def universe():
                       "importance": round(float(_importance().get(_s(r.title, 140), 0.0)), 3),
                       "community": c,
                       "community_title": reports_title(c) if c is not None else "",
-                      "description": _s(ed.get("description") or r.description, 260)})
+                      "description": _s(SENS.redact(str(ed.get("description") or r.description or "")), 260)})
     links = [{"source": _s(r.source, 140), "target": _s(r.target, 140),
               "weight": round(float(r.weight), 1)} for r in rels.itertuples()]
     _add_skill_links(nodes, links, _overlay_nodes("", 60))
