@@ -134,34 +134,30 @@ The runner does this automatically (step "grounding") for each queued role.
 
 ## 4b. The Knowledge workspace
 
-The dashboard's top-bar **Knowledge** page is the full-page view of the same
-index. It is deliberately more than a graph picture:
+The dashboard's top-bar **Knowledge** page is a full-page, interactive view of
+the index. It is deliberately more than a graph picture:
 
-- **Topics** shows the ontology classes (Person, Organisation, Role, Skill,
-  Technology, Project, Metric, Certification, ...) with counts and the links
-  between them. The classes come from `config/ontology.example.json` (override
-  with `config/ontology.json`); unknown GraphRAG types fall back to Concept.
-- **Communities** shows the generated community hierarchy. Click a bubble for
-  its summary, keywords and source documents; double-click (or use **Open
-  community**) to drill into its sub-communities until you reach entities.
-- **Entities** appear when you open a class or a leaf community. Single-click
-  for description, source documents and neighbours; double-click for its ego
-  network. The view keeps only the largest connected component, so you do not
-  get a field of disconnected dots.
-- **Classes** lists the ontology and its relation vocabulary. GraphRAG supplies
-  generic RELATED_TO edges; the application layer adds REQUIRES and SATISFIES
-  when a role is assessed.
-- **Sources** lists, opens, uploads and deletes `kb/sources/` documents and
-  rebuilds the graph. **Add** records a fact or skill as a supplementary grounded source. It is
-  appended to every GraphRAG context immediately and appears in the graph
-  view through a live skill overlay, so no rebuild is needed; re-prepare the
-  role to fold it into the CV. **Roles** lists live roles and opens one in the job
-  drawer (or prepares a queued role) so application work stays in the same
-  workspace.
+- **Universe** — every entity, grouped into level-0 themes as islands, with
+  weighted importance, zoom-tiered labels, community nebulae and a focus control.
+- **Map** — the same renderer drilled down through **Topics** (ontology classes),
+  **Communities** (the generated hierarchy), **Entities** and **Ego** networks.
+- **Focus** — selecting an entity frames its neighbourhood, lights the selected
+  node and its hops, dims the rest, then fades back after a few seconds. Clicking
+  empty space restores the previous view and the normal labels.
+- **Node pane** — description, class, sources, neighbours, strongest connections,
+  subgraph depth and layer counts. Descriptions and types can be edited and
+  evidence-backed links added; changes live in overlays, not the generated index.
+- **Ask** — cited answers from the graph in local, global, basic and drift modes.
+- **Semantic search** — entity search by meaning, not exact wording.
+- **Role evidence** — job-ad keywords mapped to grounded entities and explicit
+  gaps.
+- **Grounded enrichment** — reviewable additions supported by existing text;
+  approved nodes and links are gold and marked as grounded.
+- **Sources / Add / Roles** — upload and rebuild the corpus, record a fact or
+  skill without a rebuild, and open a role in the application drawer.
 
-Controls: drag to orbit, wheel to zoom, right-drag (or shift-drag) to pan, click
-a node for details, double-click to open it. The side panel is the source of
-truth for what a node is, where it came from and what it connects to.
+The full guide, including controls, the orphan policy, the quality gate and the
+maintenance workflow, is **[KNOWLEDGE-GRAPH.md](KNOWLEDGE-GRAPH.md)**.
 
 ## 5. Maintain it
 
@@ -188,14 +184,24 @@ and legal documents are excluded at ingest (`kb/sources/.ingestignore` includes
 `contracts/*`, `reference-cv/*Contract*` and `reference-cv/*Juridiska*`).
 `tools/graph_prune_sensitive.py` removes any contract/legal entities that
 slipped through — garden leave, pay in lieu of notice, notice/probation,
-disciplinary/grievance terms, salary/bonus/pension details and generic contract
-parties — redacts surviving descriptions and community reports, and drops the
-contract documents from provenance. `tools/sensitive.py` also redacts context
-packs and query answers. `bash tools/setup_kb.sh` runs the prune automatically
-after a rebuild; check with:
+disciplinary/grievance terms, salary/bonus/pension details, courts, tribunals,
+jurisdiction and generic contract parties. It also removes any entity left with
+no surviving text unit, its relationships, ungrounded communities and reports,
+recomputes degrees, drops dangling edges, cleans orphan vector rows and redacts
+surviving descriptions and community reports. `tools/sensitive.py` redacts
+context packs and query answers as a backstop.
+
+Every entity should also have at least one relationship. Curated, evidence-backed
+links for missed entities live in `kb/graphrag/orphan-links.json` and are applied
+with `tools/graph_attach_orphans.py`; the Universe keeps any genuinely unlinked
+entity in a labelled **Unlinked evidence** island.
+
+Run the gate after a rebuild or prune:
 
 ```bash
-.venv-graphrag/bin/python tools/graph_quality.py --fail-sensitive
+.venv-graphrag/bin/python tools/graph_quality.py --fail-sensitive --fail-orphans
 ```
 
-The `sensitive` line in that report must stay at zero.
+The `sensitive` line must stay at zero, `grounding` must show no entity without
+a text unit, and `orphans` must show zero. See
+**[KNOWLEDGE-GRAPH.md](KNOWLEDGE-GRAPH.md)** for the full workflow.

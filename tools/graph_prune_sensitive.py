@@ -162,10 +162,14 @@ def main():
     print(f"entities dropped: {len(drop_titles)} "
           f"({len(blocked)} blocked by name, {len(ungrounded)} with no surviving provenance)")
 
-    # relationships: drop either endpoint and anything whose only provenance
-    # was a contract text unit. Recompute both degree fields afterwards.
+    # relationships: drop either endpoint, anything whose only provenance was
+    # a contract text unit, and any edge left pointing at a removed entity.
+    # Recompute both degree fields afterwards.
+    kept_titles = {str(t) for t in ents["title"] if str(t) not in drop_titles}
     rel = rels[~rels["source"].astype(str).isin(drop_titles) &
-               ~rels["target"].astype(str).isin(drop_titles)].copy()
+               ~rels["target"].astype(str).isin(drop_titles) &
+               rels["source"].astype(str).isin(kept_titles) &
+               rels["target"].astype(str).isin(kept_titles)].copy()
     rel["description"] = [S.redact(str(d or "")) for d in rel["description"]]
     if "text_unit_ids" in rel.columns:
         rel["text_unit_ids"] = rel["text_unit_ids"].map(clean_ids)

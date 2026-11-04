@@ -94,13 +94,19 @@ sorts the queue file itself by seniority.
 ## Knowledge workspace
 
 The top-bar **Knowledge** page is a full-page Three.js view over the same
-GraphRAG index. `graph_explore.py` exposes class aggregates, the community
-hierarchy, connected entity subgraphs and ego networks; `ontology.py` maps
-GraphRAG types to the classes shown in `config/ontology.example.json`. The
-frontend (`web/graph3d.js`) owns the scene, orbit/zoom/pan, raycast and HTML
+GraphRAG index. `graph_explore.py` exposes the Universe, ontology aggregates,
+the community hierarchy, connected entity subgraphs, ego networks, semantic
+search, role evidence and cited answers; `graph_importance.py` scores entities
+by weighted message passing; `graph_universe.js` and `graph3d.js` are the
+Universe and Map renderers, and `web/app.js` owns the node pane, focus/fade,
+Ask, enrichment and edit flows. Overlays (`enrichment.json`, `edits.json`,
+`orphan-links.json`) are merged at read time so they survive a rebuild.
+`ontology.py` maps GraphRAG types to the classes shown in
+`config/ontology.example.json`. The frontend owns the scene, orbit/zoom/pan, raycast and HTML
 hotspots; `dashboard.py` owns the breadcrumbs, search, source management and
-role links. Entity views keep the largest connected component so the picture
-does not fill with floating, disconnected nodes.
+role links. Orphans are attached with evidence-backed overlay links; anything
+that cannot be honestly linked is grouped in the labelled *Unlinked evidence*
+island instead of floating among the themes.
 
 The **Roles** tab in the workspace is the bridge to applications: it lists
 register rows and opens one in the existing job drawer, or prepares a queued

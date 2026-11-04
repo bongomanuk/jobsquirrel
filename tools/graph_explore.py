@@ -115,9 +115,28 @@ def _norm(s):
     return re.sub(r"[^a-z0-9]+", " ", str(s or "").lower()).strip()
 
 
+def _candidate_name():
+    """Best available display name for the candidate, without hard-coding one."""
+    try:
+        with open(os.path.join(ROOT, "config", "cv.json"), encoding="utf-8") as fh:
+            data = json.load(fh)
+        name = str((data.get("name") or data.get("basics", {}).get("name") or "")).strip()
+        if name:
+            return name
+    except (OSError, ValueError):
+        pass
+    return "Candidate"
+
+
 def _add_skill_links(nodes, links, rows):
+    if not rows:
+        return
     titles = {_norm(n.get("title", "")) for n in nodes}
-    person = "Peter Hollas"
+    # Attach operator-recorded skills to the person already in the graph. If
+    # there is no person node, add one using the configured candidate name.
+    person_node = max((n for n in nodes if str(n.get("type", "")).upper() == "PERSON"),
+                      key=lambda n: int(n.get("degree") or 0), default=None)
+    person = person_node["title"] if person_node else _candidate_name()
     if person.lower() not in titles:
         nodes.append({"id": person, "title": person, "type": "PERSON", "degree": len(rows),
                       "frequency": len(rows), "description": "Candidate"})
@@ -1059,6 +1078,8 @@ def universe():
                 continue
             links.append({"source": a, "target": b, "weight": round(float(x.get("weight") or 1), 1),
                           "description": _s(x.get("description"), 400), "grounded": True})
+            if x.get("origin") == "orphan-attachment" and a in by_title:
+                by_title[a]["attached"] = True
             have.add(key)
         deg = {n["id"]: int(n.get("degree") or 0) for n in nodes}
         for l in ov["links"]:

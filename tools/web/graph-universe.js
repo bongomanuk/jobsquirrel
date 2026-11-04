@@ -214,6 +214,28 @@ function layout(nodes) {
   // A little local repulsion turns each island into a cluster with structure
   // instead of a uniform ball (cheap: only within one island at a time).
   relax(S.clusters);
+
+  // Operator-attached entities (for example a skill linked to a person) are
+  // placed beside their strongest neighbour in the same island. Otherwise a
+  // newly linked node can still look stranded inside a sparse part of it.
+  const placed = new Map(nodes.map(n => [n.id, n]));
+  for (const n of nodes) {
+    if (!n.attached) continue;
+    let best = null, score = -1;
+    for (const e of (S.adj.get(n.id) || [])) {
+      const m = placed.get(e.id);
+      if (!m || S.clusterOf.get(m.id) !== S.clusterOf.get(n.id)) continue;
+      const s2 = (Number(m.degree) || 0) + (Number(m.importance) || 0) * 50;
+      if (s2 > score) { score = s2; best = m; }
+    }
+    if (!best) continue;
+    const a = Math.random() * Math.PI * 2;
+    const b = Math.acos(2 * Math.random() - 1);
+    const r = (best.radius + n.radius + 9) * 2.6;
+    n.pos.set(best.pos.x + r * Math.sin(b) * Math.cos(a),
+              best.pos.y + r * Math.cos(b) * 0.82,
+              best.pos.z + r * Math.sin(b) * Math.sin(a));
+  }
 }
 
 function relax(clusters) {
@@ -780,8 +802,8 @@ function loop(now) {
   // bright lights instead of one-pixel specks.
   const dist = S.orbit.radius;
   const fm = 1 + 1.1 * (S.focusAmount || 0);
-  if (S.core) S.core.material.size = Math.max(6, Math.min(30, dist * 0.006)) * fm;
-  if (S.halo) S.halo.material.size = Math.max(24, Math.min(170, dist * 0.022)) * fm;
+  if (S.core) S.core.material.size = Math.max(9, Math.min(32, dist * 0.006)) * fm;
+  if (S.halo) S.halo.material.size = Math.max(34, Math.min(180, dist * 0.022)) * fm;
   if (S.major) S.major.material.size = Math.max(22, Math.min(90, dist * 0.012));
   if (S.impact) S.impact.material.size = Math.max(30, Math.min(150, dist * 0.018));
   if (S.marker && S.selected) {
@@ -940,9 +962,18 @@ function focusFrame(n, dist) {
     const d = dist.get(m.id);
     if (m !== n && d != null && d <= 1) pts.push(m);
   }
-  let spread = 0;
-  for (const m of pts) spread = Math.max(spread, n.pos.distanceTo(m.pos));
-  return { center: n.pos.clone(), radius: Math.max(500, Math.min(2600, spread * 2.0 + 260)) };
+  let spread = 0, nearest = Infinity;
+  for (const m of pts) {
+    const d = n.pos.distanceTo(m.pos);
+    spread = Math.max(spread, d);
+    if (m !== n) nearest = Math.min(nearest, d);
+  }
+  const local = Number.isFinite(nearest) ? nearest * 4.5 + 300 : 500;
+  const wide = spread * 2.0 + 260;
+  // Attached nodes sit beside their anchor, so frame the anchor rather than a
+  // distant second neighbour. Ordinary selections keep the wider framing.
+  const radius = n.attached ? Math.min(wide, local) : wide;
+  return { center: n.pos.clone(), radius: Math.max(500, Math.min(2600, radius)) };
 }
 
 function select(n) {
@@ -1239,3 +1270,4 @@ export function search(q) {
   if (st) st.textContent = `${hits.length} match${hits.length === 1 ? '' : 'es'} for “${q}” · ${S.nodes.length} entities`;
   return hits.length;
 }
+

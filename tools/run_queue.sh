@@ -172,7 +172,7 @@ Apply URL: $url
 CV to upload (ALREADY GENERATED - do NOT regenerate): documents/applications/${CV_PREFIX}_CV_$key.docx
 Cover letter (ALREADY GENERATED - do NOT regenerate): documents/applications/${CV_PREFIX}_Motivation_$key.docx
   Browser: run every command as \`python3 tools/camoufox_browser.py --server $server <cmd>\` (nav/snap/click/fill/type/select/pick/fillmap/press/check/upload/value/eval/wait). Prefix \`$TIMEOUT_CMD 30\`. Refs renumber after every snap - re-snap before using refs; prefer CSS selectors with \`fill '<sel>' '<text>'\`. To cut tokens, BATCH form fields with \`fillmap '<json steps>'\` (steps: [{"selector":"#x","value":"...","op":"fill|check|select|upload|press"}]) instead of one call per field.
-  Custom ATS widgets (Workday, Greenhouse/react-select, Ashby): options in a listbox/dropdown are NOT clickable via eval-dispatched events - use \`pick '<option text>' ['<opener selector>']\` (it scrolls virtualised lists and clicks with real input). Use \`press Enter '<sel>'\` to commit type-aheads, \`press Escape\` to close a popup. \`click\` waits for the control to be actionable, then clicks it. CSS ids starting with a digit need \`[id="53683"]\`, not \`#53683\`.
+  Custom ATS widgets (Workday, Greenhouse/react-select, Ashby): options in a listbox/dropdown are NOT clickable via eval-dispatched events - use \`pick '<option text>' ['<opener selector>']\` (it scrolls virtualised lists and clicks with real input). Use \`press Enter '<sel>'\` to commit type-aheads, \`press Escape\` to close a popup. \`click\` retries with a forced click automatically when an overlay blocks it; add \`--force\` yourself if you already know something is in the way. CSS ids starting with a digit need \`[id="53683"]\`, not \`#53683\`.
 
 SUBMIT-PREPARED RUN: these files were generated, written and gated in an earlier REVIEW pass and are FINAL. Do NOT re-do any preparation. Specifically: do NOT run kb_graphrag.py, ats_keywords.py, cv_target.py, render_motivation/render_cv, and do NOT rewrite, re-render, edit or "improve" the CV or letter. Do NOT run check_alignment.py. Do not call GraphRAG. If the CV or letter is missing, STOP and record BLOCKED with the missing path (the operator must re-prepare) - never generate a replacement.
 
@@ -186,7 +186,7 @@ Steps:
    Multi-step forms (Workday etc): the footer button is [data-automation-id="pageFooterNextButton"] (Save and Continue). If a save is rejected, read the Error-* text and fix exactly the field it names (usually a custom dropdown - use \`pick\`).
 2b. EMAIL VERIFICATION (mandatory): after submit, wait ~45s, then read the candidate's Gmail (\`.venv/bin/python tools/email_verify.py --query 'newer_than:2h (from:teamtailor-mail.com OR from:join.com OR "Complete the application" OR "Security code for your application" OR "verify your email" OR "Activate your account")'\`) and COMPLETE it in THIS browser. Do NOT record SUBMITTED until a real confirmation is seen. If verification remains pending, record BLOCKED.
 2c. BLOCKER RECOVERY: re-read the page and retry once; on a login wall use `python3 tools/accounts.py --get <site-host>` (the secrets store); if the apply URL is dead, resolve the employer's own ATS. Never evade a genuine CAPTCHA/anti-bot wall - record BLOCKED with what you tried.
-3. On success: \`python3 tools/record_submission.py --company "<Company>" --role "$role" --ats "$ats" --url "$url" --cv documents/applications/${CV_PREFIX}_CV_$key.docx --letter documents/applications/${CV_PREFIX}_Motivation_$key.docx --status SUBMITTED --evidence "<the exact thank-you text or the confirmation email>"\`. The evidence MUST be real - never "confirmed"/"ok"/a placeholder.
+3. On success: \`python3 tools/record_submission.py --company "<Company>" --role "$role" --ats "$ats" --url "$url" --key $key --cv documents/applications/${CV_PREFIX}_CV_$key.docx --letter documents/applications/${CV_PREFIX}_Motivation_$key.docx --status SUBMITTED --evidence "<the exact thank-you text or the confirmation email>"\`. The evidence MUST be real - never "confirmed"/"ok"/a placeholder.
 
 Return exactly one line: STATUS <Company> | $role | SUBMITTED|BLOCKED|CLOSED | <reason> | CV: documents/applications/${CV_PREFIX}_CV_$key.docx | letter: documents/applications/${CV_PREFIX}_Motivation_$key.docx
 EOF
@@ -200,7 +200,7 @@ ATS: $ats
 Apply URL: $url
 CV to upload: $cv
   Browser: run every command as \`python3 tools/camoufox_browser.py --server $server <cmd>\` (nav/snap/click/fill/type/select/pick/fillmap/press/check/upload/value/eval/wait). Prefix \`$TIMEOUT_CMD 30\`. Refs renumber after every snap - re-snap before using refs; prefer CSS selectors with \`fill '<sel>' '<text>'\`. To cut tokens, BATCH form fields with \`fillmap '<json steps>'\` (steps: [{"selector":"#x","value":"...","op":"fill|check|select|upload|press"}]) instead of one call per field.
-  Custom ATS widgets (Workday, Greenhouse/react-select, Ashby): options in a listbox/dropdown are NOT clickable via eval-dispatched events - use \`pick '<option text>' ['<opener selector>']\` (it scrolls virtualised lists and clicks with real input). Use \`press Enter '<sel>'\` to commit type-aheads, \`press Escape\` to close a popup. \`click\` waits for the control to be actionable, then clicks it. CSS ids starting with a digit need \`[id="53683"]\`, not \`#53683\`.
+  Custom ATS widgets (Workday, Greenhouse/react-select, Ashby): options in a listbox/dropdown are NOT clickable via eval-dispatched events - use \`pick '<option text>' ['<opener selector>']\` (it scrolls virtualised lists and clicks with real input). Use \`press Enter '<sel>'\` to commit type-aheads, \`press Escape\` to close a popup. \`click\` retries with a forced click automatically when an overlay blocks it; add \`--force\` yourself if you already know something is in the way. CSS ids starting with a digit need \`[id="53683"]\`, not \`#53683\`.
 
 FIRST, before anything else: read config/profile.md and apply it - identity (name, email, phone, location, links), work authorisation, languages, availability, pay/rate, eligibility/exclusions, accuracy rules and the standard diversity/EEO answers. Use those exact values wherever a form asks; never invent or substitute personal data. Use config/cv.json as the source of truth for the candidate's experience, and config/archetypes.json for the CV archetypes described below. Use the real company name you resolve in the gate/record calls.
 ${REVIEW_MSG:-}
@@ -231,7 +231,7 @@ Steps:
    - Expired ATS session: reload, re-open the apply URL, and re-enter the form.
    - Email verification required: complete it (step 4b).
    A genuine CAPTCHA / "verify you are human" / anti-bot challenge must NOT be solved or evaded - that is a real BLOCKED.
-5. On success: \`python3 tools/record_submission.py --company "<Company>" --role "$role" --ats "$ats" --url "$url" --cv documents/applications/${CV_PREFIX}_CV_$key.docx --letter documents/applications/${CV_PREFIX}_Motivation_$key.docx --status SUBMITTED --evidence "<confirmation>"\`.
+5. On success: \`python3 tools/record_submission.py --company "<Company>" --role "$role" --ats "$ats" --url "$url" --key $key --cv documents/applications/${CV_PREFIX}_CV_$key.docx --letter documents/applications/${CV_PREFIX}_Motivation_$key.docx --status SUBMITTED --evidence "<confirmation>"\`.
 If, after step 4c, a genuine blocker remains (an unsolvable CAPTCHA/anti-bot challenge, or a login wall with no stored credentials), record it with the workarounds you tried: \`python3 tools/register.py --set --company "<Company>" --role "$role" --status BLOCKED --notes "blocker: <exact>; tried: <workarounds>"\` and stop. Never fabricate a submission.
 
 Return exactly one line: STATUS <Company> | $role | $OUTCOMES | <reason> | CV: documents/applications/${CV_PREFIX}_CV_$key.docx | letter: documents/applications/${CV_PREFIX}_Motivation_$key.docx
@@ -500,6 +500,13 @@ if [ -e "$STOP_FILE" ]; then
   echo "queue stopped early (agent budget/rate limit/sign-in) $(date +%H:%M:%S)" >> "$LOGS/run_queue.out"
 else
   echo "queue complete $(date +%H:%M:%S)" >> "$LOGS/run_queue.out"
+fi
+
+# Register integrity is part of finishing a run: a contradictory register means
+# a status lied about what the mailbox says. Report it loudly (do not hide it).
+if ! python3 "$ROOT/tools/register.py" --audit > "$LOGS/audit.out" 2>&1; then
+  { echo "AUDIT FAILED after this run — inspect and repair before the next one:";
+    grep '^FAIL' "$LOGS/audit.out"; } | tee -a "$LOGS/run_queue.out" >&2
 fi
 
 # Tell the Agent pane what this run did.

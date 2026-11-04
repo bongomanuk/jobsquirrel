@@ -64,13 +64,17 @@ demo data: a sample candidate and fictional companies.)
 |---|---|
 | ![Application grid](docs/screenshots/grid.png) | ![Role detail drawer](docs/screenshots/drawer.png) |
 
-| The pipeline as a graph — click a state to filter the grid |
+| The knowledge universe — themes as islands, weighted stars and one central career hub |
 |---|
-| ![Application states graph with a count for every stage](docs/screenshots/pipeline.png) |
+| ![The knowledge universe: synthetic theme islands connected by a central person](docs/screenshots/graph-universe.png) |
 
-| The knowledge workspace — a full-page 3D map of ontology classes, communities and entities |
-|---|
-| ![Knowledge workspace: a 3D graph of classes with a selected class and its details](docs/screenshots/knowledge.png) |
+| Focus — the selected entity, its bright neighbourhood and the evidence pane | Map — the same renderer, drilled down to ontology topics |
+|---|---|
+| ![A selected entity with bright neighbouring clusters and the details pane](docs/screenshots/graph-focus.png) | ![The Map view showing ontology classes and their links](docs/screenshots/graph-topics.png) |
+
+| Map — the generated community hierarchy | The application states graph |
+|---|---|
+| ![The Map view showing the community hierarchy](docs/screenshots/graph-communities.png) | ![Application states graph with a count for every stage](docs/screenshots/pipeline.png) |
 
 | Context menu — actions that fit the role's current state | Agent console — chat, delegated work and live activity |
 |---|---|
@@ -87,6 +91,46 @@ demo data: a sample candidate and fictional companies.)
 | Backup & restore — what is saved, and a safe restore | Legend — what every status, mark and queue state means |
 |---|---|
 | ![Backup and restore](docs/screenshots/backup.png) | ![Status and queue legend](docs/screenshots/legend.png) |
+
+---
+
+## The knowledge graph is a working surface
+
+The **Knowledge** page is not a static picture. It is a full-screen 3D workspace
+over the same GraphRAG index that grounds every CV and letter:
+
+- **Universe and Map.** The Universe shows level-0 themes as islands and the
+  evidence that crosses between them. The Map drills from ontology topics and
+  the community hierarchy down to entities and ego networks, with the same
+  renderer and visual language.
+- **Weighted importance.** A message-passing pass scores every entity from its
+  connections, relationship weights, type and impact language. That score drives
+  node size, label priority, topic order and retrieval highlights, so landmark
+  work rises above the long tail.
+- **Focus with a timed fade.** Selecting an entity frames its neighbourhood, lights
+  the selected node and its hops, dims the rest, then fades back after a few
+  seconds. The selection stays marked, and clicking empty space restores the
+  normal view and labels.
+- **A real evidence pane.** Full node details, source documents, neighbours,
+  strongest connections, subgraph depth and layer counts. Descriptions and types
+  can be edited and evidence-backed links added; the changes live in an overlay
+  that survives rebuilds.
+- **Ask, semantic search and role evidence.** Cited answers from the graph, entity
+  search by meaning, and a role panel that maps job-ad keywords to grounded
+  evidence and explicit gaps.
+- **Grounded enrichment.** Proposed additions are reviewed with their evidence
+  before they become gold, grounded nodes and links. Nothing is invented.
+- **Privacy by construction.** Employment-contract and legal material is excluded
+  at ingest, pruned from the index, removed from provenance and redacted from
+  answers. The quality gate fails if any remains.
+- **No orphans.** Entities with no relationship are attached to the things they
+  obviously belong with, using a curated, evidence-backed mapping. Anything that
+  cannot be honestly linked is shown in a clearly labelled *Unlinked evidence*
+  island instead of floating as a stray star.
+
+See **[docs/KNOWLEDGE-GRAPH.md](docs/KNOWLEDGE-GRAPH.md)** for the full guide,
+including every control, the quality gate and the maintenance workflow.
+(The screenshots use a synthetic demo graph, so no real candidate data appears.)
 
 ---
 

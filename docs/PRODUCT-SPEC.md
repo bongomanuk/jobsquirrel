@@ -322,27 +322,51 @@ All POSTs require header `X-Session: <token>` (else 403); the token is injected 
 - Runs are detached and logged to `state/logs/dashboard-action.log`.
 
 ### 9.9b Knowledge workspace (top-bar **Knowledge**)
-- A **full-page** workspace, not a settings pane. It fills the area below the header and keeps the
-  job grid out of the way.
-- **Topics** — the ontology classes (Person, Organisation, Role, Skill, Technology, Project,
-  Metric, Certification, Education, Language, Location, Achievement, Concept), sized by entity
-  count, with links aggregated between classes. **Communities** — the generated GraphRAG hierarchy;
-  drill from a root community through its sub-communities to the entities. **Entities** — the
-  largest connected component for the selected class/community/ego network, so no disconnected
-  dots.
-- **3D scene** — Three.js with orbit/zoom/pan, drag, hover tooltip, glowing nodes, labelled edges and
-  a slow auto-rotate. Single-click selects and shows details; double-click opens the entity's ego
-  network, the community, or the class. Every node also has an HTML hotspot so clicking works even
-  on a small sphere.
-- **Details** shows class, description, source documents (click to open the original file) and
-  neighbours, with **Open community**, **Open topic** and **Focus ego network** actions.
-- **Classes** lists the ontology and relation vocabulary; **Sources** opens/uploads/deletes the
-  `kb/sources/` documents and rebuilds the index; **Add** records a fact or skill as a KB source;
-  **Roles** lists live roles and opens one in the job drawer (or prepares a queued role).
-- The ontology is editable in `config/ontology.json` (copy `config/ontology.example.json`). Unknown
-  GraphRAG types fall back to Concept.
-- Each role's detail drawer still has a **Grounding** tab: the GraphRAG context pack plus the
-  entities and source documents it cited, resolved from the index.
+
+The full guide is **[KNOWLEDGE-GRAPH.md](KNOWLEDGE-GRAPH.md)**; this is the
+interface contract.
+
+- **Full-page workspace.** Universe and Map fill the area below the header; the
+  job grid is out of the way.
+- **Universe.** The whole index: level-0 communities as islands, weighted
+  importance, community nebulae, zoom-tiered labels, a 1–3 hop focus slider and
+  the same point-star renderer as the Map.
+- **Map.** The same renderer drilled down through **Topics** (ontology classes),
+  **Communities** (the generated hierarchy), **Entities** and **Ego** networks.
+  The toolbar has a 1–3 hop focus selector and breadcrumbs.
+- **Focus and fade.** Selecting an entity frames it and its direct neighbours,
+  lights the selected hops, dims the rest and fades back after roughly four
+  seconds plus a one-second fade. The selected node keeps its marker, size and
+  label. Clicking empty space clears the focus, restores the previous camera and
+  re-runs the normal label set. Labels are tiered by zoom outside a focus.
+- **Node pane.** Title, class, degree, mentions, community, description,
+  subgraph counts/depth/layers, source documents, neighbours, strongest
+  connections, **Edit details** (description/type override), **Add connection**
+  (grounded overlay link), **Focus ego network** and **Open community**.
+- **Ask.** Local, global, basic and drift questions answered from the graph with
+  citations. Answers are redacted like context packs and never invent an
+  unsupported fact.
+- **Semantic search.** Entity search over the LanceDB description vectors, with
+  similarity and impact shown.
+- **Role evidence.** A saved ad's keywords mapped to grounded entities and an
+  explicit gap list.
+- **Grounded enrichment.** Reviewable proposals supported by existing text;
+  approved nodes/links are gold and marked grounded. Operator edits and approved
+  links live in `enrichment.json` / `edits.json` and survive a rebuild.
+- **Orphans.** No entity should have zero links. Curated, evidence-backed links
+  live in `orphan-links.json` and are applied by `graph_attach_orphans.py`;
+  unattached entities are grouped in the labelled **Unlinked evidence** island.
+  `graph_quality.py --fail-orphans` enforces it.
+- **Privacy.** Contract/legal material is excluded at ingest, pruned from the
+  index, removed from provenance and redacted from answers; the quality gate
+  fails on any sensitive or ungrounded entity.
+- **Sources / Add / Roles.** Upload/delete/rebuild documents, record a fact or
+  skill without a rebuild, and open or prepare a role in the application drawer.
+- **Classes** lists the ontology and relation vocabulary. The ontology is
+  editable in `config/ontology.json`; unknown GraphRAG types fall back to
+  Concept.
+- Each role's detail drawer still has a **Grounding** tab: the GraphRAG context
+  pack plus the entities and source documents it cited, resolved from the index.
 
 ### 9.10 Theming & UX
 - Dark, high-contrast; amber accent; colour-coded status chips; squirrel mascot animates; empty-state-safe.

@@ -330,6 +330,12 @@ On any failure at (3): fix and re-run, never upload. On a wall at (4): record
 - **Grounding**: draw facts from `state/kb-context/<key>.md` (GraphRAG) +
   `config/cv.json` + `config/profile.md`. When the KB says a requirement isn't
   evidenced, do not claim it.
+- **Graph hygiene**: after a rebuild run
+  `graph_prune_sensitive.py --apply`, `graph_attach_orphans.py --apply` and
+  `graph_quality.py --fail-sensitive --fail-orphans`. Never invent a link to
+  silence an orphan; add a curated, evidence-backed entry to
+  `kb/graphrag/orphan-links.json` instead. Contract/legal material must never
+  enter the graph.
 - Follow the **accuracy rules** in `config/profile.md` (e.g. certifications on
   the list only; the exact management scope).
 

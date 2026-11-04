@@ -98,13 +98,19 @@ Everything is observable. Useful things to ask for, or run yourself:
 ## The Knowledge workspace
 
 The top-bar **Knowledge** page is the full-page view of your knowledge base.
-**Topics** shows the ontology classes and their links; **Communities** drills
-through the generated community hierarchy; clicking an entity shows its
-description, neighbours and source documents, and double-clicking opens its ego
-network. The **Classes** tab lists the ontology, **Sources** uploads/deletes/
-rebuilds the documents, **Add** records a fact or skill, and **Roles** opens a
-role in the application drawer (or prepares a queued role). Drag to orbit,
-scroll to zoom, right-drag to pan.
+**Universe** shows the whole graph as theme islands; **Map** drills through
+**Topics** (ontology classes), **Communities** (the generated hierarchy),
+**Entities** and **Ego** networks. Click an entity for its description, sources,
+neighbours and strongest connections; double-click opens its ego network.
+Selecting an entity lights its neighbourhood and dims the rest, then fades back
+after a few seconds; clicking empty space restores the previous view. **Ask**
+answers questions with citations, **Semantic** searches entities by meaning, and
+**role evidence** maps a saved ad's keywords to grounded evidence and gaps.
+**Sources** uploads/deletes/rebuilds documents, **Add** records a fact or skill
+without a rebuild, and **Roles** opens a role in the application drawer (or
+prepares a queued role). Drag to orbit, scroll to zoom, right-drag to pan.
+
+The full guide is **[KNOWLEDGE-GRAPH.md](KNOWLEDGE-GRAPH.md)**.
 
 The graph and the application drawer share the same evidence: a claim you add
 under **Add** is appended to every GraphRAG context immediately and appears in

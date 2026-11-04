@@ -32,6 +32,16 @@ import sensitive as SENS
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "kb", "graphrag", "output")
 INPUT = os.path.join(ROOT, "kb", "graphrag", "input")
+ENRICH = os.path.join(ROOT, "kb", "graphrag", "enrichment.json")
+
+
+def overlay_links():
+    try:
+        with open(ENRICH, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data.get("links") or []
+    except (OSError, ValueError):
+        return []
 
 
 def load(name):
@@ -97,6 +107,8 @@ def main():
     ap.add_argument("--top", type=int, default=10)
     ap.add_argument("--fail-sensitive", action="store_true",
                     help="exit non-zero if sensitive employment-contract terms remain")
+    ap.add_argument("--fail-orphans", action="store_true",
+                    help="exit non-zero if any entity has no link after overlays")
     args = ap.parse_args()
 
     ents = load("entities")
@@ -181,6 +193,18 @@ def main():
         report["sensitive"]["sensitive_reports"] = sum(
             1 for r in reports.itertuples()
             if SENS.sensitive(str(r.title)) or SENS.sensitive(str(r.summary)))
+
+    # Orphans are entities with no link once the operator overlay is merged.
+    deg = Counter()
+    for a, b in zip(rels["source"], rels["target"]):
+        deg[str(a)] += 1
+        deg[str(b)] += 1
+    for link in overlay_links():
+        a, b = str(link.get("source") or ""), str(link.get("target") or "")
+        if a: deg[a] += 1
+        if b: deg[b] += 1
+    orphans = [str(t) for t in ents["title"] if deg.get(str(t), 0) == 0]
+    report["orphans"] = {"count": len(orphans), "titles": orphans[:args.top]}
     report["relationships_quality"] = {
         "self_loops": sum(1 for a, b in zip(rels["source"], rels["target"]) if str(a) == str(b)),
         "duplicate_pairs": sum(1 for v in pairs.values() if v > 1),
@@ -218,9 +242,16 @@ def main():
           f"descriptions:{se['sensitive_descriptions']}  reports:{se['sensitive_reports']}")
     gr = report["grounding"]
     print(f"grounding       entities without a text unit: {gr['entities_without_text_units']}")
+    orp = report["orphans"]
+    print(f"orphans         entities with no link after overlays: {orp['count']}")
+    for t in orp["titles"]:
+        print(f"  - {t}")
     if args.fail_sensitive and (any(report["sensitive"].values()) or
                                 gr["entities_without_text_units"]):
         print("\nFAIL: sensitive or ungrounded material remains", file=sys.stderr)
+        return 2
+    if args.fail_orphans and orp["count"]:
+        print("\nFAIL: graph orphans remain (add an evidence-backed link)", file=sys.stderr)
         return 2
     if t["examples"]:
         print("\nlargest near-duplicate title groups:")
