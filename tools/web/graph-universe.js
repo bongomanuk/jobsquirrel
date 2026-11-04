@@ -242,6 +242,14 @@ function build(data) {
   S.nodes = data.nodes || [];
   S.links = data.links || [];
   S.byId = new Map(S.nodes.map(n => [n.id, n]));
+  S.adj = new Map();
+  for (const l of S.links) {
+    if (!S.adj.has(l.source)) S.adj.set(l.source, []);
+    if (!S.adj.has(l.target)) S.adj.set(l.target, []);
+    S.adj.get(l.source).push({ id: l.target, weight: l.weight || 1 });
+    S.adj.get(l.target).push({ id: l.source, weight: l.weight || 1 });
+  }
+  S.selDist = null;
   S.maxDist = 0;
   layout(S.nodes);
   const n = S.nodes.length;
@@ -329,6 +337,7 @@ function build(data) {
   const lg = new THREE.BufferGeometry();
   lg.setAttribute('position', new THREE.BufferAttribute(lp, 3));
   lg.setAttribute('color', new THREE.BufferAttribute(lc, 3));
+  S.linkBaseColors = lc.slice();
   S.lines = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({
     vertexColors: true, transparent: true, opacity: 0.085, depthWrite: false,
     blending: THREE.AdditiveBlending
@@ -498,6 +507,7 @@ function updateLOD(force) {
     });
     S.core.geometry.attributes.color.needsUpdate = true;
     if (S.halo) S.halo.geometry.attributes.color.needsUpdate = true;
+    applySelection();
     if (S.majorColors && S.majorNodes) {
       S.majorNodes.forEach((n, i) => {
         const c = S.clusterOf.get(n.id);
@@ -735,7 +745,7 @@ function loop(now) {
     const pulse = 1 + Math.sin(now * 0.004) * 0.16;
     const s = (S.marker.userData.base || 40) * pulse;
     S.marker.scale.setScalar(s);
-    S.marker.material.opacity = 0.55 + Math.sin(now * 0.004) * 0.2;
+    S.marker.material.opacity = 0.38 + Math.sin(now * 0.004) * 0.12;
   }
 
   updateLabels();
@@ -763,7 +773,7 @@ function moveKeys() {
 
 function resetView() {
   S.orbit.theta = 0.7; S.orbit.phi = 1.12; S.orbit.radius = S.baseRadius;
-  S.orbit.target.set(0, 0, 0); S.auto = false; S.selected = null; S.hovered = null;
+  S.orbit.target.set(0, 0, 0); S.auto = false; S.selected = null; S.hovered = null; S.selDist = null;
   S.fly = null;
   if (S.marker) S.marker.visible = false;
   if (S.hits) { S.scene.remove(S.hits); S.hits = null; }
@@ -787,15 +797,69 @@ function flyTo(target, radius, dur = 1100, lift = null) {
   S.auto = false;
 }
 
+function graphDistances(startId) {
+  const dist = new Map([[startId, 0]]);
+  const q = [startId];
+  while (q.length) {
+    const x = q.shift();
+    const d = dist.get(x);
+    for (const e of (S.adj.get(x) || [])) {
+      if (!dist.has(e.id)) { dist.set(e.id, d + 1); q.push(e.id); }
+    }
+  }
+  return dist;
+}
+
+function applySelection() {
+  if (!S.coreColors) return;
+  const sel = S.selDist;
+  const core = S.coreColors, halo = S.haloColors;
+  const white = new THREE.Color('#ffffff');
+  S.nodes.forEach((n, i) => {
+    const cl = S.clusterOf.get(n.id);
+    const lod = (!S.activeClusters || !cl || S.activeClusters.has(cl)) ? 1 : 0.04;
+    let f = 1;
+    if (sel) {
+      const d = sel.get(n.id);
+      f = d == null ? 0.08 : 0.22 + 0.78 * Math.exp(-d / 2.6);
+    }
+    const c = n.colorObj;
+    let r = c.r * lod * f, g = c.g * lod * f, b = c.b * lod * f;
+    if (n === S.selected) { r = Math.min(1, r * 0.5 + 0.5); g = Math.min(1, g * 0.5 + 0.5); b = Math.min(1, b * 0.5 + 0.5); }
+    core[i * 3] = r; core[i * 3 + 1] = g; core[i * 3 + 2] = b;
+    if (halo) { halo[i * 3] = r; halo[i * 3 + 1] = g; halo[i * 3 + 2] = b; }
+  });
+  S.core.geometry.attributes.color.needsUpdate = true;
+  if (S.halo) S.halo.geometry.attributes.color.needsUpdate = true;
+  if (S.lines) S.lines.material.opacity = sel ? 0.16 : 0.085;
+  if (S.lines && S.linkBaseColors) {
+    const attr = S.lines.geometry.attributes.color;
+    const base = S.linkBaseColors;
+    for (let i = 0; i < S.links.length; i++) {
+      const l = S.links[i];
+      let f = 1;
+      if (sel) {
+        const a = sel.get(l.source), b = sel.get(l.target);
+        const d = Math.min(a == null ? 8 : a, b == null ? 8 : b);
+        f = 0.10 + 0.90 * Math.exp(-d / 2.2);
+      }
+      for (let k = 0; k < 6; k++) attr.array[i * 6 + k] = base[i * 6 + k] * f;
+    }
+    attr.needsUpdate = true;
+  }
+}
+
 function select(n) {
   S.selected = n; S.auto = false;
+  S.selDist = graphDistances(n.id);
+  applySelection();
   setSide(n);
   const dist = 240 + Math.min(700, (n.degree || 1) * 4.5);
   flyTo(n.pos.clone(), dist, 950);
   if (S.marker) {
     S.marker.visible = true;
     S.marker.position.copy(n.pos);
-    S.marker.userData.base = Math.max(48, n.radius * 7);
+    S.marker.userData.base = Math.max(28, n.radius * 3.2);
     S.marker.scale.setScalar(S.marker.userData.base);
     S.marker.material.color.copy(n.colorObj).lerp(new THREE.Color('#ffffff'), 0.45);
   }

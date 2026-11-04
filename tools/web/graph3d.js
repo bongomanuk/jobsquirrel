@@ -390,12 +390,38 @@ export async function show(data, opts = {}) {
   return { nodes: S.nodes.length, links: links.length };
 }
 
-function repaintNodes(id, neigh) {
+function graphDistances(startId) {
+  const adj = new Map();
+  for (const l of S.links) {
+    if (!adj.has(l.source)) adj.set(l.source, []);
+    if (!adj.has(l.target)) adj.set(l.target, []);
+    adj.get(l.source).push(l.target);
+    adj.get(l.target).push(l.source);
+  }
+  const dist = new Map([[startId, 0]]);
+  const q = [startId];
+  while (q.length) {
+    const x = q.shift();
+    const d = dist.get(x);
+    for (const y of (adj.get(x) || [])) {
+      if (!dist.has(y)) { dist.set(y, d + 1); q.push(y); }
+    }
+  }
+  return dist;
+}
+
+function nearSet(dist) {
+  if (!dist) return null;
+  return new Set([...dist.entries()].filter(([, d]) => d <= 2).map(([id]) => id));
+}
+
+function repaintNodes(id, dist) {
   if (!S.ptGeo) return;
   const alpha = S.ptGeo.attributes.alpha, size = S.ptGeo.attributes.size;
   S.nodes.forEach((n, i) => {
-    const active = !id || (neigh && neigh.has(n.id));
-    alpha.array[i] = S.hidden.has(n.type) ? 0 : (active ? 1 : 0.1);
+    const d = dist ? dist.get(n.id) : null;
+    alpha.array[i] = S.hidden.has(n.type) ? 0
+      : (!id ? 1 : (d == null ? 0.06 : 0.18 + 0.82 * Math.exp(-d / 2.4)));
     size.array[i] = n.r * (n.id === id ? 1.6 : 1);
   });
   alpha.needsUpdate = true;
@@ -406,21 +432,25 @@ export function select(id) {
   S.selected = id;
   const n = S.byId.get(id);
   if (!n) return;
-  const neigh = neighborSet(id);
-  repaintNodes(id, neigh);
+  const dist = graphDistances(id);
+  S.selDist = dist;
+  repaintNodes(id, dist);
   if (S.marker) {
     S.marker.visible = true;
     S.marker.position.copy(n.pos);
     S.marker.userData.base = Math.max(30, n.r * (n.kind === 'entity' ? 6.5 : 4.4));
     S.marker.scale.setScalar(S.marker.userData.base);
   }
-  paintLines(id, neigh);
+  if (S.lineMesh) S.lineMesh.material.opacity = 0.34;
+  paintLines(id, dist);
   S.labelDirty = true;
-  updateLabels(neigh, true);
+  updateLabels(nearSet(dist), true);
 }
 
 export function clearSelection() {
   S.selected = null;
+  S.selDist = null;
+  if (S.lineMesh) S.lineMesh.material.opacity = 0.2;
   if (S.marker) S.marker.visible = false;
   repaintNodes(null, null);
   paintLines(null, null);
@@ -431,7 +461,7 @@ export function clearSelection() {
 export function setHiddenTypes(types) {
   S.hidden = new Set(types || []);
   S.hits.forEach((h, i) => { h.visible = !S.hidden.has(S.nodes[i].type); });
-  repaintNodes(S.selected, S.selected ? neighborSet(S.selected) : null);
+  repaintNodes(S.selected, S.selected ? (S.selDist || graphDistances(S.selected)) : null);
   S.labelDirty = true;
   updateLabels(S.selected ? new Set([S.selected]) : null, true);
 }
@@ -562,7 +592,7 @@ function bindControls() {
     S.interactTimer = setTimeout(() => {
       S.interacting = false;
       S.labelDirty = true;
-      updateLabels(S.selected ? new Set(neighborSet(S.selected)) : null, true);
+      updateLabels(S.selected ? nearSet(S.selDist || graphDistances(S.selected)) : null, true);
     }, 140);
     S.orbit.radius = Math.max(30, Math.min(1600, S.orbit.radius * Math.exp(e.deltaY * 0.0012)));
     applyCamera();
@@ -585,15 +615,18 @@ function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
-function paintLines(selected, neigh) {
+function paintLines(selected, dist) {
   if (!S.lineMesh) return;
-  const pos = S.linePos, col = S.lineColors;
-  const accent = new THREE.Color(ACCENT), dim = new THREE.Color(0x0b1220), base = new THREE.Color(0x93a4bd);
-  const gold = new THREE.Color(0xfbbf24);
+  const col = S.lineColors;
+  const accent = new THREE.Color(ACCENT), base = new THREE.Color(0x93a4bd);
+  const gold = new THREE.Color(0xfbbf24), dim = new THREE.Color(0x0b1220);
   S.links.forEach((l, i) => {
-    const hot = selected && (l.source === selected || l.target === selected);
-    const active = !selected || (neigh && (neigh.has(l.source) || neigh.has(l.target)));
-    const c = hot ? accent : l.grounded ? gold : active ? base : dim;
+    const d = dist ? Math.min(dist.get(l.source) ?? 99, dist.get(l.target) ?? 99) : 99;
+    let c;
+    if (selected && (l.source === selected || l.target === selected)) c = accent;
+    else if (l.grounded) c = gold.clone().multiplyScalar(dist ? (0.10 + 0.90 * Math.exp(-d / 2.2)) : 1);
+    else if (dist) c = base.clone().multiplyScalar(0.08 + 0.92 * Math.exp(-d / 2.2));
+    else c = base;
     col[i * 6] = c.r; col[i * 6 + 1] = c.g; col[i * 6 + 2] = c.b;
     col[i * 6 + 3] = c.r; col[i * 6 + 4] = c.g; col[i * 6 + 5] = c.b;
   });
@@ -775,7 +808,7 @@ function updateScene() {
   const relayout = !S.interacting &&
     (S.labelDirty || (moving && now - S.lastLabelRelayout > 180));
   if (relayout) { S.lastLabelRelayout = now; S.labelDirty = false; }
-  updateLabels(S.selected ? new Set(neighborSet(S.selected)) : null, relayout);
+  updateLabels(S.selected ? nearSet(S.selDist || graphDistances(S.selected)) : null, relayout);
 }
 
 function neighborSet(id) {
