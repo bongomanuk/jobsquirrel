@@ -31,6 +31,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "kb", "graphrag", "output")
 CACHE = os.path.join(ROOT, "state", "graph-importance.json")
 OVERLAY = os.path.join(ROOT, "kb", "graphrag", "enrichment.json")
+EDITS = os.path.join(ROOT, "kb", "graphrag", "edits.json")
 
 TYPE_WEIGHT = {
     "PERSON": 1.10, "ORGANIZATION": 1.00, "TEAM": 1.05, "ROLE": 1.10,
@@ -75,7 +76,7 @@ def _mtime(path):
 
 def _cache_stamp():
     return [round(_mtime(os.path.join(OUT, n + ".parquet")), 2)
-            for n in ("entities", "relationships")] + [round(_mtime(OVERLAY), 2)]
+            for n in ("entities", "relationships")] + [round(_mtime(OVERLAY), 2), round(_mtime(EDITS), 2)]
 
 
 def _cached():
@@ -112,6 +113,15 @@ def scores(force=False):
     nodes = [(str(r.title), str(r.type), int(r.frequency), str(r.description or ""))
              for r in ents.itertuples()]
     edges = [(str(r.source), str(r.target), float(r.weight)) for r in rels.itertuples()]
+    try:
+        with open(EDITS, encoding="utf-8") as fh:
+            edits = json.load(fh)
+        overrides = edits.get("nodes") or {}
+    except (OSError, ValueError):
+        overrides = {}
+    nodes = [(t, (overrides.get(t) or {}).get("type") or ty,
+              f, (overrides.get(t) or {}).get("description") or d)
+             for t, ty, f, d in nodes]
     try:
         with open(OVERLAY, encoding="utf-8") as fh:
             ov = json.load(fh)

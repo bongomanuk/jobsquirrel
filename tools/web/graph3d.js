@@ -412,7 +412,7 @@ function graphDistances(startId) {
 
 function nearSet(dist) {
   if (!dist) return null;
-  return new Set([...dist.entries()].filter(([, d]) => d <= 2).map(([id]) => id));
+  return new Set([...dist.entries()].filter(([, d]) => d <= 1).map(([id]) => id));
 }
 
 function repaintNodes(id, dist) {
@@ -421,7 +421,7 @@ function repaintNodes(id, dist) {
   S.nodes.forEach((n, i) => {
     const d = dist ? dist.get(n.id) : null;
     alpha.array[i] = S.hidden.has(n.type) ? 0
-      : (!id ? 1 : (d == null ? 0.06 : 0.18 + 0.82 * Math.exp(-d / 2.4)));
+      : (!id ? 1 : (d == null ? 0.012 : 0.18 + 0.82 * Math.exp(-d / 1.5)));
     size.array[i] = n.r * (n.id === id ? 1.6 : 1);
   });
   alpha.needsUpdate = true;
@@ -434,6 +434,7 @@ export function select(id) {
   if (!n) return;
   const dist = graphDistances(id);
   S.selDist = dist;
+  if (S.impact) S.impact.visible = false;
   repaintNodes(id, dist);
   if (S.marker) {
     S.marker.visible = true;
@@ -450,6 +451,7 @@ export function select(id) {
 export function clearSelection() {
   S.selected = null;
   S.selDist = null;
+  if (S.impact) S.impact.visible = true;
   if (S.lineMesh) S.lineMesh.material.opacity = 0.2;
   if (S.marker) S.marker.visible = false;
   repaintNodes(null, null);
@@ -624,8 +626,8 @@ function paintLines(selected, dist) {
     const d = dist ? Math.min(dist.get(l.source) ?? 99, dist.get(l.target) ?? 99) : 99;
     let c;
     if (selected && (l.source === selected || l.target === selected)) c = accent;
-    else if (l.grounded) c = gold.clone().multiplyScalar(dist ? (0.10 + 0.90 * Math.exp(-d / 2.2)) : 1);
-    else if (dist) c = base.clone().multiplyScalar(0.08 + 0.92 * Math.exp(-d / 2.2));
+    else if (l.grounded) c = gold.clone().multiplyScalar(dist ? (d >= 99 ? 0.02 : 0.12 + 0.88 * Math.exp(-d / 1.4)) : 1);
+    else if (dist) c = base.clone().multiplyScalar(d >= 99 ? 0.01 : 0.12 + 0.88 * Math.exp(-d / 1.4));
     else c = base;
     col[i * 6] = c.r; col[i * 6 + 1] = c.g; col[i * 6 + 2] = c.b;
     col[i * 6 + 3] = c.r; col[i * 6 + 4] = c.g; col[i * 6 + 5] = c.b;
@@ -675,7 +677,7 @@ function updateLabels(neigh, relayout = false) {
     S.labelAnchors.forEach((a, id) => {
       const n = S.byId.get(id), el = S.labelEls.get(id);
       if (!n || !el) return;
-      if (S.hidden.has(n.type)) { el.style.display = 'none'; return; }
+      if (S.hidden.has(n.type) || (S.selDist && !S.selDist.has(id))) { el.style.display = 'none'; return; }
       const p = n.pos.clone().project(S.camera);
       if (p.z > 1 || p.z < -1) { el.style.display = 'none'; return; }
       const cx = (p.x * 0.5 + 0.5) * W;
@@ -691,6 +693,10 @@ function updateLabels(neigh, relayout = false) {
   const candidates = [];
   S.nodes.forEach(n => {
     if (S.hidden.has(n.type)) return;
+    if (S.selDist && !S.selDist.has(n.id)) {
+      const el = S.labelEls.get(n.id); if (el) el.style.display = 'none';
+      return;
+    }
     const el = S.labelEls.get(n.id);
     if (!el) return;
     let score = 50;

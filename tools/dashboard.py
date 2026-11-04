@@ -3532,6 +3532,8 @@ def start_action(command, approval_token=""):
 GRAPH_PY = os.path.join(ROOT, ".venv-graphrag", "bin", "python")
 GRAPH_TOOL = os.path.join(ROOT, "tools", "graph_explore.py")
 GRAPH_ENRICH = os.path.join(ROOT, "tools", "graph_enrich.py")
+GRAPH_EDITS = os.path.join(ROOT, "kb", "graphrag", "edits.json")
+GRAPH_ENRICH_FILE = os.path.join(ROOT, "kb", "graphrag", "enrichment.json")
 KB_SOURCES = os.path.join(ROOT, "kb", "sources")
 _gcache = {}
 _GCACHE_TTL = 120          # seconds; keeps the graph views fresh after a re-index
@@ -3555,6 +3557,111 @@ def graph_query(*args):
         data = {"error": f"{type(e).__name__}: {e}"}
     _gcache[key] = (time.time(), data)
     return data
+
+
+def graph_node(title):
+    py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    try:
+        r = subprocess.run([py, GRAPH_TOOL, "node", str(title)], cwd=ROOT,
+                           capture_output=True, text=True, timeout=90, env=env)
+        return json.loads((r.stdout or "").strip() or "{}")
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def graph_semantic(q, limit=14):
+    py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    try:
+        r = subprocess.run([py, GRAPH_TOOL, "semantic", str(q), str(limit)], cwd=ROOT,
+                           capture_output=True, text=True, timeout=90, env=env)
+        return json.loads((r.stdout or "").strip() or "{}")
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def graph_role_evidence(key):
+    py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    try:
+        r = subprocess.run([py, GRAPH_TOOL, "evidence", str(key)], cwd=ROOT,
+                           capture_output=True, text=True, timeout=90, env=env)
+        return json.loads((r.stdout or "").strip() or "{}")
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def graph_ask(question, method="local"):
+    question = str(question or "").strip()
+    if not question:
+        return {"error": "ask a question"}
+    method = method if method in ("local", "global", "basic", "drift") else "local"
+    try:
+        r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "kb_graphrag.py"),
+                            "--text", question, "--method", method],
+                           cwd=ROOT, capture_output=True, text=True, timeout=240)
+        out = (r.stdout or "").strip()
+        if not out:
+            return {"error": (r.stderr or "no answer").strip()[-600:]}
+        return {"answer": out, "method": method}
+    except (OSError, subprocess.SubprocessError) as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def graph_edit_node(data):
+    import hashlib
+    title = str((data or {}).get("title") or "").strip()
+    if not title:
+        return {"error": "missing node title"}
+    description = str(data.get("description") or "").strip()
+    gtype = str(data.get("type") or "").strip().upper()
+    try:
+        with open(GRAPH_EDITS, encoding="utf-8") as fh:
+            edits = json.load(fh)
+    except (OSError, ValueError):
+        edits = {}
+    nodes = edits.setdefault("nodes", {})
+    rec = nodes.setdefault(title, {})
+    if description:
+        rec["description"] = description[:4000]
+    if gtype:
+        rec["type"] = gtype[:40]
+    if not rec:
+        nodes.pop(title, None)
+    tmp = GRAPH_EDITS + ".tmp"
+    os.makedirs(os.path.dirname(GRAPH_EDITS), exist_ok=True)
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(edits, fh, indent=2)
+    os.replace(tmp, GRAPH_EDITS)
+    link = data.get("add_link") or {}
+    target = str(link.get("target") or "").strip()
+    if target:
+        try:
+            with open(GRAPH_ENRICH_FILE, encoding="utf-8") as fh:
+                env = json.load(fh)
+        except (OSError, ValueError):
+            env = {"nodes": [], "links": []}
+        links = env.setdefault("links", [])
+        already = any((l.get("source") or "").upper() == title.upper()
+                      and (l.get("target") or "").upper() == target.upper() for l in links)
+        if not already:
+            desc = str(link.get("description") or "").strip()[:600]
+            links.append({"id": hashlib.sha1(f"edit|{title}|{target}".encode()).hexdigest()[:12],
+                          "source": title, "target": target,
+                          "weight": float(link.get("weight") or 30),
+                          "description": desc or f"Operator-added connection from {title} to {target}.",
+                          "evidence": desc, "source_doc": "operator edit"})
+        tmp2 = GRAPH_ENRICH_FILE + ".tmp"
+        with open(tmp2, "w", encoding="utf-8") as fh:
+            json.dump(env, fh, indent=2)
+        os.replace(tmp2, GRAPH_ENRICH_FILE)
+    return {"ok": "node saved" + ("; connection added" if target else ""),
+            "title": title, "type": gtype or None, "description": bool(description),
+            "added_link": bool(target)}
 
 
 def graph_enrich_propose():
@@ -4080,6 +4187,13 @@ class H(BaseHTTPRequestHandler):
             return self._json(graph_query("universe"))
         if p == "/api/graph/enrich":
             return self._json(graph_enrich_propose())
+        if p == "/api/graph/node":
+            return self._json(graph_node(qs.get("title", [""])[0]))
+        if p == "/api/graph/semantic":
+            return self._json(graph_semantic(qs.get("q", [""])[0],
+                                              qs.get("limit", ["14"])[0]))
+        if p == "/api/graph/role":
+            return self._json(graph_role_evidence(qs.get("key", [""])[0]))
         if p == "/api/graph/ontology":
             return self._json(graph_query("ontology"))
         if p == "/api/graph/types":
@@ -4213,6 +4327,10 @@ class H(BaseHTTPRequestHandler):
         data = self._body()
         if p == "/api/graph/enrich":
             return self._json(graph_enrich_apply(data.get("selected") or []))
+        if p == "/api/graph/edit":
+            return self._json(graph_edit_node(data))
+        if p == "/api/graph/ask":
+            return self._json(graph_ask(data.get("question", ""), data.get("method", "local")))
         if p == "/api/secrets":
             return self._json(secrets_set(data.get("section", ""), data.get("name", ""),
                                           data.get("value", "")))

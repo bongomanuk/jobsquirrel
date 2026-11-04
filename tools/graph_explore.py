@@ -21,6 +21,8 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "kb", "graphrag", "output")
+EMB_URL = os.environ.get("EMBEDDINGS_URL", "http://127.0.0.1:11435")
+EMB_MODEL = os.environ.get("EMBED_MODEL", "nomic-embed-text")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ontology as ONT
 try:
@@ -54,6 +56,7 @@ def _s(v, n):
 
 SKILLS_FILE = os.path.join(ROOT, "kb", "sources", "personal", "skills_evidence.md")
 ENRICH_FILE = os.path.join(ROOT, "kb", "graphrag", "enrichment.json")
+EDITS_FILE = os.path.join(ROOT, "kb", "graphrag", "edits.json")
 
 
 def _enrichment():
@@ -64,6 +67,20 @@ def _enrichment():
         return {"nodes": data.get("nodes") or [], "links": data.get("links") or []}
     except (OSError, ValueError):
         return {"nodes": [], "links": []}
+
+
+def _edits():
+    """Operator edits: field overrides for existing nodes."""
+    try:
+        with open(EDITS_FILE, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _override(title):
+    return (_edits().get("nodes") or {}).get(str(title), {})
 
 
 def _skill_overlay():
@@ -275,13 +292,16 @@ def _community_at_level(comms, level):
 
 
 def _entity_node(r, community=None, docs=None):
-    meta = ONT.class_meta(r.type)
+    ed = _override(r.title)
+    gtype = ed.get("type") or r.type
+    desc = ed.get("description") or r.description
+    meta = ONT.class_meta(gtype)
     return {"id": _s(r.title, 140), "title": _s(r.title, 140), "kind": "entity",
-            "type": _s(r.type, 40), "class": meta["id"], "class_label": meta["label"],
+            "type": _s(gtype, 40), "class": meta["id"], "class_label": meta["label"],
             "color": meta["color"],
             "degree": int(r.degree), "frequency": int(r.frequency),
             "importance": round(float(_importance().get(_s(r.title, 140), 0.0)), 3),
-            "description": _s(r.description, 700), "community": community,
+            "description": _s(desc, 700), "community": community,
             "sources": (docs or {}).get(str(r.id), [])[:6]}
 
 
@@ -557,7 +577,248 @@ def ontology_view():
     return out
 
 
+def _embed(text):
+    import json as _json
+    import urllib.request
+    body = _json.dumps({"model": EMB_MODEL, "input": [str(text)[:4000]]}).encode()
+    req = urllib.request.Request(EMB_URL.rstrip("/") + "/v1/embeddings", data=body,
+                                 headers={"Content-Type": "application/json",
+                                          "Authorization": "Bearer vulkan"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        data = _json.loads(r.read().decode())
+    return data["data"][0]["embedding"]
+
+
+def role_evidence(key):
+    """JD keywords -> grounded graph evidence, with explicit gaps."""
+    key = str(key or "").strip()
+    jd_path = os.path.join(ROOT, "state", "job-descriptions", key + ".md")
+    ats_path = os.path.join(ROOT, "state", "ats", key + ".txt")
+    keywords = []
+    try:
+        for line in open(ats_path, encoding="utf-8", errors="ignore"):
+            line = line.strip()
+            if line and not line.startswith("#") and len(line) > 1:
+                keywords.append(line)
+    except OSError:
+        pass
+    if not keywords:
+        try:
+            jd = open(jd_path, encoding="utf-8", errors="ignore").read().lower()
+        except OSError:
+            return {"error": f"no saved job description for {key}"}
+        import re as _re
+        from collections import Counter
+        stop = set("the and for with you your are our will have has this that from they their role job work experience team teams including etc able strong good years across within using".split())
+        words = [w for w in _re.findall(r"[a-z][a-z0-9+#.-]{2,}", jd) if w not in stop]
+        keywords = [w for w, _n in Counter(words).most_common(24)]
+    keywords = keywords[:40]
+    ents = _load("entities")
+    if ents is None:
+        return {"error": "no index"}
+    imp = _importance()
+    docs = _doc_map()
+    cmap = _community_at_level(_load("communities"), 0) if _load("communities") is not None else {}
+    matched = {}
+    evidence = {}
+    for kw in keywords:
+        pat = r"\b" + re.escape(kw) + r"\b"
+        m = (ents["title"].str.contains(pat, case=False, regex=True) |
+             ents["description"].str.contains(pat, case=False, regex=True))
+        rows = ents[m].copy()
+        if rows.empty:
+            matched[kw] = []
+            continue
+        rows["_imp"] = [float(imp.get(str(t), 0)) for t in rows["title"]]
+        rows = rows.sort_values(["_imp", "degree"], ascending=False).head(3)
+        matched[kw] = []
+        for r in rows.itertuples():
+            title = str(r.title)
+            matched[kw].append(title)
+            rec = evidence.setdefault(title, {
+                "title": title, "type": str(r.type), "importance": round(float(imp.get(title, 0)), 3),
+                "description": _s(r.description, 400),
+                "sources": docs.get(str(r.id), [])[:3],
+                "community": cmap.get(str(r.id)), "keywords": [],
+            })
+            rec["keywords"].append(kw)
+    ev = sorted(evidence.values(), key=lambda x: (-len(x["keywords"]), -x["importance"]))[:14]
+    gaps = [k for k in keywords if not matched.get(k)]
+    return {"key": key, "keywords": keywords, "matched": matched,
+            "evidence": ev, "gaps": gaps,
+            "coverage": round(100 * (len(keywords) - len(gaps)) / max(1, len(keywords)))}
+
+
+def semantic(q, limit=14):
+    """Natural-language entity search over the GraphRAG entity embeddings."""
+    q = str(q or "").strip()
+    if not q:
+        return {"mode": "semantic", "entities": [], "query": ""}
+    try:
+        import lancedb
+        ents, comms = _load("entities"), _load("communities")
+        if ents is None:
+            return {"error": "no index"}
+        db = lancedb.connect(os.path.join(OUT, "lancedb"))
+        table = db.open_table("entity_description")
+        vec = _embed(q)
+        rows = table.search(vec).limit(max(limit * 3, 40)).to_list()
+    except Exception as exc:
+        return {"error": f"semantic search unavailable: {type(exc).__name__}: {exc}"}
+    by_id = {str(r.id): r for r in ents.itertuples()}
+    cmap = _community_at_level(comms, 0) if comms is not None else {}
+    imp = _importance()
+    out, seen = [], set()
+    for row in rows:
+        r = by_id.get(str(row.get("id")))
+        if r is None:
+            continue
+        title = str(r.title)
+        key = _norm(title)
+        if key in seen:
+            continue
+        seen.add(key)
+        ed = _override(title)
+        gtype = ed.get("type") or r.type
+        meta = ONT.class_meta(gtype)
+        c = cmap.get(str(r.id))
+        out.append({"id": _s(title, 140), "title": _s(title, 140),
+                    "type": _s(gtype, 40), "class": meta["id"], "class_label": meta["label"],
+                    "importance": round(float(imp.get(title, 0)), 3),
+                    "score": round(1.0 - float(row.get("_distance") or 1.0), 4),
+                    "degree": int(r.degree),
+                    "description": _s(ed.get("description") or r.description, 500),
+                    "community": c,
+                    "community_title": reports_title(c) if c is not None else ""})
+        if len(out) >= limit:
+            break
+    return {"mode": "semantic", "entities": out, "query": q}
+
+
+def node_details(title):
+    """Full node + reachable-subgraph details for the right-hand pane."""
+    global _REPORTS
+    _REPORTS = _reports()
+    ents, rels, comms = _load("entities"), _load("relationships"), _load("communities")
+    if ents is None or rels is None:
+        return {"error": "no index"}
+    title = str(title or "").strip()
+    if not title:
+        return {"error": "no node title"}
+    ov = _enrichment()
+    by_title = {str(r.title): r for r in ents.itertuples()}
+    ov_by = {str(x.get("title") or ""): x for x in ov["nodes"]}
+    row = by_title.get(title)
+    if row is None:
+        row = next((r for t, r in by_title.items() if t.lower() == title.lower()), None)
+    ov_node = ov_by.get(title) or next((x for t, x in ov_by.items() if t.lower() == title.lower()), None)
+    if row is None and ov_node is None:
+        return {"error": f"no entity matching {title}"}
+    base = str(row.title) if row is not None else str(ov_node.get("title"))
+    ed = _override(base)
+    gtype = ed.get("type") or (row.type if row is not None else ov_node.get("type") or "CONCEPT")
+    desc = ed.get("description") or (row.description if row is not None else ov_node.get("description") or "")
+    meta = ONT.class_meta(gtype)
+    docs = _doc_map()
+    sources = docs.get(str(row.id), []) if row is not None else []
+    if not sources:
+        src = (ov_node or {}).get("source") or (ov_node or {}).get("source_doc")
+        if src:
+            sources = [src]
+
+    adj = {}
+    def add_edge(a, b, w, d=""):
+        a, b = str(a), str(b)
+        adj.setdefault(a, []).append((b, float(w or 1), str(d or "")))
+        adj.setdefault(b, []).append((a, float(w or 1), str(d or "")))
+
+    for r in rels.itertuples():
+        add_edge(r.source, r.target, r.weight, r.description)
+    for l in ov["links"]:
+        add_edge(l.get("source"), l.get("target"), l.get("weight") or 1, l.get("description"))
+
+    dist = {base: 0}
+    q = [base]
+    while q:
+        x = q.pop(0)
+        for y, _w, _d in adj.get(x, []):
+            if y not in dist:
+                dist[y] = dist[x] + 1
+                q.append(y)
+    layers = {}
+    for d in dist.values():
+        layers[d] = layers.get(d, 0) + 1
+    links_in = 0
+    seen_pairs = set()
+    for a, neighbours in adj.items():
+        if a not in dist:
+            continue
+        for b, w, d in neighbours:
+            if b in dist:
+                key = tuple(sorted((a, b)))
+                if key not in seen_pairs:
+                    seen_pairs.add(key)
+                    links_in += 1
+
+    cmap = _community_at_level(comms, 0) if comms is not None else {}
+    c = cmap.get(str(row.id)) if row is not None else None
+    imp = _importance()
+    degree = len(adj.get(base, []))
+    neighbours = []
+    for b, w, d in adj.get(base, []):
+        nr = by_title.get(b)
+        nx = ov_by.get(b)
+        ntype = (ed.get("type") if nr is not None and b == base else
+                 (nr.type if nr is not None else (nx or {}).get("type") or "CONCEPT"))
+        neighbours.append({"title": b, "type": str(ntype), "weight": round(w, 1),
+                          "distance": 1,
+                          "importance": round(float(imp.get(b, 0)), 3),
+                          "description": _s((nr.description if nr is not None else (nx or {}).get("description")), 300)})
+    neighbours.sort(key=lambda x: (-x["weight"], -x["importance"]))
+    connections = []
+    seen = set()
+    for a, ns in adj.items():
+        if a not in dist:
+            continue
+        for b, w, d in ns:
+            if b not in dist:
+                continue
+            if min(dist.get(a, 99), dist.get(b, 99)) > 2:
+                continue
+            key = tuple(sorted((a, b)))
+            if key in seen:
+                continue
+            seen.add(key)
+            connections.append({"source": a, "target": b, "weight": round(w, 1),
+                                "description": _s(d, 300)})
+    connections.sort(key=lambda x: -x["weight"])
+
+    return {
+        "title": base, "type": _s(gtype, 40), "class": meta["id"],
+        "class_label": meta["label"], "color": meta["color"],
+        "importance": round(float(imp.get(base, 0)), 3),
+        "degree": degree,
+        "frequency": int(row.frequency) if row is not None else 1,
+        "community": c,
+        "community_title": reports_title(c) if c is not None else "",
+        "description": _s(desc, 1200),
+        "sources": sources[:8],
+        "grounded": bool((ov_node or {}).get("grounded") or row is None),
+        "evidence": _s((ov_node or {}).get("evidence"), 700),
+        "edited": bool(ed),
+        "subgraph": {
+            "nodes": len(dist),
+            "links": links_in,
+            "max_depth": max(dist.values()) if dist else 0,
+            "layers": [{"distance": d, "nodes": layers[d]} for d in sorted(layers)],
+        },
+        "neighbours": neighbours[:14],
+        "connections": connections[:12],
+    }
+
+
 def search(q, limit=12):
+
     global _REPORTS
     q = (q or "").strip().lower()
     if not q:
@@ -587,10 +848,13 @@ def search(q, limit=12):
     entities = []
     for r in sub.itertuples():
         c = cmap.get(str(r.id))
-        entities.append({"id": _s(r.title, 140), "title": _s(r.title, 140), "type": _s(r.type, 40),
-                         "class": ONT.class_for(r.type), "class_label": ONT.class_meta(r.type)["label"],
+        ed = _override(r.title)
+        gtype = ed.get("type") or r.type
+        meta = ONT.class_meta(gtype)
+        entities.append({"id": _s(r.title, 140), "title": _s(r.title, 140), "type": _s(gtype, 40),
+                         "class": meta["id"], "class_label": meta["label"],
                          "degree": int(r.degree), "importance": round(float(_importance().get(_s(r.title, 140), 0.0)), 3),
-                         "description": _s(r.description, 400),
+                         "description": _s(ed.get("description") or r.description, 400),
                          "community": c,
                          "community_title": reports_title(c) if c is not None else ""})
     seen = {_norm(e.get("title", "")) for e in entities}
@@ -748,16 +1012,18 @@ def universe():
     cmap = _community_at_level(comms, 0) if comms is not None else {}
     nodes = []
     for r in ents.itertuples():
-        meta = ONT.class_meta(r.type)
+        ed = _override(r.title)
+        gtype = ed.get("type") or r.type
+        meta = ONT.class_meta(gtype)
         c = cmap.get(str(r.id))
         nodes.append({"id": _s(r.title, 140), "title": _s(r.title, 140),
-                      "type": _s(r.type, 40), "class": meta["id"],
+                      "type": _s(gtype, 40), "class": meta["id"],
                       "color": meta["color"], "degree": int(r.degree),
                       "frequency": int(r.frequency),
                       "importance": round(float(_importance().get(_s(r.title, 140), 0.0)), 3),
                       "community": c,
                       "community_title": reports_title(c) if c is not None else "",
-                      "description": _s(r.description, 260)})
+                      "description": _s(ed.get("description") or r.description, 260)})
     links = [{"source": _s(r.source, 140), "target": _s(r.target, 140),
               "weight": round(float(r.weight), 1)} for r in rels.itertuples()]
     _add_skill_links(nodes, links, _overlay_nodes("", 60))
@@ -862,6 +1128,12 @@ def main():
         elif cmd == "type":
             res = type_entities(a[0] if a else "",
                                 int(a[1]) if len(a) > 1 else 90)
+        elif cmd == "evidence":
+            res = role_evidence(a[0] if a else "")
+        elif cmd == "semantic":
+            res = semantic(a[0] if a else "", int(a[1]) if len(a) > 1 else 14)
+        elif cmd == "node":
+            res = node_details(a[0] if a else "")
         elif cmd == "search":
             res = search(a[0] if a else "",
                          int(a[1]) if len(a) > 1 else 12)

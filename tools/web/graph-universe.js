@@ -550,6 +550,10 @@ function assignLabels() {
   };
   const eligible = n => {
     if (n === S.selected || n === S.hovered) return true;
+    if (S.selDist) {
+      const d = S.selDist.get(n.id);
+      if (d == null || d > 1) return false;
+    }
     if (!inRange(n) || !represented(n)) return false;
     const cl = S.clusterOf.get(n.id);
     return (n.degree || 0) >= minDeg || (cl && cl.top === n) || (Number(n.importance) || 0) >= 0.95;
@@ -561,6 +565,7 @@ function assignLabels() {
   const prevSet = new Set(prevClusters.map(a => a.c));
   let ci = 0;
   const tryCluster = c => {
+    if (S.selDist) return false;
     if (S.activeClusters && !S.activeClusters.has(c)) return false;
     if (c.center.distanceTo(target) > range * 1.2) return false;
     const p = c.center.clone().project(S.camera);
@@ -677,7 +682,10 @@ function updateLabels(force = false) {
     el.style.display = '';
     el.style.transform = `translate3d(${x}px,${y}px,0) translate(-50%,-50%)`;
   };
-  for (const { n, el } of S.labelAssigned) place(n, el);
+  for (const { n, el } of S.labelAssigned) {
+    if (S.selDist && !S.selDist.has(n.id)) { el.style.display = 'none'; continue; }
+    place(n, el);
+  }
   for (const { c, el, dx, dy } of S.clusterAssigned) place({ pos: c.center }, el, dx, dy);
 }
 
@@ -821,7 +829,7 @@ function applySelection() {
     let f = 1;
     if (sel) {
       const d = sel.get(n.id);
-      f = d == null ? 0.08 : 0.22 + 0.78 * Math.exp(-d / 2.6);
+      f = d == null ? 0.012 : 0.18 + 0.82 * Math.exp(-d / 1.5);
     }
     const c = n.colorObj;
     let r = c.r * lod * f, g = c.g * lod * f, b = c.b * lod * f;
@@ -831,7 +839,9 @@ function applySelection() {
   });
   S.core.geometry.attributes.color.needsUpdate = true;
   if (S.halo) S.halo.geometry.attributes.color.needsUpdate = true;
-  if (S.lines) S.lines.material.opacity = sel ? 0.16 : 0.085;
+  if (S.lines) S.lines.material.opacity = sel ? 0.24 : 0.085;
+  if (S.impact) S.impact.material.opacity = sel ? 0.16 : 0.9;
+  if (S.major) S.major.material.opacity = sel ? 0.14 : 0.9;
   if (S.lines && S.linkBaseColors) {
     const attr = S.lines.geometry.attributes.color;
     const base = S.linkBaseColors;
@@ -841,7 +851,7 @@ function applySelection() {
       if (sel) {
         const a = sel.get(l.source), b = sel.get(l.target);
         const d = Math.min(a == null ? 8 : a, b == null ? 8 : b);
-        f = 0.10 + 0.90 * Math.exp(-d / 2.2);
+        f = d == null ? 0.01 : 0.12 + 0.88 * Math.exp(-d / 1.4);
       }
       for (let k = 0; k < 6; k++) attr.array[i * 6 + k] = base[i * 6 + k] * f;
     }
@@ -882,15 +892,48 @@ function setSide(n) {
       <b>The whole knowledge graph.</b><br>
       Drag to orbit · scroll to zoom · right-drag (or shift-drag) to pan.<br>
       <b>W A S D</b> to fly, <b>Q / E</b> down / up, <b>Shift</b> to boost.<br>
-      Click a star to inspect it, click an island label to travel there, double-click a star to fly in close.
+      Click a star to inspect it and light its subgraph, click an island label to travel there, double-click a star to fly in close.
     </div>`;
     return;
   }
-  box.innerHTML = `<div class="uni-kind">${esc(n.class || n.type || 'entity')}</div>
-    <h3>${esc(n.title)}</h3>
-    <div class="uni-meta">${n.degree || 0} links · impact ${Math.round((n.importance || 0) * 100)}% · ${n.community != null ? esc(n.community_title || ('island ' + n.community)) : 'no community'}</div>
-    <p>${esc(n.description || 'No description in the index.')}</p>
+  const req = (S.sideReq || 0) + 1;
+  S.sideReq = req;
+  box.innerHTML = `<div class="muted mini">loading node details…</div>`;
+  const token = document.body.dataset.sessionToken || '';
+  fetch('/api/graph/node?title=' + encodeURIComponent(n.title), {
+    headers: token ? { 'X-Session': token } : {}
+  }).then(r => r.json()).then(d => {
+    if (req !== S.sideReq) return;
+    if (!d || d.error) { box.innerHTML = `<div class="bad">${esc((d && d.error) || 'could not load details')}</div>`; return; }
+    renderNodeSide(d);
+  }).catch(e => { if (req === S.sideReq) box.innerHTML = `<div class="bad">${esc(String(e))}</div>`; });
+}
+
+function renderNodeSide(d) {
+  const box = document.getElementById('uni-side');
+  if (!box) return;
+  const layers = (d.subgraph && d.subgraph.layers || [])
+    .map(x => `<span class="kg-tag">${x.distance}: ${x.nodes}</span>`).join(' ');
+  const sources = (d.sources || []).map(s => `<div class="uni-src">${esc(s)}</div>`).join('')
+    || '<span class="muted mini">No document source recorded.</span>';
+  const neigh = (d.neighbours || []).map(n =>
+    `<button class="uni-neigh" data-title="${esc(n.title)}" onclick="window.__uni && window.__uni.selectByTitle(this.dataset.title)">
+      ${esc(n.title)} <span>${esc(n.type)} · ${n.weight}</span></button>`).join('')
+    || '<span class="muted mini">No direct neighbours.</span>';
+  const conns = (d.connections || []).slice(0, 8).map(c =>
+    `<div class="uni-conn">${esc(c.source)} → ${esc(c.target)} <span>${c.weight}</span></div>`).join('')
+    || '<span class="muted mini">No strong local connections.</span>';
+  box.innerHTML = `<div class="uni-kind">${esc(d.class_label || d.type || 'entity')} · impact ${Math.round((d.importance || 0) * 100)}%${d.grounded ? ' · grounded' : ''}</div>
+    <h3>${esc(d.title)}</h3>
+    <div class="uni-meta">${d.degree || 0} links · ${d.frequency || 0} mentions · ${esc(d.community_title || 'no community')}</div>
+    <p>${esc(d.description || 'No description in the index.')}</p>
+    ${d.evidence ? `<div class="uni-evidence"><b>Evidence</b>${esc(d.evidence)}</div>` : ''}
+    <div class="uni-subgraph"><b>Subgraph</b> ${d.subgraph ? d.subgraph.nodes : 1} nodes · ${d.subgraph ? d.subgraph.links : 0} links · depth ${d.subgraph ? d.subgraph.max_depth : 0}<div>${layers}</div></div>
+    <h4>Sources</h4>${sources}
+    <h4>Neighbours</h4><div class="uni-neigh-list">${neigh}</div>
+    <h4>Strongest connections</h4>${conns}
     <div class="uni-actions">
+      <button class="small" data-title="${esc(d.title)}" onclick="App.editNode(this.dataset.title)">Edit details</button>
       <button class="small" onclick="window.__uni && window.__uni.focusSelected()">Fly here</button>
       <button class="small" onclick="window.__uni && window.__uni.reset()">Reset view</button>
     </div>`;
@@ -1041,6 +1084,11 @@ export async function reload() {
   if (!S.inited) return;
   S.data = null;
   await load();
+}
+
+export function selectByTitle(title) {
+  const n = S.nodes.find(x => x.title.toLowerCase() === String(title).toLowerCase());
+  if (n) select(n);
 }
 
 export function reset() { if (S.data) resetView(); }

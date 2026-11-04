@@ -189,6 +189,7 @@
     <span id="kg-stats" class="muted mini"></span>
     <span id="uni-stats" class="muted mini hide"></span>
     <span style="flex:1"></span>
+    <button class="small" onclick="App.openAsk()" title="Ask the knowledge graph a question; answers cite the graph">🧠 Ask</button>
     <button class="small" onclick="App.openEnrich()" title="Find grounded gaps in the graph and add the ones you approve">✨ Enrich</button>
     <button class="small" onclick="App.rebuildKB()" title="Full re-index of the knowledge graph — can take 20–30+ minutes">Rebuild graph</button>
   </div>
@@ -197,6 +198,7 @@
     <input id="kg-q" placeholder="search communities, entities, types…" style="flex:1;max-width:380px"
       onkeydown="if(event.key==='Enter')App.kgSearch(this.value)">
     <button id="kg-search-btn" onclick="App.kgSearch($('#kg-q').value)">Search</button>
+    <button id="kg-semantic" onclick="App.kgSemantic($('#kg-q').value)" title="Natural-language semantic search over the graph embeddings">✨ Semantic</button>
     <button id="kg-tab-types" onclick="App.graphTypes()">Topics</button>
     <button id="kg-tab-comm" onclick="App.graphTop()">Communities</button>
     <button id="kg-all" onclick="App.graphAll()" style="display:none">Show all</button>
@@ -243,6 +245,37 @@
   </div>
   <div id="kg-legend" class="kg-legend"></div>
 </section>
+
+<div id="roleev" class="modal hide"><div class="modal-box" style="width:min(980px,94vw);height:min(780px,92vh);display:flex;flex-direction:column">
+  <div class="row"><b style="flex:1">🧠 Graph evidence for this role</b><button class="small" onclick="App.closeRoleEvidence()">✕</button></div>
+  <div id="roleev-head" class="muted mini" style="margin:4px 0 8px"></div>
+  <div id="roleev-body" class="grow" style="overflow:auto"></div>
+</div></div>
+
+<div id="ask" class="modal hide"><div class="modal-box" style="width:min(900px,94vw);height:min(760px,92vh);display:flex;flex-direction:column">
+  <div class="row"><b style="flex:1">🧠 Ask the knowledge graph</b><button class="small" onclick="App.closeAsk()">✕</button></div>
+  <p class="muted mini" style="margin:4px 0 8px">Questions are answered by GraphRAG with citations from your documents. Local is precise; Global is for themes; Semantic is fast vector retrieval; Drift is the deep pass.</p>
+  <div class="row" style="gap:6px">
+    <input id="ask-q" placeholder="What evidence do I have for scaling engineering teams?" style="flex:1" onkeydown="if(event.key==='Enter')App.askGraph()">
+    <select id="ask-method" title="Query method"><option value="local">Local facts</option><option value="global">Global themes</option><option value="basic">Semantic</option><option value="drift">Deep drift</option></select>
+    <button class="risky" onclick="App.askGraph()">Ask</button>
+  </div>
+  <div id="ask-answer" class="grow" style="overflow:auto;white-space:pre-wrap;font-size:12px;line-height:1.55;margin-top:10px"></div>
+</div></div>
+
+<div id="nodeedit" class="modal hide"><div class="modal-box" style="width:min(760px,94vw)">
+  <div class="row"><b style="flex:1">Edit node</b><button class="small" onclick="App.closeNodeEdit()">✕</button></div>
+  <div id="nodeedit-title" class="muted mini" style="margin:4px 0 8px"></div>
+  <div id="nodeedit-subgraph" class="muted mini" style="margin-bottom:8px"></div>
+  <label class="muted mini">Description</label>
+  <textarea id="nodeedit-desc" rows="5" style="width:100%"></textarea>
+  <div class="row" style="gap:8px;margin-top:8px"><label class="muted mini" style="flex:1">Type <input id="nodeedit-type" style="width:100%"></label></div>
+  <h4 style="margin:12px 0 2px">Add a grounded connection</h4>
+  <p class="muted mini" style="margin:0 0 6px">Only add a connection you can support with the evidence below; it is shown in the graph as a gold, grounded link.</p>
+  <input id="nodeedit-target" placeholder="Target node title (e.g. WORLD REGISTER OF ANIMALS)" style="width:100%">
+  <textarea id="nodeedit-link" rows="3" placeholder="Evidence / why these are connected" style="width:100%;margin-top:6px"></textarea>
+  <div class="row" style="gap:8px;margin-top:6px"><label class="muted mini" style="flex:1">Weight <input id="nodeedit-weight" type="number" value="30" min="1" max="100" style="width:100px"></label><span id="nodeedit-msg" class="muted mini" style="flex:1"></span><button class="risky" onclick="App.saveNodeEdit()">Save</button></div>
+</div></div>
 
 <div id="enrich" class="modal hide"><div class="modal-box" style="width:min(980px,96vw);height:min(780px,92vh);display:flex;flex-direction:column">
   <div class="row"><b style="flex:1">✨ Graph enrichment</b><button class="small" onclick="App.closeEnrich()">✕</button></div>

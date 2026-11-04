@@ -123,6 +123,26 @@ def weighted_highlights(jd, limit=12):
     return "\n".join(lines)
 
 
+def edits_context():
+    """Operator edits to existing nodes (grounded overrides)."""
+    try:
+        with open(os.path.join(CFG, "edits.json"), encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return ""
+    nodes = data.get("nodes") or {}
+    if not nodes:
+        return ""
+    lines = ["## Operator edits (grounded overrides; prefer these)",
+             "These descriptions were reviewed and corrected by the operator. Use them instead of the raw extracted description.\n"]
+    for title, rec in list(nodes.items())[:60]:
+        desc = (rec or {}).get("description") or ""
+        typ = (rec or {}).get("type") or ""
+        if desc:
+            lines.append(f"- **{title}** [{typ or 'entity'}]: {desc[:700]}")
+    return "\n".join(lines)
+
+
 def overlay_context():
     """Operator-approved additions, each with its exact evidence sentence."""
     try:
@@ -206,7 +226,10 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--jd", help="path to a job description")
     ap.add_argument("--text", help="raw role/query text")
-    ap.add_argument("--method", default="local", choices=["local", "global", "drift", "basic"])
+    ap.add_argument("--method", default=os.environ.get("KB_QUERY_METHOD", "local"),
+                    choices=["local", "global", "drift", "basic", "hybrid"])
+    ap.add_argument("--community-level", type=int, default=None,
+                    help="Leiden community level for reports (GraphRAG default 2)")
     ap.add_argument("--out", help="write the context pack here")
     ap.add_argument("--check", action="store_true", help="verify index + embeddings backend")
     args = ap.parse_args()
@@ -234,15 +257,38 @@ def main() -> int:
     else:
         jd_query = jd
     query = f"{INSTR}\n\n---\nROLE / JOB DESCRIPTION:\n{jd_query}"
-    cmd = [GRAPHRAG, "query", "--root", CFG, "--method", args.method, query]
-    p = subprocess.run(cmd, capture_output=True, text=True)
-    if p.returncode != 0:
-        print(p.stderr[-1500:], file=sys.stderr)
-        return 1
-    pack = _clean(p.stdout)
+
+    def run_method(method):
+        cmd = [GRAPHRAG, "query", "--root", CFG, "--method", method, query]
+        if args.community_level is not None:
+            cmd[cmd.index("--method") + 2:cmd.index("--method") + 2] = ["--community-level", str(args.community_level)]
+        p = subprocess.run(cmd, capture_output=True, text=True)
+        if p.returncode != 0:
+            return "", (p.stderr or "query failed")[-1500:]
+        return _clean(p.stdout), ""
+
+    if args.method == "hybrid":
+        local, err1 = run_method("local")
+        glob, err2 = run_method("global")
+        if not local and not glob:
+            print(err1 or err2, file=sys.stderr)
+            return 1
+        pack = ""
+        if local:
+            pack += "## Local facts and evidence\n" + local + "\n\n"
+        if glob:
+            pack += "## Global career themes\n" + glob
+    else:
+        pack, err = run_method(args.method)
+        if not pack:
+            print(err, file=sys.stderr)
+            return 1
     highlights = weighted_highlights(jd)
     if highlights:
         pack += "\n\n" + highlights
+    edited = edits_context()
+    if edited:
+        pack += "\n\n" + edited
     extra = overlay_context()
     if extra:
         pack += "\n\n" + extra

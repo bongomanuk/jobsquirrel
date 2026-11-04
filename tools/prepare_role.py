@@ -222,8 +222,11 @@ def main() -> int:
         evidence_text = ""
     # The KB context also carries the operator-provided skill evidence appended
     # by kb_graphrag.py, so new evidence must invalidate this cache too.
-    kb_digest = sha(jd_text + "\n\n" + evidence_text)
     company, role = parse_role(jd_text, args.company, args.role)
+    leadership = bool(re.search(r"engineering manager|head of|director|vice president|\bvp\b|chief|\bcto\b|manager", role, re.I))
+    kb_method = "hybrid" if leadership else "local"
+    kb_level = "1" if leadership else "2"
+    kb_digest = sha(jd_text + "\n\n" + evidence_text + f"\n{kb_method}:{kb_level}")
 
     os.makedirs(ATS_DIR, exist_ok=True)
     os.makedirs(KB_DIR, exist_ok=True)
@@ -241,7 +244,8 @@ def main() -> int:
 
     kb_path = os.path.join(KB_DIR, f"{key}.md")
     if args.force or not fresh(kb_path, kb_digest):
-        r = run([sys.executable, "tools/kb_graphrag.py", "--jd", jd_path, "--out", kb_path])
+        r = run([sys.executable, "tools/kb_graphrag.py", "--jd", jd_path, "--out", kb_path,
+                 "--method", kb_method, "--community-level", kb_level])
         if r.returncode:
             print((r.stdout + r.stderr).strip(), file=sys.stderr)
             return r.returncode or 2

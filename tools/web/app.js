@@ -525,6 +525,98 @@ const App = {
       if (!KG) App.graphTypes();
     }
   },
+  roleEvidence: async (key) => {
+    const m = $('#roleev'); if (!m) return;
+    m.classList.remove('hide');
+    const head = $('#roleev-head'), body = $('#roleev-body');
+    if (head) head.textContent = 'reading the job spec and the graph…';
+    if (body) body.innerHTML = '';
+    const d = await api('/api/graph/role?key=' + encodeURIComponent(key));
+    if (!head || !body) return;
+    if (!d || d.error) { head.textContent = (d && d.error) || 'could not read evidence'; return; }
+    const covered = (d.keywords || []).filter(k => (d.matched || {})[k] && d.matched[k].length);
+    const gaps = d.gaps || [];
+    head.innerHTML = `<b>${d.coverage || 0}% keyword coverage</b> · ${covered.length} matched · ${gaps.length} gaps · ${(d.evidence || []).length} strong evidence cards`;
+    const chips = (k, ok) => `<span class="kg-tag" style="border-color:${ok ? 'rgba(34,197,94,.5)' : 'rgba(239,68,68,.5)'};color:${ok ? '#bbf7d0' : '#fecaca'}">${esc(k)}</span>`;
+    body.innerHTML = `<div class="muted mini" style="margin:4px 0 6px">Matched requirements</div><div class="row" style="flex-wrap:wrap;gap:4px">${covered.map(k => chips(k, true)).join('') || '<span class="muted mini">none</span>'}</div>
+      <div class="muted mini" style="margin:10px 0 6px">Gaps — not evidenced in the graph</div><div class="row" style="flex-wrap:wrap;gap:4px">${gaps.map(k => chips(k, false)).join('') || '<span class="muted mini">none</span>'}</div>
+      <h4 style="margin:14px 0 4px">Strongest grounded evidence</h4>` +
+      (d.evidence || []).map(e => `<div class="enrich-item" style="display:block;padding:8px 0;border-bottom:1px solid var(--line)">
+        <b>${esc(e.title)}</b> <span class="mini muted">${esc(e.type)} · impact ${Math.round((e.importance || 0) * 100)}%</span>
+        <div class="mini" style="margin-top:3px">${esc(e.description || '')}</div>
+        <div class="mini muted" style="margin-top:2px">matched: ${(e.keywords || []).map(esc).join(', ')}${(e.sources || []).length ? ' · source: ' + (e.sources || []).map(esc).join(', ') : ''}</div>
+      </div>`).join('') || '<span class="muted mini">No evidence found.</span>';
+  },
+  closeRoleEvidence: () => { const m = $('#roleev'); if (m) m.classList.add('hide'); },
+  openAsk: () => { const m = $('#ask'); if (m) { m.classList.remove('hide'); setTimeout(() => $('#ask-q')?.focus(), 50); } },
+  closeAsk: () => { const m = $('#ask'); if (m) m.classList.add('hide'); },
+  askGraph: async () => {
+    const q = ($('#ask-q') || {}).value || '';
+    if (!q.trim()) { toast('ask a question', true); return; }
+    const method = ($('#ask-method') || {}).value || 'local';
+    const ans = $('#ask-answer'); if (ans) ans.textContent = 'thinking… (GraphRAG query, this can take a few seconds)';
+    const d = await api('/api/graph/ask', { question: q, method });
+    if (!ans) return;
+    if (!d || d.error) { ans.textContent = (d && d.error) || 'no answer'; return; }
+    ans.textContent = d.answer || 'no answer';
+    ans.scrollTop = 0;
+  },
+  kgSemantic: async (q) => {
+    if (KGMODE === 'universe') await App.setKGMode('map');
+    await App.semanticSearch(q);
+  },
+  semanticSearch: async (q) => {
+    q = String(q || '').trim();
+    const box = $('#kg-results'); if (!box) return;
+    if (!q) { toast('type a phrase to search semantically', true); return; }
+    box.classList.remove('hide');
+    box.innerHTML = '<span class="muted mini">searching embeddings…</span>';
+    const d = await api('/api/graph/semantic?q=' + encodeURIComponent(q));
+    if (!d || d.error) { box.innerHTML = `<span class="muted mini">${esc((d && d.error) || 'semantic search failed')}</span>`; return; }
+    const es = d.entities || [];
+    box.innerHTML = `<div class="kg-res-head">Semantic · “${esc(q)}” · ${es.length} match${es.length === 1 ? '' : 'es'}
+        <button class="small" onclick="App.graphHideResults()">✕</button></div>` +
+      (es.length ? `<div class="kg-res-group"><b>Closest entities</b>` + es.map(e =>
+        `<button class="kg-res-item" data-id="${esc(e.title)}" onclick="App.graphEgo(this.dataset.id)">
+          <b>${esc(e.title)}</b><span class="muted mini">${esc(e.type)} · impact ${Math.round((e.importance || 0) * 100)}% · similarity ${e.score}</span></button>`).join('') + '</div>' : '');
+  },
+  editNode: async (title) => {
+    const m = $('#nodeedit'); if (!m) return;
+    App._editTitle = title;
+    const name = $('#nodeedit-title'), sub = $('#nodeedit-subgraph'), msg = $('#nodeedit-msg');
+    if (name) name.textContent = title;
+    if (sub) sub.textContent = 'loading node details…';
+    if (msg) msg.textContent = '';
+    const desc = $('#nodeedit-desc'), typ = $('#nodeedit-type'), target = $('#nodeedit-target'), link = $('#nodeedit-link');
+    if (desc) desc.value = ''; if (typ) typ.value = ''; if (target) target.value = ''; if (link) link.value = '';
+    m.classList.remove('hide');
+    const d = await api('/api/graph/node?title=' + encodeURIComponent(title));
+    if (!d || d.error) { if (sub) sub.textContent = (d && d.error) || 'could not load node'; return; }
+    if (desc) desc.value = d.description || '';
+    if (typ) typ.value = d.type || '';
+    if (sub) sub.textContent = `${d.subgraph?.nodes || 1} nodes · ${d.subgraph?.links || 0} links · depth ${d.subgraph?.max_depth || 0} · impact ${Math.round((d.importance || 0) * 100)}%${d.grounded ? ' · grounded' : ''}`;
+  },
+  closeNodeEdit: () => { const m = $('#nodeedit'); if (m) m.classList.add('hide'); },
+  saveNodeEdit: async () => {
+    const title = App._editTitle; if (!title) return;
+    const body = {
+      title,
+      description: ($('#nodeedit-desc') || {}).value || '',
+      type: ($('#nodeedit-type') || {}).value || '',
+    };
+    const target = (($('#nodeedit-target') || {}).value || '').trim();
+    if (target) body.add_link = {
+      target,
+      description: (($('#nodeedit-link') || {}).value || '').trim(),
+      weight: Number((($('#nodeedit-weight') || {}).value || 30)),
+    };
+    const d = await api('/api/graph/edit', body);
+    toast((d && (d.ok || d.error)) || 'saved', !!(d && d.error));
+    if (!d || d.error) return;
+    App.closeNodeEdit();
+    if (KGMODE === 'universe' && window.__uni) await window.__uni.reload();
+    else if (KGMODE === 'map') await App.graphTypes();
+  },
   openEnrich: async () => {
     const m = $('#enrich'); if (!m) return;
     m.classList.remove('hide');
@@ -1737,6 +1829,7 @@ function summary(r) {
         .map(x => `<option value="${x}" ${x === (r.employment || '') ? 'selected' : ''}>${x || '— unknown —'}</option>`).join('') + '</select>' +
       `<button onclick="App.saveRow()">Save</button>
       <button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>Prepare this role</button>
+      <button data-act onclick='App.roleEvidence(${JSON.stringify(r.key)})'>🧠 Graph evidence</button>
       ${r.status === 'PREPARED' ? `<button class="risky" data-act onclick='App.submitThis(${JSON.stringify(r.key)})' title="Submit this application now with the documents already prepared — sends it, needs approval">🚀 Submit this application</button>` : ''}
       <button data-act onclick='App.matchThis(${JSON.stringify(r.key)}, this)'>Recompute match</button></div>` +
     `<div class="row" style="margin:0 0 10px">
@@ -2907,6 +3000,7 @@ function kgSelect(id) {
         <span class="muted">${esc(x.class_label || x.type)}</span></button>`).join('') :
       '<span class="muted mini">None visible in this view.</span>'}</div>
     <div class="row" style="margin-top:10px;flex-wrap:wrap">
+      <button class="small" data-title="${esc(n.title)}" onclick="App.editNode(this.dataset.title)">Edit details</button>
       <button class="small" data-id="${esc(n.title)}" onclick="App.graphEgo(this.dataset.id)">Focus ego network</button>
       ${n.community != null ? `<button class="small" data-id="${n.community}" onclick="App.graphCommunity(this.dataset.id)">Open community</button>` : ''}
     </div>`;
