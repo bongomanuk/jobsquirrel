@@ -35,6 +35,10 @@ TITLE_TERMS = [
     "governing law", "legal costs", "legal fees", "legal agent",
     "legal dispute", "employment dispute", "clause", "work-finding",
     "agency worker", "personal service company", "psc contractor",
+    # personal identifiers and contract provenance
+    "swedish id", "personal identity number", "personnummer", "date of birth",
+    "employment documentation", "indefinite period", "contract terms",
+    "company policies", "resident in", "home address", "personal email",
 ]
 
 # Extra exact/generic titles produced by contract documents.
@@ -84,10 +88,16 @@ REDACT_TERMS = [
     "governing law", "legal costs", "legal fees", "legal agent",
     "legal dispute", "employment dispute", "clause", "work-finding",
     "agency worker", "personal service company", "psc contractor",
+    # personal identifiers and contract provenance
+    "swedish id", "personal identity number", "personnummer", "date of birth",
+    "employment documentation", "indefinite period", "contract terms",
+    "company policies", "resident in", "home address", "personal email",
 ]
 
 _TITLE_RE = re.compile("|".join(r"\b" + re.escape(t) + r"\b" for t in TITLE_TERMS), re.I)
 _REDACT_RE = re.compile("|".join(r"\b" + re.escape(t) + r"\b" for t in REDACT_TERMS), re.I)
+_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+_ID_RE = re.compile(r"\b(?:19|20)\d{6}[-+]\d{4}\b|\b\d{6}[-+]\d{4}\b")
 
 
 def blocked_title(title: str) -> bool:
@@ -97,8 +107,14 @@ def blocked_title(title: str) -> bool:
     return bool(_TITLE_RE.search(t))
 
 
+def pii(text: str) -> bool:
+    """Email addresses and Swedish personal identity numbers."""
+    value = str(text or "")
+    return bool(_EMAIL_RE.search(value) or _ID_RE.search(value))
+
+
 def sensitive(text: str) -> bool:
-    return bool(_REDACT_RE.search(str(text or "")))
+    return bool(_REDACT_RE.search(str(text or ""))) or pii(text)
 
 
 def redact(text: str) -> str:
@@ -108,8 +124,9 @@ def redact(text: str) -> str:
         if not line.strip():
             out.append(line)
             continue
-        if _REDACT_RE.search(line):
-            keep = [s for s in re.split(r"(?<=[.!?])\s+", line) if not _REDACT_RE.search(s)]
+        if _REDACT_RE.search(line) or pii(line):
+            keep = [s for s in re.split(r"(?<=[.!?])\s+", line)
+                    if not _REDACT_RE.search(s) and not pii(s)]
             if keep:
                 out.append(" ".join(keep).strip())
             continue

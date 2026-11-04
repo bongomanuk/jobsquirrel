@@ -48,15 +48,23 @@ def load(name):
 def redact_value(value):
     if isinstance(value, str):
         return S.redact(value)
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple, set)):
         return [redact_value(x) for x in value]
+    if hasattr(value, "tolist"):
+        return redact_value(value.tolist())
     if isinstance(value, dict):
         return {k: redact_value(v) for k, v in value.items()}
     return value
 
 
-def clean_vectors():
-    """Delete vector rows whose parquet entity/unit/community no longer exists."""
+def clean_vectors(extra=None):
+    """Delete vector rows that are orphaned or whose text was redacted.
+
+    ``extra`` maps a LanceDB table to entity/report/unit ids that changed. An
+    embedding of a redacted description would still contain the removed
+    identifiers, so it must go; a rebuild will embed the clean text.
+    """
+    extra = extra or {}
     try:
         import lancedb
         db = lancedb.connect(os.path.join(OUT, "lancedb"))
@@ -72,6 +80,7 @@ def clean_vectors():
             valid_df = load(parquet)
             valid = {str(x) for x in valid_df["id"]} if valid_df is not None and "id" in valid_df.columns else set()
             bad = [str(x) for x in frame["id"] if str(x) not in valid]
+            bad += [str(x) for x in extra.get(table_name, ()) if str(x) not in bad]
             removed = 0
             for i in range(0, len(bad), 100):
                 chunk = bad[i:i + 100]
@@ -146,6 +155,24 @@ def main():
         src = os.path.join(OUT, name + ".parquet")
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(backup, name + ".parquet"))
+
+    stale_vectors = {
+        "entity_description": {str(r.id) for r in ents.itertuples()
+                               if S.sensitive(str(r.description))},
+        "text_unit_text": {str(r.id) for r in units.itertuples()
+                           if S.sensitive(str(r.text))} if units is not None else set(),
+        "community_full_content": set(),
+    }
+    if reports is not None:
+        def _txt(value):
+            if isinstance(value, (list, tuple)):
+                return " ".join(str(x) for x in value)
+            return "" if value is None else str(value)
+        for r in reports.itertuples():
+            text = " ".join(_txt(getattr(r, c, None)) for c in
+                            ("title", "summary", "full_content", "findings"))
+            if S.sensitive(text):
+                stale_vectors["community_full_content"].add(str(r.id))
 
     # provenance first: strip the contract text units, then treat any entity
     # left without a text unit as contract residue. Such an entity has no
@@ -281,7 +308,7 @@ def main():
     with open(log, "a", encoding="utf-8") as fh:
         fh.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} blocked={len(blocked)} "
                  f"docs={len(drop_docs)} units={len(drop_units)} packs_redacted={changed}\n")
-    clean_vectors()
+    clean_vectors(stale_vectors)
     print(f"applied: entities {len(ents)} -> {len(keep)}, relationships {len(rels)} -> {len(rel)}, "
           f"documents dropped {len(drop_docs)}, context packs redacted {changed}")
     print(f"backup: {os.path.relpath(backup, ROOT)}")

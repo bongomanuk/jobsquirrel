@@ -33,3 +33,19 @@ def test_employment_dispute_is_sensitive():
     assert S.sensitive("A legal dispute about the employment contract")
     assert S.sensitive("The court may require disclosure")
     assert not S.sensitive("Led the platform engineering team")
+
+
+def test_personal_identifiers_are_sensitive_and_redacted():
+    assert S.sensitive("Email me at someone@example.com")
+    assert S.sensitive("Swedish ID No. 19781023-1352")
+    text = ("Built the platform. "
+            "Haud Systems AB employment documentation identifies him by Swedish ID No. "
+            "19781023-1352 and email someone@example.com. "
+            "He is resident in Huddinge, Sweden. "
+            "Led the team.")
+    cleaned = S.redact(text)
+    assert "Built the platform." in cleaned
+    assert "Led the team." in cleaned
+    assert "19781023-1352" not in cleaned
+    assert "someone@example.com" not in cleaned
+    assert "Huddinge" not in cleaned

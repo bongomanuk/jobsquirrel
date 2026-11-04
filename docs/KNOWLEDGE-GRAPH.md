@@ -240,7 +240,8 @@ contract. This is enforced at several points:
   and `reference-cv/*Juridiska*` before indexing.
 - `tools/sensitive.py` holds the blocked title terms and the redaction terms
   (notice, probation, garden leave, salary, court, tribunal, jurisdiction,
-  severance, settlement and similar).
+  severance, settlement and similar), and strips personal identifiers such as
+  email addresses and national identity numbers.
 - `tools/graph_prune_sensitive.py` removes blocked entities, entities left with
   no surviving text unit, their relationships, ungrounded communities and their
   reports; it recomputes degrees, drops dangling edges, redacts surviving
