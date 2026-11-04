@@ -414,7 +414,7 @@ function labelTier() {
 
 function lodPlan() {
   const k = S.orbit.radius / Math.max(1, S.baseRadius);
-  const budget = k > 0.72 ? 18 : k > 0.48 ? 36 : k > 0.3 ? 70 : k > 0.16 ? 120 : 9999;
+  const budget = k > 0.72 ? 28 : k > 0.48 ? 50 : k > 0.3 ? 90 : k > 0.16 ? 140 : 9999;
   const ranked = S.clustersRanked || (S.clustersRanked = [...S.clusters].sort((a, b) => b.size - a.size));
   const act = new Set(ranked.slice(0, budget));
   if (k < 0.55) {
