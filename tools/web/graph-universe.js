@@ -18,7 +18,7 @@ const S = {
   selected: null, hovered: null, highlight: new Set(),
   W: 1, H: 1, orbit: { theta: 0.7, phi: 1.12, radius: 3000, target: new THREE.Vector3() },
   drag: null, lastInteract: 0, auto: true, raf: 0, fly: null, keys: new Set(),
-  baseRadius: 3000, maxDist: 0, lastLabel: 0, focusDepth: 1
+  baseRadius: 3000, maxDist: 0, lastLabel: 0, focusDepth: 2, focusAmount: 0, focusAt: 0, focusHold: 4000, focusFade: 1200
 };
 
 const COLORS = {
@@ -550,9 +550,9 @@ function assignLabels() {
   };
   const eligible = n => {
     if (n === S.selected || n === S.hovered) return true;
-    if (S.selDist) {
+    if (S.selDist && S.focusAmount > 0.05) {
       const d = S.selDist.get(n.id);
-      if (d == null || d > (S.focusDepth || 1)) return false;
+      if (d == null || d > 1) return false;
     }
     if (!inRange(n) || !represented(n)) return false;
     const cl = S.clusterOf.get(n.id);
@@ -683,7 +683,7 @@ function updateLabels(force = false) {
     el.style.transform = `translate3d(${x}px,${y}px,0) translate(-50%,-50%)`;
   };
   for (const { n, el } of S.labelAssigned) {
-    if (S.selDist && (S.selDist.get(n.id) == null || S.selDist.get(n.id) > (S.focusDepth || 1))) { el.style.display = 'none'; continue; }
+    if (S.selDist && S.focusAmount > 0.05 && (S.selDist.get(n.id) == null || S.selDist.get(n.id) > 1)) { el.style.display = 'none'; continue; }
     place(n, el);
   }
   for (const { c, el, dx, dy } of S.clusterAssigned) place({ pos: c.center }, el, dx, dy);
@@ -704,9 +704,23 @@ function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '
 
 /* ------------------------------------------------------------------ loop --- */
 
+function tickFocus(now) {
+  if (!S.selDist || S.focusAmount == null) return;
+  const age = now - (S.focusAt || now);
+  let a = 1;
+  if (age > S.focusHold) a = Math.max(0, 1 - (age - S.focusHold) / S.focusFade);
+  if (Math.abs(a - S.focusAmount) > 0.01) {
+    const was = S.focusAmount;
+    S.focusAmount = a;
+    applySelection();
+    if (a <= 0.01 && was > 0.01) { assignLabels(); updateLabels(true); }
+  }
+}
+
 function loop(now) {
   S.raf = requestAnimationFrame(loop);
   if (!S.renderer || !S.camera) return;
+  tickFocus(now);
   if (S.fly) {
     const f = S.fly;
     const t = Math.min(1, (now - f.start) / f.dur);
@@ -781,7 +795,7 @@ function moveKeys() {
 
 function resetView() {
   S.orbit.theta = 0.7; S.orbit.phi = 1.12; S.orbit.radius = S.baseRadius;
-  S.orbit.target.set(0, 0, 0); S.auto = false; S.selected = null; S.hovered = null; S.selDist = null;
+  S.orbit.target.set(0, 0, 0); S.auto = false; S.selected = null; S.hovered = null; S.selDist = null; S.focusAmount = 0;
   S.fly = null;
   if (S.marker) S.marker.visible = false;
   if (S.hits) { S.scene.remove(S.hits); S.hits = null; }
@@ -826,10 +840,16 @@ function applySelection() {
   S.nodes.forEach((n, i) => {
     const cl = S.clusterOf.get(n.id);
     const lod = (!S.activeClusters || !cl || S.activeClusters.has(cl)) ? 1 : 0.04;
+    const amt = sel ? (S.focusAmount == null ? 1 : S.focusAmount) : 0;
     let f = 1;
-    if (sel) {
+    if (sel && amt > 0) {
       const d = sel.get(n.id);
-      f = d == null ? 0.012 : 0.18 + 0.82 * Math.exp(-d / 1.5);
+      const D = S.focusDepth || 2;
+      const ff = d == null ? 0.006
+        : d === 0 ? 1
+        : d <= D ? (d === 1 ? 0.85 : Math.max(0.30, 0.55 - (d - 2) * 0.12))
+        : 0.02;
+      f = 1 - amt * (1 - ff);
     }
     const c = n.colorObj;
     let r = c.r * lod * f, g = c.g * lod * f, b = c.b * lod * f;
@@ -839,21 +859,22 @@ function applySelection() {
   });
   S.core.geometry.attributes.color.needsUpdate = true;
   if (S.halo) S.halo.geometry.attributes.color.needsUpdate = true;
-  if (S.lines) S.lines.material.opacity = sel ? 0.24 : 0.085;
-  if (S.impact) S.impact.material.opacity = sel ? 0.06 : 0.9;
-  if (S.major) S.major.material.opacity = sel ? 0.05 : 0.9;
+  const amt0 = sel ? (S.focusAmount == null ? 1 : S.focusAmount) : 0;
+  if (S.lines) S.lines.material.opacity = 0.085 + amt0 * (0.24 - 0.085);
+  if (S.impact) S.impact.material.opacity = 1 - amt0 * (1 - 0.06);
+  if (S.major) S.major.material.opacity = 1 - amt0 * (1 - 0.05);
   if (S.lines && S.linkBaseColors) {
     const attr = S.lines.geometry.attributes.color;
     const base = S.linkBaseColors;
     for (let i = 0; i < S.links.length; i++) {
       const l = S.links[i];
       let f = 1;
-      if (sel) {
+      if (sel && amt0 > 0) {
         const a = sel.get(l.source), b = sel.get(l.target);
-        const D = S.focusDepth || 1;
-        if (a === 0 || b === 0) f = 0.95;
-        else if (a != null && b != null && a <= D && b <= D) f = 0.20;
-        else f = 0.015;
+        const D = S.focusDepth || 2;
+        const ff = (a === 0 || b === 0) ? 0.95
+          : (a != null && b != null && a <= D && b <= D) ? 0.20 : 0.015;
+        f = 1 - amt0 * (1 - ff);
       }
       for (let k = 0; k < 6; k++) attr.array[i * 6 + k] = base[i * 6 + k] * f;
     }
@@ -864,6 +885,8 @@ function applySelection() {
 function select(n) {
   S.selected = n; S.auto = false;
   S.selDist = graphDistances(n.id);
+  S.focusAmount = 1;
+  S.focusAt = performance.now();
   applySelection();
   setSide(n);
   const dist = 240 + Math.min(700, (n.degree || 1) * 4.5);
@@ -930,7 +953,7 @@ function renderNodeSide(d) {
     <div class="uni-meta">${d.degree || 0} links · ${d.frequency || 0} mentions · ${esc(d.community_title || 'no community')}</div>
     <p>${esc(d.description || 'No description in the index.')}</p>
     ${d.evidence ? `<div class="uni-evidence"><b>Evidence</b>${esc(d.evidence)}</div>` : ''}
-    <div class="uni-subgraph"><b>Subgraph</b> ${d.subgraph ? d.subgraph.nodes : 1} nodes · ${d.subgraph ? d.subgraph.links : 0} links · depth ${d.subgraph ? d.subgraph.max_depth : 0}<div>${layers}</div><div class="muted mini" style="margin-top:3px">Highlight shows the selected node and its ${(S.focusDepth || 1) === 1 ? 'direct neighbours' : `nearest ${S.focusDepth} hops`}; the counts cover the whole connected subgraph.</div></div>
+    <div class="uni-subgraph"><b>Subgraph</b> ${d.subgraph ? d.subgraph.nodes : 1} nodes · ${d.subgraph ? d.subgraph.links : 0} links · depth ${d.subgraph ? d.subgraph.max_depth : 0}<div>${layers}</div><div class="muted mini" style="margin-top:3px">Highlight shows the selected node and its ${(S.focusDepth || 1) === 1 ? 'direct neighbours' : `nearest ${S.focusDepth} hops`}; the counts cover the whole connected subgraph. The dimming fades after a few seconds; the selected node stays marked.</div></div>
     <h4>Sources</h4>${sources}
     <h4>Neighbours</h4><div class="uni-neigh-list">${neigh}</div>
     <h4>Strongest connections</h4>${conns}
@@ -1037,6 +1060,8 @@ function bind() {
     focus.addEventListener('input', () => {
       S.focusDepth = Math.max(1, Math.min(3, +focus.value || 1));
       if (fv) fv.textContent = S.focusDepth + ' hop' + (S.focusDepth === 1 ? '' : 's');
+      S.focusAmount = S.selDist ? 1 : 0;
+      S.focusAt = performance.now();
       applySelection(); assignLabels(); updateLabels(true);
     });
   }

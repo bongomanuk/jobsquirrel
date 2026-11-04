@@ -237,8 +237,8 @@
       </aside>
       <div class="uni-hud">
         <label for="uni-focus">focus</label>
-        <input id="uni-focus" type="range" min="1" max="3" step="1" value="1" title="How many hops from the selected node stay bright">
-        <span id="uni-focus-v" class="uni-hud-v">1 hop</span>
+        <input id="uni-focus" type="range" min="1" max="3" step="1" value="2" title="How many hops from the selected node stay bright">
+        <span id="uni-focus-v" class="uni-hud-v">2 hops</span>
         <span class="uni-hud-sep">·</span>
         <label for="uni-range">label reach</label>
         <input id="uni-range" type="range" min="300" max="7000" step="100" value="2600" title="How far from the centre of the view labels are drawn; it tightens automatically as you zoom in">
@@ -303,6 +303,7 @@
       <a data-s="kb" onclick="App.settings('kb')">Knowledge base</a>
       <a data-s="graph" onclick="App.settings('graph')">GraphRAG</a>
       <a data-s="perms" onclick="App.settings('perms')">Agent permissions</a>
+      <a data-s="captcha" onclick="App.settings('captcha')">CAPTCHA</a>
       <a data-s="profile" onclick="App.settings('profile')">Profile &amp; CV</a>
       <a data-s="data" onclick="App.settings('data')">Backup &amp; data</a>
     </nav>

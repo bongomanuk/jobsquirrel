@@ -25,7 +25,7 @@ const S = {
   interacting: false, interactTimer: 0, lastLabelRelayout: 0, labelDirty: true,
   linePos: null, lineColors: null, labelEls: new Map(), top: new Set(),
   selected: null, hovered: null, hidden: new Set(), opts: {}, paused: true,
-  raf: 0, alpha: 1, fitted: false, focusDepth: 1, hitEls: new Map(), lastInteract: Date.now(), W: 1, H: 1, orbit: { theta: 0.72, phi: 1.12, radius: 260, target: new THREE.Vector3() },
+  raf: 0, alpha: 1, fitted: false, focusDepth: 1, focusAmount: 0, focusAt: 0, focusHold: 4000, focusFade: 1200, hitEls: new Map(), lastInteract: Date.now(), W: 1, H: 1, orbit: { theta: 0.72, phi: 1.12, radius: 260, target: new THREE.Vector3() },
   drag: null, lastTap: null, glowTex: null
 };
 
@@ -244,6 +244,7 @@ export async function show(data, opts = {}) {
   S.selected = null;
   S.hovered = null;
   S.selDist = null;
+  S.focusAmount = 0;
   if (S.marker) S.marker.visible = false;
   if (S.impact) S.impact.visible = true;
   S.hidden = new Set();
@@ -456,10 +457,16 @@ function nearSet(dist) {
 function repaintNodes(id, dist) {
   if (!S.ptGeo) return;
   const alpha = S.ptGeo.attributes.alpha, size = S.ptGeo.attributes.size;
+  const amt = dist ? (S.focusAmount == null ? 1 : S.focusAmount) : 0;
   S.nodes.forEach((n, i) => {
     const d = dist ? dist.get(n.id) : null;
-    alpha.array[i] = S.hidden.has(n.type) ? 0
-      : (!id ? 1 : (d == null ? 0.006 : d === 0 ? 1 : d <= (S.focusDepth || 1) ? (d === 1 ? 0.65 : Math.max(0.28, 0.50 - (d - 2) * 0.10)) : 0.02));
+    let ff = 1;
+    if (dist && amt > 0) {
+      ff = d == null ? 0.006 : d === 0 ? 1
+        : d <= (S.focusDepth || 1) ? (d === 1 ? 0.65 : Math.max(0.28, 0.50 - (d - 2) * 0.10))
+        : 0.02;
+    }
+    alpha.array[i] = S.hidden.has(n.type) ? 0 : (id ? 1 - amt * (1 - ff) : 1);
     size.array[i] = n.r * (n.id === id ? 1.6 : 1);
   });
   alpha.needsUpdate = true;
@@ -472,6 +479,8 @@ export function select(id) {
   if (!n) return;
   const dist = graphDistances(id);
   S.selDist = dist;
+  S.focusAmount = 1;
+  S.focusAt = performance.now();
   if (S.impact) S.impact.visible = false;
   repaintNodes(id, dist);
   if (S.marker) {
@@ -488,6 +497,8 @@ export function select(id) {
 
 export function setFocusDepth(d) {
   S.focusDepth = Math.max(1, Math.min(3, +d || 1));
+  S.focusAmount = S.selDist ? 1 : 0;
+  S.focusAt = performance.now();
   if (S.selected) {
     S.selDist = graphDistances(S.selected);
     repaintNodes(S.selected, S.selDist);
@@ -499,6 +510,7 @@ export function setFocusDepth(d) {
 export function clearSelection() {
   S.selected = null;
   S.selDist = null;
+  S.focusAmount = 0;
   if (S.impact) S.impact.visible = true;
   if (S.lineMesh) S.lineMesh.material.opacity = 0.2;
   if (S.marker) S.marker.visible = false;
@@ -671,16 +683,17 @@ function paintLines(selected, dist) {
   if (!S.lineMesh) return;
   const col = S.lineColors;
   const accent = new THREE.Color(ACCENT), base = new THREE.Color(0x93a4bd);
-  const gold = new THREE.Color(0xfbbf24), dim = new THREE.Color(0x0b1220);
+  const gold = new THREE.Color(0xfbbf24);
+  const amt = dist ? (S.focusAmount == null ? 1 : S.focusAmount) : 0;
   S.links.forEach((l, i) => {
     const da = dist ? (dist.get(l.source) ?? 99) : 99;
     const db = dist ? (dist.get(l.target) ?? 99) : 99;
     const D = S.focusDepth || 1;
-    let c;
-    if (selected && (l.source === selected || l.target === selected)) c = accent;
-    else if (l.grounded) c = gold.clone().multiplyScalar(dist ? ((da <= D && db <= D) ? 0.20 : 0.015) : 1);
-    else if (dist) c = base.clone().multiplyScalar((da <= D && db <= D) ? 0.20 : 0.015);
-    else c = base;
+    const baseC = l.grounded ? gold.clone() : base.clone();
+    let focusC = baseC;
+    if (selected && (l.source === selected || l.target === selected)) focusC = accent;
+    else if (dist) focusC = baseC.clone().multiplyScalar((da <= D && db <= D) ? 0.20 : 0.015);
+    const c = amt > 0 ? baseC.clone().lerp(focusC, amt) : baseC;
     col[i * 6] = c.r; col[i * 6 + 1] = c.g; col[i * 6 + 2] = c.b;
     col[i * 6 + 3] = c.r; col[i * 6 + 4] = c.g; col[i * 6 + 5] = c.b;
   });
@@ -729,7 +742,7 @@ function updateLabels(neigh, relayout = false) {
     S.labelAnchors.forEach((a, id) => {
       const n = S.byId.get(id), el = S.labelEls.get(id);
       if (!n || !el) return;
-      if (S.hidden.has(n.type) || (S.selDist && ((S.selDist.get(id) ?? 99) > (S.focusDepth || 1)))) { el.style.display = 'none'; return; }
+      if (S.hidden.has(n.type) || (S.selDist && S.focusAmount > 0.05 && ((S.selDist.get(id) ?? 99) > (S.focusDepth || 1)))) { el.style.display = 'none'; return; }
       const p = n.pos.clone().project(S.camera);
       if (p.z > 1 || p.z < -1) { el.style.display = 'none'; return; }
       const cx = (p.x * 0.5 + 0.5) * W;
@@ -745,7 +758,7 @@ function updateLabels(neigh, relayout = false) {
   const candidates = [];
   S.nodes.forEach(n => {
     if (S.hidden.has(n.type)) return;
-    if (S.selDist && ((S.selDist.get(n.id) ?? 99) > (S.focusDepth || 1))) {
+    if (S.selDist && S.focusAmount > 0.05 && ((S.selDist.get(n.id) ?? 99) > (S.focusDepth || 1))) {
       const el = S.labelEls.get(n.id); if (el) el.style.display = 'none';
       return;
     }
@@ -884,9 +897,28 @@ function neighborSet(id) {
   return out;
 }
 
+function tickFocus(now) {
+  if (!S.selDist || S.focusAmount == null) return;
+  const age = now - (S.focusAt || now);
+  let a = 1;
+  if (age > S.focusHold) a = Math.max(0, 1 - (age - S.focusHold) / S.focusFade);
+  if (Math.abs(a - S.focusAmount) > 0.01) {
+    const was = S.focusAmount;
+    S.focusAmount = a;
+    repaintNodes(S.selected, S.selDist);
+    paintLines(S.selected, S.selDist);
+    S.labelDirty = true;
+    if (a <= 0.01 && was > 0.01) {
+      if (S.impact) S.impact.visible = true;
+      updateLabels(null, true);
+    }
+  }
+}
+
 function animate() {
   S.raf = requestAnimationFrame(animate);
   if (S.paused || !S.renderer) return;
+  tickFocus(performance.now());
   if (!S.drag && !S.interacting && Date.now() - S.lastUser > 2800) {
     S.orbit.theta += 0.0007;
     applyCamera();
