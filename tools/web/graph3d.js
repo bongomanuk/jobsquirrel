@@ -576,6 +576,7 @@ function pick(e) {
 function bindControls() {
   const c = S.canvas;
   c.addEventListener('contextmenu', e => e.preventDefault());
+  c.addEventListener('mousedown', e => e.preventDefault());
   c.addEventListener('pointerdown', e => {
     S.lastInteract = Date.now();
     S.lastUser = Date.now();

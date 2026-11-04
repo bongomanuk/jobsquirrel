@@ -969,6 +969,7 @@ function hitAt(x, y) {
 function bind() {
   const c = S.canvas;
   c.addEventListener('contextmenu', e => e.preventDefault());
+  c.addEventListener('mousedown', e => e.preventDefault());
   c.addEventListener('pointerdown', e => {
     S.lastInteract = performance.now(); S.auto = false;
     S.drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY,

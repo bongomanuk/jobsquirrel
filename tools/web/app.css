@@ -737,3 +737,13 @@ body.knowledge-open .modal{z-index:60}
 #knowledge.uni-mode #kg-back,#knowledge.uni-mode #kg-tab-types,#knowledge.uni-mode #kg-tab-comm,
 #knowledge.uni-mode #kg-all,#knowledge.uni-mode #kg-crumbs,#knowledge.uni-mode #kg-results,
 #knowledge.uni-mode #kg-stage,#knowledge.uni-mode #kg-side,#knowledge.uni-mode #kg-legend,#knowledge.uni-mode #kg-msg,#knowledge.uni-mode #kg-focus{display:none!important}
+
+/* Graph interactions must never turn into text selection. */
+#knowledge, #knowledge * { user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+#knowledge input, #knowledge textarea, #knowledge select, #knowledge option {
+  user-select: text; -webkit-user-select: text;
+}
+#knowledge canvas { touch-action: none; }
+#knowledge .kg3d-labels, #knowledge .uni-labels, #knowledge .kg3d-hit {
+  user-select: none; -webkit-user-select: none;
+}

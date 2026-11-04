@@ -3366,6 +3366,17 @@ $('#upd-go').onclick = async () => {
 initPanels(); initGridCols(); syncGroupingButton(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel();
 if (location.hash === '#knowledge') setTimeout(() => App.openKnowledge('map'), 400);
 if (location.hash === '#universe') setTimeout(() => App.openKnowledge('universe'), 400);
+// Clicking or dragging in the graph must not select text.
+document.addEventListener('selectstart', e => {
+  const t = e.target;
+  if (t && t.closest && t.closest('#knowledge') &&
+      !/^(INPUT|TEXTAREA|SELECT|OPTION)$/.test(t.tagName)) e.preventDefault();
+});
+document.addEventListener('dragstart', e => {
+  const t = e.target;
+  if (t && t.closest && t.closest('#knowledge')) e.preventDefault();
+});
+
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !$('#knowledge').classList.contains('hide')) {
     if (KGMODE === 'universe') App.setKGMode('map'); else App.closeKnowledge();
