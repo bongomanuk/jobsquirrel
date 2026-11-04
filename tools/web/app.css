@@ -648,6 +648,7 @@ body.knowledge-open .modal{z-index:60}
   pointer-events:auto;cursor:pointer;white-space:nowrap;max-width:190px;
   overflow:hidden;text-overflow:ellipsis;backdrop-filter:blur(2px)}
 .kg3d-label:hover{color:#fff;border-color:var(--accent)}
+.kg3d-label.grounded{color:#fde68a;border-color:rgba(245,158,11,.6);background:rgba(34,26,10,.75)}
 .kg3d-label.community,.kg3d-label.type{font-weight:600;color:#e5e7eb;
   background:rgba(14,18,26,.82);border-color:rgba(245,158,11,.28)}
 .kg3d-tip{position:absolute;z-index:3;pointer-events:none;background:#0b0f16;
@@ -681,6 +682,7 @@ body.knowledge-open .modal{z-index:60}
   border:1px solid rgba(148,163,184,.14);border-radius:5px;padding:2px 5px;
   text-shadow:0 1px 8px #000;transition:opacity .15s}
 .uni-label.extra{color:#fff;border-color:rgba(245,158,11,.45);background:rgba(14,18,26,.82)}
+.uni-label.grounded{color:#fde68a;border-color:rgba(245,158,11,.6);background:rgba(34,26,10,.78)}
 .uni-tip{position:absolute;z-index:4;pointer-events:none;background:#0b0f16;border:1px solid var(--line);
   border-radius:6px;padding:6px 9px;font-size:11px;box-shadow:0 8px 30px rgba(0,0,0,.6);max-width:280px}
 .uni-tip b{display:block;font-size:12px;margin-bottom:2px}

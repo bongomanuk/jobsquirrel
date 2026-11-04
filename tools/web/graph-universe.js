@@ -171,7 +171,8 @@ function layout(nodes) {
     const rr = R + jitter;
     const center = new THREE.Vector3(Math.cos(th) * rad * rr, y * rr * 0.86, Math.sin(th) * rad * rr);
     const spread = Math.min(215, 14 + Math.sqrt(list.length) * 17);
-    const dom = list.reduce((a, b) => ((b.degree || 0) > (a.degree || 0) ? b : a), list[0]);
+    const rank = x => (Number(x.importance) || 0) * 100 + Math.min(40, x.degree || 0);
+    const dom = list.reduce((a, b) => (rank(b) > rank(a) ? b : a), list[0]);
     const titled = list.find(x => x.community_title);
     const cluster = {
       key, center, spread, list, size: list.length, color: colorOf(dom),
@@ -188,8 +189,8 @@ function layout(nodes) {
         center.x + r * Math.sin(b) * Math.cos(a),
         center.y + r * Math.cos(b) * 0.82,
         center.z + r * Math.sin(b) * Math.sin(a));
-      n.radius = 2.6 + Math.min(21, Math.sqrt(Math.max(1, n.degree || 1)) * 0.68)
-        + (Number(n.importance) || 0) * 9;
+      n.radius = 2.6 + Math.min(19, Math.sqrt(Math.max(1, n.degree || 1)) * 0.62)
+        + (Number(n.importance) || 0) * 16;
       n.colorObj = colorOf(n);
       S.maxDist = Math.max(S.maxDist, n.pos.length());
     });
@@ -291,6 +292,26 @@ function build(data) {
   }));
   S.scene.add(S.major);
 
+  // high-impact landmarks: a warm beacon so the weighting is visible at a glance
+  const landmarks = S.nodes.filter(n => (Number(n.importance) || 0) >= 0.95);
+  S.impactNodes = landmarks;
+  if (landmarks.length) {
+    const ip = new Float32Array(landmarks.length * 3), ic = new Float32Array(landmarks.length * 3);
+    landmarks.forEach((n, i) => {
+      ip[i * 3] = n.pos.x; ip[i * 3 + 1] = n.pos.y; ip[i * 3 + 2] = n.pos.z;
+      const c = n.colorObj.clone().lerp(new THREE.Color('#ffd166'), 0.65);
+      ic[i * 3] = c.r; ic[i * 3 + 1] = c.g; ic[i * 3 + 2] = c.b;
+    });
+    const ig = new THREE.BufferGeometry();
+    ig.setAttribute('position', new THREE.BufferAttribute(ip, 3));
+    ig.setAttribute('color', new THREE.BufferAttribute(ic, 3));
+    S.impact = new THREE.Points(ig, new THREE.PointsMaterial({
+      size: 42, vertexColors: true, map: glowTexture(), transparent: true,
+      opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true
+    }));
+    S.scene.add(S.impact);
+  }
+
   // relationships: faint filaments, brighter than the void
   const L = S.links.length;
   const lp = new Float32Array(L * 6), lc = new Float32Array(L * 6);
@@ -301,7 +322,7 @@ function build(data) {
     lp[i * 6 + 3] = b.pos.x; lp[i * 6 + 4] = b.pos.y; lp[i * 6 + 5] = b.pos.z;
     const d = a.pos.distanceTo(b.pos);
     const fade = Math.max(0.06, Math.min(1, 1.25 - d / 2400));   // long bridges barely glimmer
-    const c = a.colorObj.clone().lerp(b.colorObj, 0.5).multiplyScalar(fade);
+    const c = l.grounded ? new THREE.Color('#fbbf24') : a.colorObj.clone().lerp(b.colorObj, 0.5).multiplyScalar(fade);
     lc[i * 6] = c.r; lc[i * 6 + 1] = c.g; lc[i * 6 + 2] = c.b;
     lc[i * 6 + 3] = c.r; lc[i * 6 + 4] = c.g; lc[i * 6 + 5] = c.b;
   });
@@ -350,13 +371,13 @@ function build(data) {
 }
 
 function clearScene() {
-  [S.core, S.halo, S.major, S.lines, S.nebula, S.marker, S.hits].forEach(x => {
+  [S.core, S.halo, S.major, S.impact, S.lines, S.nebula, S.marker, S.hits].forEach(x => {
     if (!x) return;
     S.scene.remove(x);
     x.traverse ? x.traverse(o => { o.geometry && o.geometry.dispose(); o.material && o.material.dispose(); })
                : (x.geometry && x.geometry.dispose(), x.material && x.material.dispose());
   });
-  S.core = S.halo = S.major = S.lines = S.nebula = S.marker = S.hits = null;
+  S.core = S.halo = S.major = S.impact = S.lines = S.nebula = S.marker = S.hits = null;
   S.labelAssigned = []; S.clusterAssigned = [];
   S.labelPool.forEach(el => { el._node = null; el.style.display = 'none'; });
   S.clusterPool.forEach(el => { el._cluster = null; el.style.display = 'none'; });
@@ -521,7 +542,7 @@ function assignLabels() {
     if (n === S.selected || n === S.hovered) return true;
     if (!inRange(n) || !represented(n)) return false;
     const cl = S.clusterOf.get(n.id);
-    return (n.degree || 0) >= minDeg || (cl && cl.top === n);
+    return (n.degree || 0) >= minDeg || (cl && cl.top === n) || (Number(n.importance) || 0) >= 0.95;
   };
 
   // ---- islands are assigned first at the overview: the theme names explain
@@ -608,6 +629,7 @@ function assignLabels() {
     el._node = n;
     el.textContent = n.title;
     el.classList.toggle('extra', n === S.selected || n === S.hovered);
+    el.classList.toggle('grounded', !!n.grounded);
     el.classList.toggle('sel', n === S.selected);
     el.style.display = '';
     const w = el.offsetWidth || widthOf(n.title), h = el.offsetHeight || 16;
@@ -708,6 +730,7 @@ function loop(now) {
   if (S.core) S.core.material.size = Math.max(6, Math.min(30, dist * 0.006));
   if (S.halo) S.halo.material.size = Math.max(24, Math.min(170, dist * 0.022));
   if (S.major) S.major.material.size = Math.max(22, Math.min(90, dist * 0.012));
+  if (S.impact) S.impact.material.size = Math.max(30, Math.min(150, dist * 0.018));
   if (S.marker && S.selected) {
     const pulse = 1 + Math.sin(now * 0.004) * 0.16;
     const s = (S.marker.userData.base || 40) * pulse;
@@ -772,7 +795,7 @@ function select(n) {
   if (S.marker) {
     S.marker.visible = true;
     S.marker.position.copy(n.pos);
-    S.marker.userData.base = Math.max(34, n.radius * 5.5);
+    S.marker.userData.base = Math.max(48, n.radius * 7);
     S.marker.scale.setScalar(S.marker.userData.base);
     S.marker.material.color.copy(n.colorObj).lerp(new THREE.Color('#ffffff'), 0.45);
   }

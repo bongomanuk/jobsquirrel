@@ -40,7 +40,7 @@ function radiusOf(n) {
   if (n.kind === 'community') return 8 + Math.min(18, Math.sqrt(Math.max(1, n.size || 1)) * 0.72);
   if (n.kind === 'type') return 8 + Math.min(14, Math.sqrt(Math.max(1, n.size || 1)) * 0.34);
   return 2.2 + Math.min(5.5, Math.sqrt(Math.max(1, n.degree || 1)) * 0.34)
-    + (Number(n.importance) || 0) * 4.5;
+    + (Number(n.importance) || 0) * 7;
 }
 function short(s, n) {
   s = String(s == null ? '' : s);
@@ -211,6 +211,7 @@ function clearScene() {
     S.nebulae.traverse(o => { if (o.material) o.material.dispose(); });
     S.group.remove(S.nebulae); S.nebulae = null;
   }
+  if (S.impact) { S.group.remove(S.impact); S.impact.geometry.dispose(); S.impact.material.dispose(); S.impact = null; }
   if (S.core) { S.group.remove(S.core); S.core = null; }
   if (S.halo) { S.group.remove(S.halo); S.halo = null; }
   if (S.ptGeo) { S.ptGeo.dispose(); S.ptGeo = null; }
@@ -302,6 +303,22 @@ export async function show(data, opts = {}) {
   S.core.renderOrder = 2;
   S.group.add(S.core);
 
+  // high-impact landmarks get a warm beacon so impact is visible, not just inferred
+  const landmarks = S.nodes.filter(n => (Number(n.importance) || 0) >= 0.95);
+  S.impactNodes = landmarks;
+  if (landmarks.length) {
+    const ip = new Float32Array(landmarks.length * 3);
+    landmarks.forEach((n, i) => { ip[i * 3] = n.pos.x; ip[i * 3 + 1] = n.pos.y; ip[i * 3 + 2] = n.pos.z; });
+    const ig = new THREE.BufferGeometry();
+    ig.setAttribute('position', new THREE.BufferAttribute(ip, 3));
+    S.impact = new THREE.Points(ig, new THREE.PointsMaterial({
+      size: 20, color: 0xfbbf24, map: glowTexture(), transparent: true,
+      opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true
+    }));
+    S.impact.frustumCulled = false;
+    S.group.add(S.impact);
+  }
+
   // island nebulae in the spread views (communities/topics)
   if (isSpread) {
     const neb = new THREE.Group();
@@ -332,7 +349,7 @@ export async function show(data, opts = {}) {
     S.hits.push(hit);
     if (S.labels) {
       const el = document.createElement('span');
-      el.className = 'kg3d-label ' + (n.kind || 'entity');
+      el.className = 'kg3d-label ' + (n.kind || 'entity') + (n.grounded ? ' grounded' : '');
       el.dataset.id = n.id;
       el.textContent = n.kind === 'entity' ? short(n.title, 28)
         : `${short(n.label || n.title, 24)} · ${n.size || ''}`.trim();
@@ -572,10 +589,11 @@ function paintLines(selected, neigh) {
   if (!S.lineMesh) return;
   const pos = S.linePos, col = S.lineColors;
   const accent = new THREE.Color(ACCENT), dim = new THREE.Color(0x0b1220), base = new THREE.Color(0x93a4bd);
+  const gold = new THREE.Color(0xfbbf24);
   S.links.forEach((l, i) => {
     const hot = selected && (l.source === selected || l.target === selected);
     const active = !selected || (neigh && (neigh.has(l.source) || neigh.has(l.target)));
-    const c = hot ? accent : active ? base : dim;
+    const c = hot ? accent : l.grounded ? gold : active ? base : dim;
     col[i * 6] = c.r; col[i * 6 + 1] = c.g; col[i * 6 + 2] = c.b;
     col[i * 6 + 3] = c.r; col[i * 6 + 4] = c.g; col[i * 6 + 5] = c.b;
   });
@@ -737,6 +755,13 @@ function updateScene() {
     p.needsUpdate = true;
   }
   S.hits.forEach((h, i) => { h.position.copy(S.nodes[i].pos); });
+  if (S.impact && S.impactNodes) {
+    const ip = S.impact.geometry.attributes.position;
+    S.impactNodes.forEach((n, i) => {
+      ip.array[i * 3] = n.pos.x; ip.array[i * 3 + 1] = n.pos.y; ip.array[i * 3 + 2] = n.pos.z;
+    });
+    ip.needsUpdate = true;
+  }
   if (S.lineMesh) {
     const pos = S.linePos;
     S.links.forEach((l, i) => {

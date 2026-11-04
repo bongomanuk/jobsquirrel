@@ -2898,7 +2898,7 @@ function kgSelect(id) {
   const neighbours = [...neigh].filter(x => x !== id).map(x => KG.byId.get(x)).filter(Boolean)
     .sort((a, b) => (b.degree || 0) - (a.degree || 0));
   body.innerHTML = `<h4>${esc(n.title)}</h4>
-    <div class="muted mini">${esc(n.class_label || n.type)} · degree ${n.degree} · frequency ${n.frequency}</div>
+    <div class="muted mini">${esc(n.class_label || n.type)} · degree ${n.degree} · frequency ${n.frequency}${n.importance != null ? ` · impact ${Math.round((n.importance || 0) * 100)}%` : ''}</div>
     <p class="kg-desc">${esc(n.description || 'No description.')}</p>
     ${srcHtml}
     <h4 style="margin:10px 0 2px">Neighbours (${neighbours.length})</h4>
