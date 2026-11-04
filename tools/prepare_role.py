@@ -215,6 +215,14 @@ def main() -> int:
         return 2
     jd_text = open(jd_path, encoding="utf-8").read()
     digest = sha(jd_text)
+    evidence_path = os.path.join(ROOT, "kb", "sources", "personal", "skills_evidence.md")
+    try:
+        evidence_text = open(evidence_path, encoding="utf-8").read()
+    except OSError:
+        evidence_text = ""
+    # The KB context also carries the operator-provided skill evidence appended
+    # by kb_graphrag.py, so new evidence must invalidate this cache too.
+    kb_digest = sha(jd_text + "\n\n" + evidence_text)
     company, role = parse_role(jd_text, args.company, args.role)
 
     os.makedirs(ATS_DIR, exist_ok=True)
@@ -232,12 +240,12 @@ def main() -> int:
         mark(ats_path, digest)
 
     kb_path = os.path.join(KB_DIR, f"{key}.md")
-    if args.force or not fresh(kb_path, digest):
+    if args.force or not fresh(kb_path, kb_digest):
         r = run([sys.executable, "tools/kb_graphrag.py", "--jd", jd_path, "--out", kb_path])
         if r.returncode:
             print((r.stdout + r.stderr).strip(), file=sys.stderr)
             return r.returncode or 2
-        mark(kb_path, digest)
+        mark(kb_path, kb_digest)
 
     cv_path = archetype_for(jd_path, args.cv, role)
     cv_key = os.path.basename(cv_path).replace("Peter_Hollas_CV_", "").replace(".docx", "")

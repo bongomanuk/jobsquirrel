@@ -152,8 +152,9 @@ index. It is deliberately more than a graph picture:
   generic RELATED_TO edges; the application layer adds REQUIRES and SATISFIES
   when a role is assessed.
 - **Sources** lists, opens, uploads and deletes `kb/sources/` documents and
-  rebuilds the graph. **Add** records a fact or skill as a knowledge-base source
-  for the next rebuild. **Roles** lists live roles and opens one in the job
+  rebuilds the graph. **Add** records a fact or skill as a supplementary grounded source. It is
+  appended to every GraphRAG context immediately, so no rebuild is needed;
+  re-prepare the role to fold it into the CV. **Roles** lists live roles and opens one in the job
   drawer (or prepares a queued role) so application work stays in the same
   workspace.
 

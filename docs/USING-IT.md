@@ -107,8 +107,10 @@ role in the application drawer (or prepares a queued role). Drag to orbit,
 scroll to zoom, right-drag to pan.
 
 The graph and the application drawer share the same evidence: a claim you add
-under **Add** becomes a knowledge-base source for the next rebuild, and a role
-you open under **Roles** uses the same grounding and gates as a queue run.
+under **Add** is appended to every GraphRAG context immediately, so no rebuild
+is needed — re-prepare the role to fold it into the CV. Rebuild only when you
+change a document under Sources. A role you open under **Roles** uses the same
+grounding and gates as a queue run.
 
 ## Backup, restore and start over
 

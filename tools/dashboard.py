@@ -3698,7 +3698,8 @@ def add_skill_evidence(skill, source="", detail="", key=""):
     with open(SKILLS_FILE, "a", encoding="utf-8") as fh:
         fh.write(line + "\n")
     return {"ok": f"evidence recorded for “{skill}”", "file": os.path.relpath(SKILLS_FILE, ROOT),
-            "hint": "Rebuild the knowledge graph (Settings → Knowledge base → Rebuild) to fold it into CVs."}
+            "hint": "Re-prepare the role to fold it into the CV; no graph rebuild is needed "
+                    "(the evidence is appended to every grounding pack)."}
 
 
 def role_grounding(key):

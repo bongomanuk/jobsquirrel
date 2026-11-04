@@ -837,7 +837,7 @@ const App = {
     $('#evid').classList.add('hide');
     loadGrid();                                       // fit updates immediately
     if (CUR) openDetail(CUR);
-    toast('saved — the fit across roles now counts it (no re-prepare needed)');
+    toast('saved — fit updated; re-prepare the role to fold it into the CV (no graph rebuild needed)');
   },
   addKeyword: async () => {
     if (!CUR) return;
