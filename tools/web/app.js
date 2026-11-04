@@ -766,12 +766,14 @@ const App = {
   open: (i) => openDetail(GRID[i]),
   showTaskLogFor: (company, role) => openTaskLog(taskLogName(company, role), `${company} — ${role}`),
   bucket: (kind) => {
+    clearFilterInputs();
     BUCKET = BUCKETS.some(b => b.k === kind) ? kind : 'active';
     BUCKET_BEFORE_SEARCH = null;
     renderBuckets();
     renderRows();
   },
   focusGroup: (which) => {
+    clearFilterInputs();
     BUCKET = 'focus';
     BUCKET_BEFORE_SEARCH = null;
     COLLAPSED.focus_pay = which === 'unknown';
@@ -780,10 +782,7 @@ const App = {
     renderRows();
   },
   clearFilters: () => {
-    ['fstatus', 'fqueue', 'ftype', 'fpay', 'ffit', 'fwork'].forEach(id => { const el = $('#' + id); if (el) el.value = ''; });
-    const fa = $('#faction'); if (fa) fa.checked = false;
-    const q = $('#q'); if (q) q.value = '';
-    const f = $('#filters'); if (f) f.open = false;
+    clearFilterInputs();
     BUCKET_BEFORE_SEARCH = null;
     BUCKET = 'active'; renderBuckets(); renderRows();
   },
@@ -1132,6 +1131,7 @@ function renderStateGraph() {
     if (!g) return;
     const sel = $('#fstatus');
     if (!sel) return;
+    clearFilterInputs();
     sel.value = g.dataset.status;
     BUCKET = 'all'; BUCKET_BEFORE_SEARCH = null;
     renderBuckets(); renderRows();
@@ -1143,6 +1143,15 @@ function renderStateGraph() {
     e.preventDefault(); g.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });
 })();
+
+function clearFilterInputs() {
+  ['fstatus', 'fqueue', 'ftype', 'fpay', 'ffit', 'fwork'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const fa = document.getElementById('faction'); if (fa) fa.checked = false;
+  const q = document.getElementById('q'); if (q) q.value = '';
+  const f = document.getElementById('filters'); if (f) f.open = false;
+}
 
 function renderRows() {
   const q = $('#q').value.toLowerCase(), st = $('#fstatus').value, qq = $('#fqueue').value;
