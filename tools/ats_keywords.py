@@ -34,6 +34,12 @@ TECH_TERMS = [
     # languages / runtimes
     "Python", "TypeScript", "JavaScript", "Rust", "Java", "Go", "Golang", "SQL",
     "C++", "C#", "Scala", "Kotlin", "Node.js", "Svelte", "React",
+    # decision science / experimentation / game analytics
+    "causal inference", "causal", "counterfactual", "uplift", "personalization",
+    "personalisation", "experimentation", "experiments", "A/B testing", "A/B",
+    "decision automation", "decisioning", "recommendation", "ranking",
+    "reinforcement learning", "bandit", "multi-armed bandit", "simulation",
+    "forecasting", "game analytics", "live-ops", "live game", "player",
     # data / AI
     "LLM", "LLMs", "RAG", "retrieval", "reranking", "reranker", "embeddings",
     "vector search", "vector database", "knowledge graph", "knowledge graphs",
