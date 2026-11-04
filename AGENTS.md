@@ -180,6 +180,12 @@ chat stays free for the next question. Tell the user it is running and what it
 will touch. Keep questions, explanations and one-step answers in the chat. Do not
 start a second subagent for the same work: check the Activity pane first.
 
+Multi-role batches go to the queue runner, not the chat: create a scoped queue and
+run `tools/run_queue.sh` with `PARALLEL=N` for document preparation. For
+submissions that share one ATS account, use `PARALLEL=1` — parallel browser
+sessions on the same account conflict. Do not prepare or submit roles one by one
+inside the chat turn.
+
 ## 2. Run modes: explain these to the user and let them choose
 
 Do **not** send the user to the documentation. Briefly present the modes below and
