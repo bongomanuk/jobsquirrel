@@ -67,7 +67,7 @@ def degrees(rels, overlay_links):
     return deg
 
 
-def assign_communities(mapping, ents, comms, reports):
+def assign_communities(mapping, ents, comms, reports, out_dir=None):
     """Place newly linked entities in the level-0 community of their target.
 
     The universe lays nodes out by community. An orphan that is linked to a
@@ -107,13 +107,13 @@ def assign_communities(mapping, ents, comms, reports):
             assigned += 1
             print(f"  community {source} -> {item.get('target')}")
             break
-    if assigned:
-        comms.to_parquet(os.path.join(OUT, "communities.parquet"), index=False)
+    if assigned and out_dir:
+        comms.to_parquet(os.path.join(out_dir, "communities.parquet"), index=False)
         if reports is not None and "size" in reports.columns:
             sizes = {int(r.community): int(r.size) for r in comms.itertuples()}
             rep = reports.copy()
             rep["size"] = [sizes.get(int(c), int(sz)) for c, sz in zip(rep["community"], rep["size"])]
-            rep.to_parquet(os.path.join(OUT, "community_reports.parquet"), index=False)
+            rep.to_parquet(os.path.join(out_dir, "community_reports.parquet"), index=False)
     return assigned, comms
 
 
@@ -248,7 +248,7 @@ def main():
     print(f"wrote {len(additions)} link(s) to {os.path.relpath(ENRICH, ROOT)}")
     if not args.no_communities:
         comms, reports = _load("communities"), _load("community_reports")
-        n, _ = assign_communities(mapping, ents, comms, reports)
+        n, _ = assign_communities(mapping, ents, comms, reports, out_dir=OUT)
         print(f"communities assigned: {n}")
 
     after = degrees(rels, overlay["links"])
