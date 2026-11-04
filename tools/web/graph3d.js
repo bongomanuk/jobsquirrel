@@ -79,7 +79,8 @@ function pointMaterial(map, sizeMul, alphaMul) {
   return new THREE.ShaderMaterial({
     uniforms: {
       uMap: { value: map }, uPixel: { value: 900 },
-      uSize: { value: sizeMul }, uAlpha: { value: alphaMul }
+      uSize: { value: sizeMul }, uAlpha: { value: alphaMul },
+      uFog: { value: 0.001 }
     },
     vertexShader: `
       attribute float size;
@@ -89,11 +90,15 @@ function pointMaterial(map, sizeMul, alphaMul) {
       varying float vAlpha;
       uniform float uPixel;
       uniform float uSize;
+      uniform float uFog;
+      varying float vFade;
       void main() {
         vColor = color;
         vAlpha = alpha;
         vec4 mv = modelViewMatrix * vec4(position, 1.0);
         gl_PointSize = clamp(size * uSize * uPixel / max(1.0, -mv.z), 1.5, 380.0);
+        float d = max(0.0, -mv.z) * uFog;
+        vFade = exp(-d * d);
         gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: `
@@ -101,11 +106,12 @@ function pointMaterial(map, sizeMul, alphaMul) {
       uniform float uAlpha;
       varying vec3 vColor;
       varying float vAlpha;
+      varying float vFade;
       void main() {
         vec4 t = texture2D(uMap, gl_PointCoord);
-        float a = t.a * vAlpha * uAlpha;
+        float a = t.a * vAlpha * uAlpha * vFade;
         if (a < 0.01) discard;
-        gl_FragColor = vec4(vColor * t.rgb, a);
+        gl_FragColor = vec4(vColor * t.rgb * vFade, a);
       }`,
     transparent: true, depthWrite: false, depthTest: true,
     blending: THREE.AdditiveBlending
@@ -132,6 +138,13 @@ function init() {
   S.group = new THREE.Group();
   S.scene.add(S.group);
   S.raycaster = new THREE.Raycaster();
+  S.lastUser = 0;
+  S.marker = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTexture(), color: new THREE.Color('#fbbf24'), transparent: true,
+    opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending
+  }));
+  S.marker.visible = false;
+  S.scene.add(S.marker);
   const mc = document.createElement('canvas');
   S.measureCtx = mc.getContext('2d');
   const starGeo = new THREE.BufferGeometry();
@@ -183,7 +196,8 @@ function resize() {
   S.camera.updateProjectionMatrix();
   S.renderer.setSize(S.W, S.H, false);
   const px = S.renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(S.camera.fov) / 2));
-  [S.core, S.halo].forEach(p => { if (p) p.material.uniforms.uPixel.value = px; });
+  [S.core, S.halo].forEach(p => { if (p) { p.material.uniforms.uPixel.value = px; } });
+  applyCamera();
 }
 
 function clearScene() {
@@ -241,10 +255,15 @@ export async function show(data, opts = {}) {
   S.links = links;
   const isSpread = data.mode === 'types' || data.mode === 'communities';
   if (isSpread) {
-    const R = Math.max(210, S.nodes.length * (data.mode === 'communities' ? 20 : 22));
+    // a shallow 3D shell rather than a flat ring: it reads as a constellation
+    const R = Math.max(300, 130 + Math.sqrt(S.nodes.length) * (data.mode === 'communities' ? 58 : 52));
     S.nodes.forEach((n, i) => {
-      const a = (i / Math.max(1, S.nodes.length)) * Math.PI * 2;
-      n.pos.set(Math.cos(a) * R, Math.sin(i * 1.7) * 38, Math.sin(a) * R);
+      n.pos.copy(fibonacci(i, S.nodes.length, R));
+      n.pos.y *= 0.92;
+      const j = 0.82 + ((i * 37) % 29) / 29 * 0.36;   // uneven radii give depth
+      n.pos.multiplyScalar(j);
+      n.pos.x += ((i * 13) % 9 - 4) * 4;
+      n.pos.z += ((i * 17) % 11 - 5) * 4;
     });
   } else {
     const spreadRadius = 60 + Math.sqrt(S.nodes.length) * 16;
@@ -287,11 +306,12 @@ export async function show(data, opts = {}) {
       if (n.kind !== 'community' && n.kind !== 'type') continue;
       const m = new THREE.SpriteMaterial({
         map: softTexture(), color: new THREE.Color(n.color), transparent: true,
-        opacity: 0.26, depthWrite: false, blending: THREE.AdditiveBlending
+        opacity: 0.34, depthWrite: false, blending: THREE.AdditiveBlending
       });
       const sp = new THREE.Sprite(m);
       sp.position.copy(n.pos);
-      sp.scale.setScalar(Math.max(170, n.r * 10));
+      sp.scale.setScalar(Math.max(210, n.r * 12));
+      sp.userData.baseOpacity = 0.34;
       neb.add(sp);
     }
     S.nebulae = neb;
@@ -368,6 +388,12 @@ export function select(id) {
   if (!n) return;
   const neigh = neighborSet(id);
   repaintNodes(id, neigh);
+  if (S.marker) {
+    S.marker.visible = true;
+    S.marker.position.copy(n.pos);
+    S.marker.userData.base = Math.max(30, n.r * (n.kind === 'entity' ? 6.5 : 4.4));
+    S.marker.scale.setScalar(S.marker.userData.base);
+  }
   paintLines(id, neigh);
   S.labelDirty = true;
   updateLabels(neigh, true);
@@ -375,6 +401,7 @@ export function select(id) {
 
 export function clearSelection() {
   S.selected = null;
+  if (S.marker) S.marker.visible = false;
   repaintNodes(null, null);
   paintLines(null, null);
   S.labelDirty = true;
@@ -396,7 +423,7 @@ export function fit() {
   const center = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3()).length() || 120;
   S.orbit.target.copy(center);
-  S.orbit.radius = Math.max(85, size * 0.82);
+  S.orbit.radius = Math.max(85, size * 1.02);
   S.orbit.theta = 0.72;
   S.orbit.phi = 1.12;
   applyCamera();
@@ -428,6 +455,8 @@ function applyCamera() {
   );
   S.camera.lookAt(o.target);
   S.camera.updateMatrixWorld();
+  const fog = 0.62 / Math.max(60, o.radius);
+  [S.core, S.halo].forEach(p => { if (p) p.material.uniforms.uFog.value = fog; });
 }
 
 function pointerNdc(e) {
@@ -448,6 +477,7 @@ function bindControls() {
   c.addEventListener('contextmenu', e => e.preventDefault());
   c.addEventListener('pointerdown', e => {
     S.lastInteract = Date.now();
+    S.lastUser = Date.now();
     S.interacting = true;
     try { c.setPointerCapture(e.pointerId); } catch (_) {}
     S.drag = { x: e.clientX, y: e.clientY, mode: (e.button === 2 || e.shiftKey) ? 'pan' : 'rotate', moved: false };
@@ -506,6 +536,7 @@ function bindControls() {
   c.addEventListener('wheel', e => {
     e.preventDefault();
     S.lastInteract = Date.now();
+    S.lastUser = Date.now();
     S.interacting = true;
     clearTimeout(S.interactTimer);
     S.interactTimer = setTimeout(() => {
@@ -730,8 +761,26 @@ function neighborSet(id) {
 function animate() {
   S.raf = requestAnimationFrame(animate);
   if (S.paused || !S.renderer) return;
+  if (!S.drag && !S.interacting && Date.now() - S.lastUser > 2800) {
+    S.orbit.theta += 0.0007;
+    applyCamera();
+    const now0 = Date.now();
+    if (now0 - (S.lastAutoLayout || 0) > 6000) { S.lastAutoLayout = now0; S.labelDirty = true; }
+  }
   if (S.alpha > 0.015) step();
   if (!S.fitted && S.alpha <= 0.05) { S.fitted = true; fit(); }
+  if (S.nebulae) {
+    const t = Date.now();
+    S.nebulae.children.forEach((sp, i) => {
+      sp.material.opacity = (sp.userData.baseOpacity || 0.3) * (0.86 + 0.14 * Math.sin(t * 0.00045 + i * 0.9));
+    });
+  }
+  if (S.stars) S.stars.rotation.y += 0.00002;
+  if (S.marker && S.marker.visible) {
+    const p = 1 + Math.sin(Date.now() * 0.0038) * 0.12;
+    S.marker.scale.setScalar(S.marker.userData.base * p);
+    S.marker.material.opacity = 0.55 + Math.sin(Date.now() * 0.0038) * 0.2;
+  }
   updateScene();
   S.renderer.render(S.scene, S.camera);
 }
