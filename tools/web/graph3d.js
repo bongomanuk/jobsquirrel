@@ -234,12 +234,14 @@ function fibonacci(i, n, radius) {
 
 export async function show(data, opts = {}) {
   init();
+
   S.opts = opts;
   S.paused = true;
   cancelAnimationFrame(S.raf);
   S.raf = 0;
   S.selected = null;
   S.hovered = null;
+  if (S.marker) S.marker.visible = false;
   S.hidden = new Set();
   S.visibleLabels = new Set();
   S.labelAnchors = new Map();
@@ -363,8 +365,8 @@ export async function show(data, opts = {}) {
   S.group.add(S.lineMesh);
   paintLines(null, null);
   S.alpha = isSpread ? 0 : 1;
-  S.fitted = isSpread;
-  fit();
+  S.fitted = true;
+  fit(isSpread ? 1.02 : 1.18);
   S.paused = false;
   if (!S.raf) animate();
   return { nodes: S.nodes.length, links: links.length };
@@ -416,14 +418,14 @@ export function setHiddenTypes(types) {
   updateLabels(S.selected ? new Set([S.selected]) : null, true);
 }
 
-export function fit() {
+export function fit(margin = 1.02) {
   if (!S.nodes.length) return;
   const box = new THREE.Box3();
   S.nodes.forEach(n => box.expandByPoint(n.pos));
   const center = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3()).length() || 120;
   S.orbit.target.copy(center);
-  S.orbit.radius = Math.max(85, size * 1.02);
+  S.orbit.radius = Math.max(85, size * margin);
   S.orbit.theta = 0.72;
   S.orbit.phi = 1.12;
   applyCamera();
