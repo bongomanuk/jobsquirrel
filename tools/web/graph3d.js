@@ -338,9 +338,48 @@ export async function show(data, opts = {}) {
     }
     S.nebulae = neb;
     S.group.add(neb);
+  } else {
+    const groups = new Map();
+    for (const n of S.nodes) {
+      const key = n.community != null ? 'c' + n.community : 't' + (n.class || n.type || 'x');
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(n);
+    }
+    const neb = new THREE.Group();
+    for (const list of groups.values()) {
+      if (list.length < 3) continue;
+      const center = new THREE.Vector3();
+      list.forEach(n => center.add(n.pos));
+      center.multiplyScalar(1 / list.length);
+      const m = new THREE.SpriteMaterial({
+        map: softTexture(), color: new THREE.Color(list[0].color), transparent: true,
+        opacity: 0.13, depthWrite: false, blending: THREE.AdditiveBlending
+      });
+      const sp = new THREE.Sprite(m);
+      sp.position.copy(center);
+      sp.scale.setScalar(120 + Math.sqrt(list.length) * 28);
+      sp.userData.baseOpacity = 0.13;
+      neb.add(sp);
+    }
+    S.nebulae = neb;
+    S.group.add(neb);
   }
 
   const labelFrag = document.createDocumentFragment();
+  const bindLabel = (el, n) => {
+    let tap = 0;
+    el.addEventListener('pointerdown', e => e.stopPropagation());
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      clearTimeout(tap);
+      tap = setTimeout(() => { S.opts.onSelect && S.opts.onSelect(n.id); }, 240);
+    });
+    el.addEventListener('dblclick', e => {
+      e.stopPropagation();
+      clearTimeout(tap);
+      S.opts.onOpen && S.opts.onOpen(n);
+    });
+  };
   for (const n of S.nodes) {
     const hit = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8),
       new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
@@ -355,18 +394,14 @@ export async function show(data, opts = {}) {
       el.dataset.id = n.id;
       el.textContent = n.kind === 'entity' ? short(n.title, 28)
         : `${short(n.label || n.title, 24)} · ${n.size || ''}`.trim();
-      el.addEventListener('pointerdown', e => e.stopPropagation());
-      el.addEventListener('click', e => { e.stopPropagation(); S.opts.onSelect && S.opts.onSelect(n.id); });
-      el.addEventListener('dblclick', e => { e.stopPropagation(); S.opts.onOpen && S.opts.onOpen(n); });
+      bindLabel(el, n);
       labelFrag.appendChild(el);
       S.labelEls.set(n.id, el);
       const hitEl = document.createElement('span');
       hitEl.className = 'kg3d-hit';
       hitEl.dataset.id = n.id;
       hitEl.style.width = hitEl.style.height = (n.kind === 'entity' ? 24 : 38) + 'px';
-      hitEl.addEventListener('pointerdown', e => e.stopPropagation());
-      hitEl.addEventListener('click', e => { e.stopPropagation(); S.opts.onSelect && S.opts.onSelect(n.id); });
-      hitEl.addEventListener('dblclick', e => { e.stopPropagation(); S.opts.onOpen && S.opts.onOpen(n); });
+      bindLabel(hitEl, n);
       labelFrag.appendChild(hitEl);
       S.hitEls.set(n.id, hitEl);
     }
@@ -489,6 +524,7 @@ export function fit(margin = 1.02) {
   const size = box.getSize(new THREE.Vector3()).length() || 120;
   S.orbit.target.copy(center);
   S.orbit.radius = Math.max(85, size * margin);
+  S.homeRadius = S.orbit.radius;
   S.orbit.theta = 0.72;
   S.orbit.phi = 1.12;
   applyCamera();
@@ -725,11 +761,16 @@ function updateLabels(neigh, relayout = false) {
     candidates.push({ n, el, score });
   });
   candidates.sort((a, b) => a.score - b.score);
+  const home = S.homeRadius || S.orbit.radius || 1;
+  const k = S.orbit.radius / Math.max(1, home);
+  const maxLabels = k > 1.15 ? 8 : k > 0.7 ? 14 : k > 0.4 ? 22 : 36;
   const placed = [];
   const visible = new Set();
   const anchors = new Map();
   const margin = 3;
+  let shown = 0;
   for (const { n, el } of candidates) {
+    if (shown >= maxLabels) { el.style.display = 'none'; continue; }
     const p = n.pos.clone().project(S.camera);
     if (p.z > 1 || p.z < -1) { el.style.display = 'none'; continue; }
     const cx = (p.x * 0.5 + 0.5) * W;
@@ -753,6 +794,7 @@ function updateLabels(neigh, relayout = false) {
     placed.push(chosen.rect);
     visible.add(n.id);
     anchors.set(n.id, { mode: chosen.mode, size, w, h });
+    shown++;
   }
   S.visibleLabels = visible;
   S.labelAnchors = anchors;

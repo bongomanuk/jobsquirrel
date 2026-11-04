@@ -2884,7 +2884,16 @@ function kgDefaultHint() {
       : 'Click an entity for its description, sources and neighbours. Double-click for its ego network.';
 }
 
+let KGR_SIG = '', KGR_AT = 0, KGR_BUSY = false;
+
 async function kgRender(d) {
+  const sig = JSON.stringify({ m: d.mode || '', c: d.center || '', t: d.type || '',
+    n: (d.nodes || []).length,
+    ids: (d.nodes || []).slice(0, 4).map(n => n.id) });
+  const now = performance.now();
+  if (KGR_BUSY || (sig === KGR_SIG && now - KGR_AT < 500)) return;
+  KGR_BUSY = true; KGR_SIG = sig; KGR_AT = now;
+  try {
   const stage = $('#kg-stage');
   const canvas = $('#kg3d');
   if (!stage || !canvas) return;
@@ -2953,6 +2962,7 @@ async function kgRender(d) {
   }
   document.querySelectorAll('.kg-side-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === 'details'));
   kgViewButtons();
+  } finally { KGR_BUSY = false; KGR_AT = performance.now(); }
 }
 
 function kgSelect(id) {
