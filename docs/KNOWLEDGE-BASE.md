@@ -180,3 +180,22 @@ truth for what a node is, where it came from and what it connects to.
 | `input (...) is larger than the max context size` | Lower `community_reports.max_length`; re-index. |
 | GraphRAG CLI missing | `pip install graphrag` (or set `GRAPHRAG_BIN`). |
 | Every run re-computes | Ensure `cache.type: json` persists between runs. |
+
+## 6. Employment-contract material is excluded
+
+The graph is for work evidence, not the legal machinery of a contract. Contract
+and legal documents are excluded at ingest (`kb/sources/.ingestignore` includes
+`contracts/*`, `reference-cv/*Contract*` and `reference-cv/*Juridiska*`).
+`tools/graph_prune_sensitive.py` removes any contract/legal entities that
+slipped through — garden leave, pay in lieu of notice, notice/probation,
+disciplinary/grievance terms, salary/bonus/pension details and generic contract
+parties — redacts surviving descriptions and community reports, and drops the
+contract documents from provenance. `tools/sensitive.py` also redacts context
+packs and query answers. `bash tools/setup_kb.sh` runs the prune automatically
+after a rebuild; check with:
+
+```bash
+.venv-graphrag/bin/python tools/graph_quality.py --fail-sensitive
+```
+
+The `sensitive` line in that report must stay at zero.
