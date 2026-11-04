@@ -203,6 +203,11 @@
     <button id="kg-tab-comm" onclick="App.graphTop()">Communities</button>
     <button id="kg-all" onclick="App.graphAll()" style="display:none">Show all</button>
     <button id="kg-reset" onclick="App.kgReset()">Reset view</button>
+    <select id="kg-focus" onchange="App.kgFocusDepth(this.value)" title="How many hops around the selected node stay bright; the rest dims">
+      <option value="1">Focus: 1 hop</option>
+      <option value="2">Focus: 2 hops</option>
+      <option value="3">Focus: 3 hops</option>
+    </select>
     <span id="kg-msg" class="muted mini"></span>
   </div>
   <div id="kg-crumbs" class="kg-crumbs"></div>
@@ -231,6 +236,10 @@
         <div class="uni-side-hint">Click a star to inspect it. Drag to orbit · scroll to zoom · right-drag to pan · WASD/QE to fly · double-click a star to travel there.</div>
       </aside>
       <div class="uni-hud">
+        <label for="uni-focus">focus</label>
+        <input id="uni-focus" type="range" min="1" max="3" step="1" value="1" title="How many hops from the selected node stay bright">
+        <span id="uni-focus-v" class="uni-hud-v">1 hop</span>
+        <span class="uni-hud-sep">·</span>
         <label for="uni-range">label reach</label>
         <input id="uni-range" type="range" min="300" max="7000" step="100" value="2600" title="How far from the centre of the view labels are drawn; it tightens automatically as you zoom in">
         <span id="uni-range-v" class="uni-hud-v">2600</span>

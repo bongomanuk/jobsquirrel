@@ -18,7 +18,7 @@ const S = {
   selected: null, hovered: null, highlight: new Set(),
   W: 1, H: 1, orbit: { theta: 0.7, phi: 1.12, radius: 3000, target: new THREE.Vector3() },
   drag: null, lastInteract: 0, auto: true, raf: 0, fly: null, keys: new Set(),
-  baseRadius: 3000, maxDist: 0, lastLabel: 0
+  baseRadius: 3000, maxDist: 0, lastLabel: 0, focusDepth: 1
 };
 
 const COLORS = {
@@ -552,7 +552,7 @@ function assignLabels() {
     if (n === S.selected || n === S.hovered) return true;
     if (S.selDist) {
       const d = S.selDist.get(n.id);
-      if (d == null || d > 1) return false;
+      if (d == null || d > (S.focusDepth || 1)) return false;
     }
     if (!inRange(n) || !represented(n)) return false;
     const cl = S.clusterOf.get(n.id);
@@ -683,7 +683,7 @@ function updateLabels(force = false) {
     el.style.transform = `translate3d(${x}px,${y}px,0) translate(-50%,-50%)`;
   };
   for (const { n, el } of S.labelAssigned) {
-    if (S.selDist && !S.selDist.has(n.id)) { el.style.display = 'none'; continue; }
+    if (S.selDist && (S.selDist.get(n.id) == null || S.selDist.get(n.id) > (S.focusDepth || 1))) { el.style.display = 'none'; continue; }
     place(n, el);
   }
   for (const { c, el, dx, dy } of S.clusterAssigned) place({ pos: c.center }, el, dx, dy);
@@ -840,8 +840,8 @@ function applySelection() {
   S.core.geometry.attributes.color.needsUpdate = true;
   if (S.halo) S.halo.geometry.attributes.color.needsUpdate = true;
   if (S.lines) S.lines.material.opacity = sel ? 0.24 : 0.085;
-  if (S.impact) S.impact.material.opacity = sel ? 0.16 : 0.9;
-  if (S.major) S.major.material.opacity = sel ? 0.14 : 0.9;
+  if (S.impact) S.impact.material.opacity = sel ? 0.06 : 0.9;
+  if (S.major) S.major.material.opacity = sel ? 0.05 : 0.9;
   if (S.lines && S.linkBaseColors) {
     const attr = S.lines.geometry.attributes.color;
     const base = S.linkBaseColors;
@@ -850,8 +850,10 @@ function applySelection() {
       let f = 1;
       if (sel) {
         const a = sel.get(l.source), b = sel.get(l.target);
-        const d = Math.min(a == null ? 8 : a, b == null ? 8 : b);
-        f = d == null ? 0.01 : 0.12 + 0.88 * Math.exp(-d / 1.4);
+        const D = S.focusDepth || 1;
+        if (a === 0 || b === 0) f = 0.95;
+        else if (a != null && b != null && a <= D && b <= D) f = 0.20;
+        else f = 0.015;
       }
       for (let k = 0; k < 6; k++) attr.array[i * 6 + k] = base[i * 6 + k] * f;
     }
@@ -928,7 +930,7 @@ function renderNodeSide(d) {
     <div class="uni-meta">${d.degree || 0} links · ${d.frequency || 0} mentions · ${esc(d.community_title || 'no community')}</div>
     <p>${esc(d.description || 'No description in the index.')}</p>
     ${d.evidence ? `<div class="uni-evidence"><b>Evidence</b>${esc(d.evidence)}</div>` : ''}
-    <div class="uni-subgraph"><b>Subgraph</b> ${d.subgraph ? d.subgraph.nodes : 1} nodes · ${d.subgraph ? d.subgraph.links : 0} links · depth ${d.subgraph ? d.subgraph.max_depth : 0}<div>${layers}</div></div>
+    <div class="uni-subgraph"><b>Subgraph</b> ${d.subgraph ? d.subgraph.nodes : 1} nodes · ${d.subgraph ? d.subgraph.links : 0} links · depth ${d.subgraph ? d.subgraph.max_depth : 0}<div>${layers}</div><div class="muted mini" style="margin-top:3px">Highlight shows the selected node and its ${(S.focusDepth || 1) === 1 ? 'direct neighbours' : `nearest ${S.focusDepth} hops`}; the counts cover the whole connected subgraph.</div></div>
     <h4>Sources</h4>${sources}
     <h4>Neighbours</h4><div class="uni-neigh-list">${neigh}</div>
     <h4>Strongest connections</h4>${conns}
@@ -1026,6 +1028,17 @@ function bind() {
     }
     clearTimeout(S.assignTimer); S.assignTimer = setTimeout(assignLabels, 300);
   }, { passive: false });
+  const focus = document.getElementById('uni-focus');
+  if (focus) {
+    S.focusDepth = +focus.value || S.focusDepth;
+    const fv = document.getElementById('uni-focus-v');
+    if (fv) fv.textContent = S.focusDepth + ' hop' + (S.focusDepth === 1 ? '' : 's');
+    focus.addEventListener('input', () => {
+      S.focusDepth = Math.max(1, Math.min(3, +focus.value || 1));
+      if (fv) fv.textContent = S.focusDepth + ' hop' + (S.focusDepth === 1 ? '' : 's');
+      applySelection(); assignLabels(); updateLabels(true);
+    });
+  }
   const rng = document.getElementById('uni-range');
   if (rng) {
     S.labelRange = +rng.value || S.labelRange;

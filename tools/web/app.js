@@ -649,6 +649,7 @@ const App = {
   },
   kgSearch: (q) => KGMODE === 'universe' ? App.universeSearch(q) : App.graphSearch(q),
   kgReset: () => KGMODE === 'universe' ? App.universeReset() : App.graphFit(),
+  kgFocusDepth: (v) => { if (window.__kg3d) window.__kg3d.setFocusDepth(v); },
   home: () => {
     const page = $('#knowledge');
     if (page && !page.classList.contains('hide')) App.closeKnowledge();

@@ -25,7 +25,7 @@ const S = {
   interacting: false, interactTimer: 0, lastLabelRelayout: 0, labelDirty: true,
   linePos: null, lineColors: null, labelEls: new Map(), top: new Set(),
   selected: null, hovered: null, hidden: new Set(), opts: {}, paused: true,
-  raf: 0, alpha: 1, fitted: false, hitEls: new Map(), lastInteract: Date.now(), W: 1, H: 1, orbit: { theta: 0.72, phi: 1.12, radius: 260, target: new THREE.Vector3() },
+  raf: 0, alpha: 1, fitted: false, focusDepth: 1, hitEls: new Map(), lastInteract: Date.now(), W: 1, H: 1, orbit: { theta: 0.72, phi: 1.12, radius: 260, target: new THREE.Vector3() },
   drag: null, lastTap: null, glowTex: null
 };
 
@@ -243,7 +243,9 @@ export async function show(data, opts = {}) {
   S.raf = 0;
   S.selected = null;
   S.hovered = null;
+  S.selDist = null;
   if (S.marker) S.marker.visible = false;
+  if (S.impact) S.impact.visible = true;
   S.hidden = new Set();
   S.visibleLabels = new Set();
   S.labelAnchors = new Map();
@@ -381,6 +383,7 @@ export async function show(data, opts = {}) {
   const lmat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending });
   S.lineMesh = new THREE.LineSegments(geo, lmat);
   S.group.add(S.lineMesh);
+  S.lineMesh.material.opacity = 0.2;
   paintLines(null, null);
   S.alpha = isSpread ? 0 : 1;
   S.fitted = true;
@@ -412,7 +415,7 @@ function graphDistances(startId) {
 
 function nearSet(dist) {
   if (!dist) return null;
-  return new Set([...dist.entries()].filter(([, d]) => d <= 1).map(([id]) => id));
+  return new Set([...dist.entries()].filter(([, d]) => d <= (S.focusDepth || 1)).map(([id]) => id));
 }
 
 function repaintNodes(id, dist) {
@@ -421,7 +424,7 @@ function repaintNodes(id, dist) {
   S.nodes.forEach((n, i) => {
     const d = dist ? dist.get(n.id) : null;
     alpha.array[i] = S.hidden.has(n.type) ? 0
-      : (!id ? 1 : (d == null ? 0.012 : 0.18 + 0.82 * Math.exp(-d / 1.5)));
+      : (!id ? 1 : (d == null ? 0.006 : d === 0 ? 1 : d <= (S.focusDepth || 1) ? (d === 1 ? 0.65 : Math.max(0.28, 0.50 - (d - 2) * 0.10)) : 0.02));
     size.array[i] = n.r * (n.id === id ? 1.6 : 1);
   });
   alpha.needsUpdate = true;
@@ -446,6 +449,16 @@ export function select(id) {
   paintLines(id, dist);
   S.labelDirty = true;
   updateLabels(nearSet(dist), true);
+}
+
+export function setFocusDepth(d) {
+  S.focusDepth = Math.max(1, Math.min(3, +d || 1));
+  if (S.selected) {
+    S.selDist = graphDistances(S.selected);
+    repaintNodes(S.selected, S.selDist);
+    paintLines(S.selected, S.selDist);
+    updateLabels(nearSet(S.selDist), true);
+  }
 }
 
 export function clearSelection() {
@@ -623,11 +636,13 @@ function paintLines(selected, dist) {
   const accent = new THREE.Color(ACCENT), base = new THREE.Color(0x93a4bd);
   const gold = new THREE.Color(0xfbbf24), dim = new THREE.Color(0x0b1220);
   S.links.forEach((l, i) => {
-    const d = dist ? Math.min(dist.get(l.source) ?? 99, dist.get(l.target) ?? 99) : 99;
+    const da = dist ? (dist.get(l.source) ?? 99) : 99;
+    const db = dist ? (dist.get(l.target) ?? 99) : 99;
+    const D = S.focusDepth || 1;
     let c;
     if (selected && (l.source === selected || l.target === selected)) c = accent;
-    else if (l.grounded) c = gold.clone().multiplyScalar(dist ? (d >= 99 ? 0.02 : 0.12 + 0.88 * Math.exp(-d / 1.4)) : 1);
-    else if (dist) c = base.clone().multiplyScalar(d >= 99 ? 0.01 : 0.12 + 0.88 * Math.exp(-d / 1.4));
+    else if (l.grounded) c = gold.clone().multiplyScalar(dist ? ((da <= D && db <= D) ? 0.20 : 0.015) : 1);
+    else if (dist) c = base.clone().multiplyScalar((da <= D && db <= D) ? 0.20 : 0.015);
     else c = base;
     col[i * 6] = c.r; col[i * 6 + 1] = c.g; col[i * 6 + 2] = c.b;
     col[i * 6 + 3] = c.r; col[i * 6 + 4] = c.g; col[i * 6 + 5] = c.b;
@@ -677,7 +692,7 @@ function updateLabels(neigh, relayout = false) {
     S.labelAnchors.forEach((a, id) => {
       const n = S.byId.get(id), el = S.labelEls.get(id);
       if (!n || !el) return;
-      if (S.hidden.has(n.type) || (S.selDist && !S.selDist.has(id))) { el.style.display = 'none'; return; }
+      if (S.hidden.has(n.type) || (S.selDist && ((S.selDist.get(id) ?? 99) > (S.focusDepth || 1)))) { el.style.display = 'none'; return; }
       const p = n.pos.clone().project(S.camera);
       if (p.z > 1 || p.z < -1) { el.style.display = 'none'; return; }
       const cx = (p.x * 0.5 + 0.5) * W;
@@ -693,7 +708,7 @@ function updateLabels(neigh, relayout = false) {
   const candidates = [];
   S.nodes.forEach(n => {
     if (S.hidden.has(n.type)) return;
-    if (S.selDist && !S.selDist.has(n.id)) {
+    if (S.selDist && ((S.selDist.get(n.id) ?? 99) > (S.focusDepth || 1))) {
       const el = S.labelEls.get(n.id); if (el) el.style.display = 'none';
       return;
     }

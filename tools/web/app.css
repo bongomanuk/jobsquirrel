@@ -736,4 +736,4 @@ body.knowledge-open .modal{z-index:60}
 .kg-modes button.on{background:var(--accent);color:#0b0d10;font-weight:600}
 #knowledge.uni-mode #kg-back,#knowledge.uni-mode #kg-tab-types,#knowledge.uni-mode #kg-tab-comm,
 #knowledge.uni-mode #kg-all,#knowledge.uni-mode #kg-crumbs,#knowledge.uni-mode #kg-results,
-#knowledge.uni-mode #kg-stage,#knowledge.uni-mode #kg-side,#knowledge.uni-mode #kg-legend,#knowledge.uni-mode #kg-msg{display:none!important}
+#knowledge.uni-mode #kg-stage,#knowledge.uni-mode #kg-side,#knowledge.uni-mode #kg-legend,#knowledge.uni-mode #kg-msg,#knowledge.uni-mode #kg-focus{display:none!important}
