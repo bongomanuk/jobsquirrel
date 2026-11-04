@@ -458,16 +458,18 @@ function repaintNodes(id, dist) {
   if (!S.ptGeo) return;
   const alpha = S.ptGeo.attributes.alpha, size = S.ptGeo.attributes.size;
   const amt = dist ? (S.focusAmount == null ? 1 : S.focusAmount) : 0;
+  const D = S.focusDepth || 1;
   S.nodes.forEach((n, i) => {
     const d = dist ? dist.get(n.id) : null;
-    let ff = 1;
+    let ff = 1, boost = 0;
     if (dist && amt > 0) {
-      ff = d == null ? 0.006 : d === 0 ? 1
-        : d <= (S.focusDepth || 1) ? (d === 1 ? 0.65 : Math.max(0.28, 0.50 - (d - 2) * 0.10))
-        : 0.02;
+      if (d == null) ff = 0.006;
+      else if (d === 0) { ff = 1; boost = 1.1; }
+      else if (d <= D) { ff = 1; boost = 0.7; }
+      else ff = 0.012;
     }
     alpha.array[i] = S.hidden.has(n.type) ? 0 : (id ? 1 - amt * (1 - ff) : 1);
-    size.array[i] = n.r * (n.id === id ? 1.6 : 1);
+    size.array[i] = n.r * (n.id === id ? 1.8 : 1) * (1 + amt * boost);
   });
   alpha.needsUpdate = true;
   size.needsUpdate = true;
@@ -692,7 +694,7 @@ function paintLines(selected, dist) {
     const baseC = l.grounded ? gold.clone() : base.clone();
     let focusC = baseC;
     if (selected && (l.source === selected || l.target === selected)) focusC = accent;
-    else if (dist) focusC = baseC.clone().multiplyScalar((da <= D && db <= D) ? 0.20 : 0.015);
+    else if (dist) focusC = baseC.clone().multiplyScalar((da <= D && db <= D) ? 0.5 : 0.01);
     const c = amt > 0 ? baseC.clone().lerp(focusC, amt) : baseC;
     col[i * 6] = c.r; col[i * 6 + 1] = c.g; col[i * 6 + 2] = c.b;
     col[i * 6 + 3] = c.r; col[i * 6 + 4] = c.g; col[i * 6 + 5] = c.b;
@@ -930,7 +932,8 @@ function animate() {
   if (S.nebulae) {
     const t = Date.now();
     S.nebulae.children.forEach((sp, i) => {
-      sp.material.opacity = (sp.userData.baseOpacity || 0.3) * (0.86 + 0.14 * Math.sin(t * 0.00045 + i * 0.9));
+      sp.material.opacity = (sp.userData.baseOpacity || 0.3) * (0.86 + 0.14 * Math.sin(t * 0.00045 + i * 0.9))
+        * (1 - 0.7 * (S.focusAmount || 0));
     });
   }
   if (S.stars) S.stars.rotation.y += 0.00002;

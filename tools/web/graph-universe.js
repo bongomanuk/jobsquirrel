@@ -354,6 +354,7 @@ function build(data) {
       blending: THREE.AdditiveBlending
     });
     const sp = new THREE.Sprite(m);
+    sp.userData.baseOpacity = m.opacity;
     sp.position.copy(c.center);
     sp.scale.setScalar(c.spread * (c.size > 40 ? 7.5 : 6));
     ng.add(sp);
@@ -543,6 +544,7 @@ function assignLabels() {
     return { x, y };
   };
   const inRange = n => n === S.selected || n === S.hovered
+    || (S.selDist && S.focusAmount > 0.05 && (S.selDist.get(n.id) == null ? 99 : S.selDist.get(n.id)) <= 1)
     || n.pos.distanceTo(target) <= range;
   const represented = n => {
     const cl = S.clusterOf.get(n.id);
@@ -757,10 +759,13 @@ function loop(now) {
   if (!S.fly && now - (S.lastLOD || 0) > 420) { S.lastLOD = now; updateLOD(); }
   if (S.stars) S.stars.rotation.y += 0.00002;
 
-  // scale glows with zoom so near stars stay soft and far ones stay visible
+  // scale glows with zoom so near stars stay soft and far ones stay visible.
+  // While a node is focused, grow the points so distant neighbours read as
+  // bright lights instead of one-pixel specks.
   const dist = S.orbit.radius;
-  if (S.core) S.core.material.size = Math.max(6, Math.min(30, dist * 0.006));
-  if (S.halo) S.halo.material.size = Math.max(24, Math.min(170, dist * 0.022));
+  const fm = 1 + 1.1 * (S.focusAmount || 0);
+  if (S.core) S.core.material.size = Math.max(6, Math.min(30, dist * 0.006)) * fm;
+  if (S.halo) S.halo.material.size = Math.max(24, Math.min(170, dist * 0.022)) * fm;
   if (S.major) S.major.material.size = Math.max(22, Math.min(90, dist * 0.012));
   if (S.impact) S.impact.material.size = Math.max(30, Math.min(150, dist * 0.018));
   if (S.marker && S.selected) {
@@ -836,33 +841,50 @@ function applySelection() {
   if (!S.coreColors) return;
   const sel = S.selDist;
   const core = S.coreColors, halo = S.haloColors;
-  const white = new THREE.Color('#ffffff');
+  const amt0 = sel ? (S.focusAmount == null ? 1 : S.focusAmount) : 0;
   S.nodes.forEach((n, i) => {
     const cl = S.clusterOf.get(n.id);
-    const lod = (!S.activeClusters || !cl || S.activeClusters.has(cl)) ? 1 : 0.04;
-    const amt = sel ? (S.focusAmount == null ? 1 : S.focusAmount) : 0;
-    let f = 1;
-    if (sel && amt > 0) {
+    let lod = (!S.activeClusters || !cl || S.activeClusters.has(cl)) ? 1 : 0.04;
+    let f = 1, glow = 1;
+    if (sel && amt0 > 0) {
       const d = sel.get(n.id);
       const D = S.focusDepth || 2;
-      const ff = d == null ? 0.006
-        : d === 0 ? 1
-        : d <= D ? (d === 1 ? 0.85 : Math.max(0.30, 0.55 - (d - 2) * 0.12))
-        : 0.02;
-      f = 1 - amt * (1 - ff);
+      let ff = 1, gg = 1;
+      if (d == null) { ff = 0.006; gg = 0; }
+      else if (d === 0) { ff = 1; gg = 2.0; }
+      else if (d === 1) { ff = 1; gg = 1.55; }
+      else if (d <= D) { ff = Math.max(0.45, 0.68 - (d - 2) * 0.15); gg = 1.12; }
+      else { ff = 0.012; gg = 0; }
+      f = 1 - amt0 * (1 - ff);
+      glow = 1 + amt0 * (gg - 1);
+      // Keep the focused neighbours lit even when their island is outside the
+      // current level of detail; otherwise the subgraph stays invisible.
+      if (d != null && d <= D) lod = 1;
     }
     const c = n.colorObj;
-    let r = c.r * lod * f, g = c.g * lod * f, b = c.b * lod * f;
-    if (n === S.selected) { r = Math.min(1, r * 0.5 + 0.5); g = Math.min(1, g * 0.5 + 0.5); b = Math.min(1, b * 0.5 + 0.5); }
+    let r = c.r * lod * Math.min(1, f), g = c.g * lod * Math.min(1, f), b = c.b * lod * Math.min(1, f);
+    if (n === S.selected) {
+      r = Math.min(1, r * 0.35 + 0.65);
+      g = Math.min(1, g * 0.35 + 0.65);
+      b = Math.min(1, b * 0.35 + 0.65);
+    }
     core[i * 3] = r; core[i * 3 + 1] = g; core[i * 3 + 2] = b;
-    if (halo) { halo[i * 3] = r; halo[i * 3 + 1] = g; halo[i * 3 + 2] = b; }
+    if (halo) {
+      halo[i * 3] = Math.min(3, r * glow);
+      halo[i * 3 + 1] = Math.min(3, g * glow);
+      halo[i * 3 + 2] = Math.min(3, b * glow);
+    }
   });
   S.core.geometry.attributes.color.needsUpdate = true;
   if (S.halo) S.halo.geometry.attributes.color.needsUpdate = true;
-  const amt0 = sel ? (S.focusAmount == null ? 1 : S.focusAmount) : 0;
-  if (S.lines) S.lines.material.opacity = 0.085 + amt0 * (0.24 - 0.085);
-  if (S.impact) S.impact.material.opacity = 1 - amt0 * (1 - 0.06);
-  if (S.major) S.major.material.opacity = 1 - amt0 * (1 - 0.05);
+  if (S.halo) S.halo.material.opacity = 0.3 + amt0 * 0.35;
+  if (S.lines) S.lines.material.opacity = 0.085 + amt0 * (0.30 - 0.085);
+  if (S.impact) S.impact.material.opacity = 1 - amt0;
+  if (S.major) S.major.material.opacity = 1 - amt0;
+  if (S.nebula) S.nebula.children.forEach(sp => {
+    const base = sp.userData.baseOpacity == null ? 0.12 : sp.userData.baseOpacity;
+    sp.material.opacity = base * (1 - 0.7 * amt0);
+  });
   if (S.lines && S.linkBaseColors) {
     const attr = S.lines.geometry.attributes.color;
     const base = S.linkBaseColors;
@@ -872,8 +894,8 @@ function applySelection() {
       if (sel && amt0 > 0) {
         const a = sel.get(l.source), b = sel.get(l.target);
         const D = S.focusDepth || 2;
-        const ff = (a === 0 || b === 0) ? 0.95
-          : (a != null && b != null && a <= D && b <= D) ? 0.20 : 0.015;
+        const ff = (a === 0 || b === 0) ? 1
+          : (a != null && b != null && a <= D && b <= D) ? 0.28 : 0.01;
         f = 1 - amt0 * (1 - ff);
       }
       for (let k = 0; k < 6; k++) attr.array[i * 6 + k] = base[i * 6 + k] * f;
@@ -882,28 +904,55 @@ function applySelection() {
   }
 }
 
+function clearFocus() {
+  if (!S.selected && !S.selDist && !S.focusAmount) return;
+  S.selected = null; S.selDist = null; S.focusAmount = 0;
+  if (S.marker) S.marker.visible = false;
+  applySelection();
+  assignLabels();
+  updateLabels(true);
+  setSide(null);
+  if (S.returnView) {
+    flyTo(S.returnView.target, S.returnView.radius, 700);
+    S.returnView = null;
+  }
+}
+
+function focusFrame(n, dist) {
+  const pts = [n];
+  for (const m of S.nodes) {
+    const d = dist.get(m.id);
+    if (m !== n && d != null && d <= 1) pts.push(m);
+  }
+  let spread = 0;
+  for (const m of pts) spread = Math.max(spread, n.pos.distanceTo(m.pos));
+  return { center: n.pos.clone(), radius: Math.max(500, Math.min(2600, spread * 2.0 + 260)) };
+}
+
 function select(n) {
+  if (!S.selected) S.returnView = { target: S.orbit.target.clone(), radius: S.orbit.radius };
   S.selected = n; S.auto = false;
   S.selDist = graphDistances(n.id);
   S.focusAmount = 1;
   S.focusAt = performance.now();
   applySelection();
   setSide(n);
-  const dist = 240 + Math.min(700, (n.degree || 1) * 4.5);
-  flyTo(n.pos.clone(), dist, 950);
+  const frame = focusFrame(n, S.selDist);
+  flyTo(frame.center, frame.radius, 950);
   if (S.marker) {
     S.marker.visible = true;
     S.marker.position.copy(n.pos);
-    S.marker.userData.base = Math.max(28, n.radius * 3.2);
+    S.marker.userData.base = Math.max(56, n.radius * 6.2);
     S.marker.scale.setScalar(S.marker.userData.base);
-    S.marker.material.color.copy(n.colorObj).lerp(new THREE.Color('#ffffff'), 0.45);
+    S.marker.material.color.copy(n.colorObj).lerp(new THREE.Color('#ffffff'), 0.62);
   }
   updateLOD(true);
 }
 
 function flyToCluster(c) {
   const radius = Math.max(420, c.spread * 3.4);
-  S.selected = null; S.auto = false;
+  S.selected = null; S.selDist = null; S.focusAmount = 0; S.returnView = null; S.auto = false;
+  applySelection(); assignLabels(); updateLabels(true);
   flyTo(c.center.clone(), radius, 1200);
   setSideCluster(c);
   updateLOD(true);
@@ -1030,7 +1079,11 @@ function bind() {
   });
   c.addEventListener('pointerleave', () => { if (S.tip) S.tip.classList.add('hide'); });
   c.addEventListener('pointerup', e => {
-    if (S.drag && !S.drag.moved) { const n = hitAt(e.clientX, e.clientY); if (n) select(n); }
+    if (S.drag && !S.drag.moved) {
+      const n = hitAt(e.clientX, e.clientY);
+      if (n) select(n);
+      else clearFocus();
+    }
     else if (S.drag) { clearTimeout(S.assignTimer); S.assignTimer = setTimeout(assignLabels, 240); }
     S.drag = null;
   });
