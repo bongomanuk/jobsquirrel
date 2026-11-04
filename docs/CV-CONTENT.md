@@ -22,6 +22,23 @@ numbers and `check_documents.py` refuses a PDF that fails them.
 `FILL` (page count and how far down each page the text reaches). If either is
 short, add evidenced detail; never pad.
 
+## The fast, still-grounded path
+
+`prepare_role.py` does the deterministic work once: ATS terms, GraphRAG context
+(reused when the JD hash is unchanged), archetype selection + alignment, and a
+seed pack copied from the closest existing grounded pack. It writes
+`state/briefs/<key>.md` with the full JD, grounded context and paths.
+
+The model then edits only the parts that should change for the role: profile,
+tagline, skills, selected work and the role-specific bullet selection/order.
+The static roles, dates and evidenced achievements are already in the seed, so
+there is no reason to regenerate them. Write the letter prose to
+`state/letters/<key>.json`, then run `finalise_docs.py`: it renders the CV with
+the fill check, renders the letter, runs the pre-submit gate with `--record`
+and (in REVIEW) records PREPARED only on PASS. This cuts the slow model's
+output and the number of turns without skipping any grounding rule or gate.
+
+
 ## No targeting tells
 
 - **No job-title line at the top.** The CV opens with the name, contact details and a short

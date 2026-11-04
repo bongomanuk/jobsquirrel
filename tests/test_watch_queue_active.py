@@ -20,12 +20,14 @@ import watch_queue as WQ  # noqa: E402
 pytestmark = pytest.mark.skipif(not os.path.isdir("/proc"), reason="needs /proc (Linux)")
 
 
-def _fake_run(env_root, cwd):
+def _fake_run(env_root, cwd, queue=""):
     """A process whose command line looks like a queue runner."""
     env = dict(os.environ)
     env.pop("ROOT", None)
     if env_root:
         env["ROOT"] = str(env_root)
+    if queue:
+        env["QUEUE"] = queue
     proc = subprocess.Popen(["bash", "-c", "exec -a run_queue.sh sleep 10"],
                             cwd=str(cwd), env=env,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -84,5 +86,15 @@ def test_watch_queue_itself_is_never_a_run(tmp_path):
     try:
         time.sleep(0.2)
         assert WQ.runner_active() is False
+    finally:
+        proc.kill()
+
+
+def test_a_bench_queue_does_not_count(tmp_path):
+    """A /tmp/bench queue is a local benchmark, not a job-search run."""
+    proc = _fake_run(ROOT, ROOT, queue=str(tmp_path / "bench-queue.tsv"))
+    try:
+        assert WQ.runner_active() is False
+        assert f"Fake Co|Fake Role" not in WQ.live_tasks()
     finally:
         proc.kill()

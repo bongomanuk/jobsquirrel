@@ -224,20 +224,16 @@ def describe(path):
 HAVE_PROC = os.path.isdir("/proc")
 
 
-def cmdlines():
-    """Command line of every other process, arguments joined by spaces.
-
-    Linux: /proc/<pid>/cmdline. macOS has no /proc, so there it is `ps`, which
-    prints a newline inside an argument as \\012 and a tab as \\011; those are
-    decoded back so a multi-line prompt reads the same as on Linux.
-    """
+def _processes():
+    """(pid, command line) for every other process, arguments joined by spaces."""
     me = os.getpid()
     if HAVE_PROC:
         for p in glob.glob("/proc/[0-9]*/cmdline"):
             try:
-                if int(p.split("/")[2]) == me:
+                pid = int(p.split("/")[2])
+                if pid == me:
                     continue
-                yield open(p, "rb").read().replace(b"\x00", b" ").decode("utf-8", "ignore")
+                yield pid, open(p, "rb").read().replace(b"\x00", b" ").decode("utf-8", "ignore")
             except (OSError, ValueError):
                 continue
         return
@@ -250,7 +246,13 @@ def cmdlines():
         pid, _, c = line.strip().partition(" ")
         if not pid.isdigit() or int(pid) == me:
             continue
-        yield c.replace("\\012", "\n").replace("\\011", "\t")
+        yield int(pid), c.replace("\\012", "\n").replace("\\011", "\t")
+
+
+def cmdlines():
+    """Command line of every other process, arguments joined by spaces."""
+    for _, c in _processes():
+        yield c
 
 
 RUNNER_SCRIPTS = ("run_queue.sh", "run_linkedin.sh", "human_assist.sh")
@@ -273,6 +275,34 @@ def _proc_root_env(pid: int) -> str:
         if item.startswith(b"ROOT="):
             return os.path.realpath(item[5:].decode("utf-8", "ignore"))
     return ""
+
+
+def _proc_env(pid: int, name: str) -> str:
+    try:
+        raw = open(f"/proc/{pid}/environ", "rb").read()
+    except OSError:
+        return ""
+    key = (name + "=").encode()
+    for item in raw.split(b"\x00"):
+        if item.startswith(key):
+            return item[len(key):].decode("utf-8", "ignore")
+    return ""
+
+
+def _queue_visible(pid: int) -> bool:
+    """Benchmarks and throwaway queues must not light up the dashboard.
+
+    A run with QUEUE=/tmp/bench-queue.tsv (or any queue outside state/, or a
+    name containing "bench") is a local benchmark, not a job-search run.
+    """
+    if _proc_env(pid, "JOBSQUIRREL_HIDE_RUNNER").strip() in ("1", "true", "yes"):
+        return False
+    q = _proc_env(pid, "QUEUE")
+    if not q:
+        return True
+    # Benchmarks use a queue named *bench*; a legitimate run can use any queue
+    # path (including a temporary sandbox in the tests).
+    return "bench" not in os.path.basename(os.path.realpath(q)).lower()
 
 
 def runner_active() -> bool:
@@ -302,7 +332,7 @@ def runner_active() -> bool:
             # throwaway sandbox); otherwise the process must be working in this
             # repo. Either way an unrelated run must not count.
             where = _proc_root_env(pid) or _proc_cwd(pid)
-            if where == root:
+            if where == root and _queue_visible(pid):
                 return True
         return False
     for c in cmdlines():
@@ -321,8 +351,10 @@ def live_tasks():
     must read WAIT, not RUN.
     """
     live = set()
-    for c in cmdlines():
+    for pid, c in _processes():
         if ROOT not in c or not any(a in c for a in ("opencode", "claude", "agent_run.sh")):
+            continue
+        if not _queue_visible(pid):
             continue
         # Company/Role are the first two labelled lines in every prompt. Parse
         # them independently so intervening lines (e.g. the human-assist prompt's

@@ -271,44 +271,40 @@ Given a role (company, role, apply URL, chosen archetype):
 ```bash
 key=<slug-for-this-role>                 # e.g. company-role
 
-# (1) Save the ad text to state/job-descriptions/<key>.md, then extract keywords
-python3 tools/ats_keywords.py --jd state/job-descriptions/<key>.md --out state/ats/<key>.txt
+# (1) Save the ad text to state/job-descriptions/<key>.md
 
-# (2) Grounding (GraphRAG; required): build the cited context pack
-python3 tools/kb_graphrag.py --jd state/job-descriptions/<key>.md --out state/kb-context/<key>.md
+# (2) Deterministic prep in one command: ATS keywords, GraphRAG (cached by JD
+#     hash), archetype selection + alignment, a grounded seed CV pack, and
+#     state/briefs/<key>.md (JD + grounded context + paths). It is fast when
+#     the JD is unchanged and fails closed on a misaligned archetype.
+python3 tools/prepare_role.py --key <key> --company "<Company>" --role "<Role>"
 
-# (3) Choose the aligned archetype and VERIFY it
-python3 tools/check_alignment.py --cv documents/archetypes/<Prefix>_CV_<Archetype>.docx \
-    --jd state/job-descriptions/<key>.md            # must print RESULT: PASS - alignment
+# (3) Read the brief and pack ONCE, then tailor the seed pack with `edit`:
+#     profile 150-180 words, tagline, skills, selected work and role bullets.
+#     Keep every role and every evidenced achievement; do not rewrite facts.
+#     Write the letter prose to state/letters/<key>.json (headline, title,
+#     engagement, opening, fit).
+python3 tools/finalise_docs.py --key <key> --company "<Company>" --role "<Role>" \
+    --jd state/job-descriptions/<key>.md --ats state/ats/<key>.txt \
+    [--engagement contract] [--record-prepared]   # --record-prepared in REVIEW only
 
-# (4) Write a targeted CV content pack (grounded, truthful), then render both formats
-#     state/cv-content/<key>.json  ->  documents/applications/<Prefix>_CV_<key>.docx + .pdf
-python3 tools/cv_target.py --key <key> --content state/cv-content/<key>.json
+# finalise_docs renders the CV (--require-fill), renders the letter, runs the
+# pre-submit gate with --record, and records PREPARED in REVIEW. In an apply run
+# it writes the same gate receipt that record_submission.py requires.
 
-# (5) Write the cover letter (in the candidate's voice; ground every claim)
-#     via tools/cv_builder.render_motivation({...}) -> documents/applications/<Prefix>_Motivation_<key>.docx
-#     (see tools/make_letter.py for the minimal example)
-
-# (6) PRE-SUBMIT GATE, nothing is uploaded until this prints RESULT: PASS.
-#     --record writes a hash-stamped gate receipt; record_submission.py REFUSES
-#     to record SUBMITTED without it. Gate the EXACT CV+letter you will upload.
-python3 tools/check_documents.py --letter documents/applications/<Prefix>_Motivation_<key>.docx \
-    --cv documents/applications/<Prefix>_CV_<key>.docx --company "<Company>" \
-    --ats-keywords state/ats/<key>.txt [--engagement contract] --record
-
-# (7) Apply via Camoufox through the employer's own ATS
+# (4) Apply via Camoufox through the employer's own ATS
 python3 tools/camoufox_server.py --port 9872 &                       # once per session
 python3 tools/camoufox_browser.py --server http://127.0.0.1:9872 nav "<apply-url>"
 #   ... snap / fill / pick / upload / submit ... (recipes: docs/ATS-RECIPES.md)
 
-# (8) Record the exact files sent (snapshots + hashes) and upsert the register
+# (5) Record the exact files sent (snapshots + hashes) and upsert the register
 python3 tools/record_submission.py --company "<Company>" --role "<Role>" --ats <ATS> \
     --url "<apply-url>" --cv documents/applications/<Prefix>_CV_<key>.docx \
     --letter documents/applications/<Prefix>_Motivation_<key>.docx --status SUBMITTED \
     --evidence "<exact thank-you text / confirmation email>"
 ```
 
-On any failure at (6): fix and re-run, never upload. On a wall at (7): record
+On any failure at (3): fix and re-run, never upload. On a wall at (4): record
 `BLOCKED`/`MANUAL` with what you tried and stop.
 
 ---
