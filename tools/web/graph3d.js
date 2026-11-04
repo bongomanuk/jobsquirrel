@@ -261,6 +261,14 @@ export async function show(data, opts = {}) {
     .filter(l => l.s && l.t);
   S.links = links;
   const isSpread = data.mode === 'types' || data.mode === 'communities';
+  // Settle the entity layout before the first frame. Previously the physics
+  // kept expanding after the initial fit, so the Map visibly zoomed out for
+  // several seconds after it loaded.
+  if (!isSpread) {
+    S.alpha = 1;
+    for (let i = 0; i < 220; i++) step();
+    S.alpha = 0;
+  }
   if (isSpread) {
     // a shallow 3D shell rather than a flat ring: it reads as a constellation
     const R = Math.max(300, 130 + Math.sqrt(S.nodes.length) * (data.mode === 'communities' ? 58 : 52));
@@ -421,7 +429,7 @@ export async function show(data, opts = {}) {
   S.group.add(S.lineMesh);
   S.lineMesh.material.opacity = 0.2;
   paintLines(null, null);
-  S.alpha = isSpread ? 0 : 1;
+  S.alpha = 0;
   S.fitted = true;
   fit(isSpread ? 1.02 : 1.18);
   S.paused = false;
