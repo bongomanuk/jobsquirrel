@@ -143,11 +143,22 @@ function layout(nodes) {
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(n);
   }
+  // Entities with no relationships cannot join a theme. Keep them together in
+  // one named island instead of letting them drift as stray labels.
+  const linked = new Set();
+  for (const l of (S.links || [])) { linked.add(l.source); linked.add(l.target); }
+  const unlinked = nodes.filter(n => !linked.has(n.id));
+  if (unlinked.length) {
+    const drop = new Set(unlinked);
+    for (const [k, list] of groups) groups.set(k, list.filter(n => !drop.has(n)));
+  }
+
   // Communities of 5+ get their own island; the long tail is folded into
   // type-coloured "drift" islands so the map stays legible.
   let islands = [...groups.entries()].filter(([, v]) => v.length >= 5)
     .sort((a, b) => b[1].length - a[1].length);
   const rest = [...groups.entries()].filter(([, v]) => v.length < 5).flatMap(([, v]) => v);
+  if (unlinked.length) islands.push(['unlinked', unlinked]);
   if (rest.length) {
     const buckets = Math.max(6, Math.min(18, Math.round(rest.length / 45)));
     for (let i = 0; i < buckets; i++) islands.push(['m' + i, []]);
@@ -174,9 +185,13 @@ function layout(nodes) {
     const rank = x => (Number(x.importance) || 0) * 100 + Math.min(40, x.degree || 0);
     const dom = list.reduce((a, b) => (rank(b) > rank(a) ? b : a), list[0]);
     const titled = list.find(x => x.community_title);
+    const isUnlinked = key === 'unlinked';
     const cluster = {
-      key, center, spread, list, size: list.length, color: colorOf(dom),
-      name: dom.title, title: (titled && titled.community_title) || dom.title, top: dom
+      key, center, spread, list, size: list.length,
+      color: isUnlinked ? new THREE.Color('#94a3b8') : colorOf(dom),
+      name: isUnlinked ? 'Unlinked evidence' : dom.title,
+      title: isUnlinked ? 'Unlinked evidence' : ((titled && titled.community_title) || dom.title),
+      top: dom, unlinked: isUnlinked
     };
     S.clusters.push(cluster);
     list.forEach(n => S.clusterOf.set(n.id, cluster));
@@ -450,6 +465,7 @@ function lodPlan() {
   const budget = k > 0.72 ? 28 : k > 0.48 ? 50 : k > 0.3 ? 90 : k > 0.16 ? 140 : 9999;
   const ranked = S.clustersRanked || (S.clustersRanked = [...S.clusters].sort((a, b) => b.size - a.size));
   const act = new Set(ranked.slice(0, budget));
+  for (const c of S.clusters) if (c.unlinked) act.add(c);
   if (k < 0.55) {
     const rng = labelRange() * 1.15;
     for (const c of S.clusters) if (c.center.distanceTo(S.orbit.target) <= rng) act.add(c);
@@ -602,7 +618,7 @@ function assignLabels() {
     const cl = [...S.clusters]
       .filter(c => (!S.activeClusters || S.activeClusters.has(c))
         && c.center.distanceTo(target) <= range * 1.2)
-      .sort((a, b) => b.size - a.size);
+      .sort((a, b) => (b.unlinked ? 1 : 0) - (a.unlinked ? 1 : 0) || b.size - a.size);
     for (const { c } of prevClusters) {
       if (ci >= max) break;
       if (!prevSet.has(c)) continue;
@@ -999,8 +1015,9 @@ function renderNodeSide(d) {
     || '<span class="muted mini">No strong local connections.</span>';
   box.innerHTML = `<div class="uni-kind">${esc(d.class_label || d.type || 'entity')} · impact ${Math.round((d.importance || 0) * 100)}%${d.grounded ? ' · grounded' : ''}</div>
     <h3>${esc(d.title)}</h3>
-    <div class="uni-meta">${d.degree || 0} links · ${d.frequency || 0} mentions · ${esc(d.community_title || 'no community')}</div>
+    <div class="uni-meta">${d.degree || 0} links · ${d.frequency || 0} mention${d.frequency === 1 ? '' : 's'} · ${esc(d.community_title || ((d.degree || 0) === 0 ? 'unlinked evidence' : 'no community'))}</div>
     <p>${esc(d.description || 'No description in the index.')}</p>
+    ${(d.degree || 0) === 0 ? '<p class="muted mini">No relationship was extracted for this entity, so it sits in the Unlinked evidence island. It stays available to search and role evidence.</p>' : ''}
     ${d.evidence ? `<div class="uni-evidence"><b>Evidence</b>${esc(d.evidence)}</div>` : ''}
     <div class="uni-subgraph"><b>Subgraph</b> ${d.subgraph ? d.subgraph.nodes : 1} nodes · ${d.subgraph ? d.subgraph.links : 0} links · depth ${d.subgraph ? d.subgraph.max_depth : 0}<div>${layers}</div><div class="muted mini" style="margin-top:3px">Highlight shows the selected node and its ${(S.focusDepth || 1) === 1 ? 'direct neighbours' : `nearest ${S.focusDepth} hops`}; the counts cover the whole connected subgraph. The dimming fades after a few seconds; the selected node stays marked.</div></div>
     <h4>Sources</h4>${sources}
@@ -1018,8 +1035,10 @@ function setSideCluster(c) {
   if (!box) return;
   box.innerHTML = `<div class="uni-kind">island</div>
     <h3>${esc(islandTitle(c))}</h3>
-    <div class="uni-meta">${c.size} entities · community ${String(c.key).replace(/^c/, '')}</div>
-    <p>The island is named after its best-connected entity. Its neighbours orbit it; click any star or use search to jump straight to one.</p>
+    <div class="uni-meta">${c.size} ${c.unlinked ? 'unlinked entities' : `entities · community ${String(c.key).replace(/^c/, '')}`}</div>
+    <p>${c.unlinked
+      ? 'These entities appear in the evidence but no relationship was extracted for them, so they cannot be placed in a theme. They stay available to search and role evidence.'
+      : 'The island is named after its best-connected entity. Its neighbours orbit it; click any star or use search to jump straight to one.'}</p>
     <div class="uni-actions"><button class="small" onclick="window.__uni && window.__uni.reset()">Reset view</button></div>`;
 }
 

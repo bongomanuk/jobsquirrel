@@ -123,6 +123,12 @@ def main():
                                  if os.path.isfile(os.path.join(INPUT, f))
                                  and not f.startswith(".")]) if os.path.isdir(INPUT) else 0
 
+    # grounding: every entity should still point at a surviving text unit
+    report["grounding"] = {
+        "entities_without_text_units": int(ents["text_unit_ids"].apply(lambda x: len(list(x)) == 0).sum())
+        if "text_unit_ids" in ents.columns else 0,
+    }
+
     # degree + type distribution
     deg = [int(x) for x in ents["degree"]]
     report["degree"] = {"zero": sum(1 for x in deg if x == 0),
@@ -210,8 +216,11 @@ def main():
     se = report["sensitive"]
     print(f"sensitive       blocked titles:{se['blocked_titles']}  "
           f"descriptions:{se['sensitive_descriptions']}  reports:{se['sensitive_reports']}")
-    if args.fail_sensitive and any(report["sensitive"].values()):
-        print("\nFAIL: sensitive employment-contract material remains", file=sys.stderr)
+    gr = report["grounding"]
+    print(f"grounding       entities without a text unit: {gr['entities_without_text_units']}")
+    if args.fail_sensitive and (any(report["sensitive"].values()) or
+                                gr["entities_without_text_units"]):
+        print("\nFAIL: sensitive or ungrounded material remains", file=sys.stderr)
         return 2
     if t["examples"]:
         print("\nlargest near-duplicate title groups:")

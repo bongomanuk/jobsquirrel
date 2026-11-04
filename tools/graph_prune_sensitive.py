@@ -131,7 +131,10 @@ def main():
         clean_vectors()
         return 0
     if not args.apply:
+        empty_ents = sum(1 for ids in ents["text_unit_ids"] if len(list(ids)) == 0)
+        empty_rels = sum(1 for ids in rels["text_unit_ids"] if len(list(ids)) == 0)
         print(f"contract documents to drop: {len(drop_docs)}, text units: {len(drop_units)}")
+        print(f"ungrounded entities to drop: {empty_ents}; relationships without provenance: {empty_rels}")
         print("(dry run — pass --apply to write the cleaned index)")
         return 0
 
@@ -144,48 +147,80 @@ def main():
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(backup, name + ".parquet"))
 
-    # entities
-    keep = ents[~ents["title"].astype(str).isin(blocked)].copy()
-    keep["description"] = [S.redact(str(d or "")) for d in keep["description"]]
-    if drop_units and "text_unit_ids" in keep.columns:
-        keep["text_unit_ids"] = keep["text_unit_ids"].map(
-            lambda ids: [x for x in (list(ids) if ids is not None else []) if str(x) not in drop_units])
-    keep.to_parquet(os.path.join(OUT, "entities.parquet"), index=False)
+    # provenance first: strip the contract text units, then treat any entity
+    # left without a text unit as contract residue. Such an entity has no
+    # surviving evidence, so it cannot stay in a grounded graph.
+    def clean_ids(ids):
+        return [x for x in (list(ids) if ids is not None else [])
+                if str(x) not in drop_units]
 
-    # relationships
-    rel = rels[~rels["source"].astype(str).isin(blocked) & ~rels["target"].astype(str).isin(blocked)].copy()
+    ents = ents.copy()
+    if "text_unit_ids" in ents.columns:
+        ents["text_unit_ids"] = ents["text_unit_ids"].map(clean_ids)
+    ungrounded = set(ents.loc[ents["text_unit_ids"].map(len) == 0, "title"].astype(str))
+    drop_titles = set(blocked) | ungrounded
+    print(f"entities dropped: {len(drop_titles)} "
+          f"({len(blocked)} blocked by name, {len(ungrounded)} with no surviving provenance)")
+
+    # relationships: drop either endpoint and anything whose only provenance
+    # was a contract text unit. Recompute both degree fields afterwards.
+    rel = rels[~rels["source"].astype(str).isin(drop_titles) &
+               ~rels["target"].astype(str).isin(drop_titles)].copy()
     rel["description"] = [S.redact(str(d or "")) for d in rel["description"]]
-    if drop_units and "text_unit_ids" in rel.columns:
-        rel["text_unit_ids"] = rel["text_unit_ids"].map(
-            lambda ids: [x for x in (list(ids) if ids is not None else []) if str(x) not in drop_units])
-    # recompute combined degree
+    if "text_unit_ids" in rel.columns:
+        rel["text_unit_ids"] = rel["text_unit_ids"].map(clean_ids)
+        rel = rel[rel["text_unit_ids"].map(len) > 0].copy()
+    deg = Counter()
+    for a, b in zip(rel["source"], rel["target"]):
+        deg[str(a)] += 1
+        deg[str(b)] += 1
     if "combined_degree" in rel.columns:
-        deg = Counter()
-        for a, b in zip(rel["source"], rel["target"]):
-            deg[str(a)] += 1; deg[str(b)] += 1
-        rel["combined_degree"] = [deg[str(a)] + deg[str(b)] for a, b in zip(rel["source"], rel["target"])]
+        rel["combined_degree"] = [deg[str(a)] + deg[str(b)]
+                                  for a, b in zip(rel["source"], rel["target"])]
     rel.to_parquet(os.path.join(OUT, "relationships.parquet"), index=False)
 
-    # communities: drop blocked ids and contract text units, recount
+    # entities (degree now reflects the surviving relationships)
+    keep = ents[~ents["title"].astype(str).isin(drop_titles)].copy()
+    keep["description"] = [S.redact(str(d or "")) for d in keep["description"]]
+    keep["degree"] = [deg.get(str(t), 0) for t in keep["title"]]
+    keep.to_parquet(os.path.join(OUT, "entities.parquet"), index=False)
+
+    # communities: drop ungrounded communities, then remove deleted members
+    # and relationships and recount. A community without a text unit has no
+    # evidence behind it and is removed with its report.
+    kept_ids = set(keep["id"].astype(str))
+    kept_rel = set(rel["id"].astype(str))
+    kept_comm = set()
     if comms is not None:
         comms = comms.copy()
-        def filt(ids):
-            return [x for x in (list(ids) if ids is not None else [])
-                    if str(x) not in blocked and str(x) not in drop_units]
-        comms["entity_ids"] = comms["entity_ids"].map(filt)
+        comms["entity_ids"] = comms["entity_ids"].map(
+            lambda ids: [x for x in (list(ids) if ids is not None else [])
+                         if str(x) in kept_ids])
+        if "relationship_ids" in comms.columns:
+            comms["relationship_ids"] = comms["relationship_ids"].map(
+                lambda ids: [x for x in (list(ids) if ids is not None else [])
+                             if str(x) in kept_rel])
         if "text_unit_ids" in comms.columns:
-            comms["text_unit_ids"] = comms["text_unit_ids"].map(
-                lambda ids: [x for x in (list(ids) if ids is not None else []) if str(x) not in drop_units])
+            comms["text_unit_ids"] = comms["text_unit_ids"].map(clean_ids)
         comms["size"] = comms["entity_ids"].map(lambda ids: len(list(ids)))
+        comms = comms[comms["entity_ids"].map(len) > 0].copy()
+        if "text_unit_ids" in comms.columns:
+            comms = comms[comms["text_unit_ids"].map(len) > 0].copy()
+        kept_comm = set(int(x) for x in comms["community"])
         comms.to_parquet(os.path.join(OUT, "communities.parquet"), index=False)
 
-    # reports: remove contract-titled reports, redact the rest
+    # reports: only for surviving communities, never for a blocked/sensitive
+    # title, and redact the rest.
     if reports is not None:
-        rep = reports[~reports["title"].astype(str).map(S.blocked_title)].copy()
+        rep = reports[reports["community"].isin(kept_comm)].copy()
+        rep = rep[~rep["title"].astype(str).map(S.blocked_title)].copy()
+        rep = rep[~rep["title"].astype(str).map(S.sensitive)].copy()
         for col in ("title", "summary", "full_content", "findings",
                     "rating_explanation", "full_content_json"):
             if col in rep.columns:
                 rep[col] = rep[col].map(redact_value)
+        if "full_content" in rep.columns:
+            rep = rep[rep["full_content"].astype(str).str.strip() != ""].copy()
         rep.to_parquet(os.path.join(OUT, "community_reports.parquet"), index=False)
 
     # documents / text units
@@ -197,7 +232,8 @@ def main():
         u["text"] = [S.redact(str(t or "")) for t in u["text"]]
         if "entity_ids" in u.columns:
             u["entity_ids"] = u["entity_ids"].map(
-                lambda ids: [x for x in (list(ids) if ids is not None else []) if str(x) not in blocked])
+                lambda ids: [x for x in (list(ids) if ids is not None else [])
+                             if str(x) in kept_ids])
         u.to_parquet(os.path.join(OUT, "text_units.parquet"), index=False)
 
     # operator overlays

@@ -29,6 +29,12 @@ TITLE_TERMS = [
     "contract for services", "employment business", "employment agency",
     "working hours", "sickness compensation", "tax authority", "hr department",
     "specified services", "work finding services", "recruitment services",
+    # legal / terms-and-conditions machinery
+    "court", "court order", "english courts", "tribunal", "jurisdiction",
+    "severability", "laws of england", "laws of england and wales",
+    "governing law", "legal costs", "legal fees", "legal agent",
+    "legal dispute", "employment dispute", "clause", "work-finding",
+    "agency worker", "personal service company", "psc contractor",
 ]
 
 # Extra exact/generic titles produced by contract documents.
@@ -48,6 +54,13 @@ GENERIC_TITLES = {
     "CONDUCT OF EMPLOYMENT AGENCIES AND EMPLOYMENT BUSINESSES REGULATIONS 2003",
     "EMPLOYMENT AGENCY STANDARDS (EAS) INSPECTORATE",
     "ADDRESSEE", "WORKER", "HIRER", "END USER",
+    "COURT", "COURT ORDER", "ENGLISH COURTS", "LAWS OF ENGLAND AND WALES",
+    "WORK SERVICES", "CLAUSE 2.3", "LEGAL AGENT", "AUTHORISED OFFICER",
+    "AUTHORISED PERSON", "REGULATORY BODY", "AGENCY WORKER", "CANDIDATE",
+    "PSC CONTRACTOR", "PERSONAL SERVICE COMPANY", "PERSONAL SERVICE COMPANY (PSC)",
+    "HYPOTHETICAL ASSIGNMENT", "EMPLOYER", "EMPLOYEE", "REPRESENTATIVE",
+    "THIRD PARTY", "RELATIVE", "REFEREE", "DIRECTORS", "OFFICERS", "AGENTS",
+    "OMBUD", "KÄRANDE", "SVARANDE", "VD", "MONTHLY", "PAY", "FEES",
 }
 
 # Remove sentences/lines that carry these terms from surviving descriptions
@@ -65,6 +78,12 @@ REDACT_TERMS = [
     "uppsägningstid", "uppsagningstid", "opt out", "opt-out", "rehire period",
     "privacy notice", "employment agency", "working hours", "sickness compensation",
     "tax authority",
+    # legal / terms-and-conditions machinery
+    "court", "court order", "english courts", "tribunal", "jurisdiction",
+    "severability", "laws of england", "laws of england and wales",
+    "governing law", "legal costs", "legal fees", "legal agent",
+    "legal dispute", "employment dispute", "clause", "work-finding",
+    "agency worker", "personal service company", "psc contractor",
 ]
 
 _TITLE_RE = re.compile("|".join(r"\b" + re.escape(t) + r"\b" for t in TITLE_TERMS), re.I)

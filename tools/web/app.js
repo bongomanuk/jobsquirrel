@@ -210,6 +210,12 @@ function chatKey(e) {
   if (e.key === 'Tab') histClose();
 }
 
+function assetVer() {
+  const tag = document.querySelector('script[src*="app.js"]');
+  const m = tag && tag.src.match(/[?&]v=([^&]+)/);
+  return m ? '?v=' + m[1] : '';
+}
+
 const App = {
   async run(command) {
     if (command === 'submit_queue') {
@@ -515,7 +521,7 @@ const App = {
       if (window.__kg3d) window.__kg3d.pause();
       if (uni) uni.classList.remove('hide');
       try {
-        const mod = window.__uni || (window.__uni = await import('./graph-universe.js'));
+        const mod = window.__uni || (window.__uni = await import('./graph-universe.js' + assetVer()));
         await mod.open();
       } catch (e) { if (us) us.textContent = 'could not load the universe: ' + e; }
     } else {
@@ -2899,7 +2905,7 @@ async function kgRender(d) {
   if (!stage || !canvas) return;
   let mod;
   try {
-    mod = await import('./graph3d.js');
+    mod = await import('./graph3d.js' + assetVer());
   } catch (e) {
     stage.innerHTML = `<div class="kg3d-fallback">The 3D renderer could not load: ${esc(String(e))}</div>`;
     return;
