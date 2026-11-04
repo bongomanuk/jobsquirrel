@@ -246,6 +246,9 @@ contract. This is enforced at several points:
   no surviving text unit, their relationships, ungrounded communities and their
   reports; it recomputes degrees, drops dangling edges, redacts surviving
   descriptions/reports and cleans orphan vector rows.
+- A git-ignored `kb/graphrag/private-redactions.txt` can add a locality, a former
+  name or another private term without putting it in public code; the loader
+  appends those terms to the redaction list at runtime.
 - Context packs and Ask answers are redacted as a backstop.
 - The quality gate fails if any blocked title, sensitive description, sensitive
   report or ungrounded entity remains.

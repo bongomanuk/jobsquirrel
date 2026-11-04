@@ -12,6 +12,7 @@ Two lists:
 """
 from __future__ import annotations
 
+import os
 import re
 
 # Drop the entity if its title contains one of these phrases.
@@ -39,6 +40,7 @@ TITLE_TERMS = [
     "swedish id", "personal identity number", "personnummer", "date of birth",
     "employment documentation", "indefinite period", "contract terms",
     "company policies", "resident in", "home address", "personal email",
+    "swedish identity", "identity card", "residence on record",
 ]
 
 # Extra exact/generic titles produced by contract documents.
@@ -92,7 +94,22 @@ REDACT_TERMS = [
     "swedish id", "personal identity number", "personnummer", "date of birth",
     "employment documentation", "indefinite period", "contract terms",
     "company policies", "resident in", "home address", "personal email",
+    "swedish identity", "identity card", "residence on record",
 ]
+
+def _private_redactions():
+    """Private terms (a locality, a former surname) kept out of public code."""
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "kb", "graphrag", "private-redactions.txt")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return [ln.strip() for ln in fh
+                    if ln.strip() and not ln.lstrip().startswith("#")]
+    except OSError:
+        return []
+
+
+REDACT_TERMS = REDACT_TERMS + [t for t in _private_redactions() if t not in REDACT_TERMS]
 
 _TITLE_RE = re.compile("|".join(r"\b" + re.escape(t) + r"\b" for t in TITLE_TERMS), re.I)
 _REDACT_RE = re.compile("|".join(r"\b" + re.escape(t) + r"\b" for t in REDACT_TERMS), re.I)

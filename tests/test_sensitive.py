@@ -49,3 +49,8 @@ def test_personal_identifiers_are_sensitive_and_redacted():
     assert "19781023-1352" not in cleaned
     assert "someone@example.com" not in cleaned
     assert "Huddinge" not in cleaned
+
+
+def test_identity_document_and_private_terms_are_sensitive():
+    assert S.sensitive("Swedish identity card and residence on record")
+    assert S.sensitive("Full UK amateur radio licence; Swedish identity card")
