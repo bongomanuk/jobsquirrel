@@ -1389,13 +1389,13 @@ function renderRows() {
   const payMatch = (r) => !mp || (r.salary_eur != null && r.salary_eur >= mp);
   const fitMatch = (r) => !mf || (r.match != null && r.match >= mf);
   const workMatch = (r) => !wm || (r.work_model || 'unknown') === wm;
-  const filt = (r) => (fg || shown(r)) && statusMatch(r) && typeMatch(r) && actMatch(r) && payMatch(r) && fitMatch(r) && workMatch(r) &&
+  const filt = (r) => shown(r) && statusMatch(r) && typeMatch(r) && actMatch(r) && payMatch(r) && fitMatch(r) && workMatch(r) &&
     (!fg || (r.groups || []).includes(fg)) &&
     (!qq || r.queue === qq) &&
     (!q || (r.company + ' ' + r.role + ' ' + (r.ats || '') + ' ' + (r.action || '')).toLowerCase().includes(q));
   let rows = GRID.filter(filt);
-  // A group is a campaign: it crosses every status and bucket. When one is
-  // selected, show the whole group rather than hiding its closed/applied roles.
+  // A group is a campaign: it crosses every status and bucket. Dismissed roles
+  // still obey the "show dismissed" control, so Dismiss always removes the row.
   if (!fg) {
     if (BUCKET === 'active') rows = rows.filter(r => bucketOf(r) !== 'done');
     else if (BUCKET === 'focus') rows = rows.filter(r => r.focus || r.focus_unknown);
