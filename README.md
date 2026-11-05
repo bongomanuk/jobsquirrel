@@ -424,11 +424,14 @@ INTERVIEW → OFFER`, with `BLOCKED`/`MANUAL` branches and `REJECTED`/`CLOSED`
 terminals — and the queue, the gates, the reconciler and the dashboard all read
 and write that one state. There is no second copy of "where this role is".
 
-`PREPARED` means the documents were built and gated but nothing was sent;
-`INTERVIEW` means an interview thread exists (invited, booked or held). The
-dashboard draws the machine above the grid, and each status expands into the
-human **sub-states** inside it (for example `INTERVIEW` → invited — reply ·
-scheduled · replied — awaiting a reply · interviewed — awaiting outcome).
+The register statuses are `QUEUED, PREPARED, IN_PROGRESS, SUBMITTED, INTERVIEW,
+OFFER, REJECTED, BLOCKED, MANUAL, CLOSED`; the dashboard adds a derived
+`DRAFTING` stage while a role is being prepared. `PREPARED` means the documents
+were built and gated but nothing was sent; `INTERVIEW` means an interview thread
+exists (invited, booked or held). The dashboard draws the machine above the
+grid, and each status expands into the human **sub-states** inside it (for
+example `INTERVIEW` → invited — reply · scheduled · replied — awaiting a reply ·
+interviewed — awaiting outcome).
 
 ## Documentation
 
