@@ -4,11 +4,15 @@ import os
 import subprocess
 import sys
 
+import pytest
+
 from docx import Document
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PRIVATE_PROFILE = os.path.join(ROOT, "config", "profile.md")
 
 
+@pytest.mark.skipif(not os.path.exists(PRIVATE_PROFILE), reason="private config/profile.md not present")
 def test_role_line_is_not_rendered(tmp_path):
     pack = {
         "key": "demo-role",

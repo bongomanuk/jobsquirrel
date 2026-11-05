@@ -170,7 +170,7 @@ case "$agent" in
     fmt=()
     [ "${AGENT_JSON:-}" = "1" ] && fmt+=(--format json)
     [ -n "${AGENT_SESSION:-}" ] && fmt+=(-s "$AGENT_SESSION")
-    run_agent opencode run --model "local/$m" "${fmt[@]}" "$prompt"
+    run_agent opencode run --model "local/$m" ${fmt[@]+"${fmt[@]}"} "$prompt"
     exit $?
     ;;
   openrouter)
@@ -182,7 +182,7 @@ case "$agent" in
     fmt=()
     [ "${AGENT_JSON:-}" = "1" ] && fmt+=(--format json)
     [ -n "${AGENT_SESSION:-}" ] && fmt+=(-s "$AGENT_SESSION")
-    run_agent opencode run --model "$m" "${fmt[@]}" "$prompt"
+    run_agent opencode run --model "$m" ${fmt[@]+"${fmt[@]}"} "$prompt"
     exit $?
     ;;
   opencode)
@@ -190,10 +190,10 @@ case "$agent" in
     [ "${AGENT_JSON:-}" = "1" ] && fmt+=(--format json)
     [ -n "${AGENT_SESSION:-}" ] && fmt+=(-s "$AGENT_SESSION")
     if [ -n "${MODEL:-}" ]; then
-      run_agent opencode run --model "$MODEL" "${fmt[@]}" "$prompt"
+      run_agent opencode run --model "$MODEL" ${fmt[@]+"${fmt[@]}"} "$prompt"
       exit $?
     fi
-    run_agent opencode run "${fmt[@]}" "$prompt"
+    run_agent opencode run ${fmt[@]+"${fmt[@]}"} "$prompt"
     exit $?
     ;;
   claude)

@@ -300,8 +300,16 @@ run_task() {
   fi
   log="$LOGS/$(echo "$company-$role" | tr ' /|' '___').log"
   echo "START $(date +%H:%M:%S) $company | $role" >> "$LOGS/run_queue.out"
-  "$TIMEOUT_CMD" "$TASK_TIMEOUT" bash "$ROOT/tools/agent_run.sh" \
-    "$(build_prompt "$company" "$role" "$url" "$cv" "$ats" "$key" "$server")" >"$log" 2>&1 </dev/null
+  prompt="$(build_prompt "$company" "$role" "$url" "$cv" "$ats" "$key" "$server")"
+  if [ "$REVIEW" = "1" ]; then
+    # The apply steps must not reach a review run at all: an agent reading them
+    # ran record_submission.py after preparing documents.
+    prompt="$(printf '%s\n' "$prompt" | awk '/^4\. Apply via the Camoufox browser/{exit} {print}')"
+    prompt="$prompt
+
+REVIEW RUN ENDS HERE. Do NOT open the browser, do NOT upload, do NOT run record_submission.py and do NOT set SUBMITTED. The finalise command (with --record-prepared) has already recorded PREPARED on PASS. Return exactly one line: STATUS $company | $role | PREPARED|BLOCKED|CLOSED | <reason> | CV: documents/applications/${CV_PREFIX}_CV_$key.docx | letter: documents/applications/${CV_PREFIX}_Motivation_$key.docx"
+  fi
+  "$TIMEOUT_CMD" "$TASK_TIMEOUT" bash "$ROOT/tools/agent_run.sh" "$prompt" >"$log" 2>&1 </dev/null
   rc=$?
   # The outcome is the third |-separated field of the agent's last STATUS line:
   # "STATUS <Company> | <role> | BLOCKED | <reason> | CV: ...". (Taking the last

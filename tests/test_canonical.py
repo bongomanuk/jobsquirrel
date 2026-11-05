@@ -2,8 +2,14 @@
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
 import canonical as C  # noqa: E402
+
+PRIVATE_RULES = os.path.exists(os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "config", "canonical-facts.json"))
 
 
 def test_normalize_and_violations(monkeypatch):
@@ -25,6 +31,7 @@ def test_normalize_data_recurses(monkeypatch):
     assert C.normalize_data({"a": ["old", {"b": "old"}]}) == {"a": ["new", {"b": "new"}]}
 
 
+@pytest.mark.skipif(not PRIVATE_RULES, reason="private canonical-facts.json not present")
 def test_capitalised_superlative_is_allowed():
     """A sentence-initial "World's largest..." is canonical, not a violation."""
     assert C.violations("World's largest list of animal names.") == []
@@ -32,6 +39,7 @@ def test_capitalised_superlative_is_allowed():
     assert C.violations("the largest list of animal names") == ["the largest list of animal names"]
 
 
+@pytest.mark.skipif(not PRIVATE_RULES, reason="private canonical-facts.json not present")
 def test_london_museum_variants():
     assert C.violations("London Natural History Museum") == []
     assert C.violations("the London Natural History Museum") == []
