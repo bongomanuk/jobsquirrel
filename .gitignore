@@ -80,3 +80,6 @@ answers/
 
 # machine-local pipeline state (applications, queues, logs, caches)
 state/
+
+# MkDocs build output
+site/

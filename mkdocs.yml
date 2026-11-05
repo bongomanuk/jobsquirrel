@@ -1,0 +1,95 @@
+site_name: Jobsquirrel
+site_description: An open, self-hosted job-application agent that finds, tailors, gates and applies to jobs for you.
+site_url: https://bongomanuk.github.io/jobsquirrel/
+repo_url: https://github.com/bongomanuk/jobsquirrel
+repo_name: bongomanuk/jobsquirrel
+edit_uri: edit/main/docs/
+docs_dir: docs
+site_dir: site
+use_directory_urls: true
+
+theme:
+  name: material
+  language: en
+  logo: assets/animals/sir-reginald-nuttington-icon.png
+  favicon: assets/animals/sir-reginald-nuttington-icon.png
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+
+extra_css:
+  - stylesheets/extra.css
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Start here:
+      - Introduction: INTRO.md
+      - Setup: SETUP.md
+      - Agent setup: AGENT-SETUP.md
+      - Agent guide: AGENT-GUIDE.md
+      - Account setup: ACCOUNT-SETUP.md
+      - All documentation: all.md
+  - Run it:
+      - Using it: USING-IT.md
+      - Run modes: RUN-MODES.md
+      - Workflow: WORKFLOW.md
+      - ATS recipes: ATS-RECIPES.md
+      - CV content: CV-CONTENT.md
+  - Understand it:
+      - Architecture: ARCHITECTURE.md
+      - Knowledge base: KNOWLEDGE-BASE.md
+      - Knowledge graph: KNOWLEDGE-GRAPH.md
+      - Product spec: PRODUCT-SPEC.md
+      - Storage: STORAGE.md
+  - Safety:
+      - Scam detector: SCAMS.md
+      - Eligibility: ELIGIBILITY.md
+      - Releases: RELEASES.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/bongomanuk/jobsquirrel
+    - icon: fontawesome/solid/star
+      link: https://github.com/bongomanuk/jobsquirrel/stargazers

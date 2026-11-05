@@ -82,7 +82,7 @@ Interview invites often use Google Calendar / Teams / Zoom / Ashby scheduling.
 
 ## Rules of thumb
 - Prefer the employer ATS over LinkedIn Easy Apply (automating LinkedIn may
-  breach its User Agreement, see [DISCLAIMER.md](../DISCLAIMER.md)).
+  breach its User Agreement, see [DISCLAIMER.md](https://github.com/bongomanuk/jobsquirrel/blob/main/DISCLAIMER.md)).
 - One submission, then back off, never hammer a rate-limited endpoint.
 - On any CAPTCHA/2FA/checkpoint, stop; do not evade; record `BLOCKED`/`MANUAL`.
 - Record only with real evidence (the exact thank-you text or confirmation email).

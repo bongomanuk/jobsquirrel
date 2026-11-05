@@ -467,7 +467,7 @@ interviewed — awaiting outcome).
 
 ## Documentation
 
-**[All documentation](docs/README.md)** — the full index, in reading order.
+**[All documentation](docs/all.md)** — the full index, in reading order.
 
 - [docs/SETUP.md](docs/SETUP.md), install, dependencies, configuration, Gmail.
 - [docs/WORKFLOW.md](docs/WORKFLOW.md), the per-role procedure in detail.

@@ -4,7 +4,7 @@
 
 **Everything, in reading order.**
 
-[Back to the README](../README.md) · [Quick start](#start-here) · [Run it](#run-it) · [Understand it](#understand-it) · [Safety](#safety-and-trust) · [Reference](#reference)
+[Back to the README](https://github.com/bongomanuk/jobsquirrel/blob/main/README.md) · [Quick start](#start-here) · [Run it](#run-it) · [Understand it](#understand-it) · [Safety](#safety-and-trust) · [Reference](#reference)
 
 </div>
 
@@ -15,7 +15,7 @@
 | 🚀 **[INTRO.md](INTRO.md)** | What Jobsquirrel is, how it works end to end, the safety guarantees and the run modes — the introduction the agent delivers. |
 | 🧰 **[SETUP.md](SETUP.md)** | Install, dependencies, configuration, Gmail. |
 | 🧑‍💻 **[AGENT-SETUP.md](AGENT-SETUP.md)** | Per-agent instructions (opencode, Claude Code, Cursor), **fully-local model** settings, cheap-model settings and what it costs to run. |
-| 🗣️ **[BOOTSTRAP.md](../BOOTSTRAP.md)** | The first-run interview: identity, eligibility, languages, accuracy rules, CV and knowledge base. |
+| 🗣️ **[BOOTSTRAP.md](https://github.com/bongomanuk/jobsquirrel/blob/main/BOOTSTRAP.md)** | The first-run interview: identity, eligibility, languages, accuracy rules, CV and knowledge base. |
 | 🔑 **[ACCOUNT-SETUP.md](ACCOUNT-SETUP.md)** | Gmail, Calendar, LinkedIn, the Camoufox browser and per-site credentials. |
 
 ## Run it
@@ -44,15 +44,14 @@
 |---|---|
 | 🕵️ **[SCAMS.md](SCAMS.md)** | The recruitment-scam detector: the hard rule, every signal, email checks, the **Probably scams** bucket, overrides and limits. |
 | 🛡️ **[ELIGIBILITY.md](ELIGIBILITY.md)** | Writing your eligibility and accuracy rules. |
-| 🤖 **[CAPTCHA.md](CAPTCHA.md)** | The CAPTCHA setting and the private-build solver; when to stop. |
-| 📜 **[DISCLAIMER.md](../DISCLAIMER.md)** | Acceptable use, no-warranty and liability. |
+| 📜 **[DISCLAIMER.md](https://github.com/bongomanuk/jobsquirrel/blob/main/DISCLAIMER.md)** | Acceptable use, no-warranty and liability. |
 
 ## Reference
 
 | | |
 |---|---|
 | 🏷️ **[RELEASES.md](RELEASES.md)** | How a release is cut: title rules, notes lint, publishing. |
-| 🧾 **[AGENTS.md](../AGENTS.md)** | The operating manual the agent follows. |
+| 🧾 **[AGENTS.md](https://github.com/bongomanuk/jobsquirrel/blob/main/AGENTS.md)** | The operating manual the agent follows. |
 | 🗂️ **[PRODUCT-SPEC.md](PRODUCT-SPEC.md#9-web-interface-specification-toolsdashboardpy)** | The dashboard specification, section by section. |
 
 ---

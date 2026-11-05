@@ -4,7 +4,7 @@
 
 
 > **You probably don't need to do this by hand.** Hand the repository to an AI
-> agent: it runs the first-run interview in [BOOTSTRAP.md](../BOOTSTRAP.md),
+> agent: it runs the first-run interview in [BOOTSTRAP.md](https://github.com/bongomanuk/jobsquirrel/blob/main/BOOTSTRAP.md),
 > writes your `config/`, builds your archetypes and the knowledge base, and
 > explains each step. The manual steps below are the same thing, for reference.
 > For how to launch an agent (opencode, Claude Code, …) and what it costs, see

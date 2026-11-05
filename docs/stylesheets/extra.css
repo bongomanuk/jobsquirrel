@@ -1,0 +1,291 @@
+/* Jobsquirrel docs — warm forest theme for MkDocs Material. */
+
+:root {
+  --js-forest: #2f6f4e;
+  --js-forest-2: #3f8f63;
+  --js-amber: #d97706;
+  --js-cream: #fbf7ef;
+  --js-ink: #16211b;
+  --js-card: #ffffff;
+  --js-line: rgba(22, 33, 27, 0.12);
+  --md-primary-fg-color: var(--js-forest);
+  --md-primary-fg-color--light: var(--js-forest-2);
+  --md-primary-fg-color--dark: #24563d;
+  --md-accent-fg-color: var(--js-amber);
+  --md-default-bg-color: var(--js-cream);
+}
+
+[data-md-color-scheme="slate"] {
+  --js-ink: #e8efe9;
+  --js-card: #16211b;
+  --js-line: rgba(232, 239, 233, 0.14);
+  --md-default-bg-color: #0f1712;
+  --md-default-fg-color: #e8efe9;
+  --md-default-fg-color--light: #b9c7bd;
+  --md-default-fg-color--lighter: #8fa096;
+  --md-code-bg-color: #0b120e;
+  --md-typeset-a-color: #7fd1a0;
+}
+
+.md-typeset {
+  font-size: 0.8rem;
+  line-height: 1.72;
+}
+
+.md-typeset h1 {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.md-typeset h2 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-top: 2.2em;
+}
+
+.md-typeset h3 {
+  font-weight: 600;
+}
+
+.md-typeset table:not([class]) {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px var(--js-line);
+}
+
+.md-typeset table:not([class]) th {
+  background: color-mix(in srgb, var(--js-forest) 10%, transparent);
+}
+
+.md-typeset code {
+  border-radius: 6px;
+}
+
+.md-typeset pre > code {
+  border-radius: 12px;
+}
+
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: 12px;
+}
+
+/* ---------- hero ---------- */
+.js-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.7fr);
+  gap: 2rem;
+  align-items: center;
+  padding: 2.4rem;
+  margin: 0 0 2.5rem;
+  border-radius: 22px;
+  background:
+    radial-gradient(900px 400px at 10% 0%, rgba(217, 119, 6, 0.18), transparent 60%),
+    radial-gradient(700px 400px at 100% 100%, rgba(47, 111, 78, 0.22), transparent 60%),
+    linear-gradient(135deg, #f7f1e4, #eef6ef);
+  border: 1px solid var(--js-line);
+}
+
+[data-md-color-scheme="slate"] .js-hero {
+  background:
+    radial-gradient(900px 400px at 10% 0%, rgba(217, 119, 6, 0.18), transparent 60%),
+    radial-gradient(700px 400px at 100% 100%, rgba(63, 143, 99, 0.18), transparent 60%),
+    linear-gradient(135deg, #121b15, #0f1712);
+}
+
+.js-hero h1 {
+  margin: 0 0 0.4rem;
+  font-size: 2.4rem;
+}
+
+.js-hero p {
+  margin: 0 0 1rem;
+  font-size: 1.02rem;
+  color: var(--md-default-fg-color--light);
+}
+
+.js-hero > img {
+  width: 100%;
+  max-width: 260px;
+  border-radius: 20px;
+  justify-self: center;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
+}
+
+.js-hero .js-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+
+.js-hero .js-badges img {
+  width: auto;
+  max-width: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.js-hero .js-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.js-hero .js-actions a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.95rem;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-decoration: none;
+  border: 1px solid var(--js-line);
+  color: var(--md-default-fg-color);
+  background: var(--js-card);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.js-hero .js-actions a.primary {
+  background: var(--js-forest);
+  color: #ffffff;
+  border-color: transparent;
+}
+
+.js-hero .js-actions a:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
+}
+
+@media (max-width: 760px) {
+  .js-hero {
+    grid-template-columns: 1fr;
+    padding: 1.6rem;
+  }
+
+  .js-hero > img {
+    max-width: 180px;
+    order: -1;
+  }
+
+  .js-hero h1 {
+    font-size: 1.9rem;
+  }
+}
+
+/* ---------- feature cards ---------- */
+.js-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin: 1.2rem 0 2rem;
+}
+
+.js-card {
+  padding: 1.1rem 1.2rem;
+  border-radius: 16px;
+  background: var(--js-card);
+  border: 1px solid var(--js-line);
+  box-shadow: 0 1px 2px var(--js-line);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.js-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.1);
+}
+
+.js-card .js-ico {
+  font-size: 1.4rem;
+}
+
+.js-card h3 {
+  margin: 0.35rem 0 0.25rem;
+  font-size: 0.95rem;
+}
+
+.js-card p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--md-default-fg-color--light);
+}
+
+/* ---------- testimonials ---------- */
+.js-quotes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+  margin: 1.2rem 0 2rem;
+}
+
+.js-quote {
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  gap: 0.9rem;
+  align-items: start;
+  padding: 1rem;
+  border-radius: 16px;
+  background: var(--js-card);
+  border: 1px solid var(--js-line);
+}
+
+.js-quote img {
+  width: 74px;
+  height: 74px;
+  border-radius: 14px;
+  object-fit: cover;
+}
+
+.js-quote blockquote {
+  margin: 0;
+  border: 0;
+  padding: 0;
+  font-size: 0.82rem;
+}
+
+.js-quote .js-who {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.72rem;
+  color: var(--md-default-fg-color--light);
+}
+
+/* ---------- screenshots ---------- */
+.js-shots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  margin: 1rem 0 2rem;
+}
+
+.js-shot {
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid var(--js-line);
+  background: var(--js-card);
+}
+
+.js-shot img {
+  display: block;
+  width: 100%;
+}
+
+.js-shot span {
+  display: block;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.72rem;
+  color: var(--md-default-fg-color--light);
+}
+
+/* The sidebar already provides navigation; hide the in-page docs nav line. */
+.md-content .md-typeset > div[align="center"]:first-of-type {
+  display: none;
+}
+
+/* A little more room for the content on wide screens. */
+@media screen and (min-width: 76.25em) {
+  .md-grid {
+    max-width: 68rem;
+  }
+}

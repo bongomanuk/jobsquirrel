@@ -79,7 +79,7 @@ LinkedIn Easy Apply is handled **separately and serially** by
 persistent logged-in profile so you stay logged in and at a human pace.
 **Note:** automating LinkedIn may breach its terms of service and can get your
 account restricted, it is **opt-in**; prefer the employer's own ATS
-(see [DISCLAIMER.md](../DISCLAIMER.md)).
+(see [DISCLAIMER.md](https://github.com/bongomanuk/jobsquirrel/blob/main/DISCLAIMER.md)).
 
 ## Tracking replies
 
