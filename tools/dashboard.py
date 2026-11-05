@@ -10,6 +10,7 @@ require an explicit approval token. See docs/PRODUCT-SPEC.md.
 """
 import argparse
 import csv
+import email.utils
 import glob
 import gzip
 from functools import lru_cache
@@ -1606,6 +1607,39 @@ def _interview_label(status, notes):
 
 
 
+_SENT_NOTE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})\b.*\bemail sent to", re.I)
+_INVITE_NOTE = re.compile(r"^gmail:\s*([A-Za-z]+)\s+(.+)$")
+
+
+def _replied_since_invite(notes):
+    """True when we sent an email after the latest inbound invite/notice.
+
+    The notes are append-only: an outbound "email sent to" segment newer than
+    the last "gmail: INTERVIEW/OTHER" segment means the candidate has replied,
+    so the row is waiting on the employer, not on them.
+    """
+    sent = invite = 0.0
+    for seg in re.split(r"\s*\|\s*", notes or ""):
+        seg = seg.strip()
+        m = _SENT_NOTE.match(seg)
+        if m:
+            try:
+                sent = max(sent, time.mktime((int(m.group(1)), int(m.group(2)),
+                                              int(m.group(3)), 23, 59, 0, 0, 0, -1)))
+            except (OverflowError, ValueError):
+                pass
+            continue
+        m = _INVITE_NOTE.match(seg)
+        if m and m.group(1).upper() in ("INTERVIEW", "OTHER"):
+            try:
+                dt = email.utils.parsedate_to_datetime(m.group(2).split(" (")[0].strip())
+                if dt is not None:
+                    invite = max(invite, dt.timestamp())
+            except (TypeError, ValueError, OverflowError):
+                pass
+    return sent > 0 and (invite == 0 or sent >= invite)
+
+
 def _substate(status, notes="", action="", label=""):
     """The human sub-state inside a coarse register status.
 
@@ -1699,6 +1733,9 @@ def _substate(status, notes="", action="", label=""):
                    "An interview is booked; prepare and attend."
             return ("scheduled", "scheduled", hint)
         if label == "INVITED":
+            if not (action or "").strip() and _replied_since_invite(notes):
+                return ("replied", "replied — awaiting a reply",
+                        "You replied; waiting for the employer.")
             return ("invited", "invited — reply", "The employer invited you; reply with availability.")
         if iv and now - iv > 7 * 86400:
             return ("held-followup", "interviewed — follow up",
@@ -1824,14 +1861,11 @@ def grid():
         status = (r.get("status") or "").upper()
         label, interview_at = _interview_label(status, notes)
         hint = _hint(status, notes)
-        if status == "INTERVIEW":
-            hint = {"SCHEDULED": f"interview booked {interview_at} — prepare",
-                    "INVITED": "interview requested — reply and get a time booked"}.get(
-                        label, (f"interview held {interview_at} — awaiting the outcome" if interview_at
-                                else "interview held — awaiting the outcome"))
         employment = ((r.get("employment") or "").strip().lower()
                       or _employment_from_jd(jd_key) or _employment_from_notes(notes))
         sub = _substate(status, notes, r.get("action", ""), label)
+        if status == "INTERVIEW":
+            hint = sub[2]
         out.append({"date": r.get("date", ""), "company": co, "role": role, "ats": r.get("ats", ""),
                     "status": status, "label": label, "interview_at": interview_at, "key": key,
                     "substate": sub[0], "substate_label": sub[1], "substate_hint": sub[2],

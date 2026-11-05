@@ -45,6 +45,34 @@ STATUSES = ["QUEUED", "SUBMITTED", "INTERVIEW", "OFFER", "REJECTED", "BLOCKED", 
 # Statuses that count as a live process - an application we have sent and are
 # still awaiting an outcome on (not yet rejected/closed, not merely prepared).
 PROCESS_STATUSES = ["SUBMITTED", "IN_PROGRESS", "INTERVIEW", "OFFER"]
+# An action flag is a human to-do ("reply to X", "book a time"). A passive
+# waiting state ("await a reply") is already said by the status and substate,
+# and it used to linger after the candidate had replied. Normalise it away.
+_WAITING_ACTION = re.compile(
+    r"^\s*(?:await(?:ing)?|wait(?:ing)?)\b.*\b(?:repl(?:y|ies)|respons(?:e|es)|outcome|answer)\b"
+    r"|^\s*(?:no action|nothing to do|none)\s*$", re.I)
+_REPLY_TODO = re.compile(
+    r"\b(?:repl(?:y|ies)|follow[ -]?up|chase|nudge|respond|answer|get back)\b", re.I)
+
+
+def _clean_action(action):
+    """Drop a passive waiting phrase; keep a real follow-up to-do."""
+    a = (action or "").strip()
+    return "" if a and _WAITING_ACTION.search(a) else a
+
+
+def _action_done_by_outbound(action, subject):
+    """True when sending this email completes the row's action flag."""
+    a = (action or "").strip()
+    if not a:
+        return False
+    if _WAITING_ACTION.search(a):
+        return True
+    if re.match(r"^\s*re\s*:", subject or "", re.I):
+        return True                       # a reply answers whatever the to-do was
+    return bool(_REPLY_TODO.search(a))
+
+
 GROUP_TITLES = {
     "QUEUED": "Queued - waiting to be applied",
     "SUBMITTED": "Submitted - confirmed",
@@ -252,7 +280,7 @@ def upsert(company, role, status, day="", ats="", letter="", notes="", employmen
                 if employment:
                     r["employment"] = employment
                 if action is not None:
-                    r["action"] = action.strip()
+                    r["action"] = _clean_action(action)
                 if key:
                     r["key"] = key
                 if apply_url:
@@ -262,7 +290,7 @@ def upsert(company, role, status, day="", ats="", letter="", notes="", employmen
                 return r
         r = {"date": day or date.today().isoformat(), "company": company, "role": role,
              "ats": ats, "status": status, "letter": letter, "notes": notes,
-             "employment": employment, "action": (action or "").strip(),
+             "employment": employment, "action": _clean_action(action or ""),
              "key": key or make_key(company, role), "apply_url": apply_url}
         rows.append(r)
         save(rows)
@@ -316,7 +344,9 @@ def log_outbound(company, role, to, subject, message_id="", when="", action=None
 
     Idempotent: a message id already present in the row's notes is not added
     again, so reconcile can safely re-scan the Sent folder. `action=None` leaves
-    the follow-up flag alone; `action=""` clears it.
+    the follow-up flag alone, except that a reply/follow-up flag is cleared when
+    this email completes it (a "Re:" subject, or a waiting/"reply to" action).
+    `action=""` always clears it.
     """
     mid = (message_id or "").strip()
     note = f"{when or date.today().isoformat()}: email sent to {to or '(unknown recipient)'}"
@@ -333,7 +363,9 @@ def log_outbound(company, role, to, subject, message_id="", when="", action=None
                     return False
                 r["notes"] = (r["notes"] + " | " if r["notes"] else "") + note
                 if action is not None:
-                    r["action"] = action.strip()
+                    r["action"] = _clean_action(action)
+                elif _action_done_by_outbound(r.get("action"), subject):
+                    r["action"] = ""          # the reply/follow-up this flag asked for is sent
                 save(rows)
                 render(silent=True)
                 return True
@@ -859,7 +891,7 @@ def main():
     ap.add_argument("--employment", default="",
                     help="engagement type: full-time | part-time | contract | consultant | freelance | internship | temporary")
     ap.add_argument("--action", default=None,
-                    help="follow-up needed (e.g. 'reply to the recruiter about the interview'); empty string clears it")
+                    help="follow-up needed (e.g. 'reply to the recruiter about the interview'); empty string clears it. A passive 'await a reply' is ignored: the status already says that")
     args = ap.parse_args()
 
     # --company/--role/--notes only mean something with --set or --delete. Without

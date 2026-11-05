@@ -145,7 +145,9 @@ to “what is actually happening, and what should I do next?”.
 
 Sub-states are derived from the notes and follow-up flag the pipeline and the reconciler
 already write, so they need no extra bookkeeping. Correcting a note (or setting/clearing the
-follow-up flag) updates the sub-state on the next refresh.
+follow-up flag) updates the sub-state on the next refresh. The flag is a **human to-do**
+("reply to Ray", "book a time"), not a waiting state: "await a reply" is dropped, and once a
+reply has been sent the row reads **replied — awaiting a reply** instead of asking you again.
 
 ## The Knowledge workspace
 

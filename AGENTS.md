@@ -352,6 +352,13 @@ bash tools/reconcile_loop.sh                # continuous reconcile + counts
 - Reconciliation matches mail to register rows and sets `INTERVIEW`/`REJECTED`,
   upgrades `PREPARED`→`SUBMITTED` on confirmation, and prints verification
   links/codes for the **human** to act on (never click/enter them yourself).
+- An `action` is a **human to-do** ("reply to Ray about a time", "complete the
+  assessment"), never a passive waiting state. Do **not** set "await a reply" (or
+  similar): the status and sub-state already say that, and it used to linger
+  after the candidate had replied. `register.py` now drops such a phrase, and
+  recording a sent reply (`gmail_send.py` / `register.log_outbound`) clears a
+  reply/follow-up flag automatically. Clear it yourself with `--action ""` when
+  the human has done the thing by hand.
 - For interviews: `tools/gmail_calendar_auth.py --check --days N` lists upcoming
   events; `tools/calendar_event.py` creates/updates them (with the interviewer as
   an attendee), imports an `.ics` from a Gmail message and suggests free slots

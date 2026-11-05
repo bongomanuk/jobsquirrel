@@ -51,7 +51,7 @@ Components:
 
 | Path | Contents |
 |---|---|
-| `state/applications.csv` | Canonical register: `date,company,role,ats,status,letter,notes,employment,action,key,apply_url`. One row per role. `key` is the role's single identity (the queue row's last column, also what `queue.done` stores); rows written before it existed fall back to `company|role`. `action` is a short follow-up flag (reply/assessment/booking) surfaced as ⚑ in the grid and filterable. |
+| `state/applications.csv` | Canonical register: `date,company,role,ats,status,letter,notes,employment,action,key,apply_url`. One row per role. `key` is the role's single identity (the queue row's last column, also what `queue.done` stores); rows written before it existed fall back to `company|role`. `action` is a short **human to-do** (reply/assessment/booking) surfaced as ⚑ in the grid and filterable. A passive waiting phrase ("await a reply") is dropped: the status and sub-state already say that, and recording a sent reply clears the flag. |
 | `state/submissions.csv` | Provenance ledger: paths + sha256 + snapshot dir + evidence + confidence (`verified`/`forced`/`inferred`). |
 | `state/role-groups.json` | Named groups (campaigns): `{groups:{id:{name,color}},roles:{key:[id]}}`, independent of status. |
 | `config/canonical-facts.json` | Canonical fact wording: regex replacements applied at KB ingest and CV/letter render; the gate fails forbidden variants. |

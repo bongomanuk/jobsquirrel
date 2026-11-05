@@ -58,7 +58,7 @@ const SUBSTATE_ORDER = {
   'NO RESULT': ['no-result'],
   SUBMITTED: ['assessment-overdue', 'assessment', 'stale', 'acknowledged', 'awaiting'],
   IN_PROGRESS: ['assessment-overdue', 'assessment', 'interviewing', 'background', 'processing'],
-  INTERVIEW: ['invited', 'today', 'scheduled', 'held-followup', 'held', 'next', 'final'],
+  INTERVIEW: ['invited', 'today', 'scheduled', 'replied', 'held-followup', 'held', 'next', 'final'],
   OFFER: ['received', 'verbal', 'negotiating', 'accepted', 'declined'],
   BLOCKED: ['captcha', 'login', 'email', 'lead', 'info', 'site', 'blocked'],
   MANUAL: ['email', 'lead', 'verify', 'manual'],
@@ -73,7 +73,7 @@ function substateRank(st, key) {
 function bucketOf(r) {
   const s = r.status, lb = r.label || s;
   if (s === 'CLOSED' || s === 'REJECTED') return 'done';
-  if (r.action || NEEDS_STATUS.has(s) || lb === 'INVITED' || r.queue === 'human' ||
+  if (r.action || NEEDS_STATUS.has(s) || r.substate === 'invited' || r.queue === 'human' ||
       NEEDS_SUBSTATES.has(r.substate)) return 'needs';
   if (['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW'].includes(s)) return 'ongoing';
   if (s === 'PREPARED') return 'prepared';

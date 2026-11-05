@@ -49,3 +49,24 @@ def test_assessment_deadline_past_and_future():
                        "", "SUBMITTED")[0] == "assessment-overdue"
     assert D._substate("SUBMITTED", f"assessment test link expires ~{_when(3)}",
                        "", "SUBMITTED")[0] == "assessment"
+
+
+def test_replied_invite_is_not_waiting_on_the_candidate():
+    notes = ("gmail: INTERVIEW Sun, 11 Oct 2026 15:31:22 +0000 | "
+             "2026-11-03: email sent to ray@example.com — Re: Next steps (message id x)")
+    label, _ = D._interview_label("INTERVIEW", notes)
+    assert label == "INVITED"
+    assert D._substate("INTERVIEW", notes, "", label)[0] == "replied"
+
+
+def test_invite_without_a_reply_still_needs_one():
+    notes = "gmail: INTERVIEW Sun, 11 Oct 2026 15:31:22 +0000"
+    label, _ = D._interview_label("INTERVIEW", notes)
+    assert D._substate("INTERVIEW", notes, "", label)[0] == "invited"
+
+
+def test_action_overrides_replied_detection():
+    notes = ("gmail: INTERVIEW Sun, 11 Oct 2026 15:31:22 +0000 | "
+             "2026-11-03: email sent to ray@example.com — Re: Next steps (message id x)")
+    label, _ = D._interview_label("INTERVIEW", notes)
+    assert D._substate("INTERVIEW", notes, "reply with availability", label)[0] == "invited"

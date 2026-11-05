@@ -31,3 +31,38 @@ def test_status_alone_still_lists(tmp_path):
     _register(tmp_path, "--set", "--company", "Acme", "--role", "Eng", "--status", "BLOCKED")
     r = _register(tmp_path, "--status", "BLOCKED")
     assert r.returncode == 0 and "Acme" in r.stdout
+
+
+def _temp_register(tmp_path, monkeypatch):
+    import register as R
+    monkeypatch.setattr(R, "CSV_PATH", str(tmp_path / "applications.csv"))
+    monkeypatch.setattr(R, "MD_PATH", str(tmp_path / "applications-register.md"))
+    monkeypatch.setattr(R, "LOCK_PATH", R.CSV_PATH + ".lock")
+    monkeypatch.setattr(R, "COUNTS_PATH", str(tmp_path / "counts.md"))
+    return R
+
+
+def _row(R, company="Acme", role="Eng"):
+    return [r for r in R.load() if r["company"] == company and r["role"] == role][0]
+
+
+def test_a_passive_waiting_action_is_not_stored(tmp_path, monkeypatch):
+    R = _temp_register(tmp_path, monkeypatch)
+    R.upsert("Acme", "Eng", "MANUAL", notes="applied",
+             action="await a reply from careers@acme.com")
+    assert _row(R)["action"] == ""
+
+
+def test_recording_a_reply_clears_the_follow_up_flag(tmp_path, monkeypatch):
+    R = _temp_register(tmp_path, monkeypatch)
+    R.upsert("Acme", "Eng", "MANUAL", notes="invited",
+             action="Reply to Ray — interview")
+    R.log_outbound("Acme", "Eng", "ray@acme.com", "Re: interview", "mid-1")
+    assert _row(R)["action"] == ""
+
+
+def test_an_unrelated_outbound_keeps_an_unrelated_flag(tmp_path, monkeypatch):
+    R = _temp_register(tmp_path, monkeypatch)
+    R.upsert("Acme", "Eng", "MANUAL", notes="invited", action="book a time for Friday")
+    R.log_outbound("Acme", "Eng", "news@acme.com", "Company newsletter", "mid-2")
+    assert _row(R)["action"] == "book a time for Friday"
