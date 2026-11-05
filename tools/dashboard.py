@@ -1030,26 +1030,50 @@ def _norm_slug(s):
 
 
 def _ats_key_for(company, role, key, stems=None):
-    """The ATS/JD slug for a row, even when the agent resolved its own key."""
+    """The ATS/JD slug for a row, even when the agent resolved its own key.
+
+    Artifact stems often carry a source prefix (``li_seb_...``) or a different
+    separator from the register key, so match the employer as a token anywhere
+    in the stem and require at least one role word. This also covers short
+    employer names such as SEB, which the old length guard skipped entirely.
+    """
     if _present(os.path.join(STATE, "ats", key + ".txt")):
         return key
     cn = _norm_slug(company)
-    if len(cn) < 4:
+    if not cn:
         return key
     if stems is None:
         try:
             stems = stateio.stems(os.path.join(STATE, "ats"), ".txt")
         except OSError:
             return key
-    role_norm = _norm_slug(role)
+    role_tokens = {t for t in re.findall(r"[a-z0-9]{4,}", (role or "").lower())}
     best, best_score = key, 0
     for s in stems:
         sn = _norm_slug(s)
-        if not sn or not (sn.startswith(cn) or cn.startswith(sn)):
+        if not sn:
             continue
-        score = min(len(sn), len(cn))
-        if role_norm and any(tok in role_norm for tok in re.findall(r"[a-z0-9]{4,}", s.lower())):
-            score += 10
+        toks = set(re.findall(r"[a-z0-9]+", (s or "").lower()))
+        if cn in toks:
+            company_score = 20
+        elif sn.startswith(cn) or cn.startswith(sn):
+            company_score = min(len(sn), len(cn))
+        else:
+            # "Publicis Groupe" vs a "publicis_..." stem, "Kleer Group AB"
+            # vs "kleer_...", and other source/legal suffixes.
+            generic = {"group", "groupe", "ab", "the", "inc", "ltd", "oy", "as",
+                       "plc", "gmbh", "nordic", "consulting", "recruitment",
+                       "technologies", "solutions", "services"}
+            ctoks = {t for t in re.findall(r"[a-z0-9]{2,}", (company or "").lower())
+                     if t not in generic}
+            shared = [t for t in ctoks if t in toks]
+            if not shared:
+                continue
+            company_score = 10 + sum(len(t) for t in shared)
+        hits = sum(1 for t in role_tokens if t in sn)
+        if not hits:
+            continue
+        score = company_score + hits * 4
         if score > best_score:
             best, best_score = s, score
     return best
@@ -1485,8 +1509,14 @@ def grid():
         key = km.get(ck) or _slug(f"{co}-{role}")
         notes = r.get("notes", "")
         cvrel = _prepared_cv_note(notes, key, cv_index) or cvmap.get(key, "") or subm_cv.get(ck, "")
-        ats_key = _ats_key_for(co, role, key, stems=ats_stems)
         content_key = _content_key_for(cvrel, key)
+        ats_key = _ats_key_for(co, role, key, stems=ats_stems)
+        # A tailored CV filename is the strongest key hint: it names the
+        # content pack and usually the matching ATS file even when the
+        # register row was renamed or the company uses a source prefix.
+        if (content_key != key
+                and _present(os.path.join(STATE, "ats", content_key + ".txt"))):
+            ats_key = content_key
         jd_key = _jd_key_for(ats_key, key, co, role)
         m = _MATCH_CACHE.get(key, {})
         cov = m.get("coverage")
@@ -2819,6 +2849,35 @@ def secrets_encrypt():
             "info": secrets_info()}
 
 
+# ---------------------------------------------------------------- CAPTCHA (private build)
+def captcha_info():
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import captcha_solver as CS
+    return CS.status()
+
+
+def captcha_save(data):
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import captcha_solver as CS
+    enabled = data.get("enabled")
+    provider = str(data.get("provider") or "").strip().lower()
+    timeout = data.get("timeout")
+    model = str(data.get("model") or "").strip()
+    try:
+        cfg = CS.save_config(enabled=enabled if enabled is not None else None,
+                             provider=provider or None,
+                             timeout=int(timeout) if timeout not in (None, "") else None,
+                             model=model or None)
+    except (TypeError, ValueError) as exc:
+        return {"error": f"invalid timeout: {exc}"}
+    name = CS.key_name(cfg["provider"])
+    if data.get("clear_key"):
+        SS.put("captcha", name, "")
+    elif str(data.get("api_key") or "").strip():
+        SS.put("captcha", name, str(data["api_key"]).strip())
+    return {"ok": "CAPTCHA settings saved", **CS.status()}
+
+
 # ---------------------------------------------------------------- agent permissions
 PERMS_FILE = os.path.join(ROOT, "config", "agent-permissions.json")
 DEFAULT_PERMS = {
@@ -3559,12 +3618,12 @@ def graph_query(*args):
     return data
 
 
-def graph_node(title):
+def graph_role_evidence(key):
     py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)
     try:
-        r = subprocess.run([py, GRAPH_TOOL, "node", str(title)], cwd=ROOT,
+        r = subprocess.run([py, GRAPH_TOOL, "evidence", str(key)], cwd=ROOT,
                            capture_output=True, text=True, timeout=90, env=env)
         return json.loads((r.stdout or "").strip() or "{}")
     except (OSError, subprocess.SubprocessError, ValueError) as e:
@@ -3577,18 +3636,6 @@ def graph_semantic(q, limit=14):
     env.pop("PYTHONPATH", None)
     try:
         r = subprocess.run([py, GRAPH_TOOL, "semantic", str(q), str(limit)], cwd=ROOT,
-                           capture_output=True, text=True, timeout=90, env=env)
-        return json.loads((r.stdout or "").strip() or "{}")
-    except (OSError, subprocess.SubprocessError, ValueError) as e:
-        return {"error": f"{type(e).__name__}: {e}"}
-
-
-def graph_role_evidence(key):
-    py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
-    env = dict(os.environ)
-    env.pop("PYTHONPATH", None)
-    try:
-        r = subprocess.run([py, GRAPH_TOOL, "evidence", str(key)], cwd=ROOT,
                            capture_output=True, text=True, timeout=90, env=env)
         return json.loads((r.stdout or "").strip() or "{}")
     except (OSError, subprocess.SubprocessError, ValueError) as e:
@@ -3612,8 +3659,19 @@ def graph_ask(question, method="local"):
         return {"error": f"{type(e).__name__}: {e}"}
 
 
+def graph_node(title):
+    py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    try:
+        r = subprocess.run([py, GRAPH_TOOL, "node", str(title)], cwd=ROOT,
+                           capture_output=True, text=True, timeout=90, env=env)
+        return json.loads((r.stdout or "").strip() or "{}")
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
 def graph_edit_node(data):
-    import hashlib
     title = str((data or {}).get("title") or "").strip()
     if not title:
         return {"error": "missing node title"}
@@ -3637,6 +3695,7 @@ def graph_edit_node(data):
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(edits, fh, indent=2)
     os.replace(tmp, GRAPH_EDITS)
+
     link = data.get("add_link") or {}
     target = str(link.get("target") or "").strip()
     if target:
@@ -3650,7 +3709,7 @@ def graph_edit_node(data):
                       and (l.get("target") or "").upper() == target.upper() for l in links)
         if not already:
             desc = str(link.get("description") or "").strip()[:600]
-            links.append({"id": hashlib.sha1(f"edit|{title}|{target}".encode()).hexdigest()[:12],
+            links.append({"id": __import__("hashlib").sha1(f"edit|{title}|{target}".encode()).hexdigest()[:12],
                           "source": title, "target": target,
                           "weight": float(link.get("weight") or 30),
                           "description": desc or f"Operator-added connection from {title} to {target}.",
@@ -4153,6 +4212,10 @@ class H(BaseHTTPRequestHandler):
             if not self._authed():
                 return
             return self._json(secrets_info())
+        if p == "/api/captcha":
+            if not self._authed():
+                return
+            return self._json(captcha_info())
         if p == "/api/drafts":
             return self._json(drafts_list(qs.get("company", [""])[0], qs.get("role", [""])[0]))
         if p == "/api/draft":
@@ -4331,6 +4394,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(graph_edit_node(data))
         if p == "/api/graph/ask":
             return self._json(graph_ask(data.get("question", ""), data.get("method", "local")))
+        if p == "/api/captcha":
+            return self._json(captcha_save(data))
         if p == "/api/secrets":
             return self._json(secrets_set(data.get("section", ""), data.get("name", ""),
                                           data.get("value", "")))
