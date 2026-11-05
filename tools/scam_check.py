@@ -75,6 +75,9 @@ SIGNALS = [
               r"registration|visa|uniform)\s+(?:fee|cost|deposit)\b"
               r"|\b(?:fee|deposit|payment)\s+(?:for|to (?:start|begin|secure))\s+"
               r"(?:training|certification|equipment|onboarding|a background check)\b"
+              r"|\b(?:starter kit|admin(?:istration)? fee|placement fee|finder'?s fee|"
+              r"security deposit|recovery fee)\b"
+              r"|\bpay\b.{0,25}\bto (?:get|start|secure) (?:paid|the job|work)\b"
               r"|\b(?:gift card|wire transfer|western union|moneygram)\b",
         "why": "Legitimate employers do not ask a candidate to pay for training, "
                "equipment, checks or onboarding.",
@@ -112,6 +115,89 @@ SIGNALS = [
         "why": "Unrealistic pay for no experience is the hook for a money-mule or "
                "advance-fee scam.",
         "advice": "Treat it as a scam until the employer is verified independently.",
+    },
+    {
+        "key": "task-scam",
+        "level": "high",
+        "re": r"\b(?:tasks?|rating|reviews?|click(?:ing)? (?:tasks|buttons?))\b.{0,70}"
+              r"\b(?:deposit|top[- ]?up|your own money|your own crypto|unlock)\b"
+              r"|\b(?:deposit|top[- ]?up)\b.{0,45}\b(?:to (?:start|unlock|continue)|tasks?)\b",
+        "why": "Task scams show fake earnings and require you to deposit your own money "
+               "or crypto to 'unlock' more work.",
+        "advice": "Never deposit your own money or crypto to get paid. Stop and report.",
+    },
+    {
+        "key": "money-mule",
+        "level": "high",
+        "re": r"\bmoney mule\b"
+              r"|\b(?:receive|accept|transfer|forward|move)\b.{0,55}"
+              r"\b(?:payments?|funds?|money)\b.{0,70}"
+              r"\b(?:your (?:bank )?account|commission|third[- ]party|onward|abroad)\b"
+              r"|\b(?:launder|laundering)\b.{0,60}\b(?:money|funds|payments)\b.{0,60}"
+              r"\b(?:your (?:bank )?account|employer|job|commission)\b",
+        "why": "Receiving and forwarding money makes you a money mule; it is a crime "
+               "even if you did not know.",
+        "advice": "Never use your bank account to move money for an employer.",
+    },
+    {
+        "key": "reshipping",
+        "level": "high",
+        "re": r"\b(?:reshipp(?:ing|ed)?|reship|receive (?:packages?|parcels?) at home|"
+              r"repackage.{0,40}(?:forward|reship)|forward (?:the )?(?:packages?|parcels?|goods))\b",
+        "why": "Reshipping goods bought with stolen cards is never a real job.",
+        "advice": "Do not receive or forward parcels for an employer.",
+    },
+    {
+        "key": "crypto-salary",
+        "level": "high",
+        "re": r"\b(?:salary|wage|pay|paid|payment)\b.{0,45}\b(?:in|with|via)\b.{0,25}"
+              r"\b(?:crypto|bitcoin|btc|usdt|tether|ethereum)\b"
+              r"|\b(?:deposit|send|transfer|top[- ]?up)\b.{0,45}"
+              r"\b(?:crypto|bitcoin|btc|usdt|tether)\b.{0,70}"
+              r"\b(?:employer|job|task|unlock|training|platform)\b",
+        "why": "A salary or a deposit in crypto is the payment rail for a task or "
+               "money-mule scam.",
+        "advice": "Never send crypto to an employer or accept a crypto-only salary.",
+    },
+    {
+        "key": "trafficking-risk",
+        "level": "high",
+        "re": r"\b(?:confiscate|keep|hold|withhold)\b.{0,35}\b(?:your )?"
+              r"(?:passport|identity (?:card|documents?)|travel documents?)\b"
+              r"|\b(?:pay|cover|reimburse)\b.{0,35}\b(?:flights?|travel|visa|"
+              r"accommodation|room and board)\b.{0,60}\b(?:before|upfront|deduct|salary)\b",
+        "why": "Withheld passports and travel-fee debt are the labour-trafficking "
+               "pattern behind fake jobs abroad.",
+        "advice": "Never surrender your passport or pay travel/visa costs up front. "
+                  "Tell someone you trust where you are going.",
+    },
+    {
+        "key": "recovery-scam",
+        "level": "high",
+        "re": r"\b(?:recover|reclaim|get back)\b.{0,45}\b(?:your )?(?:lost )?"
+              r"(?:funds?|money|crypto(?:currency)?)\b.{0,70}"
+              r"\b(?:fee|pay|agent|service|specialist)\b",
+        "why": "A 'recovery agent' who asks for a fee is a second scam targeting the "
+               "same victim.",
+        "advice": "Do not pay anyone to recover lost funds; report to the police instead.",
+    },
+    {
+        "key": "no-interview-hire",
+        "level": "medium",
+        "re": r"\b(?:hired|start)\b.{0,35}\b(?:immediately|on the spot|today)\b.{0,45}"
+              r"\b(?:no|without)\b.{0,25}\b(?:interview|references?)\b"
+              r"|\bno (?:interview|references?)(?: required| needed)?\b",
+        "why": "A hire with no interview or references is a common fake-job shortcut.",
+        "advice": "Ask for a real interview and a named hiring manager before sharing anything.",
+    },
+    {
+        "key": "engagement-bait",
+        "level": "low",
+        "re": r"\breply\b.{0,12}\b(?:with )?(?:yes|interested|start|apply)\b"
+              r"|\btext\b.{0,12}\b(?:yes|interested)\b",
+        "why": "Asking you to reply 'YES' or 'INTERESTED' is an engagement hook used by "
+               "fake-recruiter texts.",
+        "advice": "Do not engage. Verify the sender through the company's own site.",
     },
     {
         "key": "bank-or-id-early",

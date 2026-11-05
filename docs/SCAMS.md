@@ -35,7 +35,12 @@ app" and "share your seed phrase" are the same scam with a different wrapper.
 | Crypto drain | Your wallet, seed phrase or private key | "Install Trust Wallet", "validate your wallet", "claim your signing bonus" |
 | Advance fee | A payment from you | Training, certification, equipment, onboarding, visa or a background-check fee |
 | Equipment cheque | Your bank account and a reversed cheque | "We'll send a cheque; buy the kit and send the balance back" |
-| Money mule | Your bank account as a laundering hop | "Receive payments and forward them", "package reshipping" |
+| Money mule | Your bank account as a laundering hop | "Receive payments and forward them", "keep a commission" |
+| Reshipping | Your address to receive stolen goods | "Receive packages, repackage and forward them" |
+| Task scam | Your own money or crypto, "unlocked" by fake earnings | "Complete tasks", "deposit to unlock more work" |
+| Crypto salary | A crypto payment rail and your wallet | "Salary paid in USDT", "deposit crypto to start" |
+| Labour trafficking | Your passport and your freedom | A job abroad, travel/visa fees, "we hold your passport" |
+| Recovery scam | A second fee from an earlier victim | "We can recover your lost crypto for a fee" |
 | Chat-only interview | Untraceable contact | The whole process runs on Telegram/WhatsApp/Signal |
 | Credential phishing | Your email or ATS login | A lookalike domain, a shortened or IP link, an unexpected login page |
 
@@ -56,6 +61,12 @@ count in a scam context.
 | `fake-check` | "We'll send you a cheque", "cash the cheque", "buy equipment and we reimburse you" | Never cash or forward money. |
 | `chat-only-interview` | An interview or hiring process on Telegram, WhatsApp, Signal, Google Hangouts or "text only" | Ask for a video call on the company's platform. |
 | `no-experience-high-pay` | "No experience needed, earn €300/day", data entry, package forwarding/reshipping | Treat it as a scam until verified. |
+| `task-scam` | "Complete tasks/ratings/reviews", "deposit your own money or crypto to unlock more work" | Never deposit your own money or crypto to get paid. |
+| `money-mule` | "Receive payments into your bank account and forward them", "keep a commission", laundering | Never move money through your account for an employer. |
+| `reshipping` | "Receive packages at home, repackage and forward them" | Do not receive or forward parcels for an employer. |
+| `crypto-salary` | "Salary paid in USDT/bitcoin", "deposit crypto to start" | Never send crypto to an employer or accept a crypto-only salary. |
+| `trafficking-risk` | A job abroad with travel/visa fees up front, or "we hold your passport" | Never surrender your passport or pay travel costs up front. |
+| `recovery-scam` | "We can recover your lost funds/crypto for a fee" | Do not pay a recovery agent; report to the police. |
 | `software-download-link` | A link to an installer or a remote-access tool | Never download it. |
 | `ip-address-link` | A raw IP host instead of a company domain | Do not open it. |
 | `wallet-link` | A connect/claim/airdrop/mint link that mentions a wallet, crypto, web3 or NFT | Never connect a wallet for a job. |
@@ -72,6 +83,7 @@ count in a scam context.
 | `bank-or-id-early` | A request to send a bank account, IBAN, sort code, SSN/NINO, passport or licence before a signed offer | Do not send ID or bank details early. |
 | `punycode-link` | A host that starts `xn--` and can imitate a real domain | Check the spelling before opening anything. |
 | `archive-attachment` | A `.zip`, `.rar`, `.7z` and similar archives that can hide an installer | Do not open it unless you can verify the sender and the contents. |
+| `no-interview-hire` | "Hired immediately, no interview/references required" | Ask for a real interview and a named hiring manager. |
 
 ### LOW — a note, never a gate
 
@@ -80,6 +92,47 @@ count in a scam context.
 | `urgency` | "Urgent", "immediate start", "reply within 24 hours", "limited positions" |
 | `shortened-link` | A `bit.ly`/`tinyurl`/`t.co` link that hides its destination |
 | `sender-domain-mismatch` | A completely different domain (often a legitimate agency or job board) |
+| `engagement-bait` | "Reply YES/INTERESTED" — an engagement hook used by fake-recruiter texts |
+
+## Known scam families
+
+The signals map to the families the FTC, FBI IC3, Europol and national fraud
+agencies describe:
+
+| Family | Signals |
+|---|---|
+| Fake check / overpayment | `fake-check`, `pay-to-work` |
+| Advance fee (training, kit, certification, admin) | `pay-to-work` (starter kit, placement/finder's fee) |
+| Task / "optimization" scam | `task-scam`, `crypto-salary`, `no-experience-high-pay` |
+| Crypto job scam | `crypto-wallet`, `crypto-salary`, `wallet-link` |
+| Money mule | `money-mule`, `reshipping`, `bank-or-id-early` |
+| Reshipping | `reshipping`, `no-experience-high-pay` |
+| Remote-access interview | `remote-access-software`, `software-download-link`, `dangerous-attachment` |
+| Chat-only / messaging-app interview | `chat-only-interview`, `engagement-bait` |
+| Fake recruiter / impersonation | `free-mail-sender`, `lookalike-domain`, `reply-to-mismatch`, `punycode-link` |
+| Identity theft before interview | `bank-or-id-early` |
+| Labour trafficking abroad | `trafficking-risk`, `no-experience-high-pay` |
+| Recovery scam | `recovery-scam`, `pay-to-work` |
+| Credential phishing | `ip-address-link`, `shortened-link`, `punycode-link`, `lookalike-domain` |
+
+### Research and sources
+
+- **FTC** — *Job Scams*, *That job offer text is probably a scam*, *Job
+  scammers are looking to hire you*, *Can you unbox the signs of a reshipping
+  scam?* (`consumer.ftc.gov`).
+- **FBI IC3** — *Scammers Defraud Individuals via Work-From-Home Scams*,
+  *Cryptocurrency Job Scams*, *False Job Advertisements Linked to Labor
+  Trafficking at Scam Compounds*, and the 2025 IC3 report on AI/deepfake
+  employment scams (`ic3.gov`, `fbi.gov`).
+- **Europol** — *How to spot fake job adverts*, *Crackdown on money mule service
+  providers*, and the crypto-investment-fraud guidance (`europol.europa.eu`).
+- **Scamwatch (Australia)** — *Jobs and employment scams* (`scamwatch.gov.au`).
+- **NAB / ANZ** — employment-scam red flags and money-mule guidance.
+
+These sources describe the patterns; the scanner is a local heuristic layer, not
+a substitute for verifying the employer. It cannot detect a deepfake interview,
+a hijacked real advert, or a fake domain when there is no known company domain
+to compare against — those need the human checks below.
 
 ## Email checks
 

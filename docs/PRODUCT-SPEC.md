@@ -157,10 +157,11 @@ Components:
 6. **Web UI.** Binds `127.0.0.1`; every write needs a per-session token (anti-CSRF); risky
    actions also gated (see §9).
 7. **Recruitment-scam checks (`tools/scam_check.py`).** Every saved advert and every
-   scanned message is checked for known scam signals: remote-access software
+   scanned message is checked for the known scam families: remote-access software
    (AnyDesk/TeamViewer/RustDesk), wallet/seed-phrase requests, pay-to-work fees,
-   equipment cheques, chat-only interviews, unrealistic pay, early ID/bank details,
-   pressure and free-mailbox senders. A **HIGH** signal blocks `prepare_role.py`
+   equipment cheques, task scams, money mules, reshipping, crypto salaries,
+   labour-trafficking red flags, recovery scams, chat-only interviews, unrealistic
+   pay, early ID/bank details, pressure and free-mailbox senders. A **HIGH** signal blocks `prepare_role.py`
    (exit 3; `--allow-scam` overrides after human verification), and the signal is
    stored in `state/scam/<key>.json`, shown as a ⚠ marker on the grid and a red/amber
    banner in the role drawer and the Gmail review. The hard rule: never download or

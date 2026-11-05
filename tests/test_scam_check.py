@@ -130,3 +130,63 @@ def test_a_careers_subdomain_of_the_company_is_not_flagged():
     r = S.scan("Hello", sender="Acme HR <hr@careers.acme.com>",
                company="Acme", company_domain="careers.acme.com")
     assert "sender-domain-mismatch" not in {s["key"] for s in r["signals"]}
+
+
+def test_task_scam_is_high():
+    r = S.scan("Complete simple tasks and deposit your own money to unlock more work.")
+    assert r["level"] == "high"
+    assert "task-scam" in {s["key"] for s in r["signals"]}
+
+
+def test_money_mule_is_high():
+    r = S.scan("Receive payments into your bank account and forward them abroad, keeping a commission.")
+    assert r["level"] == "high"
+    assert "money-mule" in {s["key"] for s in r["signals"]}
+
+
+def test_anti_money_laundering_footer_is_not_a_signal():
+    r = S.scan("Anti-money laundering policy. Your account statement is available.",
+               sender="no-reply@revolut.com")
+    assert "money-mule" not in {s["key"] for s in r["signals"]}
+
+
+def test_reshipping_is_high():
+    r = S.scan("Receive packages at home, repackage them and forward them to a new address.")
+    assert r["level"] == "high"
+    assert "reshipping" in {s["key"] for s in r["signals"]}
+
+
+def test_crypto_salary_is_high():
+    r = S.scan("Salary paid in USDT.")
+    assert r["level"] == "high"
+    assert "crypto-salary" in {s["key"] for s in r["signals"]}
+
+
+def test_withheld_passport_is_high():
+    r = S.scan("We will hold your passport and you pay for flights before starting.")
+    assert r["level"] == "high"
+    assert "trafficking-risk" in {s["key"] for s in r["signals"]}
+
+
+def test_recovery_fee_is_high():
+    r = S.scan("We can recover your lost crypto for a small fee.")
+    assert r["level"] == "high"
+    assert "recovery-scam" in {s["key"] for s in r["signals"]}
+
+
+def test_no_interview_hire_is_medium():
+    r = S.scan("You are hired immediately, no interview required.")
+    assert r["level"] == "medium"
+    assert "no-interview-hire" in {s["key"] for s in r["signals"]}
+
+
+def test_engagement_bait_is_a_low_note():
+    r = S.scan("Reply YES to start.")
+    assert r["level"] == "low"
+    assert "engagement-bait" in {s["key"] for s in r["signals"]}
+
+
+def test_starter_kit_fee_is_high():
+    r = S.scan("There is a starter kit fee of 99 EUR.")
+    assert r["level"] == "high"
+    assert "pay-to-work" in {s["key"] for s in r["signals"]}
