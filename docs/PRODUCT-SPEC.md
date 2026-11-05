@@ -318,6 +318,9 @@ Clicking a row opens a drawer with tabs:
 All POSTs require header `X-Session: <token>` (else 403); the token is injected into the page.
 
 ### 9.9 Actions & gating
+
+Dashboard actions run detached: the console stays usable while they work, and progress is
+reported in the **Activity** pane. Only the explicit submit approval is a blocking dialog.
 - **Prepare:** `REVIEW=1 run_queue.sh` — builds docs + gates, records PREPARED; never submits/emails. Safe.
 - **Run Submissions:** `run_queue.sh` — **submits**. Requires the `APPROVE_RUN_QUEUE` approval token
   (the two-step modal: acknowledge + Confirm); refused otherwise. Every decision is logged to `state/approvals.log`.

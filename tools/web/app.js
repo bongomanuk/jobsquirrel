@@ -108,6 +108,7 @@ const PENDING = new Set();
 const NUT = '<span class="spin" title="working…">🥜</span> ';
 function starting(label, keys) {
   LIVE_RUNNING = true;
+  $('#peras').classList.add('hide');      // background work lives in Activity, not a blocking modal
   (keys || []).forEach(k => PENDING.add(k));
   const rc = $('#runctl'); if (rc) rc.classList.remove('hide');
   const l = $('#live'); if (l) l.innerHTML = NUT + esc('● ' + (label || 'working') + ' — starting…');
@@ -1005,10 +1006,10 @@ const App = {
   prepareRoles: async (keys) => {
     const n = (keys || []).length;
     if (n && !await warn(n > 1 ? LONG.prepareMany(n) : LONG.prepareOne)) return;
-    starting('preparing documents', keys); working('Preparing documents for ' + n + ' role(s)…');
+    starting('preparing documents', keys);
     const d = await api('/api/prepare', { keys });
-    toast(d.ok || d.error, !!d.error);
-    if (!d.error) { openDock(true); } else { PENDING.clear(); $('#peras').classList.add('hide'); }
+    toast(d.error ? d.error : `preparing ${n} role(s) in the background — watch Activity`, !!d.error);
+    if (!d.error) { openDock(true); App.showActivity(); } else { PENDING.clear(); LIVE_RUNNING = false; liveTick(); }
   },
   prepareThis: (key) => App.prepareRoles([key]),
   prepareShown: () => App.prepareRoles(VISIBLE),
@@ -1017,10 +1018,10 @@ const App = {
     if (!n) { toast('no prepared rows to submit — prepare them first', true); return; }
     if (!await approve(`Submit ${n} prepared application(s) — this SENDS them through the employer's site and is irreversible.`,
       `POST /api/submit { "keys": [${n} role key(s)], "approval_token": "APPROVE_RUN_QUEUE" }`)) return;
-    starting('submitting applications', keys); working('Submitting ' + n + ' application(s)…');
+    starting('submitting applications', keys);
     const d = await api('/api/submit', { keys, approval_token: 'APPROVE_RUN_QUEUE' });
-    toast(d.ok || d.error, !!d.error);
-    if (!d.error) { openDock(true); } else { PENDING.clear(); LIVE_RUNNING = false; liveTick(); }
+    toast(d.error ? d.error : `submitting ${n} application(s) in the background — watch Activity`, !!d.error);
+    if (!d.error) { openDock(true); App.showActivity(); } else { PENDING.clear(); LIVE_RUNNING = false; liveTick(); }
   },
   submitThis: (key) => App.submitRoles([key]),
   submitPrepared: () => App.submitRoles(GRID.filter(r => r.status === 'PREPARED' && VIEW.includes(r.key)).map(r => r.key)),
@@ -1070,13 +1071,13 @@ const App = {
   },
   updateKB: async () => {
     if (!await warn(LONG.update)) return;
-    starting('updating the knowledge graph'); working('Updating the knowledge graph (incremental — only the new source)…');
+    starting('updating the knowledge graph');
     const d = await api('/api/action/run', { command: 'kb_update', approval_token: '' });
-    toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true); else { LIVE_RUNNING = false; $('#peras').classList.add('hide'); }
+    toast(d.ok || d.error, !!d.error); if (!d.error) { openDock(true); App.showActivity(); } else { LIVE_RUNNING = false; liveTick(); }
   },
   rebuildKB: async () => {
     if (!await warn(LONG.rebuild)) return;
-    starting('rebuilding the knowledge graph'); working('Rebuilding the knowledge graph (full re-index — can take 20–30+ min)…');
+    starting('rebuilding the knowledge graph');
     const d = await api('/api/kb/rebuild', {}); toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true); else { LIVE_RUNNING = false; $('#peras').classList.add('hide'); }
   },
   saveRow: async () => {

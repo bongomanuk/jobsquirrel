@@ -98,7 +98,9 @@ Everything is observable. Useful things to ask for, or run yourself:
     the documents already generated — no re-generation — and *Apply
     queue* submits, so both need a two-step confirmation (`APPROVE_RUN_QUEUE`). Every action needs
     the per-session token (anti-CSRF) and the UI binds to `127.0.0.1` only; the chat agent inherits
-    the same approval gates — it cannot send or delete mail without them.
+    the same approval gates — it cannot send or delete mail without them. Prepare, submit and
+    knowledge-base actions run detached in the background: the console stays usable and progress is
+    reported in **Activity**; only the explicit submit approval is a blocking dialog.
 - **Register**: `python3 tools/register.py --stats`;
   `python3 tools/register.py --list --status INTERVIEW`;
   `python3 tools/register.py --show "<Company>"`.
