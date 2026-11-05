@@ -74,7 +74,7 @@ def test_queue_runs_each_role_once_in_parallel(tmp_path):
     assert "REVIEW MODE (do NOT submit)" in prompt
     assert "timeout 30" in prompt
     # Review runs end on the same STATUS line the runner parses, not a PREPARED line.
-    assert "STATUS <Company> | Engineer 0 | PREPARED|BLOCKED|CLOSED |" in prompt
+    assert "STATUS Co0 | Engineer 0 | PREPARED|BLOCKED|CLOSED | <reason>" in prompt
     assert "Return exactly one line: PREPARED" not in prompt
 
 

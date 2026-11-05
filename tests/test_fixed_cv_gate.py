@@ -35,7 +35,8 @@ def _sandbox(tmp_path):
     (root / "config" / "profile.md").write_text(PROFILE)
     (root / "config" / "cv.json").write_text(CV_JSON)
     (root / "state" / "job-descriptions").mkdir()
-    (root / "state" / "job-descriptions" / "acme-engineer.md").write_text("# Engineer\n")
+    (root / "state" / "job-descriptions" / "acme-engineer.md").write_text(
+        "# Engineer\n\n" + ("We are looking for an experienced engineer. " * 8))
     return root
 
 
@@ -120,9 +121,10 @@ def _light_run(tmp_path, root, cv):
     agent = tmp_path / "stub-agent"
     agent.write_text(STUB)
     agent.chmod(agent.stat().st_mode | stat.S_IXUSR)
-    # REVIEW=1 only so no browser is started; LIGHT still builds the fixed-CV prompt.
+    # LIGHT builds the fixed-CV prompt; the stub agent does not open a browser,
+    # so this is a normal (non-REVIEW) run that may record SUBMITTED.
     env = dict(_env(root), ROOT=str(root), LIGHT="1", FIXED_CV=os.path.relpath(cv, root),
-               REVIEW="1", PARALLEL="1", RETRY_LIMIT="0", AGENT=str(agent),
+               REVIEW="0", PARALLEL="1", RETRY_LIMIT="0", AGENT=str(agent),
                CALLS=str(tmp_path / "calls"))
     return subprocess.run(["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
                           env=env, capture_output=True, text=True, timeout=60)
