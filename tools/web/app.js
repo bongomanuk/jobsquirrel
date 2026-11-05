@@ -995,7 +995,8 @@ const App = {
     clearInterval(CHAT_TIMER); CHAT_TIMER = null;
     ACT = null; ACT_SIG = '';
     CHAT_OPEN.clear();
-    CHAT = { segments: [], running: false }; setSpin(false); renderChat(); toast('agent history cleared');
+    CHAT = { segments: [], running: false }; DONE_CARDS = []; DELEGATED_DONE_SEEN = null;
+    setSpin(false); renderChat(); toast('agent history cleared');
   },
   open: (i) => openDetail(GRID[i]),
   showTaskLogFor: (company, role) => openTaskLog(taskLogName(company, role), `${company} — ${role}`),
@@ -2431,6 +2432,21 @@ async function liveTick() {
       App.showActivity();
     }
   }
+  const done = d.delegated_done || [];
+  const doneIds = new Set(done.map(x => x.id));
+  if (DELEGATED_DONE_SEEN === null) {
+    DELEGATED_DONE_SEEN = doneIds;                      // page load: don't replay old results
+    DONE_CARDS = done.slice(0, 1);                      // ...but show the latest finished task
+    if (DONE_CARDS.length) renderChat();
+  } else {
+    const freshDone = done.filter(x => !DELEGATED_DONE_SEEN.has(x.id));
+    DELEGATED_DONE_SEEN = doneIds;
+    if (freshDone.length) {
+      DONE_CARDS.push(...freshDone.slice(-3));
+      renderChat();
+      if (!document.hidden) toast(`Background task finished: ${freshDone[0].title || 'subagent'}`);
+    }
+  }
   const parts = [];
   if (a.running) parts.push(aname || 'working');
   else if (d.active) parts.push('runner active');
@@ -2481,12 +2497,17 @@ async function liveTick() {
   }
   const sm = a.summary || {};
   LAST_ACT_NAME = a.name || '';
-  const sig = a.name ? [a.name, a.running, (a.log || []).length, (a.overview || []).join('|')].join('|') : '';
+  // Keep the action card after it finishes: the summary is the point. The live
+  // transcript is emptied by /api/live, so the card must not depend on it.
+  const hasSummary = (a.overview || []).length ||
+    (sm.headline && sm.headline !== 'no output') || (sm.notable || []).length;
+  const sig = a.name ? [a.name, a.running, (a.log || []).length,
+    (a.overview || []).join('|'), sm.headline || '', (sm.notable || []).join('|')].join('|') : '';
   if ((LIVE_RUNNING || ACT) && sig !== ACT_SIG &&
       (!ACT_IGNORE || a.running || a.name !== ACT_IGNORE)) {
     ACT_IGNORE = '';
     ACT_SIG = sig;
-    ACT = a.name && (a.running || (a.log || []).length) ? a : null;
+    ACT = a.name && (a.running || (a.log || []).length || hasSummary) ? a : null;
     renderChat();
   }
   $('#act-sum').textContent = a.running ? ('● ' + aname)
@@ -2495,13 +2516,12 @@ async function liveTick() {
   if (document.body.dataset.act === 'open') {
     const tech = [];
     let h = '';
-    if (a.name) {
-      h += `<div class="act-h">${a.running ? '🥜' : '✓'} ` +
-        `${a.running ? '' : 'Last action: '}${esc(aname || 'last action')} ` +
-        `<span class="muted">${a.running ? 'running…' : 'finished'}</span></div>`;
+    if (a.name && a.running) {
+      h += `<div class="act-h">🥜 ${esc(aname || 'working')} ` +
+        `<span class="muted">running…</span></div>`;
       if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
       if ((sm.notable || []).length) h += '<ul class="act-list">' + sm.notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
-      if (a.running) tech.push(...(a.log || []));
+      tech.push(...(a.log || []));
     }
     const tasks = d.running_tasks || (d.running || []).map(x => ({ label: x, log: '' }));
     if (tasks.length) {
@@ -2957,7 +2977,14 @@ let CHAT_STICK = true;                                        // follow new outp
 function chatAtBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 60; }
 let ACT = null, ACT_SIG = '', ACT_IGNORE = '', LAST_ACT_NAME = '';   // last dashboard action, shown in the chat
 let DELEGATED_SEEN = null;                              // subagent ids already announced
+let DELEGATED_DONE_SEEN = null;                         // finished subagent ids already shown
+let DONE_CARDS = [];                                    // finished subagent results, shown in the chat
 let CHAT_TURN_RUNNING = false, LIVE_BUSY = false;       // chat turn + any action/subagent running
+function doneCard(d) {
+  return `<div class="c-act"><div class="c-user">✓ ${esc(d.title || 'background task')} <span class="muted">finished</span></div>` +
+    (d.result ? `<div class="c-status">${esc(d.result)}</div>` : '') +
+    `<div class="mini muted">Background task finished. <a href="#" onclick="event.preventDefault();App.showActivity()">Activity</a></div></div>`;
+}
 function actionCard(a) {
   const sm = a.summary || {}, ov = a.overview || [];
   let h = `<div class="c-user">${a.running ? '🥜 ' : ''}${esc(a.name)} <span class="muted">${a.running ? 'running…' : 'done'}</span></div>`;
@@ -3095,6 +3122,7 @@ function renderChat() {
     i++;
   }
   if (ACT) h += actionCard(ACT);
+  if (DONE_CARDS.length) h += DONE_CARDS.map(doneCard).join('');
   if (CHAT.running) h += `<div class="working"><span class="muted">▮ working…</span></div>`;
   el.innerHTML = h;
   el.querySelectorAll('details[data-k]').forEach(d => { d.open = CHAT_OPEN.has(d.getAttribute('data-k')); });

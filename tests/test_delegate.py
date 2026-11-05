@@ -29,3 +29,19 @@ def test_delegate_respects_the_concurrency_cap(monkeypatch):
     monkeypatch.setattr(D, "delegated_live", lambda: [{"title": "busy"}])
     r = D.delegate_start("do something")
     assert "already running" in r["error"]
+
+
+def test_delegated_result_reads_the_last_result(tmp_path, monkeypatch):
+    monkeypatch.setattr(D, "LOGS", str(tmp_path))
+    (tmp_path / "delegated-x.log").write_text("noise\nRESULT: applied 1 change\n")
+    assert D._delegated_result("delegated-x") == "applied 1 change"
+
+
+def test_delegated_finished_includes_a_dead_task(tmp_path, monkeypatch):
+    monkeypatch.setattr(D, "DELEGATED_DIR", str(tmp_path))
+    monkeypatch.setattr(D, "LOGS", str(tmp_path))
+    (tmp_path / "delegated-x.log").write_text("RESULT: done\n")
+    (tmp_path / "x.json").write_text(json.dumps(
+        {"id": "x", "title": "reconcile", "log": "delegated-x", "pid": 99999999}))
+    out = D._delegated_finished()
+    assert out and out[0]["result"] == "done"

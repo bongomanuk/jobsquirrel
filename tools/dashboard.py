@@ -2121,6 +2121,7 @@ def live():
                              [{"label": d["title"], "log": d["log"], "age": d["age"],
                                "size": d["size"]} for d in delegated],
             "delegated": delegated,
+            "delegated_done": _delegated_finished(),
             "tail_name": tail_name, "tail": tail,
             "paused": os.path.exists(PAUSE_FILE),
             "stopping": os.path.exists(STOP_FILE),
@@ -3870,6 +3871,52 @@ def delegated_live():
             pass
         out.append({"id": rec.get("id", ""), "title": rec.get("title", "subagent"),
                     "log": log, "age": age, "size": size, "pid": rec.get("pid")})
+    return out
+
+
+def _delegated_result(log):
+    """The last RESULT: line from a subagent log, for the chat card."""
+    path = os.path.join(LOGS, (log or "") + ".log")
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - 32768))
+            text = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return ""
+    text = ANSI.sub("", text)
+    for line in reversed([l.strip() for l in text.splitlines() if l.strip()]):
+        m = re.match(r"^RESULT:\s*(.+)$", line)
+        if m:
+            return m.group(1)[:600]
+    return ""
+
+
+def _delegated_finished(limit=5):
+    """Recently finished subagents with their RESULT, for the chat."""
+    out = []
+    try:
+        names = sorted(os.listdir(DELEGATED_DIR), reverse=True)
+    except OSError:
+        return out
+    for f in names:
+        if not f.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(DELEGATED_DIR, f), encoding="utf-8") as fh:
+                rec = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        log = rec.get("log", "")
+        if not log:
+            continue
+        if not (_delegated_done(log) or not _pid_alive(rec.get("pid"))):
+            continue
+        out.append({"id": rec.get("id", ""), "title": rec.get("title", "subagent"),
+                    "log": log, "result": _delegated_result(log)})
+        if len(out) >= limit:
+            break
     return out
 
 
