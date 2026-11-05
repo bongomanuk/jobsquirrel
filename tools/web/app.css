@@ -525,6 +525,8 @@ mark.kw{background:#24405a;color:#bfe3ff;border-radius:3px;padding:0 2px}
 .sg-MANUAL .sg-rect{fill:#2a2408;stroke:#8a6d09}
 .sg-REJECTED .sg-rect{fill:#2a1010;stroke:#7a2d2d}
 .sg-CLOSED .sg-rect{fill:#1a1e28;stroke:#3b4252}
+.sg-SCAMS .sg-rect{fill:#2a0f14;stroke:#b91c1c;stroke-width:1.6}
+.sg-SCAMS .sg-title{fill:#fecaca}
 .sg-DRAFTING .sg-rect{fill:#182430;stroke:#2f4a63}
 
 /* ---- GraphRAG knowledge graph ---- */

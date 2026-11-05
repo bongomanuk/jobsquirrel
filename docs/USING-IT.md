@@ -1,5 +1,8 @@
 # Using it: typical prompts and monitoring
 
+<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+
+
 You drive the whole thing by **talking to your agent in plain English**.
 `AGENTS.md` teaches it the procedures; you set direction with short goals. You
 never run the tools by hand, but you can watch everything it does.

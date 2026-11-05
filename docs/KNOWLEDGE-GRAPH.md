@@ -1,5 +1,8 @@
 # The knowledge graph workspace
 
+<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+
+
 The **Knowledge** page is the visual layer over the GraphRAG index. It is not a
 picture of the index: it is a working surface for inspecting evidence, finding
 gaps, asking questions, and making grounded additions without editing the

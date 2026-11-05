@@ -1,5 +1,8 @@
 # Setup
 
+<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+
+
 > **You probably don't need to do this by hand.** Hand the repository to an AI
 > agent: it runs the first-run interview in [BOOTSTRAP.md](../BOOTSTRAP.md),
 > writes your `config/`, builds your archetypes and the knowledge base, and

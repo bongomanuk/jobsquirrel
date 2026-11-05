@@ -1,5 +1,8 @@
 # Account setup
 
+<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+
+
 The pipeline needs a few accounts and credentials. **None are required to read
 this project**, everything degrades gracefully, but this is the order to set
 them up so the agent can run the full loop (apply, track replies, verify email).

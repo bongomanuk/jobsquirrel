@@ -1,5 +1,8 @@
 # Architecture
 
+<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+
+
 ## Shape
 
 A set of small, single-purpose CLI tools (Python + a few shell scripts) that share

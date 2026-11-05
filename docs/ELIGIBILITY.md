@@ -1,5 +1,8 @@
 # Eligibility and accuracy rules
 
+<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+
+
 The pipeline refuses to apply to roles that don't match your rules, that is a
 feature, not a limitation. You define the rules in the **Eligibility** and
 **Accuracy** sections of `config/profile.md`. The runner reads them at the start

@@ -1,5 +1,8 @@
 # Jobsquirrel — Product & Web Interface Specification
 
+<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+
+
 Status: living document · Owner: repo owner · Applies to this repository.
 
 ---

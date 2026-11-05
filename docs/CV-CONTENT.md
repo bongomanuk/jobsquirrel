@@ -1,5 +1,8 @@
 # Writing the CV: two full pages, no padding
 
+<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+
+
 The generated CV has one job: give a recruiter enough true, specific material to
 shortlist you in the ten seconds they spend on the first screen. A two-page CV
 that stops halfway down page two reads as thin even when the facts underneath

@@ -1,5 +1,8 @@
 # Storage
 
+<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+
+
 The pipeline keeps a lot of machine-local data, and most of it compresses hard:
 run logs, the Gmail body cache, and the GraphRAG indexing cache. None of it is
 committed; it lives only on your machine.

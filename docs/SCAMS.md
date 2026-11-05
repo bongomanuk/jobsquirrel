@@ -1,8 +1,20 @@
-# Recruitment scams: gates and warnings
+<div align="center">
 
-Job hunting attracts fraud. The common patterns are not subtle once you know
-them, and they all end the same way: you install something, pay something, or
-hand over identity, bank or crypto credentials.
+# 🕵️ The scam detector
+
+**A warning system, not a verdict.**
+
+[The hard rule](#the-hard-rule) · [Threat model](#threat-model) · [Signals](#signals) · [Email checks](#email-checks) · [Where it runs](#where-it-runs) · [The bucket](#the-probably-scams-bucket) · [Overrides](#overrides-and-clearing) · [Limits](#limits-and-false-positives) · [Extending](#extending-the-rules) · [Tests](#tests)
+
+</div>
+
+Job hunting attracts fraud. The patterns are not subtle once you know them, and
+they all end the same way: you install something, pay something, or hand over
+identity, bank or crypto credentials.
+
+`tools/scam_check.py` is the single rule set. It runs on every saved advert and
+every scanned message, and it feeds the dashboard's **Probably scams** bucket.
+It never submits, never clicks and never downloads anything.
 
 ## The hard rule
 
@@ -11,89 +23,156 @@ hand over identity, bank or crypto credentials.
 > recruitment process.** A real employer interviews over its own video link and
 > never needs remote-access tools.
 
-This is not caution for its own sake. "Install AnyDesk so we can help you with
-the interview" is how a remote-access session is used to drain a crypto wallet
-or a bank account. "Install our trading app" and "share your seed phrase" are
-the same scam with a different wrapper.
+"Install AnyDesk so we can help you with the interview" is how a remote-access
+session is used to drain a crypto wallet or a bank account. "Install our trading
+app" and "share your seed phrase" are the same scam with a different wrapper.
 
-## Known patterns
+## Threat model
 
-| Signal | What it looks like | Level |
+| The scam | What the attacker wants | What it looks like |
 |---|---|---|
-| Remote-access software | "Download/install AnyDesk, TeamViewer, UltraViewer, RustDesk or Quick Assist before the interview" | **HIGH** |
-| Crypto wallet / seed phrase | "Install Trust Wallet", "share your seed phrase / private key", "USDT", "trading app" | **HIGH** |
-| Pay to work | A fee for training, certification, a background check, equipment, onboarding, a visa or a uniform | **HIGH** |
-| Equipment cheque | "We'll send you a cheque to buy equipment; cash it and send the balance back" | **HIGH** |
-| Chat-only interview | The whole process runs on Telegram, WhatsApp, Signal or "text only" | **HIGH** |
-| Too good to be true | "No experience needed, earn €300/day", "data entry", "package forwarding/reshipping" | **HIGH** |
-| ID or bank details early | Passport/ID copy, SSN/NINO, bank account, IBAN or sort code before a signed offer | MEDIUM |
-| Pressure | "Urgent", "immediate start", "reply within 24 hours", "limited positions" | MEDIUM |
-| Unverified employer | "Our client", "a leading company", an undisclosed employer | MEDIUM |
-| Free mailbox | The recruiter writes from Gmail/Outlook/Yahoo/Proton, not the company domain | MEDIUM |
+| Remote-access interview | Control of your machine and browser session | "Install AnyDesk/TeamViewer/RustDesk before the call" |
+| Crypto drain | Your wallet, seed phrase or private key | "Install Trust Wallet", "validate your wallet", "claim your signing bonus" |
+| Advance fee | A payment from you | Training, certification, equipment, onboarding, visa or a background-check fee |
+| Equipment cheque | Your bank account and a reversed cheque | "We'll send a cheque; buy the kit and send the balance back" |
+| Money mule | Your bank account as a laundering hop | "Receive payments and forward them", "package reshipping" |
+| Chat-only interview | Untraceable contact | The whole process runs on Telegram/WhatsApp/Signal |
+| Credential phishing | Your email or ATS login | A lookalike domain, a shortened or IP link, an unexpected login page |
 
-## How the pipeline checks
+## Signals
 
-`tools/scam_check.py` is the single rule set. It is deliberately specific:
-"crypto" and "download" are ordinary words in a security or engineering advert,
-so they only count in a scam context.
+Each signal has a stable `key` (shown in the scan JSON and the dashboard), a
+level, and an action. The patterns are deliberately specific: "crypto" and
+"download" are ordinary words in a security or engineering advert, so they only
+count in a scam context.
 
-- **Job-ad ingest** (`jd_guard.py` and `discover.py --fetch-jd`) scans every
-  saved advert and writes `state/scam/<key>.json`.
-- **Document preparation** (`prepare_role.py`) scans the advert first and
-  **refuses to prepare a role that trips a HIGH signal** (`PREP FAIL`, exit 3).
-  Re-run with `--allow-scam` only after you have verified the employer yourself.
-- **Mail** (`gmail_readonly.py --sync`, `gmail_reconcile.py`) scans every message
-  body, sender, Reply-To, links and attachments, prints a **scam warnings**
-  section, and attaches the warning to the human review item.
-- **Dashboard**: a ⚠ marker on the grid row, a red/amber banner in the role
-  drawer and the Gmail review, and a **Probably scams** bucket that collects the
-  roles with a HIGH or specific MEDIUM signal.
+### HIGH — a wall
 
-### Email checks
+| `key` | What it catches | Do |
+|---|---|---|
+| `remote-access-software` | Download/install AnyDesk, TeamViewer, UltraViewer, RustDesk, Quick Assist or a remote desktop, especially "before the interview" | Never install it. Decline and report. |
+| `crypto-wallet` | Seed phrase, recovery phrase, private key, MetaMask, Trust Wallet, USDT, "install our trading app" | Never share a wallet or seed phrase. |
+| `pay-to-work` | A fee for training, certification, a background check, equipment, onboarding, registration, a visa or a uniform; gift cards; wire transfer | Do not pay or transfer. |
+| `fake-check` | "We'll send you a cheque", "cash the cheque", "buy equipment and we reimburse you" | Never cash or forward money. |
+| `chat-only-interview` | An interview or hiring process on Telegram, WhatsApp, Signal, Google Hangouts or "text only" | Ask for a video call on the company's platform. |
+| `no-experience-high-pay` | "No experience needed, earn €300/day", data entry, package forwarding/reshipping | Treat it as a scam until verified. |
+| `software-download-link` | A link to an installer or a remote-access tool | Never download it. |
+| `ip-address-link` | A raw IP host instead of a company domain | Do not open it. |
+| `wallet-link` | A connect/claim/airdrop/mint link that mentions a wallet, crypto, web3 or NFT | Never connect a wallet for a job. |
+| `file-host-download` | A file host (Mega, Drive, Dropbox, WeTransfer…) carrying an executable or archive | Do not download it. |
+| `dangerous-attachment` | An `.exe`, `.scr`, `.msi`, `.dmg`, `.pkg`, `.bat`, `.cmd`, `.ps1`, `.vbs`, `.js`, `.hta`, `.lnk`, `.iso`, `.jar`, `.apk` or a remote-access tool | Do not open it. |
 
-| Check | What it catches |
+### MEDIUM — verify before you reply
+
+| `key` | What it catches | Do |
+|---|---|---|
+| `lookalike-domain` | A sender domain that looks like the company's but is not (`acme-careers.com` vs `acme.com`) | Check the real domain and the recruiter on the employer's site. |
+| `free-mail-sender` | A recruiter writing from Gmail/Outlook/Yahoo/Proton | Verify the person through the company. |
+| `reply-to-mismatch` | Replies go to a different, unverified address than the sender | Reply only to an address you can verify. |
+| `bank-or-id-early` | A request to send a bank account, IBAN, sort code, SSN/NINO, passport or licence before a signed offer | Do not send ID or bank details early. |
+| `punycode-link` | A host that starts `xn--` and can imitate a real domain | Check the spelling before opening anything. |
+| `archive-attachment` | A `.zip`, `.rar`, `.7z` and similar archives that can hide an installer | Do not open it unless you can verify the sender and the contents. |
+
+### LOW — a note, never a gate
+
+| `key` | What it catches |
 |---|---|
-| From domain vs the apply domain | A **lookalike** domain (`acme-careers.com` vs `acme.com`) is MEDIUM. A completely different domain is only a note: it is often a legitimate agency or job board. Known ATS and job-board domains are never flagged. |
-| Free mailbox | A recruiter writing from Gmail/Outlook/Yahoo/Proton. MEDIUM: verify the person through the employer's site. |
-| Reply-To | Replies going to a different, unverified address than the sender. MEDIUM. |
-| Links | Installers and remote-access tools, raw IP hosts, punycode hosts, wallet-connect/claim URLs and file hosts carrying an executable or archive. HIGH; shorteners are a LOW note. |
-| Attachments | Executables, installers, scripts and remote-access tools (HIGH); compressed archives (MEDIUM). |
+| `urgency` | "Urgent", "immediate start", "reply within 24 hours", "limited positions" |
+| `shortened-link` | A `bit.ly`/`tinyurl`/`t.co` link that hides its destination |
+| `sender-domain-mismatch` | A completely different domain (often a legitimate agency or job board) |
 
-A generic domain mismatch is not enough to put a role in **Probably scams** on
-its own: agencies and job boards write from their own domains. The bucket needs
-a HIGH signal, a lookalike domain, a Reply-To mismatch, a punycode link, an
-archive attachment, or at least two independent MEDIUM signals.
+## Email checks
 
-The scanner is a **warning system, not a verdict**: a legitimate small employer
-can write from a Gmail address, and a security advert can say "cryptography". A
-HIGH signal is a gate because the cost of being wrong is asymmetric — one
-remote-access session can empty a wallet.
+The mail scan looks at more than the body:
 
-## What the agent must do
+- **From domain vs the apply domain.** A lookalike is MEDIUM; a completely
+  different domain is only a LOW note because agencies and job boards write from
+  their own domains. Known ATS and job-board domains are never flagged.
+- **Reply-To.** A reply address that differs from the sender and is a free
+  mailbox, an IP host or punycode is MEDIUM.
+- **Links.** Installers, raw IP hosts, punycode hosts, wallet-connect/claim URLs
+  and file hosts carrying an executable or archive.
+- **Attachments.** Executables, installers, scripts and remote-access tools are
+  HIGH; compressed archives are MEDIUM.
+- **Body and subject.** The signals in the table above.
 
-1. Treat a HIGH signal as a wall: record the role `BLOCKED` (or `MANUAL`) with
-   the signal and stop. Do not prepare documents, do not submit, do not open a
-   remote session.
-2. Never download or install software for an interview, never join a chat-only
-   interview, never share a wallet/seed phrase/private key, never pay a fee and
-   never move money.
-3. Surface the warning to the human with the exact signal and the source.
-4. If the human verifies the employer and wants to proceed, they can re-run
-   `prepare_role.py --allow-scam`; the warning stays on the record.
+## Where it runs
 
-## What you should do
+| Step | Tool | Result |
+|---|---|---|
+| Job-ad ingest | `jd_guard.py`, `discover.py --fetch-jd` | `state/scam/<key>.json` |
+| Document preparation | `prepare_role.py` | **Refuses a HIGH signal** (`PREP FAIL`, exit 3) |
+| Mail sync | `gmail_readonly.py --sync` | Prints `SCAM <LEVEL>` per message |
+| Mail reconcile | `gmail_reconcile.py` | Prints a **scam warnings** section, adds `scam` to the review item, and writes the worst warning per role to `state/scam-emails.json` |
+| Dashboard | `dashboard.py`, `tools/web/app.js` | ⚠ marker on the grid, a red/amber banner in the drawer and the Gmail review, and the **Probably scams** bucket |
 
-- Verify the employer independently: the company's own domain, a named person,
-  and a video call on the company's platform.
-- Use a separate browser profile and never a remote-access tool.
-- Never share a wallet, seed phrase, private key, bank credentials or a
-  one-time code.
-- Report the message to the platform and, where relevant, the national fraud
-  authority.
+The dashboard reads the advert scan and `state/scam-emails.json` and keeps the
+**worst** level per role, so the grid, the drawer and the bucket agree.
 
-## False positives
+## The Probably scams bucket
 
-The scan is configurable only through its rule set. If a legitimate advert
-trips a pattern, note it on the role and use `--allow-scam` for preparation; the
-scan file stays so the warning is still visible. Do not delete the warning to
-make a role look clean.
+The bucket is deliberately conservative. A role enters it when:
+
+- the advert or a message has a **HIGH** signal;
+- or a **specific MEDIUM** signal: `lookalike-domain`, `reply-to-mismatch`,
+  `punycode-link` or `archive-attachment`;
+- or **two independent MEDIUM** signals.
+
+A single free mailbox, a generic domain mismatch or an agency's own domain is
+only a note, not a bucket entry. That is intentional: agencies and ATS footers
+would otherwise fill the bucket and hide the real risk.
+
+The bucket sits beside **Active / Focus / Needs you**, and the **SCAMS** node in
+the Application states graph jumps straight to it.
+
+## Overrides and clearing
+
+- **Preparation override:** `prepare_role.py --allow-scam` continues despite a
+  HIGH signal. Use it only after verifying the employer yourself; the scan file
+  stays on the record.
+- **Clear a warning:** the role drawer has **Clear scam warning** (with a
+  confirmation). It removes the advert scan and the role's entry in
+  `state/scam-emails.json`. Only use it after verifying the employer.
+- **Do not delete a warning to make a role look clean.** The warning is the
+  point.
+
+## Limits and false positives
+
+- The scanner is a **warning system, not a verdict**. A small employer can write
+  from a Gmail address; a security advert can say "cryptography"; a legitimate
+  ATS footer can contain a shortened link. These are notes, not gates.
+- A legitimate advert's own anti-fraud notice ("scammers may ask for payment for
+  equipment") is recognised and skipped.
+- Email matching still decides which role a message belongs to. A marketing mail
+  that matches a role can raise a warning there; verify before acting.
+- A HIGH signal is a gate because the cost of being wrong is asymmetric — one
+  remote-access session can empty a wallet.
+
+## Extending the rules
+
+Signals live in `SIGNALS` in `tools/scam_check.py`:
+
+```python
+{
+    "key": "remote-access-software",
+    "level": "high",
+    "re": r"...",
+    "why": "why this is a scam pattern",
+    "advice": "what the human should do",
+}
+```
+
+Add a specific regex, a level and the advice. Add a test in
+`tests/test_scam_check.py` for a positive and a negative case, and keep the
+patterns tight: a single ordinary word is not a signal.
+
+## Tests
+
+```bash
+python3 tools/scam_check.py --jd state/job-descriptions/<key>.md
+python3 tools/scam_check.py --text "Download AnyDesk before the interview" --json
+python3 -m pytest -q tests/test_scam_check.py
+```
+
+The suite covers the high signals, the email/domain/link/attachment checks, the
+lookalike and real-domain cases, and the advert's own anti-fraud notice.

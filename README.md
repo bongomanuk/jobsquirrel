@@ -1,11 +1,24 @@
-# 🐿️ Jobsquirrel
+<div align="center">
 
-> ⭐ **If you find this useful, please give it a star** — it helps other people find it and benefit from it.
+<img src="docs/assets/animals/sir-reginald-nuttington.jpg" alt="Sir Reginald Nuttington, a red squirrel in a tweed waistcoat" width="150">
+
+# 🐿️ Jobsquirrel
 
 **An open, self-hosted job-application agent: hand it your CV (resume) and it finds, tailors, gates and applies to jobs for you.**
 
+[![version](https://img.shields.io/github/v/release/bongomanuk/jobsquirrel?style=flat-square&label=version)](https://github.com/bongomanuk/jobsquirrel/releases)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE)
+[![python](https://img.shields.io/badge/python-3.11%2B-3776ab?style=flat-square)](docs/SETUP.md)
+[![scam-aware](https://img.shields.io/badge/scam--aware-yes-b91c1c?style=flat-square)](docs/SCAMS.md)
+
 *A diligent squirrel for your job hunt. It gathers the roles, tailors each one,
 and never stashes a nut it can't actually crack.* 🐿️
+
+[Quick start](#quick-start) · [How it works](#how-it-works-one-role-end-to-end) · [Screenshots](#screenshots) · [The scam detector](docs/SCAMS.md) · [Docs](#documentation)
+
+> ⭐ **If you find this useful, please give it a star** — it helps other people find it and benefit from it.
+
+</div>
 
 An agentic pipeline that takes **your CV** (your **resume**, in US English) and
 applies to jobs for you, end to end, in a way that is honest, targeted, and
@@ -83,6 +96,18 @@ demo data: a sample candidate and fictional companies.)
 | ![Documents tab with the embedded CV](docs/screenshots/documents.png) | ![Evidence overlay: green lines are backed by the knowledge base, amber lines name a requirement it cannot confirm](docs/screenshots/evidence.png) |
 
 ---
+
+## What the forest says
+
+*Fictional testimonials. No animal was interviewed, employed, or asked to install
+AnyDesk. The portraits are illustrations, not references.*
+
+| | |
+|---|---|
+| <img src="docs/assets/animals/sir-reginald-nuttington.jpg" width="120" alt="Sir Reginald Nuttington, a red squirrel in a tweed waistcoat"> | **Sir Reginald Nuttington** — Red Squirrel, Head of Acorn Logistics<br><br>*"It found me a staff role and three acorns before lunch. The CV was so well targeted I nearly forgot to bury it."* |
+| <img src="docs/assets/animals/baroness-bramblewick.jpg" width="120" alt="Baroness Bramblewick, a hedgehog with glasses and a clipboard"> | **Baroness Bramblewick** — Hedgehog, QA Lead (Spine Compliance)<br><br>*"The gate caught my CV claiming I could 'work under pressure'. I am a hedgehog. I roll into a ball."* |
+| <img src="docs/assets/animals/professor-aloysius-hoot.jpg" width="120" alt="Professor Aloysius Hoot, a tawny owl with a headset and monocle"> | **Professor Aloysius Hoot** — Tawny Owl, Night-Shift Recruiter<br><br>*"It refused a role that asked me to install a screen-sharing tool. I have talons. I do not need remote access."* |
+| <img src="docs/assets/animals/bartholomew-badger.jpg" width="120" alt="Bartholomew Badger, a badger in a flat cap and apron"> | **Bartholomew Badger** — Badger, Staff Engineer (Deep Digs)<br><br>*"Nine hundred applications, one real role, zero remote-access tools. Very good at tunnels."* |
 
 ## The knowledge graph is a working surface
 
@@ -434,6 +459,8 @@ example `INTERVIEW` → invited — reply · scheduled · replied — awaiting a
 interviewed — awaiting outcome).
 
 ## Documentation
+
+**[All documentation](docs/README.md)** — the full index, in reading order.
 
 - [docs/SETUP.md](docs/SETUP.md), install, dependencies, configuration, Gmail.
 - [docs/WORKFLOW.md](docs/WORKFLOW.md), the per-role procedure in detail.

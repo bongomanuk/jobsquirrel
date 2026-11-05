@@ -1301,6 +1301,7 @@ const SG_MAIN = [
   { s: 'OFFER', x: 1070, note: 'offer received' },
 ];
 const SG_SIDE = [
+  { s: 'SCAMS', x: 20, note: 'verify the employer' },
   { s: 'BLOCKED', x: 545, note: 'wall: captcha / login' },
   { s: 'MANUAL', x: 720, note: 'needs you' },
   { s: 'REJECTED', x: 895, note: 'not selected' },
@@ -1320,6 +1321,7 @@ function renderStateGraph() {
   if (!box) return;
   const counts = {};
   GRID.forEach(r => { counts[r.status] = (counts[r.status] || 0) + 1; });
+  const scamCount = GRID.filter(r => r.scam && ['high', 'medium'].includes(r.scam.level)).length;
   const by = {};
   GRID.forEach(r => {
     if (!r.substate) return;
@@ -1353,14 +1355,14 @@ function renderStateGraph() {
       `<text class="sg-edge" ${labelPos}>${esc(label)}</text>`;
   };
   const node = (n, y, h) => {
-    const on = active === n.s;
+    const on = n.s === 'SCAMS' ? BUCKET === 'scams' : active === n.s;
     const exp = expanded === n.s;
     const subs = subsFor(n.s);
     const caret = subs.length ? (exp ? ' ▾' : ' ▸') : '';
     return `<g class="sg-node sg-${n.s}${on ? ' active' : ''}${exp ? ' expanded' : ''}" data-status="${n.s}" role="button" tabindex="0" aria-label="${exp ? 'Collapse' : 'Expand'} ${n.s} sub-states">` +
       `<rect class="sg-rect" x="${n.x}" y="${y}" width="${SG_W}" height="${h}" rx="9"/>` +
       `<text class="sg-title" x="${n.x + 12}" y="${y + 23}">${n.s}${caret}</text>` +
-      `<text class="sg-count" x="${n.x + SG_W - 12}" y="${y + 23}" text-anchor="end">${counts[n.s] || 0}</text>` +
+      `<text class="sg-count" x="${n.x + SG_W - 12}" y="${y + 23}" text-anchor="end">${n.s === 'SCAMS' ? scamCount : (counts[n.s] || 0)}</text>` +
       `<text class="sg-note" x="${n.x + 12}" y="${y + 44}">${esc(n.note)}</text></g>`;
   };
   const child = (x, y, w, label, count, cls, attrs, hint) =>
@@ -1388,6 +1390,7 @@ function renderStateGraph() {
   const staticEdges = SG_EDGES.filter(e => e[4] !== 'wall' && e[4] !== 'hand over');
   if (expanded !== 'SUBMITTED') staticEdges.push([590, 112, 590, sideY - 2, 'wall']);
   staticEdges.push([675, sideY + 28, 718, sideY + 28, 'hand over']);
+  staticEdges.push([85, 112, 85, sideY - 2, 'scam check']);
   const drops = [610, 785, 960].map(x => {
     const start = (mainExp && Math.abs(x - (SG_MAIN.find(n => n.s === expanded).x + SG_W / 2)) < 2)
       ? 122 + mainRows * 30 : 112;
@@ -1407,7 +1410,7 @@ function renderStateGraph() {
     const n = SG_SIDE.find(x => x.s === expanded);
     body += stack(n, sideY + 56, sideY + 66, sideExp);
   }
-  const caption = 'Click a state to expand and filter · click a sub-state to narrow · REJECTED can follow any applied state; CLOSED any state';
+  const caption = 'Click a state to expand and filter · SCAMS filters the scam bucket · click a sub-state to narrow · REJECTED can follow any applied state; CLOSED any state';
   box.innerHTML = `<svg viewBox="0 0 1220 ${svgH}" class="sg-svg" role="img" aria-label="Application states">` +
     body + `<text class="sg-cap" x="20" y="${svgH - 10}">${esc(caption)}</text></svg>`;
 }
@@ -1441,6 +1444,11 @@ function renderStateGraph() {
     const g = e.target.closest('.sg-node');
     if (!g) return;
     const st = g.dataset.status;
+    if (st === 'SCAMS') {
+      BUCKET = 'scams'; BUCKET_BEFORE_SEARCH = null;
+      renderBuckets(); renderRows();
+      return;
+    }
     const opening = SG_EXPANDED !== st;
     SG_EXPANDED = opening ? st : '';
     try { localStorage.setItem('sg.expanded', SG_EXPANDED); } catch (err) {}

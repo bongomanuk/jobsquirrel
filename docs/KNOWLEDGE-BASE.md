@@ -1,5 +1,8 @@
 # Knowledge base (GraphRAG)
 
+<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+
+
 The knowledge base is the retrieval layer that keeps generated documents
 **truthful**. It is a Microsoft [GraphRAG](https://microsoft.github.io/graphrag/)
 index over your own documents. `tools/kb_graphrag.py` is the single retrieval

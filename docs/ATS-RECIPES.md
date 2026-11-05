@@ -1,5 +1,8 @@
 # ATS recipes (how the browser drives each system)
 
+<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+
+
 The browser CLI (`tools/camoufox_browser.py`) exposes: `status | nav | snap |
 click | fill | type | select | pick | fillmap | press | check | value | eval |
 wait | upload | download | headers`. Refs renumber after every `snap`, so prefer
