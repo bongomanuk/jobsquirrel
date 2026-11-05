@@ -22,7 +22,7 @@ description: Jobsquirrel is an open, self-hosted job-application agent: it finds
       <a href="https://github.com/bongomanuk/jobsquirrel">GitHub ↗</a>
     </div>
   </div>
-  <img src="assets/animals/sir-reginald-nuttington.jpg" alt="Sir Reginald Nuttington, a red squirrel in a tweed waistcoat">
+  <img src="assets/animals/rowan-red-squirrel.jpg" alt="Rowan Ash, a red squirrel in a tweed waistcoat">
 </div>
 
 ## What it does
@@ -54,24 +54,24 @@ description: Jobsquirrel is an open, self-hosted job-application agent: it finds
 
 ## What the forest says
 
-*Fictional testimonials. No animal was interviewed, employed, or asked to install AnyDesk.*
+*Fictional voices from the forest. No animal was interviewed, employed, or asked to install AnyDesk.*
 
 <div class="js-quotes">
   <div class="js-quote">
-    <img src="assets/animals/sir-reginald-nuttington.jpg" alt="Sir Reginald Nuttington">
-    <blockquote>“It found me a staff role and three acorns before lunch. The CV was so well targeted I nearly forgot to bury it.”<span class="js-who">Sir Reginald Nuttington — Red Squirrel, Head of Acorn Logistics</span></blockquote>
+    <img src="assets/animals/rowan-red-squirrel.jpg" alt="Rowan Ash">
+    <blockquote>“The tallest oak was once an acorn that held its ground. Be patient with the version of yourself that is still growing.”<span class="js-who">Rowan Ash — Red Squirrel</span></blockquote>
   </div>
   <div class="js-quote">
-    <img src="assets/animals/baroness-bramblewick.jpg" alt="Baroness Bramblewick">
-    <blockquote>“The gate caught my CV claiming I could ‘work under pressure’. I am a hedgehog. I roll into a ball.”<span class="js-who">Baroness Bramblewick — Hedgehog, QA Lead (Spine Compliance)</span></blockquote>
+    <img src="assets/animals/hazel-hedgehog.jpg" alt="Hazel Thorn">
+    <blockquote>“You cannot hurry a hedgehog across a road. Some things are worth taking slowly. So are you.”<span class="js-who">Hazel Thorn — Hedgehog</span></blockquote>
   </div>
   <div class="js-quote">
-    <img src="assets/animals/professor-aloysius-hoot.jpg" alt="Professor Aloysius Hoot">
-    <blockquote>“It refused a role that asked me to install a screen-sharing tool. I have talons. I do not need remote access.”<span class="js-who">Professor Aloysius Hoot — Tawny Owl, Night-Shift Recruiter</span></blockquote>
+    <img src="assets/animals/alden-tawny-owl.jpg" alt="Alden Birch">
+    <blockquote>“The night is not empty. It is full of small, quiet things that appear when you stop trying to see everything at once.”<span class="js-who">Alden Birch — Tawny Owl</span></blockquote>
   </div>
   <div class="js-quote">
-    <img src="assets/animals/bartholomew-badger.jpg" alt="Bartholomew Badger">
-    <blockquote>“Nine hundred applications, one real role, zero remote-access tools. Very good at tunnels.”<span class="js-who">Bartholomew Badger — Badger, Staff Engineer (Deep Digs)</span></blockquote>
+    <img src="assets/animals/bram-badger.jpg" alt="Bram Hollow">
+    <blockquote>“A home is not built in a day. It is built one pawful at a time, and then one morning you realise you belong there.”<span class="js-who">Bram Hollow — Badger</span></blockquote>
   </div>
 </div>
 

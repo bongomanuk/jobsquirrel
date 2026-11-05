@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/animals/sir-reginald-nuttington.jpg" alt="Sir Reginald Nuttington, a red squirrel in a tweed waistcoat" width="150">
+<img src="docs/assets/animals/rowan-red-squirrel.jpg" alt="Rowan Ash, a red squirrel in a tweed waistcoat" width="150">
 
 # 🐿️ Jobsquirrel
 
@@ -108,15 +108,14 @@ demo data: a sample candidate and fictional companies.)
 
 ## What the forest says
 
-*Fictional testimonials. No animal was interviewed, employed, or asked to install
-AnyDesk. The portraits are illustrations, not references.*
+*Fictional voices from the forest. No animal was interviewed, employed, or asked to install AnyDesk.*
 
 | | |
 |---|---|
-| <img src="docs/assets/animals/sir-reginald-nuttington.jpg" width="120" alt="Sir Reginald Nuttington, a red squirrel in a tweed waistcoat"> | **Sir Reginald Nuttington** — Red Squirrel, Head of Acorn Logistics<br><br>*"It found me a staff role and three acorns before lunch. The CV was so well targeted I nearly forgot to bury it."* |
-| <img src="docs/assets/animals/baroness-bramblewick.jpg" width="120" alt="Baroness Bramblewick, a hedgehog with glasses and a clipboard"> | **Baroness Bramblewick** — Hedgehog, QA Lead (Spine Compliance)<br><br>*"The gate caught my CV claiming I could 'work under pressure'. I am a hedgehog. I roll into a ball."* |
-| <img src="docs/assets/animals/professor-aloysius-hoot.jpg" width="120" alt="Professor Aloysius Hoot, a tawny owl with a headset and monocle"> | **Professor Aloysius Hoot** — Tawny Owl, Night-Shift Recruiter<br><br>*"It refused a role that asked me to install a screen-sharing tool. I have talons. I do not need remote access."* |
-| <img src="docs/assets/animals/bartholomew-badger.jpg" width="120" alt="Bartholomew Badger, a badger in a flat cap and apron"> | **Bartholomew Badger** — Badger, Staff Engineer (Deep Digs)<br><br>*"Nine hundred applications, one real role, zero remote-access tools. Very good at tunnels."* |
+| <img src="docs/assets/animals/rowan-red-squirrel.jpg" width="120" alt="Rowan Ash, a red squirrel in a tweed waistcoat"> | **Rowan Ash** — Red Squirrel<br><br>*"The tallest oak was once an acorn that held its ground. Be patient with the version of yourself that is still growing."* |
+| <img src="docs/assets/animals/hazel-hedgehog.jpg" width="120" alt="Hazel Thorn, a hedgehog with glasses and a clipboard"> | **Hazel Thorn** — Hedgehog<br><br>*"You cannot hurry a hedgehog across a road. Some things are worth taking slowly. So are you."* |
+| <img src="docs/assets/animals/alden-tawny-owl.jpg" width="120" alt="Alden Birch, a tawny owl with a headset and monocle"> | **Alden Birch** — Tawny Owl<br><br>*"The night is not empty. It is full of small, quiet things that appear when you stop trying to see everything at once."* |
+| <img src="docs/assets/animals/bram-badger.jpg" width="120" alt="Bram Hollow, a badger in a flat cap and apron"> | **Bram Hollow** — Badger<br><br>*"A home is not built in a day. It is built one pawful at a time, and then one morning you realise you belong there."* |
 
 ## The knowledge graph is a working surface
 

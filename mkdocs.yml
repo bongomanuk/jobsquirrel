@@ -12,8 +12,8 @@ theme:
   name: material
   custom_dir: docs/overrides
   language: en
-  logo: assets/animals/sir-reginald-nuttington-icon.png
-  favicon: assets/animals/sir-reginald-nuttington-icon.png
+  logo: assets/animals/rowan-red-squirrel-icon.png
+  favicon: assets/animals/rowan-red-squirrel-icon.png
   font:
     text: Inter
     code: JetBrains Mono
