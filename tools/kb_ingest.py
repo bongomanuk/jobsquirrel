@@ -13,6 +13,7 @@ python-docx for DOCX, and LibreOffice (soffice) for legacy DOC/ODT. Text/Markdow
 files are copied as-is; GraphRAG-native .csv/.json/.txt are handled directly.
 """
 import argparse
+import canonical
 import fnmatch
 import hashlib
 import json
@@ -231,6 +232,7 @@ def main():
                 continue
             with open(dest_tmp, encoding="utf-8", errors="ignore") as fh:
                 text = fh.read()
+            text = canonical.normalize(text)          # canonical facts before indexing
             ntext = _norm_text(text)
             if not ntext:
                 print(f"  skip  {rel} (no text)")
@@ -269,7 +271,8 @@ def main():
             if os.path.exists(dest):
                 stem, ext2 = os.path.splitext(os.path.basename(dest_tmp))
                 dest = os.path.join(out_dir, f"{stem}-{digest[:8]}{ext2}")
-            shutil.move(dest_tmp, dest)
+            with open(dest, "w", encoding="utf-8") as fh:
+                fh.write(text)
             kept.append({"path": rel, "dest": os.path.basename(dest), "sha": digest,
                          "shingles": _shingles(ntext)})
             manifest["kept"].append({"source": rel, "input": os.path.basename(dest)})

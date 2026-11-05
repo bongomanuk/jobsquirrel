@@ -11,6 +11,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import canonical
 import json
 import os
 import sys
@@ -27,6 +28,7 @@ def main() -> int:
     ap.add_argument("--out", default=os.path.join(ROOT, "documents", "applications"))
     args = ap.parse_args()
     data = json.load(open(args.json, encoding="utf-8"))
+    data = canonical.normalize_data(data)          # canonical facts before rendering
     role = dict(data)
     role["key"] = args.key
     for field in ("headline", "title", "opening", "fit"):

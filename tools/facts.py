@@ -18,6 +18,7 @@ Commands:
   python3 tools/facts.py --text "..."      # validate a string
 """
 import argparse
+import canonical
 import json
 import os
 import re
@@ -143,6 +144,8 @@ def load():
 
 def check_text(text, facts, corpus):
     errors, warnings = [], []
+    for found, right in canonical.explain(text):
+        errors.append(f"use '{right}' instead of '{found}'")
     # Check clause by clause, not sentence by sentence: a long profile sentence
     # often mentions a past employer and then a present-tense fact about today
     # ("... at Telia's R&D division, and I run two AI products of my own"). Only

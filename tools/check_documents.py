@@ -22,6 +22,7 @@ Usage:
 Exit codes: 0 pass, 1 fail, 2 a document was not found.
 """
 import argparse
+import canonical
 import os
 import re
 import sys
@@ -175,6 +176,14 @@ def check_slop(paras, errors, warnings):
         errors.append(f"' -- ' used {dh}x — use a comma, colon or parentheses")
     if re.search(r"\bisn't just\b|\bnot just\b|\bnot only\b", low):
         warnings.append("possible binary contrast ('not just X but Y')")
+
+
+def check_canonical(cv_text, letter_text, errors):
+    """Fail a document that still uses a non-canonical fact wording."""
+    for label, text in (("CV", cv_text), ("letter", letter_text)):
+        for found, right in canonical.explain(text):
+            errors.append(f"{label}: use '{right}' instead of '{found}' "
+                          "(config/canonical-facts.json)")
 
 
 def check_keywords(letter_paras, cv_text, keywords, min_cov, errors, warnings):
@@ -362,6 +371,7 @@ def main():
                 check_jd_echo(letter_paras, fh.read(), errors)
     else:
         check_cv(cv_paras, NAME, facts, corpus, errors, warnings)
+    check_canonical(cv_text, " ".join(letter_paras), errors)
     check_rate(letter_paras, cv_text, args.engagement, CONTRACT_RATE, errors)
 
     # A CV that renders to two half-empty pages reads as thin, whatever the

@@ -86,6 +86,12 @@ fi
 bash "$ROOT/tools/embeddings.sh" || true
 
 # 4. index
+# GraphRAG's settings reference ${OPENCODE_API_KEY}; load it from the encrypted
+# store when the caller did not export it.
+if [ -z "${OPENCODE_API_KEY:-}" ]; then
+  OPENCODE_API_KEY="$(python3 "$ROOT/tools/secrets_store.py" --get graphrag OPENCODE_API_KEY 2>/dev/null || true)"
+  export OPENCODE_API_KEY
+fi
 gr="$(find_graphrag)"
 if [ -z "$gr" ]; then
   echo "graphrag CLI not found. Install it (pip install graphrag) or set GRAPHRAG_BIN, then run:"

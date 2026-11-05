@@ -6,6 +6,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from datetime import date
 import json
 import os
+import canonical
 import re
 
 OUT = os.environ.get("CV_OUT", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "documents", "applications"))
@@ -436,6 +437,7 @@ def add_page_bar(doc, path, w_cm, h_cm):
 
 
 def render_cv(role):
+    role = canonical.normalize_data(role)          # canonical facts before rendering
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     doc = new_doc(font="Georgia")
     try:
@@ -532,6 +534,7 @@ def render_cv(role):
     doc.save(path); print("wrote", path)
 
 def render_motivation(role):
+    role = canonical.normalize_data(role)          # canonical facts before rendering
     doc = new_doc()
     header(doc, role["headline"])
     body(doc, LETTER_DATE, size=9.5, color=GREY, space_after=6)

@@ -121,6 +121,16 @@ where the record says so (for example the Google hub at HAUD), not as decoration
 - Product capabilities are not personal achievements; attribute them to the
   product, and keep your own hands-on work distinct.
 
+## Canonical facts
+
+Some facts have one correct wording — an institution's full name, a superlative
+claim, a product name. `config/canonical-facts.json` holds the exact replacements
+and the forbidden variants. The knowledge-base ingest applies them before
+indexing, `cv_target.py` and `render_letter.py` apply them to the content pack
+before rendering, and `check_documents.py` fails a document that still contains a
+forbidden variant. Add a rule when a fact must not drift; the public template is
+`config/canonical-facts.example.json`.
+
 ## The loop
 
 1. Write the pack from the KB context, splitting compound bullets and adding the

@@ -54,6 +54,7 @@ Components:
 | `state/applications.csv` | Canonical register: `date,company,role,ats,status,letter,notes,employment,action,key,apply_url`. One row per role. `key` is the role's single identity (the queue row's last column, also what `queue.done` stores); rows written before it existed fall back to `company|role`. `action` is a short follow-up flag (reply/assessment/booking) surfaced as ⚑ in the grid and filterable. |
 | `state/submissions.csv` | Provenance ledger: paths + sha256 + snapshot dir + evidence + confidence (`verified`/`forced`/`inferred`). |
 | `state/role-groups.json` | Named groups (campaigns): `{groups:{id:{name,color}},roles:{key:[id]}}`, independent of status. |
+| `config/canonical-facts.json` | Canonical fact wording: regex replacements applied at KB ingest and CV/letter render; the gate fails forbidden variants. |
 | `state/queue.tsv` | Pending roles: `company␉role␉url␉cv-archetype␉ats␉key`. |
 | `state/queue.done` / `queue.retry` / `queue-human.tsv` | Completion, retry, human-assist queues. |
 | `state/logs/runs.jsonl` | Structured per-task result: `{ts,company,role,outcome,rc,reason}`. |
@@ -321,6 +322,8 @@ All POSTs require header `X-Session: <token>` (else 403); the token is injected 
 
 Dashboard actions run detached: the console stays usable while they work, and progress is
 reported in the **Activity** pane. Only the explicit submit approval is a blocking dialog.
+The pre-submit gate also checks `config/canonical-facts.json`: a CV or letter that still
+contains a non-canonical fact wording fails before it can be submitted.
 - **Prepare:** `REVIEW=1 run_queue.sh` — builds docs + gates, records PREPARED; never submits/emails. Safe.
 - **Run Submissions:** `run_queue.sh` — **submits**. Requires the `APPROVE_RUN_QUEUE` approval token
   (the two-step modal: acknowledge + Confirm); refused otherwise. Every decision is logged to `state/approvals.log`.

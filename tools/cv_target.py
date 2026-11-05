@@ -29,6 +29,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import canonical
 import json
 import os
 import re
@@ -311,6 +312,7 @@ def main() -> int:
     stateio.ensure_paths(args.content)
 
     data = json.load(open(args.content)) if args.content else _default_data(args.key)
+    data = canonical.normalize_data(data)          # canonical facts before rendering
     data.setdefault("key", args.key)
     st = content_stats(data)
     print(f"CONTENT  {st['roles']} roles · {st['bullets']} bullets · "

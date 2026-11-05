@@ -2963,6 +2963,12 @@ def agent_env(**extra):
             env.setdefault(SS.KEY_ENV, key)
     except SS.SecretsError:
         pass
+    try:
+        gr_key = SS.get("graphrag", "OPENCODE_API_KEY")
+        if gr_key:
+            env.setdefault("OPENCODE_API_KEY", gr_key)
+    except SS.SecretsError:
+        pass
     return env
 
 

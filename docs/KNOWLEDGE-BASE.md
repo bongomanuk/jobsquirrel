@@ -122,6 +122,14 @@ Indexing calls the LLM to extract entities/relationships and summarise
 communities; it costs tokens and time. It caches completed steps, so a re-run
 after a failure resumes rather than restarting.
 
+### Canonical facts
+
+Before indexing, `kb_ingest.py` applies `config/canonical-facts.json` to every
+source, so the graph cannot learn a wrong variant of a fact that has one correct
+wording. The same rules are applied when a CV or letter is rendered, and the
+pre-submit gate fails a document that still contains a forbidden variant. The
+public template is `config/canonical-facts.example.json`.
+
 ## 4. Use it
 
 ```bash
