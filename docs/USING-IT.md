@@ -64,7 +64,8 @@ Everything is observable. Useful things to ask for, or run yourself:
     Status · **Match** (ATS-keyword coverage; `align✗` = the alignment gate failed) · Queue ·
     Files · Job ad, plus search / status / queue / group filters, sortable columns, CSV export
     and an **ⓘ Legend**. Right-click a row to add it to a named **group** (a campaign), or create
-    one; groups are independent of status and survive renames and queue runs. Hover anything for
+    one; the **🏷 Groups** toolbar button opens the group manager to create, rename or delete
+    groups. Groups are independent of status and survive renames and queue runs. Hover anything for
     what it means; click a row for the detail drawer
     (Summary · Provenance · Job spec · ATS · **Grounding** · Tailored).
   - **Grounding** shows how your knowledge graph was used for that role: the cited context pack

@@ -84,7 +84,7 @@
           </details>
           <button id="export">Export CSV</button>
           <button id="grouping" class="small" title="Group rows by bucket (default) or show one flat sorted list — clicking a column header switches to the flat view">☰ Grouped</button>
-          <button id="newgroup" class="small" title="Create an empty group (campaign), then right-click roles to add them">🏷 New group</button>
+          <button id="groups" class="small" title="Create, rename or delete groups (campaigns)">🏷 Groups</button>
           <button id="a-prepare-shown" title="Generate documents for the rows in this view (expanded groups) — runs the agent per role, a few minutes each; nothing is submitted">⚡ Prepare shown</button>
           <button id="a-submit-shown" class="risky" title="Submit the PREPARED rows in this view, with the documents already generated — sends applications; needs approval">🚀 Submit prepared</button>
           <button id="a-match" title="Recompute CV–job match for the rows in this view — instant (no agent)">↻ Match</button>
@@ -432,7 +432,7 @@
         <dt>⚑ action</dt><dd>A reply or follow-up is needed (e.g. answer an interview email, complete an assessment). Tick the box under Filters to show only those; set or clear the flag in the row's drawer or from the right-click menu.</dd>
         <dt>Application states</dt><dd>The collapsible graph above the grid is the pipeline: each state shows how many live roles are in it, and clicking a state filters the grid to that status (Clear filters resets). CLOSED can follow any state.</dd>
         <dt>Sorting</dt><dd>Click a column header to sort the whole list (the grid switches to a flat view); click again to reverse. <b>☰ Grouped</b> in the toolbar returns to the bucket sections.</dd>
-        <dt>Right-click a row</dt><dd>Opens the row menu: open details/documents/the ad, prepare, submit prepared, recompute match, draft a reply, add to a group (campaign) or create one, set status, close the role (status CLOSED), flag a follow-up, pin to the top, re-queue, hand to you, or copy the company/role/link/key. <b>📌</b> = pinned.</dd>
+        <dt>Right-click a row</dt><dd>Opens the row menu: open details/documents/the ad, prepare, submit prepared, recompute match, draft a reply, add to a group (campaign) or create one, manage groups from the 🏷 Groups button, set status, close the role (status CLOSED), flag a follow-up, pin to the top, re-queue, hand to you, or copy the company/role/link/key. <b>📌</b> = pinned.</dd>
         <dt>Fit</dt><dd>How much of the ad's ATS keyword list the tailored CV covers. <b>align✗</b> = the pre-submit alignment gate failed. Click to sort.</dd>
         <dt>Pay</dt><dd>Estimated annual pay in EUR from the ad (hourly/day rates annualised at 1,600h/220d; approximate FX). Hover for the source text. <span class="muted">—</span> = no figure in the ad — set one in the row's Summary. Click to sort.</dd>
         <dt>Work</dt><dd>Remote / hybrid / on-site detected from the ad. Set an override in the row's Summary. Click to sort.</dd>
@@ -448,6 +448,17 @@
       <dl id="legend-queue"></dl>
     </div>
   </div>
+</div></div>
+
+<div id="groupsm" class="modal hide"><div class="modal-box" style="width:min(620px,94vw)">
+  <div class="row"><b style="flex:1">Groups</b><button onclick="groupsClose()">✕</button></div>
+  <p class="muted mini" style="margin:0 0 10px">Groups are campaigns that cross status. Right-click a role → Groups to add it. Deleting a group removes its memberships, not the roles.</p>
+  <div class="row" style="margin:8px 0">
+    <input id="group-new" placeholder="New group name…" style="flex:1"
+      onkeydown="if(event.key==='Enter')App.createGroup()">
+    <button onclick="App.createGroup()">＋ Create</button>
+  </div>
+  <div id="group-list" class="group-list"></div>
 </div></div>
 
 <div id="docv" class="modal hide"><div class="modal-box" style="width:min(900px,94vw)">

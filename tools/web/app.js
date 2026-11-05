@@ -1276,7 +1276,7 @@ function renderStateGraph() {
   const box = document.getElementById('sg-body');
   if (!box) return;
   const counts = {};
-  GRID.forEach(r => { if (shown(r)) counts[r.status] = (counts[r.status] || 0) + 1; });
+  GRID.forEach(r => { counts[r.status] = (counts[r.status] || 0) + 1; });
   const active = ($('#fstatus') || {}).value || '';
   const arrow = '<defs><marker id="sg-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#4b5563"/></marker></defs>';
   const edge = ([x1, y1, x2, y2, label]) => {
@@ -1359,6 +1359,27 @@ function groupTagsHTML(r) {
       ` onclick="event.stopPropagation();App.groupFilter('${esc(id)}')"` +
       ` title="Group: ${esc(g.name)} — click to show this group">${esc(g.name)}</span>`;
   }).join('');
+}
+
+function groupsOpen() {
+  if (!$('#groupsm')) return;
+  loadGroups().then(() => { renderGroupList(); $('#groupsm').classList.remove('hide'); });
+}
+function groupsClose() { $('#groupsm').classList.add('hide'); }
+function renderGroupList() {
+  const el = $('#group-list'); if (!el) return;
+  const gs = GROUPS.groups || [];
+  if (!gs.length) {
+    el.innerHTML = '<div class="muted">No groups yet. Create one above, then right-click roles to add them.</div>';
+    return;
+  }
+  el.innerHTML = gs.map(g => `<div class="group-row">` +
+    `<span class="gtag" style="--gc:${esc(g.color || '#7aa2f7')}">${esc(g.name)}</span>` +
+    `<span class="muted mini">${g.count || 0} role${g.count === 1 ? '' : 's'}</span>` +
+    `<span style="flex:1"></span>` +
+    `<button class="small" onclick="App.renameGroup('${esc(g.id)}')">Rename</button>` +
+    `<button class="small risky" onclick="App.deleteGroup('${esc(g.id)}')">Delete</button>` +
+    `</div>`).join('');
 }
 
 function clearFilterInputs() {
@@ -1520,7 +1541,7 @@ function renderRows() {
     else
       $('#count').textContent = `${rows.length} ${((BUCKETS.find(b => b.k === BUCKET) || {}).label || BUCKET).toLowerCase()}`;
   }
-  if ($('#fact-count')) { const n = GRID.filter(r => r.action && shown(r)).length; $('#fact-count').textContent = n ? `(${n})` : ''; }
+  if ($('#fact-count')) { const n = GRID.filter(r => r.action).length; $('#fact-count').textContent = n ? `(${n})` : ''; }
   if ($('#filt-n')) {
     const n = [st, qq, ft, fa ? '1' : '', mp, mf, wm, q, fg].filter(Boolean).length;
     $('#filt-n').textContent = n ? `(${n})` : '';
@@ -1627,6 +1648,7 @@ App.rowMenu = (ev, i) => {
   }));
   if (groupItems.length) groupItems.push({ sep: true });
   groupItems.push({ icon: '＋', label: 'New group…', run: () => App.newGroupFor(r) });
+  groupItems.push({ icon: '⚙', label: 'Manage groups…', run: () => groupsOpen() });
   if (myGroups.size) groupItems.push({ icon: '✕', label: 'Remove from all groups', run: () => App.clearGroups(r) });
   const STATUSES = closed
     ? ['IN_PROGRESS', 'PREPARED', 'SUBMITTED', 'BLOCKED', 'MANUAL']
@@ -1758,6 +1780,34 @@ App.clearGroups = async (r) => {
   for (const id of (r.groups || [])) await api('/api/groups', { op: 'assign', key: r.key, group: id, on: false });
   await loadGroups(); await loadGrid();
   toast('removed from all groups');
+};
+App.createGroup = async () => {
+  const inp = $('#group-new');
+  const name = ((inp && inp.value) || '').trim();
+  if (!name) return toast('name the group first', true);
+  const d = await api('/api/groups', { op: 'create', name });
+  if (d.error) return toast(d.error, true);
+  if (inp) inp.value = '';
+  await loadGroups(); renderGroupList(); await loadGrid();
+  toast(`created “${d.group.name}”`);
+};
+App.renameGroup = async (id) => {
+  const g = groupById(id); if (!g) return;
+  const name = prompt('Rename group:', g.name);
+  if (name == null || !name.trim() || name.trim() === g.name) return;
+  const d = await api('/api/groups', { op: 'rename', group: id, name: name.trim() });
+  if (d.error) return toast(d.error, true);
+  await loadGroups(); renderGroupList(); await loadGrid();
+  toast('group renamed');
+};
+App.deleteGroup = async (id) => {
+  const g = groupById(id); if (!g) return;
+  if (!confirm(`Delete the group “${g.name}”?\n\nThe roles stay in the register; only the group and its memberships are removed.`)) return;
+  const d = await api('/api/groups', { op: 'delete', group: id });
+  if (d.error) return toast(d.error, true);
+  const sel = $('#fgroup'); if (sel && sel.value === id) sel.value = '';
+  await loadGroups(); renderGroupList(); await loadGrid();
+  toast('group deleted');
 };
 App.groupFilter = (id) => {
   const sel = $('#fgroup'); if (sel) sel.value = id || '';
@@ -3549,8 +3599,8 @@ $('#q').oninput = () => {
 });
 const fgroup = $('#fgroup');
 if (fgroup) fgroup.onchange = () => { if (fgroup.value) BUCKET = 'all'; renderBuckets(); renderRows(); };
-const newgroup = $('#newgroup');
-if (newgroup) newgroup.onclick = () => App.newGroupFor(null);
+const groupsBtn = $('#groups');
+if (groupsBtn) groupsBtn.onclick = () => groupsOpen();
 ['#fpay', '#ffit', '#fwork'].forEach(sel => {
   const el = $(sel); if (!el) return;
   el.onchange = () => { renderRows(); };      // quality filters apply within the current bucket
@@ -3674,7 +3724,9 @@ document.addEventListener('dragstart', e => {
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && !$('#knowledge').classList.contains('hide')) {
+  if (e.key !== 'Escape') return;
+  if ($('#groupsm') && !$('#groupsm').classList.contains('hide')) { groupsClose(); return; }
+  if (!$('#knowledge').classList.contains('hide')) {
     if (KGMODE === 'universe') App.setKGMode('map'); else App.closeKnowledge();
   }
 });

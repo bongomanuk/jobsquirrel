@@ -792,3 +792,9 @@ body.knowledge-open .modal{z-index:60}
 .tasklog-raw>summary::before{content:'▸ ';color:var(--accent)}
 .tasklog-raw[open]>summary::before{content:'▾ ';}
 .tasklog-raw .tasklog-body{flex:1;min-height:120px}
+
+/* Group management dialog */
+.group-list{display:flex;flex-direction:column;gap:6px;max-height:50vh;overflow:auto;margin-top:6px}
+.group-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--line);
+  border-radius:8px;background:#0a0c10}
+.group-row .gtag{cursor:default}

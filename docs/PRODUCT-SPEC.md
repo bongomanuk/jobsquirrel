@@ -204,6 +204,9 @@ Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files �
   discuss the role, prepare documents, submit prepared (approval-gated), recompute the match, draft a
   reply with the agent, set the status, flag or clear a follow-up, **pin to the top**, re-queue, hand to a human, unblock/remove from the queue, and copy the company, role,
   URL or key. Keyboard: arrows move, Escape closes.
+- **🏷 Groups** in the toolbar opens the group manager: create a campaign, rename or delete one.
+  Deleting a group removes its memberships, not the roles. Right-click a row → Groups to add or
+  remove that role.
 - The menu is **state-aware**: it opens with the company, role, status chip, fit, ⚑ flag and interview
   time, and only offers actions that apply (no submit unless `PREPARED`, no reply draft on a closed
   role, no queue action on a prepared one, "Reopen as" instead of "Set status" on a rejected/closed
