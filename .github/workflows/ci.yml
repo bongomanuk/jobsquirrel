@@ -19,7 +19,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install test deps
-        run: pip install pytest python-docx rich
+        run: pip install pytest python-docx rich pandas
 
       - name: Compile Python
         run: python -m py_compile tools/*.py tools/compat/*
