@@ -959,7 +959,9 @@ const App = {
     inp.value = '';
     if (d.delegated) {
       CHAT.running = false; setSpin(false);
+      if (d.id && DELEGATED_SEEN) DELEGATED_SEEN.add(d.id);
       toast('Handed to a background subagent — watch Activity');
+      openDock(true);
       App.showActivity();
     } else if (d.queued) toast(`queued — the agent is busy (${d.pending} waiting)`);
     chatOffset = 0; clearInterval(CHAT_TIMER); CHAT_TIMER = setInterval(chatPoll, 1200);
@@ -2381,6 +2383,18 @@ async function liveTick() {
   const a = d.action || {};
   const aname = (a.name || '').replace(/^action=/, '').replace(/\s*\(.*\)\s*$/, '');
   const delegated = d.delegated || [];
+  const dIds = new Set(delegated.map(x => x.id));
+  if (DELEGATED_SEEN === null) {
+    DELEGATED_SEEN = dIds;                              // page load: don't announce tasks already running
+  } else {
+    const fresh = delegated.filter(x => !DELEGATED_SEEN.has(x.id));
+    DELEGATED_SEEN = dIds;
+    if (fresh.length && !document.hidden) {
+      toast(`Background task started: ${fresh[0].title || 'subagent'} — watch Activity`);
+      openDock(true);
+      App.showActivity();
+    }
+  }
   let s = a.running ? '● ' + aname + ' …' : (d.active ? '● running' : '○ idle');
   (d.running || []).forEach(r => s += '  ▶ ' + r);
   delegated.forEach(x => s += '  ▶ ' + (x.title || 'subagent'));
@@ -2891,6 +2905,7 @@ document.addEventListener('toggle', e => {
 let CHAT_STICK = true;                                        // follow new output only if the reader is at the bottom
 function chatAtBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 60; }
 let ACT = null, ACT_SIG = '', ACT_IGNORE = '', LAST_ACT_NAME = '';   // last dashboard action, shown in the chat
+let DELEGATED_SEEN = null;                              // subagent ids already announced
 function actionCard(a) {
   const sm = a.summary || {}, ov = a.overview || [];
   let h = `<div class="c-user">${a.running ? NUT : ''}${esc(a.name)} <span class="muted">${a.running ? 'running…' : 'done'}</span></div>`;
