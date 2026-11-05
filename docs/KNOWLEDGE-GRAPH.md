@@ -13,9 +13,9 @@ real job search. Your own graph looks denser because it has your own evidence.
 |---|---|
 | ![The knowledge universe: eight synthetic theme islands connected by a central person](screenshots/graph-universe.png) | ![A selected synthetic person with four bright neighbouring clusters and the node details pane](screenshots/graph-focus.png) |
 
-| Map — the same renderer, drilled down to ontology topics | Map — the generated community hierarchy |
-|---|---|
-| ![The Map view showing nine ontology classes and their links](screenshots/graph-topics.png) | ![The Map view showing eight synthetic communities](screenshots/graph-communities.png) |
+| Map — the generated community hierarchy |
+|---|
+| ![The Map view showing eight synthetic communities](screenshots/graph-communities.png) |
 
 ## 1. What the graph is made of
 

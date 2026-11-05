@@ -70,29 +70,17 @@ demo data: a sample candidate and fictional companies.)
 |---|
 | ![The knowledge universe: synthetic theme islands connected by a central person](docs/screenshots/graph-universe.png) |
 
-| Focus — the selected entity, its bright neighbourhood and the evidence pane | Map — the same renderer, drilled down to ontology topics |
+| Focus — the selected entity, its bright neighbourhood and the evidence pane | Map — the generated community hierarchy |
 |---|---|
-| ![A selected entity with bright neighbouring clusters and the details pane](docs/screenshots/graph-focus.png) | ![The Map view showing ontology classes and their links](docs/screenshots/graph-topics.png) |
+| ![A selected entity with bright neighbouring clusters and the details pane](docs/screenshots/graph-focus.png) | ![The Map view showing the community hierarchy](docs/screenshots/graph-communities.png) |
 
-| Map — the generated community hierarchy | The application states graph |
+| The application states graph | Agent console — chat, delegated work and live activity |
 |---|---|
-| ![The Map view showing the community hierarchy](docs/screenshots/graph-communities.png) | ![Application states graph with a count for every stage](docs/screenshots/pipeline.png) |
-
-| Context menu — actions that fit the role's current state | Agent console — chat, delegated work and live activity |
-|---|---|
-| ![Right-click context menu on a role](docs/screenshots/context-menu.png) | ![Agent console with chat and activity](docs/screenshots/agent.png) |
+| ![Application states graph with a count for every stage](docs/screenshots/pipeline.png) | ![Agent console with chat and activity](docs/screenshots/agent.png) |
 
 | Documents — the rendered, gated CV in place | Evidence overlay — every CV line scored against the ad and the knowledge base |
 |---|---|
 | ![Documents tab with the embedded CV](docs/screenshots/documents.png) | ![Evidence overlay: green lines are backed by the knowledge base, amber lines name a requirement it cannot confirm](docs/screenshots/evidence.png) |
-
-| Secrets — one encrypted store, masked values | Settings — model, accounts and permissions |
-|---|---|
-| ![Secrets tab: encrypted store with masked values](docs/screenshots/secrets.png) | ![Settings](docs/screenshots/settings.png) |
-
-| Backup & restore — what is saved, and a safe restore | Legend — what every status, mark and queue state means |
-|---|---|
-| ![Backup and restore](docs/screenshots/backup.png) | ![Status and queue legend](docs/screenshots/legend.png) |
 
 ---
 
