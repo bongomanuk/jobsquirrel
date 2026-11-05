@@ -73,7 +73,9 @@ cp kb/graphrag/.env.example          kb/graphrag/.env
 ```
 
 - **Completion model**: any OpenAI-compatible endpoint
-  (`GRAPHRAG_API_BASE`, `GRAPHRAG_API_KEY`, `GRAPHRAG_LLM_MODEL`).
+  (`GRAPHRAG_API_BASE`, `GRAPHRAG_API_KEY`, `GRAPHRAG_LLM_MODEL`) — including a
+  **local** llama.cpp, Ollama, LM Studio or vLLM server. The graph builder then
+  runs entirely on your machine.
 - **Embeddings**: any OpenAI-compatible embeddings endpoint
   (`GRAPHRAG_EMBED_BASE`, `GRAPHRAG_EMBED_MODEL`, `GRAPHRAG_EMBED_KEY`).
 

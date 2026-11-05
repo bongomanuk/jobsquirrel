@@ -32,6 +32,12 @@ It is **person-agnostic and country-agnostic**: nothing here is tied to a
 particular person, employer, language or country. You configure everything in
 `config/`.
 
+**Everything is local.** The dashboard, register, documents, browser and knowledge
+graph all run on your machine. The only network calls are the ones you choose: the
+employer's site, Gmail/Calendar if you enable them, and the model provider — which
+can be a local model too. Use opencode, Claude Code, Cursor or **your own local AI
+agent**; see [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md#run-it-fully-local).
+
 **CV or resume?** The same document. This project, its files and its tools say
 *CV*; if you are in the US, read every mention as *resume*. Nothing else changes.
 
@@ -200,6 +206,7 @@ gates* rather than good intentions.
 | **Targeting** | keyword match | **Alignment gate** maps the role family to the right CV archetype; a mismatched CV cannot be submitted |
 | **CAPTCHA / anti-bot** | often handled with workarounds | **stops and hands to you**: no evasion, so no tool-driven ToS or ban risk |
 | **Who runs it** | locked to one vendor or cloud | **any agent** (opencode, Claude Code, Cursor, …) via `AGENTS.md` |
+| **Where it runs** | a vendor cloud | **on your machine**: local dashboard, register, graph and browser; an optional **local model** |
 | **Cost** | metered API per run | runs on cheap **DeepSeek Flash** (~cents/application); everything else is local |
 | **Record** | a log line, if any | **audit trail**: one row per company+role, exact files hashed & snapshotted, inbox reconciled |
 | **Setup** | hard-coded personal defaults | **person- and country-agnostic**: everything lives in `config/` |
@@ -493,6 +500,12 @@ interviewed — awaiting outcome).
   generated content are git-ignored.
 - Do not commit `config/profile.md`, `config/cv.json` or `config/archetypes.json`
  , they contain your personal data.
+- **Local by design.** The dashboard, register, provenance ledger, generated
+  documents and GraphRAG index live on your machine. There is no service to
+  upload to. The only outbound calls are the ones you choose: the employer/ATS
+  site, Gmail/Calendar if enabled, and the model provider. Point the provider at
+  a local OpenAI-compatible server (llama.cpp, Ollama, LM Studio, vLLM) and the
+  whole pipeline runs offline.
 - **Recruitment-scam checks.** Every saved advert and every message is scanned for
   known scam signals (remote-access software, wallet/seed phrases, pay-to-work,
   equipment cheques, chat-only interviews). Mail is checked against the company's

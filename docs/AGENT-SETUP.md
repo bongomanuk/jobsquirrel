@@ -144,6 +144,45 @@ selection looks like:
 `tools/agent_run.sh` forwards the key to the runner and prefixes the model with
 `openrouter/` for OpenCode. Queue/apply runs, chat and role chats all use it.
 
+### Run it fully local
+
+The pipeline does not need a cloud model. `tools/agent_run.sh` accepts any
+OpenAI-compatible chat endpoint as the agent model — **llama.cpp**
+(`llama-server`), **Ollama**, **LM Studio**, **vLLM** or another
+OpenAI-compatible server.
+
+Set the agent to `local` (or `llamacpp`) and point it at the server:
+
+```jsonc
+{
+  "agent": "local",
+  "model": "local/qwen2.5-coder-32b-instruct",
+  "models": { "local": "local/qwen2.5-coder-32b-instruct" },
+  "env": {
+    "LOCAL_LLM_BASE_URL": "http://127.0.0.1:8080/v1",
+    "LOCAL_LLM_API_KEY": "sk-local"
+  }
+}
+```
+
+Or for one run:
+
+```bash
+AGENT=local MODEL=local/qwen2.5-coder-32b-instruct \
+LOCAL_LLM_BASE_URL=http://127.0.0.1:8080/v1 bash tools/run_queue.sh
+```
+
+- The **GraphRAG** completion model is separate: point `GRAPHRAG_API_BASE`,
+  `GRAPHRAG_API_KEY` and `GRAPHRAG_LLM_MODEL` in `kb/graphrag/.env` at the same
+  local server. Embeddings already run locally (`tools/embeddings.sh`).
+- The browser (Camoufox), CV/letter rendering (LibreOffice), register, dashboard
+  and knowledge graph are all local. Apart from the employer's site and
+  Gmail/Calendar (both optional), the model endpoint is the only thing that
+  would otherwise leave the machine.
+- A local model is slower and less reliable at long tool-use loops than a
+  frontier model. Start with REVIEW runs (`REVIEW=1`) and supervise the first
+  applications.
+
 ## 2. Run it with Claude Code, Cursor, or any other agent
 
 The contract is `AGENTS.md`. Any agent that can read files and run shell
