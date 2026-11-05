@@ -10,6 +10,7 @@
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE)
 [![python](https://img.shields.io/badge/python-3.11%2B-3776ab?style=flat-square)](docs/SETUP.md)
 [![scam-aware](https://img.shields.io/badge/scam--aware-yes-b91c1c?style=flat-square)](docs/SCAMS.md)
+[![docs](https://img.shields.io/badge/docs-online-2f6f4e?style=flat-square)](https://bongomanuk.github.io/jobsquirrel/)
 
 *A diligent squirrel for your job hunt. It gathers the roles, tailors each one,
 and never stashes a nut it can't actually crack.* 🐿️
@@ -466,6 +467,8 @@ example `INTERVIEW` → invited — reply · scheduled · replied — awaiting a
 interviewed — awaiting outcome).
 
 ## Documentation
+
+**Read the docs online at [bongomanuk.github.io/jobsquirrel](https://bongomanuk.github.io/jobsquirrel/)** — search, dark mode and the same pages.
 
 **[All documentation](docs/all.md)** — the full index, in reading order.
 
