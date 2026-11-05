@@ -1,5 +1,7 @@
 # 🐿️ Jobsquirrel
 
+> ⭐ **If you find this useful, please give it a star** — it helps other people find it and benefit from it.
+
 **An open, self-hosted job-application agent: hand it your CV (resume) and it finds, tailors, gates and applies to jobs for you.**
 
 *A diligent squirrel for your job hunt. It gathers the roles, tailors each one,
