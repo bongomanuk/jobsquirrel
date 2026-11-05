@@ -103,6 +103,17 @@ def authenticate(force=False):
     return build("gmail", "v1", credentials=creds)
 
 
+def _attachments(payload):
+    """Filenames carried by a message (recursively)."""
+    out = []
+    for part in payload.get("parts", []) or []:
+        fn = part.get("filename") or ""
+        if fn:
+            out.append(fn)
+        out.extend(_attachments(part))
+    return out
+
+
 def _decode(payload):
     data = payload.get("body", {}).get("data")
     if data:
@@ -274,7 +285,10 @@ def sync(query, apply_changes):
         links, codes = extract(body)
         print(f"[{category}] {headers.get('date','')}  {sender}")
         print(f"    {subject}")
-        sc = scam_check.scan(body, _company_hint(sender, subject), sender)
+        sc = scam_check.scan(body, _company_hint(sender, subject), sender,
+                             reply_to=headers.get("reply-to", ""), subject=subject,
+                             links=scam_check.links_in(body),
+                             attachments=_attachments(msg["payload"]))
         if sc["level"] in ("high", "medium"):
             print(f"    SCAM {sc['level'].upper()}: {scam_check.summary(sc)}")
             for sig in sc["signals"]:

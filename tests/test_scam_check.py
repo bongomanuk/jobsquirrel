@@ -76,3 +76,57 @@ def test_save_and_load_roundtrip(tmp_path, monkeypatch):
     S.save("acme-engineer", r)
     assert S.load("acme-engineer")["level"] == "high"
     assert S.summary(S.load("acme-engineer")).startswith("HIGH")
+
+
+def test_reply_to_mismatch_is_flagged():
+    r = S.scan("Hello", sender="HR <hr@acme.com>", reply_to="HR <hr@gmail.com>")
+    assert "reply-to-mismatch" in {s["key"] for s in r["signals"]}
+
+
+def test_dangerous_attachment_is_high():
+    r = S.scan("Please install this before the call.", attachments=["AnyDesk.exe"])
+    assert r["level"] == "high"
+    assert "dangerous-attachment" in {s["key"] for s in r["signals"]}
+
+
+def test_archive_attachment_is_medium():
+    r = S.scan("See attached.", attachments=["documents.zip"])
+    assert r["level"] == "medium"
+    assert "archive-attachment" in {s["key"] for s in r["signals"]}
+
+
+def test_installer_link_is_high():
+    r = S.scan("Setup: https://example.com/teamviewer-setup.exe")
+    assert r["level"] == "high"
+    assert "software-download-link" in {s["key"] for s in r["signals"]}
+
+
+def test_shortened_and_ip_links():
+    assert "shortened-link" in _keys("Open https://bit.ly/abc")
+    r = S.scan("Open http://192.0.2.10/login")
+    assert "ip-address-link" in {s["key"] for s in r["signals"]}
+
+
+def test_punycode_and_wallet_links():
+    assert "punycode-link" in _keys("Open https://xn--acme-9ja.com/login")
+    r = S.scan("Open https://acme.example/connect-wallet")
+    assert "wallet-link" in {s["key"] for s in r["signals"]}
+
+
+def test_a_lookalike_domain_is_flagged_against_the_apply_domain():
+    r = S.scan("Hello", sender="Acme HR <hr@acme-careers.com>",
+               company="Acme", company_domain="acme.com")
+    assert "lookalike-domain" in {s["key"] for s in r["signals"]}
+
+
+def test_the_real_company_domain_is_not_flagged():
+    r = S.scan("Hello", sender="Acme HR <hr@acme.com>",
+               company="Acme", company_domain="acme.com")
+    assert "sender-domain-mismatch" not in {s["key"] for s in r["signals"]}
+    assert "lookalike-domain" not in {s["key"] for s in r["signals"]}
+
+
+def test_a_careers_subdomain_of_the_company_is_not_flagged():
+    r = S.scan("Hello", sender="Acme HR <hr@careers.acme.com>",
+               company="Acme", company_domain="careers.acme.com")
+    assert "sender-domain-mismatch" not in {s["key"] for s in r["signals"]}

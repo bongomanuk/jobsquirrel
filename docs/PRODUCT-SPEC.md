@@ -163,6 +163,11 @@ Components:
    banner in the role drawer and the Gmail review. The hard rule: never download or
    install software for an interview, never join a chat-only interview, never share a
    wallet/seed phrase/private key, never pay a fee or move money. See `docs/SCAMS.md`.
+   Mail is checked against the company's apply domain (lookalikes), free mailboxes,
+   Reply-To mismatches, links (installers, IP/punycode hosts, wallet-connect, file
+   hosts) and attachments (executables, archives); the worst warning per role is kept
+   in `state/scam-emails.json`. Roles with a HIGH or specific MEDIUM signal are grouped
+   in the **Probably scams** bucket, separate from **Needs you**.
 
 ## 8. Repository model
 

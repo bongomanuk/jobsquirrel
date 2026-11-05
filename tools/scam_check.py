@@ -149,9 +149,41 @@ ATS_DOMAINS = {
     "jobvite.com", "recruitee.com", "workable.com", "pinpoint.email", "join.com",
     "deel.com", "zerolime.se", "linkedin.com", "indeed.com", "bamboohr.com",
     "personio.com", "personio.de", "hibob.com", "rippling.com",
+    "avature.net", "icims.com", "taleo.net", "breezy.hr", "comeet.com",
+    "greenhouse-mail.io", "msg.jobylon.com", "hire.lever.co", "successfactors.eu",
 }
 
 LEVELS = {"clear": 0, "low": 1, "medium": 2, "high": 3}
+
+_DANGEROUS_EXT = (".exe", ".scr", ".msi", ".dmg", ".pkg", ".bat", ".cmd", ".ps1",
+                  ".vbs", ".js", ".jse", ".wsf", ".hta", ".lnk", ".iso", ".img",
+                  ".jar", ".apk", ".app", ".run", ".bin")
+_ARCHIVE_EXT = (".zip", ".rar", ".7z", ".tar", ".gz", ".tgz")
+_SHORTENERS = {"bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "is.gd",
+               "buff.ly", "rebrand.ly", "cutt.ly", "shorturl.at", "rb.gy",
+               "tiny.cc", "lnkd.in", "trib.al"}
+_FILE_HOSTS = {"mega.nz", "drive.google.com", "dropbox.com", "we.tl",
+               "transfer.sh", "file.io", "gofile.io", "sendspace.com"}
+_URL_RE = re.compile(r"https?://[^\s\"'<>()]+", re.I)
+
+
+def links_in(text):
+    """Every URL in a body, so the caller can pass them to scan()."""
+    return _URL_RE.findall(str(text or ""))
+
+
+def _host(url):
+    m = re.match(r"https?://([^/:\s?#]+)", str(url or ""), re.I)
+    return m.group(1).lower().strip(".") if m else ""
+
+
+def _ip_host(host):
+    return bool(re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){3}", host or ""))
+
+
+def _dangerous_file(path):
+    p = str(path or "").lower().split("?", 1)[0].split("#", 1)[0]
+    return p.endswith(_DANGEROUS_EXT)
 
 
 def _clean(text):
@@ -178,51 +210,124 @@ def _warning_context(body, start, end):
     return any(w in sentence for w in _WARNING_WORDS)
 
 
+def _is_ats(domain):
+    d = str(domain or "").lower().strip(".")
+    return any(d == a or d.endswith("." + a) for a in ATS_DOMAINS)
+
+
 def _email_domain(sender):
     m = re.search(r"@([A-Za-z0-9.-]+\.[A-Za-z]{2,})", str(sender or ""))
     return m.group(1).lower().strip(".") if m else ""
 
 
-def scan(text, company="", sender=""):
-    """Return {level, signals, rule} for a job advert or a message."""
+def _system_sender(sender):
+    local = (re.match(r"[^@\s<]+", str(sender or "").split("<")[-1].strip("<> ")) or [""])[0]
+    return any(x in local.lower() for x in ("mailer-daemon", "no-reply", "noreply",
+                                             "do-not-reply", "donotreply", "postmaster"))
+
+
+def scan(text, company="", sender="", reply_to="", subject="", links=None,
+         attachments=None, company_domain=""):
+    """Return {level, signals, rule} for an advert or a message.
+
+    Sender checks compare the From domain with the named company and with the
+    Reply-To; link and attachment checks catch installers, shorteners, IP hosts
+    and wallet-drainer URLs that the body text alone would miss.
+    """
     body = _clean(text)
-    low = body.lower()
-    found = []
+    found, seen = [], set()
+
+    def add(key, level, why, advice, match):
+        if key in seen:
+            return
+        seen.add(key)
+        found.append({"key": key, "level": level, "why": why,
+                      "advice": advice, "match": str(match)[:160]})
+
     for sig in SIGNALS:
         for m in re.finditer(sig["re"], body, re.I):
             if _warning_context(body, m.start(), m.end()):
                 continue
-            found.append({"key": sig["key"], "level": sig["level"],
-                          "why": sig["why"], "advice": sig["advice"],
-                          "match": m.group(0)[:160]})
+            add(sig["key"], sig["level"], sig["why"], sig["advice"], m.group(0))
             break
+
     domain = _email_domain(sender)
-    local = (re.match(r"[^@\s<]+", str(sender or "").split("<")[-1].strip("<> ")) or [""])[0]
-    system = any(x in local.lower() for x in ("mailer-daemon", "no-reply", "noreply",
-                                              "do-not-reply", "donotreply", "postmaster"))
+    system = _system_sender(sender)
+    expected = (company_domain or "").lower().strip().strip(".")
+    if expected.startswith("www."):
+        expected = expected[4:]
     if domain and not system:
         if domain in FREE_MAIL:
-            found.append({
-                "key": "free-mail-sender", "level": "medium",
-                "why": "The message comes from a free mailbox, not a company domain.",
-                "advice": "Verify the recruiter through the employer's own website "
-                          "before replying or sharing anything.",
-                "match": domain,
-            })
-        elif (company and domain not in ATS_DOMAINS
-              and not any(part in domain for part in re.findall(r"[a-z0-9]{4,}", company.lower()))):
-            found.append({
-                "key": "sender-domain-mismatch", "level": "medium",
-                "why": "The sender's domain does not look like the named company.",
-                "advice": "Check the company's real domain and the recruiter's name "
-                          "on the employer's site.",
-                "match": domain,
-            })
+            add("free-mail-sender", "medium",
+                "The message comes from a free mailbox, not a company domain.",
+                "Verify the recruiter through the employer's own website before "
+                "replying or sharing anything.", domain)
+        elif expected and domain != expected and not domain.endswith("." + expected):
+            if not _is_ats(domain):
+                root = expected.split(".")[0]
+                lookalike = bool(root and len(root) >= 4 and root in domain)
+                # A lookalike is suspicious; a completely different domain is
+                # usually an agency or a job board, so it is only a note.
+                add("lookalike-domain" if lookalike else "sender-domain-mismatch",
+                    "medium" if lookalike else "low",
+                    ("The sender's domain looks like the company's but is not it."
+                     if lookalike else
+                     "The sender's domain is not the company's apply domain."),
+                    "Check the company's real domain and the recruiter's name on the "
+                    "employer's site.", f"{domain} (expected {expected})")
+    if reply_to and domain:
+        rd = _email_domain(reply_to)
+        if rd and rd != domain and (rd in FREE_MAIL or _ip_host(rd) or rd.startswith("xn--")):
+            add("reply-to-mismatch", "medium",
+                "Replies go to a different, unverified address than the sender.",
+                "Reply only to the address you can verify on the employer's site.",
+                f"{domain} -> {rd}")
+
+    for u in list(links or []) + links_in(text):
+        host, path = _host(u), str(u).lower()
+        if _dangerous_file(path) or re.search(r"(anydesk|teamviewer|rustdesk|ultraviewer)", path):
+            add("software-download-link", "high",
+                "The message links to an installer or a remote-access tool.",
+                "Never download or install it. Delete the message and report it.",
+                u)
+        if _ip_host(host):
+            add("ip-address-link", "high",
+                "A raw IP address instead of a company domain is a common phishing host.",
+                "Do not open the link; verify the sender through the company site.", u)
+        if host in _SHORTENERS:
+            add("shortened-link", "low",
+                "A shortened link hides its real destination.",
+                "Expand or ignore it; never enter credentials after a shortened link.", u)
+        if host.startswith("xn--"):
+            add("punycode-link", "medium",
+                "A punycode host can imitate a real company domain.",
+                "Check the real domain spelling before opening anything.", u)
+        if (not re.search(r"\.(?:png|jpe?g|gif|svg|webp|css|js)(?:\?|$)", path)
+                and re.search(r"(connect|claim|airdrop|mint|seed|validate|sync|restore)", path)
+                and re.search(r"(wallet|crypto|web3|nft)", path)):
+            add("wallet-link", "high",
+                "The link is about connecting or claiming a wallet.",
+                "Never connect a wallet or share a seed phrase for a job.", u)
+        if host in _FILE_HOSTS and re.search(r"\.(exe|scr|msi|dmg|pkg|zip|rar|7z|iso|lnk)(?:\?|$)", path):
+            add("file-host-download", "high",
+                "A file host is being used to deliver an installer or archive.",
+                "Do not download it; legitimate employers do not send installers.", u)
+
+    for a in (attachments or []):
+        al = str(a).lower()
+        if _dangerous_file(al) or re.search(r"(anydesk|teamviewer|rustdesk|ultraviewer)", al):
+            add("dangerous-attachment", "high",
+                "The message carries an executable, installer or remote-access tool.",
+                "Do not open it. Delete the message and report it.", a)
+        elif al.endswith(_ARCHIVE_EXT):
+            add("archive-attachment", "medium",
+                "A password-protected or compressed archive can hide an installer.",
+                "Do not open it unless you can verify the sender and the contents.", a)
+
     level = "clear"
     for f in found:
         if LEVELS[f["level"]] > LEVELS[level]:
             level = f["level"]
-    # A single weak phrase is a note, not a warning.
     if level == "clear" and any(f["level"] == "low" for f in found):
         level = "low"
     return {"level": level, "signals": found, "rule": HARD_RULE}

@@ -44,6 +44,8 @@ CACHE_FILE = os.path.join(STATE, "gmail_cache.json")
 REVIEW_FILE = os.path.join(STATE, "gmail-review.json")
 REVIEW_ACK_FILE = os.path.join(STATE, "gmail-review-ack.json")
 REVIEW_CFG_FILE = os.path.join(os.path.dirname(STATE), "config", "gmail-review.json")
+# Worst scam warning per company+role, for the dashboard's "Probably scams" bucket.
+SCAM_EMAILS_FILE = os.path.join(STATE, "scam-emails.json")
 
 
 def review_enabled():
@@ -70,6 +72,31 @@ def _review_ack_ids():
             return {str(x) for x in json.load(fh)}
     except (OSError, ValueError):
         return set()
+
+
+def save_scam_emails(entries):
+    """Persist the worst scam warning per company+role for the grid bucket."""
+    if not entries:
+        return
+    old = {}
+    try:
+        with open(SCAM_EMAILS_FILE, encoding="utf-8") as fh:
+            for e in json.load(fh):
+                if isinstance(e, dict) and e.get("company"):
+                    old[(e["company"].lower(), (e.get("role") or "").lower())] = e
+    except (OSError, ValueError):
+        pass
+    for e in entries:
+        k = (e["company"].lower(), (e.get("role") or "").lower())
+        prev = old.get(k)
+        if prev and scam_check.LEVELS.get(prev.get("level"), 0) > \
+                scam_check.LEVELS.get(e.get("level"), 0):
+            continue
+        old[k] = e
+    os.makedirs(STATE, exist_ok=True)
+    with open(SCAM_EMAILS_FILE, "w", encoding="utf-8") as fh:
+        json.dump(sorted(old.values(), key=lambda x: str(x.get("date", "")), reverse=True),
+                  fh, indent=2, ensure_ascii=False)
 
 
 def save_review(entries, seen_ids):
@@ -100,6 +127,24 @@ def save_review(entries, seen_ids):
     os.makedirs(STATE, exist_ok=True)
     with open(REVIEW_FILE, "w", encoding="utf-8") as fh:
         json.dump(out, fh, indent=2, ensure_ascii=False)
+
+
+_JOB_BOARDS = ("linkedin.com", "indeed.com", "glassdoor.", "monster.",
+               "stepstone.", "arbetsformedlingen.se", "jobylon.com")
+
+
+def _apply_domain(row):
+    """The company's own domain from the apply URL, when it is not an ATS/board."""
+    host = scam_check._host((row or {}).get("apply_url") or "")
+    if not host or scam_check._is_ats(host):
+        return ""
+    if any(x in host for x in _JOB_BOARDS):
+        return ""
+    for sub in ("www.", "jobs.", "careers.", "apply.", "recruiting.", "talent."):
+        if host.startswith(sub):
+            host = host[len(sub):]
+            break
+    return host
 
 
 def fetch_full(service, mid, attempts=5):
@@ -469,7 +514,10 @@ def cached_message(service, mid, cache):
         msg = fetch_full(service, mid)
         headers = {h["name"].lower(): h["value"] for h in msg["payload"].get("headers", [])}
         hit = {"date": headers.get("date", ""), "from": headers.get("from", ""),
-               "subject": headers.get("subject", ""), "body": G._decode(msg["payload"])}
+               "reply_to": headers.get("reply-to", ""),
+               "subject": headers.get("subject", ""),
+               "body": G._decode(msg["payload"]),
+               "attachments": G._attachments(msg["payload"])}
         cache[mid] = hit
         time.sleep(0.05)
         return hit, True
@@ -586,11 +634,15 @@ def main():
             continue
         company = match_company(f"{subject} {sender_display(sender)}", rows, body=plain, sender=sender)
         row = match_row(company, " ".join([subject, plain]), rows)
-        scam = scam_check.scan(plain, company or "", sender)
+        scam = scam_check.scan(plain, company or "", sender,
+                               reply_to=hit.get("reply_to", ""), subject=subject,
+                               links=scam_check.links_in(body),
+                               attachments=hit.get("attachments") or [],
+                               company_domain=_apply_domain(row))
         if scam["level"] not in ("clear",):
             scam_by_id[str(m["id"])] = scam
             scam_warnings.append((date, company or "", row["role"] if row else "",
-                                  sender_display(sender), subject, scam))
+                                  sender_display(sender), subject, scam, str(m["id"])))
         if category == "VERIFICATION":
             links, codes = G.extract(body)
             verifications.append((date, company or sender_display(sender), subject, links, codes))
@@ -678,6 +730,27 @@ def main():
         if sc:
             e["scam"] = sc
     save_review(review, live)
+    def _bucket_warning(sc):
+        """Only specific signals put a role in 'Probably scams'.
+
+        A generic domain mismatch is usually an agency, and a free mailbox alone
+        is common for small employers, so neither is enough on its own.
+        """
+        if sc["level"] == "high":
+            return True
+        specific = {"lookalike-domain", "reply-to-mismatch", "punycode-link",
+                    "archive-attachment"}
+        medium = [x for x in sc["signals"] if x["level"] == "medium"]
+        if any(x["key"] in specific for x in medium):
+            return True
+        return len(medium) >= 2
+    save_scam_emails([
+        {"id": mid, "date": date, "company": company, "role": role,
+         "sender": sender, "subject": subject, "level": sc["level"],
+         "signals": sc["signals"], "rule": sc["rule"]}
+        for date, company, role, sender, subject, sc, mid in scam_warnings
+        if sc["level"] in ("high", "medium") and company and _bucket_warning(sc)
+    ])
     print(f"({fetched} fetched, {len(messages) - fetched} from cache)\n")
 
     # de-duplicate (the same mail can match twice) keeping the first
@@ -715,7 +788,9 @@ def main():
 
     if scam_warnings:
         print("\n== scam warnings (verify before replying; never download or pay) ==")
-        for date, company, role, sender, subject, sc in scam_warnings:
+        for date, company, role, sender, subject, sc, _mid in scam_warnings:
+            if sc["level"] not in ("high", "medium"):
+                continue
             print(f"  [{sc['level'].upper()}] {date[:16]}  {company[:24]:<24} {role[:28]:<28} "
                   f"{sender[:26]:<26} {subject[:46]}")
             for sig in sc["signals"]:

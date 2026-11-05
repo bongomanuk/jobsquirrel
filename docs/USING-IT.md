@@ -167,7 +167,13 @@ The common high-risk signals are remote-access tools ("install AnyDesk before th
 interview"), wallet/seed-phrase requests, pay-to-work fees, equipment cheques,
 chat-only interviews on Telegram/WhatsApp, and unrealistic pay for no experience.
 A HIGH signal stops document preparation; the role can still be recorded `BLOCKED`
-with the reason. See **[SCAMS.md](SCAMS.md)** for the full list and what to do.
+with the reason. Mail is checked too: the sender domain against the company's
+apply domain (lookalikes), free mailboxes, Reply-To mismatches, installers,
+shortened/IP/punycode links, wallet-connect links and dangerous attachments.
+
+Roles with a warning appear in the **Probably scams** bucket, separate from
+**Needs you**, so a suspicious advert or message cannot hide among the ordinary
+follow-ups. See **[SCAMS.md](SCAMS.md)** for the full list and what to do.
 
 ## The Knowledge workspace
 

@@ -43,10 +43,26 @@ so they only count in a scam context.
   **refuses to prepare a role that trips a HIGH signal** (`PREP FAIL`, exit 3).
   Re-run with `--allow-scam` only after you have verified the employer yourself.
 - **Mail** (`gmail_readonly.py --sync`, `gmail_reconcile.py`) scans every message
-  body and sender, prints a **scam warnings** section, and attaches the warning
-  to the human review item.
-- **Dashboard**: a ⚠ marker on the grid row, and a red/amber banner in the role
-  drawer and the Gmail review with the signals, the advice and the hard rule.
+  body, sender, Reply-To, links and attachments, prints a **scam warnings**
+  section, and attaches the warning to the human review item.
+- **Dashboard**: a ⚠ marker on the grid row, a red/amber banner in the role
+  drawer and the Gmail review, and a **Probably scams** bucket that collects the
+  roles with a HIGH or specific MEDIUM signal.
+
+### Email checks
+
+| Check | What it catches |
+|---|---|
+| From domain vs the apply domain | A **lookalike** domain (`acme-careers.com` vs `acme.com`) is MEDIUM. A completely different domain is only a note: it is often a legitimate agency or job board. Known ATS and job-board domains are never flagged. |
+| Free mailbox | A recruiter writing from Gmail/Outlook/Yahoo/Proton. MEDIUM: verify the person through the employer's site. |
+| Reply-To | Replies going to a different, unverified address than the sender. MEDIUM. |
+| Links | Installers and remote-access tools, raw IP hosts, punycode hosts, wallet-connect/claim URLs and file hosts carrying an executable or archive. HIGH; shorteners are a LOW note. |
+| Attachments | Executables, installers, scripts and remote-access tools (HIGH); compressed archives (MEDIUM). |
+
+A generic domain mismatch is not enough to put a role in **Probably scams** on
+its own: agencies and job boards write from their own domains. The bucket needs
+a HIGH signal, a lookalike domain, a Reply-To mismatch, a punycode link, an
+archive attachment, or at least two independent MEDIUM signals.
 
 The scanner is a **warning system, not a verdict**: a legitimate small employer
 can write from a Gmail address, and a security advert can say "cryptography". A

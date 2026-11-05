@@ -468,11 +468,13 @@ interviewed — awaiting outcome).
  , they contain your personal data.
 - **Recruitment-scam checks.** Every saved advert and every message is scanned for
   known scam signals (remote-access software, wallet/seed phrases, pay-to-work,
-  equipment cheques, chat-only interviews). A HIGH signal **blocks document
-  preparation** and shows a warning in the dashboard and the Gmail review. The
-  hard rule: **never download or install software for an interview, never join a
-  chat-only interview, never share a wallet or seed phrase, never pay a fee or
-  move money.** See [docs/SCAMS.md](docs/SCAMS.md).
+  equipment cheques, chat-only interviews). Mail is checked against the company's
+  apply domain (lookalikes), free mailboxes, Reply-To mismatches, installers and
+  dangerous links/attachments. A HIGH signal **blocks document preparation** and
+  shows a warning in the dashboard and the Gmail review; flagged roles collect in
+  a **Probably scams** bucket. The hard rule: **never download or install software
+  for an interview, never join a chat-only interview, never share a wallet or seed
+  phrase, never pay a fee or move money.** See [docs/SCAMS.md](docs/SCAMS.md).
 
 ## Legal and acceptable use
 

@@ -39,8 +39,9 @@ const QUEUE_HELP = {
 /* Lifecycle buckets: the primary way to read the grid, no fine filtering needed.
    Each row lands in exactly one bucket, by urgency: done > needs > ongoing > pipeline. */
 const BUCKETS = [
-  { k: 'active', label: 'Active', hint: 'Everything not finished: needs you + prepared + ongoing + to apply' },
+  { k: 'active', label: 'Active', hint: 'Everything not finished: probable scams + needs you + prepared + ongoing + to apply' },
   { k: 'focus', label: 'Focus', hint: 'Roles that pay at least your target and fit at least 70%; also shows high-fit roles with no pay figure' },
+  { k: 'scams', label: 'Probably scams', hint: 'A HIGH or MEDIUM scam signal on the advert or a message — verify the employer before replying or applying' },
   { k: 'needs', label: 'Needs you', hint: 'Replies, interviews to book, assessments, offers or manual steps' },
   { k: 'prepared', label: 'Prepared', hint: 'Documents generated and gated — review or submit' },
   { k: 'ongoing', label: 'Ongoing', hint: 'Submitted, in progress or interviewing — waiting on the employer' },
@@ -49,6 +50,7 @@ const BUCKETS = [
   { k: 'all', label: 'All', hint: 'Every row, including finished ones' },
 ];
 const BUCKET_GROUPS = [
+  { k: 'scams', title: 'Probably scams', desc: 'verify the employer before replying or applying' },
   { k: 'needs', title: 'Needs you', desc: 'reply, book a time, complete an assessment, or clear a manual step' },
   { k: 'prepared', title: 'Prepared', desc: 'documents ready — review or submit' },
   { k: 'ongoing', title: 'Ongoing', desc: 'waiting on the employer' },
@@ -84,6 +86,7 @@ function substateRank(st, key) {
 }
 function bucketOf(r) {
   const s = r.status, lb = r.label || s;
+  if (r.scam && ['high', 'medium'].includes(r.scam.level)) return 'scams';
   if (s === 'CLOSED' || s === 'REJECTED') return 'done';
   if (r.action || NEEDS_STATUS.has(s) || r.substate === 'invited' || r.queue === 'human' ||
       NEEDS_SUBSTATES.has(r.substate)) return 'needs';
@@ -1111,6 +1114,12 @@ const App = {
     toast(d.ok || d.error, !!d.error);
     if (!d.error) { CUR.action = v; if (DTAB === 0) dt(0); loadGrid(); }
   },
+  clearScam: async (key, company, role) => {
+    if (!confirm(`Clear the scam warning for ${company} — ${role}?\n\nOnly do this after verifying the employer independently.`)) return;
+    const d = await api('/api/scam/clear', { key, company, role });
+    toast(d.ok || d.error, !!d.error);
+    if (!d.error) { await loadGrid(); if (CUR) openDetail(CUR); }
+  },
   clearAction: async () => {
     const d = await api('/api/register/row', { company: CUR.company, role: CUR.role, action: '' });
     toast(d.ok || d.error, !!d.error);
@@ -1262,17 +1271,17 @@ async function loadGrid() {
   if (sc) sc.scrollTop = y;
 }
 function bucketCounts() {
-  const c = { needs: 0, prepared: 0, ongoing: 0, pipeline: 0, done: 0 };
+  const c = { scams: 0, needs: 0, prepared: 0, ongoing: 0, pipeline: 0, done: 0 };
   GRID.forEach(r => { const k = bucketOf(r); c[k] = (c[k] || 0) + 1; });
   const live = GRID;
   return { ...c, focus: live.filter(r => r.focus || r.focus_unknown).length,
-           active: c.needs + c.prepared + c.ongoing + c.pipeline, all: live.length };
+           active: c.scams + c.needs + c.prepared + c.ongoing + c.pipeline, all: live.length };
 }
 function renderBuckets() {
   const el = $('#metrics'); if (!el) return;
   const c = bucketCounts();
   el.innerHTML = BUCKETS.map(b =>
-    `<button type="button" class="metric bucket ${b.k === BUCKET ? 'on' : ''}${b.k === 'needs' && c.needs ? ' hot' : ''}" data-bucket="${b.k}"${T(b.hint)}><b>${c[b.k] || 0}</b>${esc(b.label)}</button>`
+    `<button type="button" class="metric bucket ${b.k === BUCKET ? 'on' : ''}${((b.k === 'needs' && c.needs) || (b.k === 'scams' && c.scams)) ? ' hot' : ''}" data-bucket="${b.k}"${T(b.hint)}><b>${c[b.k] || 0}</b>${esc(b.label)}</button>`
   ).join('');
   el.querySelectorAll('.bucket').forEach(b => b.onclick = () => App.bucket(b.dataset.bucket));
 }
@@ -1645,7 +1654,7 @@ function renderRows() {
   if (!fg && GROUPED && (BUCKET === 'active' || BUCKET === 'all')) {
     groups = BUCKET_GROUPS.filter(g => BUCKET === 'all' || g.k !== 'done')
       .map(g => ({ ...g, test: r => bucketOf(r) === g.k }));
-    if (BUCKET === 'active' && !advanced && !rows.some(r => bucketOf(r) === 'needs'))
+    if (BUCKET === 'active' && !advanced && !rows.some(r => ['needs', 'scams'].includes(bucketOf(r))))
       html += '<tr class="grp calm"><td colspan="11">✓ Nothing needs you right now — ongoing applications and the apply queue are below.</td></tr>';
   } else if (!fg && BUCKET === 'focus') {
     groups = FOCUS_GROUPS;
@@ -1675,18 +1684,20 @@ function renderRows() {
   sortIndicators();
   renderStateGraph();
   if ($('#count')) {
-    const c = { needs: 0, prepared: 0, ongoing: 0, pipeline: 0, done: 0 };
+    const c = { scams: 0, needs: 0, prepared: 0, ongoing: 0, pipeline: 0, done: 0 };
     rows.forEach(r => { const b = bucketOf(r); c[b] = (c[b] || 0) + 1; });
     const cl = (n, label, action, hint) =>
       `<button type="button" class="countlink" onclick="${action}" title="${esc(hint || ('Filter to ' + label))}">${n} ${label}</button>`;
     const dot = '<span class="muted"> · </span>';
     if (BUCKET === 'active')
-      $('#count').innerHTML = cl(c.needs, 'need you', "App.bucket('needs')", 'Show the roles that need you') + dot +
+      $('#count').innerHTML = (c.scams ? cl(c.scams, 'probable scam' + (c.scams === 1 ? '' : 's'), "App.bucket('scams')", 'Show the roles with a scam warning') + dot : '') +
+        cl(c.needs, 'need you', "App.bucket('needs')", 'Show the roles that need you') + dot +
         cl(c.prepared, 'prepared', "App.bucket('prepared')", 'Show prepared documents ready to review') + dot +
         cl(c.ongoing, 'ongoing', "App.bucket('ongoing')", 'Show ongoing applications') + dot +
         cl(c.pipeline, 'to apply', "App.bucket('pipeline')", 'Show the roles still to apply to');
     else if (BUCKET === 'all')
-      $('#count').innerHTML = cl(c.needs, 'need you', "App.bucket('needs')") + dot +
+      $('#count').innerHTML = (c.scams ? cl(c.scams, 'probable scam' + (c.scams === 1 ? '' : 's'), "App.bucket('scams')") + dot : '') +
+        cl(c.needs, 'need you', "App.bucket('needs')") + dot +
         cl(c.prepared, 'prepared', "App.bucket('prepared')") + dot +
         cl(c.ongoing, 'ongoing', "App.bucket('ongoing')") + dot +
         cl(c.pipeline, 'to apply', "App.bucket('pipeline')") + dot +
@@ -2105,6 +2116,9 @@ function summary(r) {
   const kbGap = /no direct evidence|not evidenced|unmet/i.test(D.kb || '');
   const scam = D.scam || r.scam || null;
   return scamBox(scam) +
+    (scam && ['high', 'medium'].includes(scam.level)
+      ? `<div class="row" style="margin:-6px 0 10px"><button class="small" onclick='App.clearScam(${JSON.stringify(r.jd_key || r.key)},${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Only after you have verified the employer independently">Clear scam warning</button></div>`
+      : '') +
     (act ? `<div class="actionbox"><span class="actflag">⚑</span> <b>Action:</b> ${esc(act)}</div>` : '') +
     (kbGap ? `<div class="muted mini" style="color:#ffd479;margin:6px 0">⚠ The grounding report flags requirements with no direct evidence. Check the missing skills below before treating this as a fit.</div>` : '') +
     `<div class="row" style="margin:6px 0 10px"><input id="dt-action" placeholder="needs a reply or follow-up? describe it…" value="${esc(act)}" style="flex:1">

@@ -1405,6 +1405,31 @@ def role_detail(key):
             "match": match_info(key)}
 
 
+def scam_clear(company, role, key=""):
+    """Clear a scam warning after the human has verified the employer."""
+    key = os.path.basename(str(key or ""))[:120]
+    if key:
+        path = os.path.join(STATE, "scam", key + ".json")
+        try:
+            if os.path.exists(path):
+                os.unlink(path)
+        except OSError:
+            pass
+    path = os.path.join(STATE, "scam-emails.json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        keep = [e for e in data
+                if not (str(e.get("company", "")).lower() == str(company or "").lower()
+                        and str(e.get("role", "")).lower() == str(role or "").lower())]
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(keep, fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
+    except (OSError, ValueError):
+        pass
+    return {"ok": "scam warning cleared"}
+
+
 def discover(url):
     url = (url or "").strip()
     if not url.startswith("http"):
@@ -1780,9 +1805,35 @@ def _substate(status, notes="", action="", label=""):
     return (st.lower() or "unknown", st.lower() or "unknown", "")
 
 
+def _email_scams():
+    """Worst scam warning per company+role, written by gmail_reconcile."""
+    try:
+        with open(os.path.join(STATE, "scam-emails.json"), encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    for e in data if isinstance(data, list) else []:
+        if isinstance(e, dict) and e.get("company"):
+            out[(e["company"].lower(), (e.get("role") or "").lower())] = e
+    return out
+
+
+def _worst_scam(*items):
+    best = None
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        if best is None or (scam_check.LEVELS.get(it.get("level"), 0) >
+                            scam_check.LEVELS.get(best.get("level"), 0)):
+            best = it
+    return best
+
+
 def grid():
     """One row per application: register ⋈ queue ⋈ in-flight running tasks ⋈ provenance."""
     apps = _rows(os.path.join(STATE, "applications.csv"))
+    email_scams = _email_scams()
     flags = role_flags()
     group_roles = role_groups()["roles"]
     _load_cov(); _load_emp()
@@ -1876,7 +1927,8 @@ def grid():
                     "spec": jd_key in specs, "jd_key": jd_key, "applied": ck in subm,
                     "match": cov, "alignment": align, "running": ck in running,
                     "notes": notes, "letter": r.get("letter", ""), "action": (r.get("action") or "").strip(),
-                    "scam": scam_check.load(jd_key) or scam_check.load(key),
+                    "scam": _worst_scam(scam_check.load(jd_key), scam_check.load(key),
+                                        email_scams.get(ck)),
                     "url": qrow.get(ck, {}).get("url", "") or subm_url.get(ck, ""),
                     "stages": stages_for(key, ck in subm, jd_key=jd_key,
                                          ats_key=ats_key, content_key=content_key),
@@ -4840,6 +4892,9 @@ class H(BaseHTTPRequestHandler):
             return self._json(secrets_migrate())
         if p == "/api/secrets/encrypt":
             return self._json(secrets_encrypt())
+        if p == "/api/scam/clear":
+            return self._json(scam_clear(data.get("company", ""), data.get("role", ""),
+                                         data.get("key", "")))
         if p == "/api/register/row":
             return self._json(update_row(data.get("company", ""), data.get("role", ""),
                                          data.get("status", ""), data.get("notes", ""),
