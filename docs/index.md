@@ -12,6 +12,8 @@ description: Jobsquirrel is an open, self-hosted job-application agent: it finds
       <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0">
       <img src="https://img.shields.io/badge/python-3.11%2B-3776ab?style=flat-square" alt="Python 3.11+">
       <img src="https://img.shields.io/badge/scam--aware-yes-b91c1c?style=flat-square" alt="scam-aware">
+      <img src="https://img.shields.io/github/stars/bongomanuk/jobsquirrel?style=flat-square&label=stars" alt="stars">
+      <img src="https://github.com/bongomanuk/jobsquirrel/actions/workflows/ci.yml/badge.svg" alt="CI">
     </div>
     <div class="js-actions">
       <a class="primary" href="SETUP/">Quick start →</a>
