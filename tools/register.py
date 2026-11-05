@@ -213,7 +213,10 @@ def _jd_guard(company, role, status):
     if existing and (existing.get("status") or "").upper() == st:
         # Re-affirming a status is not a new claim; legacy rows keep working.
         return
-    path = jd_path(company, role)
+    # The row key can differ from the generated company-role key (LinkedIn and
+    # imported roles keep their source key). Look under both, or a real saved
+    # advert is invisible to this guard.
+    path = jd_path(company, role, key=(existing or {}).get("key", ""))
     if path and JD.has_spec_at(path):
         return
     raise ValueError(

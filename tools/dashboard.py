@@ -1560,7 +1560,9 @@ def _interview_time(notes):
         if any(w in sl for w in ("email sent to", "message id", "outbound", "sent:")):
             continue                                     # outbound note: the send date, not an interview
         if any(w in sl for w in ("asked", "followed up", "follow-up", "still interested",
-                                 "reply", "not booked", "availability")):
+                                 "reply", "not booked", "availability",
+                                 "date/time to be recorded", "date tbc",
+                                 "date to be confirmed", "reports an interview", "interview prep")):
             continue                                     # correspondence, not a booked interview
         if not any(w in seg.lower() for w in _INTERVIEW_WORDS):
             continue

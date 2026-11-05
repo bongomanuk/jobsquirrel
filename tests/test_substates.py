@@ -70,3 +70,10 @@ def test_action_overrides_replied_detection():
              "2026-11-03: email sent to ray@example.com — Re: Next steps (message id x)")
     label, _ = D._interview_label("INTERVIEW", notes)
     assert D._substate("INTERVIEW", notes, "reply with availability", label)[0] == "invited"
+
+
+def test_a_note_date_is_not_an_interview_date_when_the_time_is_tbc():
+    notes = "2026-11-05: candidate reports an interview; date/time to be recorded."
+    label, _ = D._interview_label("INTERVIEW", notes)
+    assert label == "INVITED"
+    assert D._substate("INTERVIEW", notes, "", label)[0] == "invited"
