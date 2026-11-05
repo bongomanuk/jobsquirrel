@@ -34,6 +34,7 @@ from urllib.parse import urlparse, parse_qs, quote
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import stateio  # noqa: E402  transparent gzip for state/ artifacts
+import scam_check  # noqa: E402  recruitment-scam signals
 import secrets_store as SS  # noqa: E402  central 0600 store, outside the repo
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1394,6 +1395,7 @@ def ats_refresh(key):
 def role_detail(key):
     key = os.path.basename(key)[:120]
     return {"key": key,
+            "scam": scam_check.load(key),
             "jd": _read(os.path.join(STATE, "job-descriptions", key + ".md")),
             "ats": _read(os.path.join(STATE, "ats", key + ".txt")),
             "kb": _read(os.path.join(STATE, "kb-context", key + ".md"))[:12000],
@@ -1874,6 +1876,7 @@ def grid():
                     "spec": jd_key in specs, "jd_key": jd_key, "applied": ck in subm,
                     "match": cov, "alignment": align, "running": ck in running,
                     "notes": notes, "letter": r.get("letter", ""), "action": (r.get("action") or "").strip(),
+                    "scam": scam_check.load(jd_key) or scam_check.load(key),
                     "url": qrow.get(ck, {}).get("url", "") or subm_url.get(ck, ""),
                     "stages": stages_for(key, ck in subm, jd_key=jd_key,
                                          ats_key=ats_key, content_key=content_key),

@@ -154,6 +154,21 @@ follow-up flag) updates the sub-state on the next refresh. The flag is a **human
 ("reply to Ray", "book a time"), not a waiting state: "await a reply" is dropped, and once a
 reply has been sent the row reads **replied — awaiting a reply** instead of asking you again.
 
+## Recruitment scams
+
+Every saved advert and every scanned message is checked for known scam signals. A
+⚠ marker on a grid row, or a red/amber banner in the role drawer or the Gmail review,
+means: **read it before you reply.**
+
+> **Never download or install software, join a chat-only interview, share a wallet,
+> seed phrase or private key, pay a fee, or move money during a recruitment process.**
+
+The common high-risk signals are remote-access tools ("install AnyDesk before the
+interview"), wallet/seed-phrase requests, pay-to-work fees, equipment cheques,
+chat-only interviews on Telegram/WhatsApp, and unrealistic pay for no experience.
+A HIGH signal stops document preparation; the role can still be recorded `BLOCKED`
+with the reason. See **[SCAMS.md](SCAMS.md)** for the full list and what to do.
+
 ## The Knowledge workspace
 
 The top-bar **Knowledge** page is the full-page view of your knowledge base.

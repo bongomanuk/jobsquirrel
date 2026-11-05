@@ -32,6 +32,7 @@ from email.utils import parsedate_to_datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import register as R
 import gmail_readonly as G
+import scam_check
 
 STATE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "state")
 ACK_FILE = os.path.join(STATE, "gmail_reconcile_ack.txt")
@@ -567,6 +568,7 @@ def main():
 
     changes, unmatched, verifications, ambiguous, replies = [], [], [], [], []
     review = []
+    scam_by_id, scam_warnings = {}, []
     fetched = 0
     for idx, m in enumerate(messages, 1):
         if idx % 100 == 0:
@@ -584,6 +586,11 @@ def main():
             continue
         company = match_company(f"{subject} {sender_display(sender)}", rows, body=plain, sender=sender)
         row = match_row(company, " ".join([subject, plain]), rows)
+        scam = scam_check.scan(plain, company or "", sender)
+        if scam["level"] not in ("clear",):
+            scam_by_id[str(m["id"])] = scam
+            scam_warnings.append((date, company or "", row["role"] if row else "",
+                                  sender_display(sender), subject, scam))
         if category == "VERIFICATION":
             links, codes = G.extract(body)
             verifications.append((date, company or sender_display(sender), subject, links, codes))
@@ -666,6 +673,10 @@ def main():
                         print(f"  skipped: {res.get('error','no suggestion')[:120]}", flush=True)
             except Exception as e:
                 print(f"auto model review skipped: {str(e)[:160]}", flush=True)
+    for e in review:
+        sc = scam_by_id.get(str(e.get("id")))
+        if sc:
+            e["scam"] = sc
     save_review(review, live)
     print(f"({fetched} fetched, {len(messages) - fetched} from cache)\n")
 
@@ -701,6 +712,16 @@ def main():
         for date, row, sender, subject in replies:
             print(f"  {date[:16]}  {row['company']:<24} {row['role'][:34]:<34} "
                   f"{sender[:28]:<28} {subject[:60]}")
+
+    if scam_warnings:
+        print("\n== scam warnings (verify before replying; never download or pay) ==")
+        for date, company, role, sender, subject, sc in scam_warnings:
+            print(f"  [{sc['level'].upper()}] {date[:16]}  {company[:24]:<24} {role[:28]:<28} "
+                  f"{sender[:26]:<26} {subject[:46]}")
+            for sig in sc["signals"]:
+                if sig["level"] == sc["level"]:
+                    print(f"        {sig['key']}: {sig['advice']}")
+        print(f"  RULE: {scam_check.HARD_RULE}")
 
     print("\n== proposed register changes ==")
     if not changes:

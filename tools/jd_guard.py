@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import stateio
+import scam_check
 
 ROOT = Path(__file__).resolve().parents[1]
 JD_DIR = ROOT / "state" / "job-descriptions"
@@ -141,6 +142,10 @@ def write_jd(key, company, role, url, text):
         f"{text.strip()}\n"
     )
     stateio.write(str(jd_path(key)), body.encode("utf-8"))
+    scan = scam_check.scan(body, company or "", "")
+    scam_check.save(key, scan)
+    if scan["level"] in ("high", "medium"):
+        print(f"SCAM {scan['level'].upper()} — {scam_check.summary(scan)}", file=sys.stderr)
     return jd_path(key)
 
 

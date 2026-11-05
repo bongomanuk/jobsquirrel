@@ -18,6 +18,18 @@ const STATUS_HELP = {
   PREPARED: 'Documents generated and gated, but not submitted yet',
   CLOSED: 'Closed / withdrawn / expired — no further action',
 };
+// Recruitment scams: the rule is shown with every warning, and the marker is a
+// warning, never an automatic rejection (a human decides).
+const SCAM_RULE = 'Never download or install software, join a chat-only interview, share a wallet, seed phrase or private key, pay a fee, or move money during a recruitment process.';
+const SCAM_LEVELS = ['high', 'medium', 'low'];
+function scamBox(sc) {
+  if (!sc || !['high', 'medium'].includes(sc.level)) return '';
+  const level = SCAM_LEVELS.includes(sc.level) ? sc.level : 'medium';
+  const sigs = (sc.signals || []).filter(x => x.level === sc.level).slice(0, 5);
+  return `<div class="scambox ${esc(level)}"><b>⚠ Scam check: ${esc(level.toUpperCase())}</b>` +
+    (sigs.length ? `<ul>${sigs.map(x => `<li><b>${esc(x.key)}</b> — ${esc(x.why)} <span class="muted">${esc(x.advice)}</span></li>`).join('')}</ul>` : '') +
+    `<div class="muted mini">${esc(SCAM_RULE)}</div></div>`;
+}
 const QUEUE_HELP = {
   pending: 'Queued to apply (state/queue.tsv)',
   human: 'Handed to you for a human step (state/queue-human.tsv)',
@@ -1611,7 +1623,7 @@ function renderRows() {
     const gtags = groupTagsHTML(r);
     return `<tr class="click${sel}" onclick="App.open(${i})" oncontextmenu="return App.rowMenu(event, ${i})">` +
       `<td class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet — queued, not applied')}>${r.date ? esc(shortDate(r.date)) : '—'}</td>` +
-      `<td${T(r.company + '  ·  employer / recruiter')}>${r.running ? `<a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="event.stopPropagation();App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show the live log"><span title="working">🥜</span></a> ` : (PENDING.has(r.key) ? '<span title="Queued — waiting to start">🥜</span> ' : '')}${r.pinned ? `<span class="pinned"${T('Pinned to the top of its group')}>📌</span> ` : ''}${r.action ? `<span class="actflag"${T(r.action)}>⚑</span> ` : ''}${esc(r.company)}</td>` +
+      `<td${T(r.company + '  ·  employer / recruiter')}>${r.running ? `<a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="event.stopPropagation();App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show the live log"><span title="working">🥜</span></a> ` : (PENDING.has(r.key) ? '<span title="Queued — waiting to start">🥜</span> ' : '')}${r.pinned ? `<span class="pinned"${T('Pinned to the top of its group')}>📌</span> ` : ''}${r.scam && ['high', 'medium'].includes(r.scam.level) ? `<span class="scamflag ${esc(r.scam.level)}"${T('Scam check: ' + r.scam.level.toUpperCase() + ' — open the role for the signals')}>⚠</span> ` : ''}${r.action ? `<span class="actflag"${T(r.action)}>⚑</span> ` : ''}${esc(r.company)}</td>` +
       `<td${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}${gtags ? `<div class="gtags">${gtags}</div>` : ''}</td>` +
       `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
       `<td>${chip(r.label || r.status)}${subLineHTML(r) || (r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : '')}</td><td>${mbadge(r)}</td>` +
@@ -2091,7 +2103,9 @@ function summary(r) {
   const hist = notes ? notes.split(/\s*\|\s*/).filter(Boolean).map(x => `<li>${md(x)}</li>`).join('') : '';
   const act = (r.action || '').trim();
   const kbGap = /no direct evidence|not evidenced|unmet/i.test(D.kb || '');
-  return (act ? `<div class="actionbox"><span class="actflag">⚑</span> <b>Action:</b> ${esc(act)}</div>` : '') +
+  const scam = D.scam || r.scam || null;
+  return scamBox(scam) +
+    (act ? `<div class="actionbox"><span class="actflag">⚑</span> <b>Action:</b> ${esc(act)}</div>` : '') +
     (kbGap ? `<div class="muted mini" style="color:#ffd479;margin:6px 0">⚠ The grounding report flags requirements with no direct evidence. Check the missing skills below before treating this as a fit.</div>` : '') +
     `<div class="row" style="margin:6px 0 10px"><input id="dt-action" placeholder="needs a reply or follow-up? describe it…" value="${esc(act)}" style="flex:1">
       <button onclick="App.saveAction()">${act ? 'Update flag' : '⚑ Flag action'}</button>
@@ -2620,6 +2634,8 @@ function renderGmailReview() {
         ${x.company ? ` · <b>${esc(x.company)}</b>` : ''}${x.role ? ` — ${esc(x.role)}` : ''}</div>
       <div class="muted mini">${esc(x.sender || '')} · ${esc(x.subject || '')}</div>
       <div>${esc(x.reason || '')}</div>
+      ${x.scam && ['high', 'medium'].includes(x.scam.level) ? `<div class="scambox ${esc(x.scam.level)}" style="margin:4px 0"><b>⚠ Scam check: ${esc(x.scam.level.toUpperCase())}</b> ` +
+        `${(x.scam.signals || []).filter(s => s.level === x.scam.level).map(s => esc(s.advice)).join(' ')}<div class="muted mini">${esc(SCAM_RULE)}</div></div>` : ''}
       <div class="row" style="margin-top:6px"><a href="${mail}" target="_blank" rel="noopener">Open email ↗</a> ${links} ${codes}
         <span style="flex:1"></span>
         ${REVIEW_USE_MODEL ? `<button class="small" onclick="reviewAsk('${esc(x.id || '')}', this)">Ask model</button>` : ''}

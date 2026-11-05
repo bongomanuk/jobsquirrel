@@ -30,6 +30,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 import google_config as GC          # noqa: E402  (paths are configurable: config/google.json)
+import scam_check                    # noqa: E402
 
 CONFIG_DIR, CREDENTIALS, TOKEN = GC.paths()
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly",
@@ -273,6 +274,12 @@ def sync(query, apply_changes):
         links, codes = extract(body)
         print(f"[{category}] {headers.get('date','')}  {sender}")
         print(f"    {subject}")
+        sc = scam_check.scan(body, _company_hint(sender, subject), sender)
+        if sc["level"] in ("high", "medium"):
+            print(f"    SCAM {sc['level'].upper()}: {scam_check.summary(sc)}")
+            for sig in sc["signals"]:
+                if sig["level"] == sc["level"]:
+                    print(f"      {sig['key']}: {sig['advice']}")
         for l in links:
             print(f"    LINK: {l}")
         for c in codes:

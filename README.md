@@ -450,6 +450,7 @@ interviewed — awaiting outcome).
 - [docs/KNOWLEDGE-BASE.md](docs/KNOWLEDGE-BASE.md), set up the GraphRAG knowledge base (required for targeted documents).
 - [docs/RUN-MODES.md](docs/RUN-MODES.md), discover / review / apply / fixed-CV run modes.
 - [docs/STORAGE.md](docs/STORAGE.md), what gets compressed, what is never packed, and how it is restored.
+- [docs/SCAMS.md](docs/SCAMS.md), recruitment-scam signals, the hard rule, and how the warnings work.
 - [docs/USING-IT.md](docs/USING-IT.md#backup-restore-and-start-over), backing the system up to one zip, restoring it, and clearing it safely.
 - [docs/PRODUCT-SPEC.md](docs/PRODUCT-SPEC.md), the full product and web-interface specification.
 - [docs/RELEASES.md](docs/RELEASES.md), how a release is cut (title rules, notes lint, publishing).
@@ -465,6 +466,13 @@ interviewed — awaiting outcome).
   generated content are git-ignored.
 - Do not commit `config/profile.md`, `config/cv.json` or `config/archetypes.json`
  , they contain your personal data.
+- **Recruitment-scam checks.** Every saved advert and every message is scanned for
+  known scam signals (remote-access software, wallet/seed phrases, pay-to-work,
+  equipment cheques, chat-only interviews). A HIGH signal **blocks document
+  preparation** and shows a warning in the dashboard and the Gmail review. The
+  hard rule: **never download or install software for an interview, never join a
+  chat-only interview, never share a wallet or seed phrase, never pay a fee or
+  move money.** See [docs/SCAMS.md](docs/SCAMS.md).
 
 ## Legal and acceptable use
 

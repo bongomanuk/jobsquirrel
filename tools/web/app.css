@@ -814,3 +814,15 @@ body.knowledge-open .modal{z-index:60}
 .sg-subcount{fill:var(--accent);font-size:10px;font-weight:800;font-family:var(--sans)}
 .sg-suball .sg-subrect{fill:#141a24;stroke:#3b4252}
 .sg-suball .sg-subtext{font-weight:700}
+
+/* Recruitment-scam warnings: a warning, never an automatic rejection. */
+.scamflag{font-weight:700}
+.scamflag.high{color:#ef4444}
+.scamflag.medium{color:#f59e0b}
+.scamflag.low{color:#eab308}
+.scambox{margin:8px 0 10px;padding:9px 11px;border-radius:6px;font-size:13px;line-height:1.45}
+.scambox.high{border:1px solid rgba(239,68,68,.65);background:rgba(239,68,68,.12);color:#ffd7d7}
+.scambox.medium{border:1px solid rgba(245,158,11,.6);background:rgba(245,158,11,.1);color:#ffe6b8}
+.scambox.low{border:1px solid rgba(234,179,8,.5);background:rgba(234,179,8,.08);color:#f5e6a8}
+.scambox ul{margin:6px 0 4px 18px;padding:0}
+.scambox li{margin:3px 0}

@@ -85,6 +85,13 @@ reports a clean config.
    `.ics` with `--dry-run` need no approval.
 5. **Stop on CAPTCHA / 2FA / bot checks.** Do not evade. Record `BLOCKED` (or
    `MANUAL`) with what you tried and move on.
+5b. **Recruitment scams.** Never download or install software for an interview,
+   never join a chat-only interview, never share a wallet/seed phrase/private key,
+   never pay a fee and never move money. A HIGH signal from
+   `tools/scam_check.py` (remote-access tools, wallets, pay-to-work, equipment
+   cheques, chat-only interviews) is a wall: record `BLOCKED` with the signal and
+   escalate. Do not prepare or submit that role. The dashboard and the Gmail
+   review show the warning; see `docs/SCAMS.md`.
 6. **Record only with real evidence.** `record_submission.py --evidence` must
    carry the actual thank-you text or confirmation email, never "confirmed"/"ok".
 7. **Keep the register current.** It is the single source of truth for resuming.

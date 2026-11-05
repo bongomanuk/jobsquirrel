@@ -28,6 +28,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 import stateio
+import scam_check
 
 JD_DIR = os.path.join(ROOT, "state", "job-descriptions")
 ATS_DIR = os.path.join(ROOT, "state", "ats")
@@ -206,6 +207,8 @@ def main() -> int:
     ap.add_argument("--role", default="")
     ap.add_argument("--base", default="")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--allow-scam", action="store_true",
+                    help="continue despite a HIGH scam signal (you take the risk)")
     args = ap.parse_args()
 
     key = re.sub(r"[^A-Za-z0-9._-]", "-", args.key).strip("-.")
@@ -214,6 +217,21 @@ def main() -> int:
         print(f"PREP FAIL: no job description at {jd_path}", file=sys.stderr)
         return 2
     jd_text = open(jd_path, encoding="utf-8").read()
+    # A scam advert must not become a tailored application. This runs before any
+    # model/embedding work, so a HIGH signal fails fast and cheap.
+    scan = scam_check.scan(jd_text, args.company, "")
+    scam_check.save(key, scan)
+    if scan["level"] == "high" and not args.allow_scam:
+        print("PREP FAIL: HIGH scam signal — " + scam_check.summary(scan), file=sys.stderr)
+        for sig in scan["signals"]:
+            if sig["level"] == "high":
+                print(f"  {sig['key']}: {sig['why']} — {sig['advice']}", file=sys.stderr)
+        print(f"  RULE: {scan['rule']}", file=sys.stderr)
+        print("  If this is a false positive, re-run with --allow-scam after verifying "
+              "the employer.", file=sys.stderr)
+        return 3
+    if scan["level"] == "medium":
+        print(f"SCAM WARNING ({scan['level'].upper()}): {scam_check.summary(scan)}")
     digest = sha(jd_text)
     evidence_path = os.path.join(ROOT, "kb", "sources", "personal", "skills_evidence.md")
     try:

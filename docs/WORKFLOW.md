@@ -12,8 +12,10 @@ anything a human run wouldn't.
 ## Per-role procedure
 
 ```
-# 1. Save the ad text
+# 1. Save the ad text, then scan it for recruitment-scam signals.
+#    HIGH means stop: record BLOCKED and do not prepare documents.
 $EDITOR state/job-descriptions/<key>.md
+python3 tools/scam_check.py --jd state/job-descriptions/<key>.md --key <key>
 
 # 2. Extract ATS keywords
 python3 tools/ats_keywords.py --jd state/job-descriptions/<key>.md --out state/ats/<key>.txt
