@@ -1268,20 +1268,35 @@ const SG_EDGES = [
   [850, 81, 893, 81, 'invite'], [1025, 81, 1068, 81, 'offer'],
   [590, 112, 590, 183, 'wall'], [675, 213, 718, 213, 'hand over'],
 ];
-// Rejection can follow any applied state, so it is fed by a bus from
-// SUBMITTED, IN_PROGRESS and INTERVIEW rather than a single arrow.
-const SG_PATHS = [
-  { d: 'M640,112 L640,165 L960,165 L960,183', label: 'not selected', lx: 800, ly: 159, arrow: true },
-  { d: 'M785,112 L785,165', lx: 0, ly: 0, arrow: false },
-  { d: 'M960,112 L960,165', lx: 0, ly: 0, arrow: false },
-];
+let SG_EXPANDED = '';
+try { SG_EXPANDED = localStorage.getItem('sg.expanded') || ''; } catch (e) {}
 
 function renderStateGraph() {
   const box = document.getElementById('sg-body');
   if (!box) return;
   const counts = {};
   GRID.forEach(r => { counts[r.status] = (counts[r.status] || 0) + 1; });
+  const by = {};
+  GRID.forEach(r => {
+    if (!r.substate) return;
+    const k = r.status + ':' + r.substate;
+    if (!by[k]) by[k] = { status: r.status, key: r.substate, label: r.substate_label || r.substate, hint: r.substate_hint || '', n: 0 };
+    by[k].n++;
+  });
+  const subsFor = (st) => Object.values(by).filter(x => x.status === st)
+    .sort((a, b) => b.n - a.n || String(a.label).localeCompare(String(b.label)));
   const active = ($('#fstatus') || {}).value || '';
+  const fs = ($('#fsubstate') || {}).value || '';
+  const expanded = SG_EXPANDED;
+  const mainExp = SG_MAIN.some(n => n.s === expanded) ? subsFor(expanded) : null;
+  const sideExp = SG_SIDE.some(n => n.s === expanded) ? subsFor(expanded) : null;
+  const mainRows = mainExp ? mainExp.length + 1 : 0;
+  const sideRows = sideExp ? sideExp.length + 1 : 0;
+  const sideY = mainExp ? 122 + mainRows * 30 + 24 : 185;
+  const sideStackH = sideRows ? sideRows * 30 + 24 : 0;
+  const svgH = sideY + 56 + sideStackH + 20;
+  const busY = sideY - 20;
+  const short = (v, n = 22) => { v = String(v || ''); return v.length > n ? v.slice(0, n - 1) + '…' : v; };
   const arrow = '<defs><marker id="sg-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#4b5563"/></marker></defs>';
   const edge = ([x1, y1, x2, y2, label]) => {
     const midx = (x1 + x2) / 2, midy = (y1 + y2) / 2;
@@ -1295,44 +1310,64 @@ function renderStateGraph() {
   };
   const node = (n, y, h) => {
     const on = active === n.s;
-    return `<g class="sg-node sg-${n.s}${on ? ' active' : ''}" data-status="${n.s}" role="button" tabindex="0" aria-label="Filter the grid by ${n.s}">` +
+    const exp = expanded === n.s;
+    const subs = subsFor(n.s);
+    const caret = subs.length ? (exp ? ' ▾' : ' ▸') : '';
+    return `<g class="sg-node sg-${n.s}${on ? ' active' : ''}${exp ? ' expanded' : ''}" data-status="${n.s}" role="button" tabindex="0" aria-label="${exp ? 'Collapse' : 'Expand'} ${n.s} sub-states">` +
       `<rect class="sg-rect" x="${n.x}" y="${y}" width="${SG_W}" height="${h}" rx="9"/>` +
-      `<text class="sg-title" x="${n.x + 12}" y="${y + 23}">${n.s}</text>` +
+      `<text class="sg-title" x="${n.x + 12}" y="${y + 23}">${n.s}${caret}</text>` +
       `<text class="sg-count" x="${n.x + SG_W - 12}" y="${y + 23}" text-anchor="end">${counts[n.s] || 0}</text>` +
       `<text class="sg-note" x="${n.x + 12}" y="${y + 44}">${esc(n.note)}</text></g>`;
   };
-  const paths = SG_PATHS.map(p =>
-    `<path class="sg-edge-path dashed" d="${p.d}"${p.arrow ? ' marker-end="url(#sg-arrow)"' : ''}/>` +
-    (p.label ? `<text class="sg-edge" x="${p.lx}" y="${p.ly}" text-anchor="middle">${esc(p.label)}</text>` : '')).join('');
-  const svg = `<svg viewBox="0 0 1220 272" class="sg-svg" role="img" aria-label="Application states">` +
-    arrow + SG_EDGES.map(edge).join('') + paths +
+  const child = (x, y, w, label, count, cls, attrs, hint) =>
+    `<g class="${cls}" ${attrs} role="button" tabindex="0" aria-label="${esc(label)}">` +
+    `<title>${esc(hint || label)}</title>` +
+    `<rect class="sg-subrect" x="${x}" y="${y}" width="${w}" height="26" rx="6"/>` +
+    `<text class="sg-subtext" x="${x + 8}" y="${y + 17}">${esc(short(label))}</text>` +
+    `<text class="sg-subcount" x="${x + w - 8}" y="${y + 17}" text-anchor="end">${count}</text></g>`;
+  const stack = (n, parentBottom, startY, subs) => {
+    const w = 150;
+    const x = Math.max(14, Math.min(n.x - 10, 1220 - w - 14));
+    const cx = n.x + SG_W / 2;
+    let h = `<path class="sg-edge-path" d="M${cx},${parentBottom} L${cx},${startY}"/>`;
+    h += `<path class="sg-edge-path" d="M${cx},${startY} L${cx},${startY + subs.length * 30 + 26}"/>`;
+    h += child(x, startY, w, `All ${n.s}`, counts[n.s] || 0, 'sg-subnode sg-suball',
+      `data-status="${n.s}"`, `Show all ${n.s} roles`);
+    subs.forEach((s, i) => {
+      const val = n.s + ':' + s.key;
+      h += child(x, startY + (i + 1) * 30, w, s.label, s.n,
+        'sg-subnode' + (fs === val ? ' on' : ''), `data-sub="${esc(val)}"`, s.hint);
+    });
+    return h;
+  };
+
+  const staticEdges = SG_EDGES.filter(e => e[4] !== 'wall' && e[4] !== 'hand over');
+  if (expanded !== 'SUBMITTED') staticEdges.push([590, 112, 590, sideY - 2, 'wall']);
+  staticEdges.push([675, sideY + 28, 718, sideY + 28, 'hand over']);
+  const drops = [610, 785, 960].map(x => {
+    const start = (mainExp && Math.abs(x - (SG_MAIN.find(n => n.s === expanded).x + SG_W / 2)) < 2)
+      ? 122 + mainRows * 30 : 112;
+    return `M${x},${start} L${x},${busY}`;
+  }).join(' ');
+  const paths = `<path class="sg-edge-path dashed" d="${drops} M610,${busY} L960,${busY} L960,${sideY - 2}" marker-end="url(#sg-arrow)"/>` +
+    `<text class="sg-edge" x="785" y="${busY - 6}" text-anchor="middle">not selected</text>`;
+
+  let body = arrow + staticEdges.map(edge).join('') + paths +
     SG_MAIN.map(n => node(n, 50, SG_H)).join('') +
-    SG_SIDE.map(n => node(n, 185, SG_H2)).join('') +
-    `<text class="sg-cap" x="20" y="262">Click a state to filter · REJECTED can follow any applied state; CLOSED any state</text></svg>`;
-  // Sub-state breakdown: the coarse flow above, the human detail below.
-  const by = {};
-  GRID.forEach(r => {
-    if (!r.substate) return;
-    const k = r.status + ':' + r.substate;
-    if (!by[k]) by[k] = { status: r.status, key: r.substate, label: r.substate_label || r.substate, hint: r.substate_hint || '', n: 0 };
-    by[k].n++;
-  });
-  const fs = ($('#fsubstate') || {}).value || '';
-  const order = ['QUEUED', 'DRAFTING', 'PREPARED', 'SUBMITTED', 'IN_PROGRESS', 'INTERVIEW',
-                 'OFFER', 'BLOCKED', 'MANUAL', 'REJECTED', 'CLOSED'];
-  const subs = order.map(st => {
-    const items = Object.values(by).filter(x => x.status === st)
-      .sort((a, b) => b.n - a.n || a.label.localeCompare(b.label));
-    if (!items.length) return '';
-    return `<div class="sg-subrow"><span class="sg-substate">${esc(st)}</span><span class="sg-subchips">` +
-      items.map(x => {
-        const val = st + ':' + x.key;
-        return `<button type="button" class="sg-sub${fs === val ? ' on' : ''}" data-sub="${esc(val)}"` +
-          ` title="${esc(x.hint)}">${esc(x.label)} <b>${x.n}</b></button>`;
-      }).join('') + '</span></div>';
-  }).join('');
-  box.innerHTML = svg + (subs ? `<div class="sg-subs">${subs}</div>` : '');
+    SG_SIDE.map(n => node(n, sideY, SG_H2)).join('');
+  if (mainExp) {
+    const n = SG_MAIN.find(x => x.s === expanded);
+    body += stack(n, 112, 122, mainExp);
+  }
+  if (sideExp) {
+    const n = SG_SIDE.find(x => x.s === expanded);
+    body += stack(n, sideY + 56, sideY + 66, sideExp);
+  }
+  const caption = 'Click a state to expand and filter · click a sub-state to narrow · REJECTED can follow any applied state; CLOSED any state';
+  box.innerHTML = `<svg viewBox="0 0 1220 ${svgH}" class="sg-svg" role="img" aria-label="Application states">` +
+    body + `<text class="sg-cap" x="20" y="${svgH - 10}">${esc(caption)}</text></svg>`;
 }
+
 (() => {
   const sg = document.getElementById('sg');
   if (!sg) return;
@@ -1344,29 +1379,41 @@ function renderStateGraph() {
   const body = document.getElementById('sg-body');
   if (!body) return;
   body.addEventListener('click', (e) => {
-    const sub = e.target.closest('.sg-sub');
-    if (sub) {
-      const st = sub.dataset.sub.split(':')[0];
+    const child = e.target.closest('.sg-subnode');
+    if (child) {
       const sel = $('#fstatus'), fs = $('#fsubstate');
-      clearFilterInputs();
-      if (sel) sel.value = st;
-      if (fs) fs.value = sub.dataset.sub;
+      if (child.dataset.status) {                 // "All STATUS"
+        clearFilterInputs();
+        if (sel) sel.value = child.dataset.status;
+      } else if (child.dataset.sub) {             // one sub-state
+        clearFilterInputs();
+        if (sel) sel.value = child.dataset.sub.split(':')[0];
+        if (fs) fs.value = child.dataset.sub;
+      } else return;
       BUCKET = 'all'; BUCKET_BEFORE_SEARCH = null;
       renderBuckets(); renderRows();
       return;
     }
     const g = e.target.closest('.sg-node');
     if (!g) return;
-    const sel = $('#fstatus');
-    if (!sel) return;
-    clearFilterInputs();
-    sel.value = g.dataset.status;
+    const st = g.dataset.status;
+    const opening = SG_EXPANDED !== st;
+    SG_EXPANDED = opening ? st : '';
+    try { localStorage.setItem('sg.expanded', SG_EXPANDED); } catch (err) {}
+    const sel = $('#fstatus'), fs = $('#fsubstate');
+    if (opening) {
+      if (sel) sel.value = st;
+      if (fs) fs.value = '';
+    } else {
+      if (sel && sel.value === st) sel.value = '';
+      if (fs && fs.value.startsWith(st + ':')) fs.value = '';
+    }
     BUCKET = 'all'; BUCKET_BEFORE_SEARCH = null;
     renderBuckets(); renderRows();
   });
   body.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
-    const g = e.target.closest('.sg-node');
+    const g = e.target.closest('.sg-node, .sg-subnode');
     if (!g) return;
     e.preventDefault(); g.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   });

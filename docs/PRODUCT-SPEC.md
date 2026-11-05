@@ -199,8 +199,8 @@ Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files �
 - **Application states graph** above the grid (collapsed by default): a clickable diagram of
   QUEUED → DRAFTING → PREPARED → SUBMITTED → IN_PROGRESS → INTERVIEW → OFFER, with BLOCKED/MANUAL
   branches and REJECTED/CLOSED terminals. Each node shows its live count and a
-  one-line annotation; clicking a node filters the grid to that status, and the open/closed state is
-  remembered.
+  one-line annotation; clicking a node expands its sub-states and filters the grid to that status,
+  and clicking a sub-state filters further. The open/closed state is remembered.
 - **Right-click a row** for the full action menu: open details / documents / the ad / the apply page,
   discuss the role, prepare documents, submit prepared (approval-gated), recompute the match, draft a
   reply with the agent, set the status, flag or clear a follow-up, **pin to the top**, re-queue, hand to a human, unblock/remove from the queue, and copy the company, role,
@@ -338,7 +338,7 @@ grid row:
 | `substate_hint` | what it means / what to do next |
 
 The grid shows the sub-state under the status chip; **Filters → any sub-state** filters on
-`status:substate`; the Application states panel adds a clickable sub-state breakdown. The
+`status:substate`; the Application states panel expands each node into a clickable sub-state tree. The
 `Needs you` bucket treats `assessment`, `stale`, `captcha`, `login`, `email`, `lead`, `verify`
 and `info` as waiting on the candidate, alongside flagged actions, invites and offers.
 

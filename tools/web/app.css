@@ -803,11 +803,14 @@ body.knowledge-open .modal{z-index:60}
 .subchip{display:inline-block;margin-top:3px;font:10.5px/1.4 var(--sans);color:var(--muted);
   border:1px solid var(--line);border-radius:10px;padding:0 6px;white-space:nowrap;
   max-width:100%;overflow:hidden;text-overflow:ellipsis}
-.sg-subs{margin-top:8px;display:flex;flex-direction:column;gap:5px}
-.sg-subrow{display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap}
-.sg-substate{font:700 11px var(--sans);color:var(--muted);min-width:96px;text-transform:uppercase;letter-spacing:.04em}
-.sg-subchips{display:flex;flex-wrap:wrap;gap:4px}
-.sg-sub{font:11px var(--sans);background:#0a0c10;border:1px solid var(--line);border-radius:999px;
-  padding:1px 7px;color:var(--fg);cursor:pointer}
-.sg-sub b{color:var(--accent);margin-left:4px}
-.sg-sub:hover,.sg-sub.on{border-color:var(--accent)}
+.sg-node.expanded .sg-rect{stroke:var(--accent);stroke-width:2.5}
+.sg-subnode{cursor:pointer}
+.sg-subrect{fill:#0d1119;stroke:#2b3140;stroke-width:1}
+.sg-subnode:hover .sg-subrect{stroke:var(--accent)}
+.sg-subnode.on .sg-subrect{stroke:var(--accent);stroke-width:2}
+.sg-subnode:focus{outline:none}
+.sg-subnode:focus .sg-subrect{stroke:var(--accent);stroke-dasharray:3 2}
+.sg-subtext{fill:var(--fg);font-size:9.5px;font-family:var(--sans)}
+.sg-subcount{fill:var(--accent);font-size:10px;font-weight:800;font-family:var(--sans)}
+.sg-suball .sg-subrect{fill:#141a24;stroke:#3b4252}
+.sg-suball .sg-subtext{font-weight:700}

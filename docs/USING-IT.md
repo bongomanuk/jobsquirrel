@@ -122,7 +122,7 @@ to “what is actually happening, and what should I do next?”.
 - The **Status** cell shows the status chip and, underneath, the sub-state when it adds detail.
 - **Filters → any sub-state** narrows the grid to one sub-state; like a group, it crosses the
   bucket boundaries.
-- The **Application states** panel shows the coarse flow and a clickable breakdown by sub-state.
+- The **Application states** panel shows the coarse flow; click a state to expand its sub-states and filter to it, then click a sub-state to narrow further.
 - **Needs you** includes the sub-states that genuinely wait on you: assessments, follow-ups,
   CAPTCHA/2FA and other human walls, plus invites and offers.
 
