@@ -53,3 +53,12 @@ def test_ats_key_ignores_company_suffix(tmp_path, monkeypatch):
     key = "publicis-groupe-senior-ai-and-data-engineer"
     assert D._ats_key_for("Publicis Groupe", "Senior AI and Data Engineer", key) == \
         "publicis_senior_ai_and_data_engineer"
+
+
+def test_ats_key_uses_company_level_ad_when_role_is_in_the_ad(tmp_path, monkeypatch):
+    (tmp_path / "ats").mkdir()
+    (tmp_path / "job-descriptions").mkdir()
+    (tmp_path / "ats" / "solita.txt").write_text("llm\n")
+    (tmp_path / "job-descriptions" / "solita.md").write_text("# AI Lead Developer - Solita\n")
+    monkeypatch.setattr(D, "STATE", str(tmp_path))
+    assert D._ats_key_for("Solita", "AI Lead Developer", "solita-ai-lead-developer") == "solita"

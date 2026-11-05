@@ -1072,8 +1072,16 @@ def _ats_key_for(company, role, key, stems=None):
             company_score = 10 + sum(len(t) for t in shared)
         hits = sum(1 for t in role_tokens if t in sn)
         if not hits:
-            continue
-        score = company_score + hits * 4
+            # A company-level ad ("solita.md") can still describe this role.
+            # Require at least two role words in the saved ad so a generic
+            # employer page cannot claim every job at that company.
+            jd_text = _read(os.path.join(STATE, "job-descriptions", s + ".md")).lower()
+            jd_hits = sum(1 for t in role_tokens if t in jd_text)
+            if jd_hits < 2:
+                continue
+            score = company_score + jd_hits * 2
+        else:
+            score = company_score + hits * 4
         if score > best_score:
             best, best_score = s, score
     return best
