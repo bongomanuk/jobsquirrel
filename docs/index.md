@@ -1,3 +1,7 @@
+---
+description: Jobsquirrel is an open, self-hosted job-application agent: it finds roles, tailors a CV and cover letter per role, gates them for accuracy, applies through the employer's own ATS and tracks replies. Local-first, scam-aware, Apache-2.0.
+---
+
 <div class="js-hero">
   <div>
     <h1>🐿️ Jobsquirrel</h1>

@@ -10,6 +10,7 @@ use_directory_urls: true
 
 theme:
   name: material
+  custom_dir: docs/overrides
   language: en
   logo: assets/animals/sir-reginald-nuttington-icon.png
   favicon: assets/animals/sir-reginald-nuttington-icon.png

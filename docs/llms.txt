@@ -1,0 +1,25 @@
+# Jobsquirrel
+
+> An open, self-hosted job-application agent. It finds roles, tailors a CV
+> (resume) and cover letter per role, gates them for accuracy and quality, applies
+> through the employer's own ATS with a real browser, and tracks replies. The
+> dashboard, register, knowledge graph and documents run on your machine; the
+> model provider can be local.
+
+- Source: https://github.com/bongomanuk/jobsquirrel
+- Docs: https://bongomanuk.github.io/jobsquirrel/
+- Licence: Apache-2.0
+- Topics: job search, job application, resume, CV, cover letter, AI agent, LLM,
+  GraphRAG, self-hosted, local-first, privacy, Python, ATS, automation.
+
+## Start here
+
+- [Introduction](https://bongomanuk.github.io/jobsquirrel/INTRO/): what it is and how it works end to end.
+- [Setup](https://bongomanuk.github.io/jobsquirrel/SETUP/): install, dependencies, configuration, Gmail.
+- [Agent setup](https://bongomanuk.github.io/jobsquirrel/AGENT-SETUP/): opencode, Claude Code, Cursor, and running fully local.
+- [Using it](https://bongomanuk.github.io/jobsquirrel/USING-IT/): prompts, monitoring, the state model and the grid.
+
+## Safety
+
+- [The scam detector](https://bongomanuk.github.io/jobsquirrel/SCAMS/): the hard rule, every signal, email checks and the limits.
+- [Eligibility and accuracy rules](https://bongomanuk.github.io/jobsquirrel/ELIGIBILITY/): the rules that keep applications honest.

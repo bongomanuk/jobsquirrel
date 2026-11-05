@@ -8,6 +8,8 @@
 
 [![version](https://img.shields.io/github/v/release/bongomanuk/jobsquirrel?style=flat-square&label=version)](https://github.com/bongomanuk/jobsquirrel/releases)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE)
+[![CI](https://github.com/bongomanuk/jobsquirrel/actions/workflows/ci.yml/badge.svg)](https://github.com/bongomanuk/jobsquirrel/actions/workflows/ci.yml)
+[![stars](https://img.shields.io/github/stars/bongomanuk/jobsquirrel?style=flat-square&label=stars)](https://github.com/bongomanuk/jobsquirrel/stargazers)
 [![python](https://img.shields.io/badge/python-3.11%2B-3776ab?style=flat-square)](docs/SETUP.md)
 [![scam-aware](https://img.shields.io/badge/scam--aware-yes-b91c1c?style=flat-square)](docs/SCAMS.md)
 [![docs](https://img.shields.io/badge/docs-online-2f6f4e?style=flat-square)](https://bongomanuk.github.io/jobsquirrel/)
