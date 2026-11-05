@@ -59,19 +59,19 @@ description: Jobsquirrel is an open, self-hosted job-application agent: it finds
 <div class="js-quotes">
   <div class="js-quote">
     <img src="assets/animals/rowan-red-squirrel.jpg" alt="Rowan Ash">
-    <blockquote>“The tallest oak was once an acorn that held its ground. Be patient with the version of yourself that is still growing.”<span class="js-who">Rowan Ash — Red Squirrel</span></blockquote>
+    <blockquote>“I used to scatter applications like acorns and hope one took root. Jobsquirrel made me slow down. It found the roles, pulled the right evidence out of my own notes, and wrote a CV I could defend. I went from thirty rushed applications to four I believed in, and one of them became the role I have now.”<span class="js-who">Rowan Ash — Red Squirrel</span></blockquote>
   </div>
   <div class="js-quote">
     <img src="assets/animals/hazel-hedgehog.jpg" alt="Hazel Thorn">
-    <blockquote>“You cannot hurry a hedgehog across a road. Some things are worth taking slowly. So are you.”<span class="js-who">Hazel Thorn — Hedgehog</span></blockquote>
+    <blockquote>“The gate is the part I did not know I needed. It caught a line in my CV that said I thrived under pressure, which is not true. I am a hedgehog. I roll into a ball. Jobsquirrel made me take it out, and the interview went better because everything I said was mine.”<span class="js-who">Hazel Thorn — Hedgehog</span></blockquote>
   </div>
   <div class="js-quote">
     <img src="assets/animals/alden-tawny-owl.jpg" alt="Alden Birch">
-    <blockquote>“The night is not empty. It is full of small, quiet things that appear when you stop trying to see everything at once.”<span class="js-who">Alden Birch — Tawny Owl</span></blockquote>
+    <blockquote>“I work nights, so I used to read recruiter mail at 3am and talk myself into things. Jobsquirrel read the same mail, matched it to the right role, and put the interview on my calendar. It also refused a role that wanted me to install a screen-sharing tool before the call. I have talons. I do not need remote access.”<span class="js-who">Alden Birch — Tawny Owl</span></blockquote>
   </div>
   <div class="js-quote">
     <img src="assets/animals/bram-badger.jpg" alt="Bram Hollow">
-    <blockquote>“A home is not built in a day. It is built one pawful at a time, and then one morning you realise you belong there.”<span class="js-who">Bram Hollow — Badger</span></blockquote>
+    <blockquote>“I am not a spreadsheet animal. Jobsquirrel kept every application, every document and every reply in one place, so I always knew which burrow I was in. When a rejection came, it closed the row and moved on. When an interview came, it was already on the calendar. I finished the season with a clean record and a job.”<span class="js-who">Bram Hollow — Badger</span></blockquote>
   </div>
 </div>
 
