@@ -1554,7 +1554,7 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowUp') { e.preventDefault(); items[(at - 1 + items.length) % items.length]?.focus(); }
 });
 
-function ctxMenuEl(items, head) {
+function ctxMenuEl(items, head, isSub = false) {
   const el = document.createElement('div');
   el.className = 'ctxmenu';
   el.setAttribute('role', 'menu');
@@ -1573,7 +1573,12 @@ function ctxMenuEl(items, head) {
     b.innerHTML = `<span class="ctx-ico">${it.icon || ''}</span><span class="ctx-lbl">${esc(it.label)}</span>` +
       (it.hint ? `<span class="ctx-hint">${esc(it.hint)}</span>` : '') +
       (it.sub ? '<span class="ctx-arrow">›</span>' : '');
-    b.onmouseenter = () => { if (it.sub) ctxSub(b, it.sub); else ctxSubClose(); };
+    // Hovering a submenu's own items must not close that submenu. Only the
+    // root menu closes an open submenu when the pointer moves to a plain item.
+    b.onmouseenter = () => {
+      if (it.sub) ctxSub(b, it.sub);
+      else if (!isSub) ctxSubClose();
+    };
     b.onclick = (ev) => {
       ev.preventDefault(); ev.stopPropagation();
       if (it.disabled) return;
@@ -1589,7 +1594,7 @@ function ctxSubClose() { document.querySelectorAll('.ctxmenu.ctx-sub').forEach(e
 
 function ctxSub(anchor, items) {
   ctxSubClose();
-  const el = ctxMenuEl(items);
+  const el = ctxMenuEl(items, '', true);
   el.classList.add('ctx-sub');
   document.body.appendChild(el);
   const r = anchor.getBoundingClientRect();
