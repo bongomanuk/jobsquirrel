@@ -62,8 +62,10 @@ Everything is observable. Useful things to ask for, or run yourself:
   A dependency-free dashboard over the register, queue, specs and provenance:
   - **One master grid** (no tabs): a row per application with Date · Company · Role · ATS ·
     Status · **Match** (ATS-keyword coverage; `align✗` = the alignment gate failed) · Queue ·
-    Files · Job ad, plus search / status / queue filters, sortable columns, CSV export and an
-    **ⓘ Legend**. Hover anything for what it means; click a row for the detail drawer
+    Files · Job ad, plus search / status / queue / group filters, sortable columns, CSV export
+    and an **ⓘ Legend**. Right-click a row to add it to a named **group** (a campaign), or create
+    one; groups are independent of status and survive renames and queue runs. Hover anything for
+    what it means; click a row for the detail drawer
     (Summary · Provenance · Job spec · ATS · **Grounding** · Tailored).
   - **Grounding** shows how your knowledge graph was used for that role: the cited context pack
     plus the entities and source documents it referenced, resolved from the index.
@@ -74,8 +76,10 @@ Everything is observable. Useful things to ask for, or run yourself:
     sections ("Checked the application register", "Read files", "Ran tests"), with the exact
     commands and output under **Technical details**; opening or closing a section survives the
     live refresh. Work requests are handed to **background subagents** and reported in the
-    **Activity** pane, so the chat stays responsive. The chat answers questions and quick checks
-    directly and shows a 🥜 spinner only while it is doing that.
+    **Activity** pane, so the chat stays responsive. Activity leads with a short human summary;
+    the raw commands and logs stay under a collapsed **Technical details** section, both in the
+    pane and in the per-task log. The chat answers questions and quick checks directly and shows
+    a 🥜 spinner only while it is doing that.
   - **Settings** (⚙ Config): **Accounts** (credential status + Gmail/Calendar authorisation),
     **Knowledge base** (list / upload / delete source documents, rebuild the index), **GraphRAG**
     (browse entities, relationships, communities and documents), and **Profile & CV** (edit
