@@ -2379,7 +2379,6 @@ async function liveTick() {
   if (lb) {
     lb.classList.toggle('hide', !LIVE_TASKS.length);
     lb.title = LIVE_TASKS.length ? 'Show the live log: ' + LIVE_TASKS[0].label : 'No running task';
-    lb.innerHTML = LIVE_TASKS.length ? NUT + '📜 Live log' : '📜 Live log';
   }
   const a = d.action || {};
   const aname = (a.name || '').replace(/^action=/, '').replace(/\s*\(.*\)\s*$/, '');
@@ -2396,22 +2395,25 @@ async function liveTick() {
       App.showActivity();
     }
   }
-  let s = a.running ? '● ' + aname + ' …' : (d.active ? '● running' : '○ idle');
-  (d.running || []).forEach(r => s += '  ▶ ' + r);
-  delegated.forEach(x => s += '  ▶ ' + (x.title || 'subagent'));
+  const parts = [];
+  if (a.running) parts.push(aname || 'working');
+  else if (d.active) parts.push('runner active');
+  delegated.forEach(x => parts.push(x.title || 'subagent'));
+  if (!parts.length && CHAT_TURN_RUNNING) parts.push('agent working');
   const t = (d.tail || []).slice(-1)[0];
-  if (t) s += '   ' + t.t;
+  let s = parts.length ? '● ' + parts.join('  ▶ ') : '○ idle';
+  if (t && parts.length) s += '   ' + t.t;
   const busy = !!a.running || d.active;
   const subagentBusy = delegated.length > 0 || LIVE_TASKS.length > 0;
-  LIVE_BUSY = busy || subagentBusy;
-  updateSpin();
+  LIVE_BUSY = busy || subagentBusy || CHAT_TURN_RUNNING;
+  // One spinner only: the live strip is always visible and names the work.
   if (LIVE_BUSY) $('#live').innerHTML = NUT + esc(s);
   else $('#live').textContent = s;
   LIVE_RUNNING = busy || LIVE_RUNNING;                 // stay optimistic until confirmed idle
   document.querySelectorAll('#a-prepare,#a-submit,#a-reconcile,#a-prepare-shown,#a-submit-shown,#a-match,#d-body [data-act]')
     .forEach(b => { b.disabled = LIVE_RUNNING; });
   const rc = $('#runctl'); if (rc) { rc.classList.toggle('hide', !LIVE_RUNNING); $('#btn-pause').textContent = d.paused ? '▶ Resume' : '⏸ Pause'; }
-  if (LIVE_RUNNING && !busy) $('#live').innerHTML = (LIVE_BUSY ? NUT : '') + esc('● starting… (the run takes a few minutes — see the monitor)');
+  if (LIVE_RUNNING && !parts.length) $('#live').innerHTML = NUT + esc('● starting… (the run takes a few minutes — see the monitor)');
   if (busy) {
     IDLE_TICKS = 0; WAS_BUSY = true;
     BUSY_NAME = a.name || (d.active ? 'queue run' : 'run');
@@ -2436,7 +2438,7 @@ async function liveTick() {
     if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
     if ((sm.notable || []).length) h += '<ul class="act-list">' + sm.notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
     const ptasks = d.running_tasks || (d.running || []).map(x => ({ label: x, log: '' }));
-    h += ptasks.length ? `<div class="act-h" style="margin-top:6px">${NUT}${ptasks.map(t => t.log ? `<a class="runlink" data-task="${esc(t.log)}" data-title="${esc(t.label)}">${esc(t.label)}</a>` : esc(t.label)).join(' · ')}</div>` : '';
+    h += ptasks.length ? `<div class="act-h" style="margin-top:6px">▶ ${ptasks.map(t => t.log ? `<a class="runlink" data-task="${esc(t.log)}" data-title="${esc(t.label)}">${esc(t.label)}</a>` : esc(t.label)).join(' · ')}</div>` : '';
     humanActivity((d.tail || []).slice(-12).map(x => x.k === 'phase' ? '[p] ' + x.t : x.t))
       .forEach(x => h += `<div class="mini muted">${esc(x)}</div>`);
     $('#peras-body').innerHTML = h;
@@ -2451,9 +2453,9 @@ async function liveTick() {
     ACT = a.name && (a.running || (a.log || []).length) ? a : null;
     renderChat();
   }
-  $('#act-sum').innerHTML = a.running ? (NUT + esc(aname))
-    : (d.active ? (NUT + 'runner active')
-       : (delegated.length ? (NUT + `${delegated.length} subagent${delegated.length === 1 ? '' : 's'}`) : 'idle'));
+  $('#act-sum').textContent = a.running ? ('● ' + aname)
+    : (d.active ? '● runner active'
+       : (delegated.length ? `● ${delegated.length} subagent${delegated.length === 1 ? '' : 's'}` : 'idle'));
   if (document.body.dataset.act === 'open') {
     const tech = [];
     let h = '';
@@ -2470,8 +2472,8 @@ async function liveTick() {
       h += '<div class="act-h act-taskhead">▶ Working now</div>';
       tasks.forEach(t => {
         h += t.log
-          ? `<div class="act-task">${NUT}<a class="runlink" data-task="${esc(t.log)}" data-title="${esc(t.label)}" title="Show the human summary and the full technical log">${esc(t.label)}</a></div>`
-          : `<div class="act-task">${NUT}${esc(t.label)}</div>`;
+          ? `<div class="act-task"><a class="runlink" data-task="${esc(t.log)}" data-title="${esc(t.label)}" title="Show the human summary and the full technical log">${esc(t.label)}</a></div>`
+          : `<div class="act-task">${esc(t.label)}</div>`;
       });
     }
     const human = humanActivity((d.tail || []).map(x => x.k === 'phase' ? '[p] ' + x.t : x.t));
@@ -2897,12 +2899,13 @@ function looksLikeDump(s) {
 function setSpin(v) {
   CHAT_TURN_RUNNING = !!v;
   const b = $('#chat-stop'); if (b) b.classList.toggle('hide', !v);   // Stop is only meaningful mid-turn
-  updateSpin();
-}
-function updateSpin() {
-  // The spinning nut means "something is running": a chat turn, a dashboard
-  // action, or a background subagent. It stays visible while any of them live.
-  const s = $('#chat-spin'); if (s) s.classList.toggle('hide', !(CHAT_TURN_RUNNING || LIVE_BUSY));
+  // One spinner only, in the always-visible live strip. Set it immediately so
+  // the nut appears on send, then liveTick keeps it accurate.
+  const l = $('#live');
+  if (l) {
+    if (v && !LIVE_BUSY) l.innerHTML = NUT + esc('● agent working…');
+    else if (!v && !LIVE_BUSY) l.textContent = '○ idle';
+  }
 }
 // Remember what the reader opened/closed. Reading the DOM during a poll can
 // race the browser's own toggle, which made a closed step reopen itself.
