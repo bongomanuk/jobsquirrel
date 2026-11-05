@@ -78,6 +78,7 @@ const md = (s) => {
 let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] }, CUR_PERM = null, PERM_BUSY = false, DRAFT_SENDING = false;
 let BUILD = '', LIVE_TASKS = [];
 let BUCKET = 'active', VISIBLE = [], VIEW = [];
+let GROUPS = { groups: [], roles: {} };                 // named role groups (campaigns), independent of status
 let COLLAPSED = { ongoing: true, pipeline: true, done: true, prepared: false, focus_unknown: true };   // default to the actionable top of the list
 let BUCKET_BEFORE_SEARCH = null;
 const PENDING = new Set();
@@ -1337,8 +1338,33 @@ function renderStateGraph() {
   });
 })();
 
+/* ---------- role groups (campaigns) ---------- */
+function groupById(id) { return (GROUPS.groups || []).find(g => g.id === id); }
+function groupName(id) { const g = groupById(id); return g ? g.name : id; }
+async function loadGroups() {
+  const d = await api('/api/groups');
+  if (d && !d.error) GROUPS = d;
+  renderGroupFilter();
+  if (GRID.length) renderRows();
+}
+function renderGroupFilter() {
+  const sel = $('#fgroup'); if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">any group</option>' +
+    (GROUPS.groups || []).map(g => `<option value="${esc(g.id)}">${esc(g.name)} (${g.count || 0})</option>`).join('');
+  sel.value = cur && groupById(cur) ? cur : '';
+}
+function groupTagsHTML(r) {
+  return (r.groups || []).map(id => {
+    const g = groupById(id); if (!g) return '';
+    return `<span class="gtag" style="--gc:${esc(g.color || '#7aa2f7')}"` +
+      ` onclick="event.stopPropagation();App.groupFilter('${esc(id)}')"` +
+      ` title="Group: ${esc(g.name)} — click to show this group">${esc(g.name)}</span>`;
+  }).join('');
+}
+
 function clearFilterInputs() {
-  ['fstatus', 'fqueue', 'ftype', 'fpay', 'ffit', 'fwork'].forEach(id => {
+  ['fstatus', 'fqueue', 'ftype', 'fpay', 'ffit', 'fwork', 'fgroup'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const fa = document.getElementById('faction'); if (fa) fa.checked = false;
@@ -1353,6 +1379,7 @@ function renderRows() {
   const mp = parseInt(($('#fpay') || {}).value || '0', 10) || 0;
   const mf = parseInt(($('#ffit') || {}).value || '0', 10) || 0;
   const wm = ($('#fwork') || {}).value || '';
+  const fg = ($('#fgroup') || {}).value || '';          // group filter is independent of bucket/status
   const cy = String(new Date().getFullYear());
   const shortDate = (d) => { const [y, m, dd] = d.split('-'); return y === cy ? `${m}-${dd}` : `${y.slice(2)}-${m}-${dd}`; };
   const disp = (r) => r.label || r.status;               // INTERVIEW rows show SCHEDULED when an interview is still ahead
@@ -1362,13 +1389,18 @@ function renderRows() {
   const payMatch = (r) => !mp || (r.salary_eur != null && r.salary_eur >= mp);
   const fitMatch = (r) => !mf || (r.match != null && r.match >= mf);
   const workMatch = (r) => !wm || (r.work_model || 'unknown') === wm;
-  const filt = (r) => shown(r) && statusMatch(r) && typeMatch(r) && actMatch(r) && payMatch(r) && fitMatch(r) && workMatch(r) &&
+  const filt = (r) => (fg || shown(r)) && statusMatch(r) && typeMatch(r) && actMatch(r) && payMatch(r) && fitMatch(r) && workMatch(r) &&
+    (!fg || (r.groups || []).includes(fg)) &&
     (!qq || r.queue === qq) &&
     (!q || (r.company + ' ' + r.role + ' ' + (r.ats || '') + ' ' + (r.action || '')).toLowerCase().includes(q));
   let rows = GRID.filter(filt);
-  if (BUCKET === 'active') rows = rows.filter(r => bucketOf(r) !== 'done');
-  else if (BUCKET === 'focus') rows = rows.filter(r => r.focus || r.focus_unknown);
-  else if (BUCKET !== 'all') rows = rows.filter(r => bucketOf(r) === BUCKET);
+  // A group is a campaign: it crosses every status and bucket. When one is
+  // selected, show the whole group rather than hiding its closed/applied roles.
+  if (!fg) {
+    if (BUCKET === 'active') rows = rows.filter(r => bucketOf(r) !== 'done');
+    else if (BUCKET === 'focus') rows = rows.filter(r => r.focus || r.focus_unknown);
+    else if (BUCKET !== 'all') rows = rows.filter(r => bucketOf(r) === BUCKET);
+  }
   VIEW = rows.map(r => r.key);
 
   const k = SORT.k;
@@ -1413,10 +1445,11 @@ function renderRows() {
     const i = GRID.indexOf(r);
     const sel = (CUR && (r.key === CUR.key || (r.company === CUR.company && r.role === CUR.role))
       && PANELS.detail && PANELS.detail.open) ? ' sel' : '';
+    const gtags = groupTagsHTML(r);
     return `<tr class="click${sel}" onclick="App.open(${i})" oncontextmenu="return App.rowMenu(event, ${i})">` +
       `<td class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet — queued, not applied')}>${r.date ? esc(shortDate(r.date)) : '—'}</td>` +
       `<td${T(r.company + '  ·  employer / recruiter')}>${r.running ? `<a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="event.stopPropagation();App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show the live log"><span class="spin">🥜</span></a> ` : (PENDING.has(r.key) ? '<span class="spin" title="Queued — waiting to start">🥜</span> ' : '')}${r.pinned ? `<span class="pinned"${T('Pinned to the top of its group')}>📌</span> ` : ''}${r.action ? `<span class="actflag"${T(r.action)}>⚑</span> ` : ''}${esc(r.company)}</td>` +
-      `<td${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}</td>` +
+      `<td${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}${gtags ? `<div class="gtags">${gtags}</div>` : ''}</td>` +
       `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
       `<td>${chip(r.label || r.status)}${r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : ''}</td><td>${mbadge(r)}</td>` +
       `<td>${payBadge(r)}</td><td>${workBadge(r)}</td>` +
@@ -1432,14 +1465,14 @@ function renderRows() {
     <button class="small" type="button" onclick="App.bucket('all')">Show all</button></td></tr>`;
   let html = '';
   let rendered = [];
-  const advanced = !!(st || qq || ft || fa || mp || mf || wm || q);
+  const advanced = !!(st || qq || ft || fa || mp || mf || wm || q || fg);
   let groups = null;
-  if (GROUPED && (BUCKET === 'active' || BUCKET === 'all')) {
+  if (!fg && GROUPED && (BUCKET === 'active' || BUCKET === 'all')) {
     groups = BUCKET_GROUPS.filter(g => BUCKET === 'all' || g.k !== 'done')
       .map(g => ({ ...g, test: r => bucketOf(r) === g.k }));
     if (BUCKET === 'active' && !advanced && !rows.some(r => bucketOf(r) === 'needs'))
       html += '<tr class="grp calm"><td colspan="11">✓ Nothing needs you right now — ongoing applications and the apply queue are below.</td></tr>';
-  } else if (BUCKET === 'focus') {
+  } else if (!fg && BUCKET === 'focus') {
     groups = FOCUS_GROUPS;
   }
   if (groups) {
@@ -1456,11 +1489,11 @@ function renderRows() {
         `<span class="grp-n"><button type="button" class="countlink" onclick="event.stopPropagation();${target}" title="Filter to this group">${gr.length}</button></span></td></tr>`;
       if (!collapsed) { html += gr.map(rowHTML).join(''); rendered.push(...gr); }
     }
-    if (!rows.length) html = empty(BUCKET === 'focus' ? 'No active roles match this focus.' : 'No rows in this view.');
+    if (!rows.length) html = empty(fg ? 'No roles in this group.' : (BUCKET === 'focus' ? 'No active roles match this focus.' : 'No rows in this view.'));
   } else {
     const gr = sortRows(rows, BUCKET);
     rendered = gr;
-    html = gr.map(rowHTML).join('') || empty('No matching rows in this view.');
+    html = gr.map(rowHTML).join('') || empty(fg ? 'No roles in this group.' : 'No matching rows in this view.');
   }
   VISIBLE = rendered.map(r => r.key);
   $('#rows').innerHTML = html;
@@ -1496,7 +1529,7 @@ function renderRows() {
   if ($('#fact-count')) { const n = GRID.filter(r => r.action && shown(r)).length; $('#fact-count').textContent = n ? `(${n})` : ''; }
   if ($('#fdismissed-count')) { const n = GRID.filter(r => r.dismissed).length; $('#fdismissed-count').textContent = n ? `(${n})` : ''; }
   if ($('#filt-n')) {
-    const n = [st, qq, ft, fa ? '1' : '', mp, mf, wm, q].filter(Boolean).length;
+    const n = [st, qq, ft, fa ? '1' : '', mp, mf, wm, q, fg].filter(Boolean).length;
     $('#filt-n').textContent = n ? `(${n})` : '';
   }
 }
@@ -1588,6 +1621,15 @@ App.rowMenu = (ev, i) => {
   const hasDocs = !!(r.stages && r.stages.documents);
   const prepared = st === 'PREPARED';
   const canWrite = applied && !closed;
+  const myGroups = new Set(r.groups || []);
+  const groupItems = (GROUPS.groups || []).map(g => ({
+    label: (myGroups.has(g.id) ? '✓ ' : '') + g.name,
+    hint: myGroups.has(g.id) ? 'in this group' : '',
+    run: () => App.toggleGroupTag(r, g.id, !myGroups.has(g.id))
+  }));
+  if (groupItems.length) groupItems.push({ sep: true });
+  groupItems.push({ icon: '＋', label: 'New group…', run: () => App.newGroupFor(r) });
+  if (myGroups.size) groupItems.push({ icon: '✕', label: 'Remove from all groups', run: () => App.clearGroups(r) });
   const STATUSES = closed
     ? ['IN_PROGRESS', 'PREPARED', 'SUBMITTED', 'BLOCKED', 'MANUAL']
     : ['PREPARED', 'SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER', 'REJECTED', 'BLOCKED', 'MANUAL', 'CLOSED'];
@@ -1617,6 +1659,7 @@ App.rowMenu = (ev, i) => {
     r.dismissed
       ? { icon: '↩', label: 'Restore to list', run: () => App.toggleDismiss(r) }
       : { icon: '✕', label: 'Dismiss from list', run: () => App.toggleDismiss(r) },
+    { icon: '🏷', label: 'Groups', sub: groupItems },
     ((!applied && !queued) || blocked) ? { sep: true } : null,
     (!applied && !prepared && !queued && !closed && !r.running)
       ? { icon: '🔁', label: blocked ? 'Re-queue for another attempt' : 'Queue to apply', run: () => App.queueAct('retry', r.company, r.role) }
@@ -1692,6 +1735,31 @@ App.togglePin = async (r) => {
   const d = await api('/api/roles/flags', { key: r.key, pinned: !r.pinned });
   toast(d.error ? d.error : (r.pinned ? 'unpinned' : 'pinned to the top'), !!d.error);
   if (!d.error) await loadGrid();
+};
+
+App.toggleGroupTag = async (r, id, on) => {
+  const d = await api('/api/groups', { op: 'assign', key: r.key, group: id, on });
+  toast(d.error ? d.error : (on ? `added to “${groupName(id)}”` : `removed from “${groupName(id)}”`), !!d.error);
+  if (!d.error) { await loadGroups(); await loadGrid(); if (CUR) openDetail(CUR); }
+};
+App.newGroupFor = async (r) => {
+  const name = prompt('Name this group (a campaign, e.g. “Nordic fintech”):', '');
+  if (name == null || !name.trim()) return;
+  const d = await api('/api/groups', { op: 'create', name: name.trim() });
+  if (d.error) return toast(d.error, true);
+  if (r && r.key) { await api('/api/groups', { op: 'assign', key: r.key, group: d.group.id, on: true }); }
+  await loadGroups(); await loadGrid();
+  toast(r && r.key ? `created “${d.group.name}” and added this role` : `created “${d.group.name}”`);
+};
+App.clearGroups = async (r) => {
+  for (const id of (r.groups || [])) await api('/api/groups', { op: 'assign', key: r.key, group: id, on: false });
+  await loadGroups(); await loadGrid();
+  toast('removed from all groups');
+};
+App.groupFilter = (id) => {
+  const sel = $('#fgroup'); if (sel) sel.value = id || '';
+  if (id) BUCKET = 'all';                     // a group crosses every status
+  renderBuckets(); renderRows();
 };
 
 App.toggleDismissedView = (on) => {
@@ -2072,6 +2140,41 @@ window.viewDoc = async (rel, title) => {
 };
 
 /* ---------- live strip + agent dock ---------- */
+// Turn queue/agent log lines into a short, human account of what is happening.
+// Anything that looks like a command, JSON or a stack trace is left to the
+// collapsed "Technical details" view instead of being shown as the summary.
+function humanActivity(lines) {
+  const out = [];
+  const GOOD = /(?:RESULT:|wrote|written|saved|prepared|submitted|applied|created|found|checked|verified|complete|completed|finished|started|error|failed|blocked|skipped|matched|queued|proposed|updated|nothing to|no changes|ready|alive|gone|missing|repost|closed|status)/i;
+  for (const raw of lines || []) {
+    let s = String(raw || '').trim();
+    if (!s) continue;
+    s = s.replace(/^(START|DONE|STATUS|INFRA-FAIL|TOKEN-LIMIT)\s+\d{2}:\d{2}:\d{2}\s+/, '$1 ');
+    let m;
+    if ((m = s.match(/^START\s+(.+?)\s*\|\s*(.+)$/))) { out.push(`Started ${m[1]} — ${m[2]}`); continue; }
+    if ((m = s.match(/^DONE\s+(.+?)\s*\|\s*(.+?)(?:\s+\(rc=(\d+)\))?$/))) {
+      out.push(`Finished ${m[1]} — ${m[2]}${m[3] && m[3] !== '0' ? ' (exit ' + m[3] + ')' : ''}`); continue;
+    }
+    if ((m = s.match(/^STATUS\s+(.+?)\s*\|\s*(.+?)\s*\|\s*([^|]+?)\s*\|\s*(.*)$/))) {
+      out.push(`${m[1]} — ${m[2]}: ${m[3].trim()}${m[4] ? ' — ' + m[4] : ''}`); continue;
+    }
+    if (/^INFRA-FAIL/i.test(s)) { out.push('Stalled — ' + s.replace(/^INFRA-FAIL\s*/i, '')); continue; }
+    if (/^TOKEN-LIMIT/i.test(s)) { out.push('Model limit — ' + s.replace(/^TOKEN-LIMIT\s*/i, '')); continue; }
+    if (/^queue complete/i.test(s)) { out.push('Queue finished'); continue; }
+    if (/^\[p\]\s*/.test(s)) { out.push(s.replace(/^\[p\]\s*/, '')); continue; }
+    if (/^RESULT:/i.test(s)) { out.push(s); continue; }
+    // Drop commands, JSON, URLs, code, scraped tables, prompt bullets and
+    // progress bars. They stay in Technical details, but they are not a summary.
+    if (/^[-*•]\s/.test(s) || /do not apply|follow AGENTS|you are an? /i.test(s)) continue;
+    if (/^(?:\$|>|→|\{|\[|"|#|\/|\.\/|\d|==|--|\||print\(|for |def |import |from |const |let |var |function |class |<\/?[a-z])/i.test(s)) continue;
+    if (/:\/\//.test(s) || /[{}]/.test(s)) continue;
+    if (!GOOD.test(s)) continue;
+    if (s.length > 180) continue;
+    out.push(s);
+  }
+  return [...new Set(out)].slice(-6);
+}
+
 async function liveTick() {
   const d = await api('/api/live');
   if (d && d.build) {                                  // server restarted or web files changed
@@ -2125,7 +2228,8 @@ async function liveTick() {
     if ((sm.notable || []).length) h += '<ul class="act-list">' + sm.notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
     const ptasks = d.running_tasks || (d.running || []).map(x => ({ label: x, log: '' }));
     h += ptasks.length ? `<div class="act-h" style="margin-top:6px">▶ ${ptasks.map(t => t.log ? `<a class="runlink" data-task="${esc(t.log)}" data-title="${esc(t.label)}">${esc(t.label)}</a>` : esc(t.label)).join(' · ')}</div>` : '';
-    (d.tail || []).slice(-6).forEach(x => h += `<div class="mini muted">${esc(x.t)}</div>`);
+    humanActivity((d.tail || []).slice(-12).map(x => x.k === 'phase' ? '[p] ' + x.t : x.t))
+      .forEach(x => h += `<div class="mini muted">${esc(x)}</div>`);
     $('#peras-body').innerHTML = h;
   }
   const sm = a.summary || {};
@@ -2142,30 +2246,30 @@ async function liveTick() {
     : (d.active ? '● runner active'
        : (delegated.length ? `● ${delegated.length} subagent${delegated.length === 1 ? '' : 's'}` : 'idle'));
   if (document.body.dataset.act === 'open') {
+    const tech = [];
     let h = '';
-    if (a.name && a.running) {
-      h += `<div class="act-h">${NUT} ${esc(aname)} <span class="muted">running…</span></div>`;
+    if (a.name) {
+      h += `<div class="act-h">${a.running ? NUT : '✓'} ` +
+        `${a.running ? '' : 'Last action: '}${esc(aname || 'last action')} ` +
+        `<span class="muted">${a.running ? 'running…' : 'finished'}</span></div>`;
       if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
       if ((sm.notable || []).length) h += '<ul class="act-list">' + sm.notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
-      const total = (a.log || []).length;
-      if (total > (sm.notable || []).length) h += `<details class="act-raw"><summary>full output · ${total} lines</summary><pre>${esc((a.log || []).join('\n'))}</pre></details>`;
-      h += '<div class="act-sep"></div>';
-    } else if (a.name) {
-      // Not running: this is history, not current activity.
-      h += `<div class="act-h">✓ last action: ${esc(aname)} <span class="muted">finished</span></div>`;
-      if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
-      h += '<div class="act-sep"></div>';
+      if (a.running) tech.push(...(a.log || []));
     }
-    h += d.active ? '● runner active'
-      : (delegated.length ? `▶ ${delegated.length} subagent${delegated.length === 1 ? '' : 's'} running`
-                          : '○ runner idle');
     const tasks = d.running_tasks || (d.running || []).map(x => ({ label: x, log: '' }));
-    tasks.forEach(t => {
-      h += t.log
-        ? `\n▶ <a class="runlink" data-task="${esc(t.log)}" data-title="${esc(t.label)}" title="Show the live log">${esc(t.label)}</a>`
-        : `\n▶ ${esc(t.label)}`;
-    });
-    (d.tail || []).forEach(x => h += x.k === 'phase' ? `\n[p] ${esc(x.t)}` : `\n    ${esc(x.t)}`);
+    if (tasks.length) {
+      h += '<div class="act-h act-taskhead">▶ Working now</div>';
+      tasks.forEach(t => {
+        h += t.log
+          ? `<div class="act-task"><a class="runlink" data-task="${esc(t.log)}" data-title="${esc(t.label)}" title="Show the human summary and the full technical log">${esc(t.label)}</a></div>`
+          : `<div class="act-task">${esc(t.label)}</div>`;
+      });
+    }
+    const human = humanActivity((d.tail || []).map(x => x.k === 'phase' ? '[p] ' + x.t : x.t));
+    if (human.length) h += '<ul class="act-list act-now">' + human.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
+    (d.tail || []).forEach(x => tech.push((x.k === 'phase' ? '[phase] ' : '') + (x.t || '')));
+    if (!h) h = '<span class="muted">○ runner idle</span>';
+    if (tech.length) h += `<details class="act-raw"><summary>Technical details · ${tech.length} lines</summary><pre>${esc(tech.join('\n'))}</pre></details>`;
     $('#liveterm').innerHTML = h;
   }
   setTimeout(liveTick, 2500);
@@ -2437,19 +2541,33 @@ async function taskLogPoll() {
   const raw = (d && d.raw) || [];
   const lines = (d && d.curated) || [];
   const age = d && d.age, size = d && d.size;
+  const live = LIVE_TASKS.some(t => t.log === TASKLOG.name);
+  const agoText = age == null ? 'no output yet'
+    : 'last output ' + (age < 90 ? age + 's' : age < 5400 ? Math.round(age / 60) + 'm' : (age / 3600).toFixed(1) + 'h') + ' ago';
   let meta = (d && d.error) ? 'log not found'
-    : `${size != null ? size : 0} bytes · ${age == null ? 'no output yet' : 'last output ' + age + 's ago'}` +
-      (age != null && age > 90 ? ' · quiet for ' + Math.floor(age / 60) + 'm — the model may be stalled (20m timeout)' : '');
+    : `${size != null ? size : 0} bytes · ${agoText}` +
+      (live && age != null && age > 90 ? ' · quiet for ' + Math.floor(age / 60) + 'm — the model may be stalled (20m timeout)' : '');
   if (!LIVE_TASKS.length) meta += ' · no task running now';
-  else if (!LIVE_TASKS.some(t => t.log === TASKLOG.name)) meta += ' · task finished — the runner moved on';
+  else if (!live) meta += ' · task finished — the runner moved on';
   const mEl = $('#tasklog-meta'); if (mEl) mEl.textContent = meta;
-  const txt = raw.length ? raw.join('\n')
-    : (lines.map(x => (x.k === 'phase' ? '[phase] ' : '') + (x.t || '')).join('\n')
-       || `No log output yet.\n\n${meta}\n\nThe runner will time out after 20 minutes and move on.`);
+  const tech = raw.length ? raw
+    : lines.map(x => (x.k === 'phase' ? '[phase] ' : '') + (x.t || ''));
+  const txt = tech.length ? tech.join('\n')
+    : `No log output yet.\n\n${meta}\n\nThe runner will time out after 20 minutes and move on.`;
   const el = $('#tasklog-body');
   const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
   el.textContent = txt;
   if (stick) el.scrollTop = el.scrollHeight;
+  const human = humanActivity(lines.map(x => x.k === 'phase' ? '[p] ' + x.t : x.t).concat(raw.slice(-80)));
+  const sum = $('#tasklog-summary');
+  if (sum) {
+    sum.innerHTML = `<div class="act-h">${live ? '● running' : (tech.length ? '✓ finished' : '○ waiting')} ` +
+      `<span class="muted">${esc(meta)}</span></div>` +
+      (human.length
+        ? '<ul class="act-list">' + human.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>'
+        : '<div class="muted">No human-readable progress yet — open Technical details for the raw log.</div>');
+  }
+  const ln = $('#tasklog-lines'); if (ln) ln.textContent = tech.length ? `· ${tech.length} lines` : '';
   TASKLOG.timer = setTimeout(taskLogPoll, 1500);
 }
 function openTaskLog(name, title) {
@@ -3431,6 +3549,10 @@ $('#q').oninput = () => {
   const el = $(sel); if (!el) return;
   el.onchange = () => { if (BUCKET !== 'focus') BUCKET = 'all'; renderBuckets(); renderRows(); };
 });
+const fgroup = $('#fgroup');
+if (fgroup) fgroup.onchange = () => { if (fgroup.value) BUCKET = 'all'; renderBuckets(); renderRows(); };
+const newgroup = $('#newgroup');
+if (newgroup) newgroup.onclick = () => App.newGroupFor(null);
 ['#fpay', '#ffit', '#fwork'].forEach(sel => {
   const el = $(sel); if (!el) return;
   el.onchange = () => { renderRows(); };      // quality filters apply within the current bucket
@@ -3448,8 +3570,11 @@ $('#grouping').onclick = () => {
   renderRows();
 };
 $('#export').onclick = () => {
-  const cs = ['date', 'company', 'role', 'employment', 'work_model', 'salary_label', 'ats', 'status', 'action', 'match', 'focus', 'queue', 'applied', 'spec', 'key'];
-  const body = GRID.map(r => cs.map(c => JSON.stringify(r[c] == null ? '' : r[c])).join(',')).join('\n');
+  const cs = ['date', 'company', 'role', 'employment', 'work_model', 'salary_label', 'ats', 'status', 'action', 'match', 'focus', 'queue', 'applied', 'spec', 'groups', 'key'];
+  const body = GRID.map(r => cs.map(c => {
+    const v = c === 'groups' ? (r.groups || []).map(groupName).join('; ') : r[c];
+    return JSON.stringify(v == null ? '' : v);
+  }).join(',')).join('\n');
   const url = URL.createObjectURL(new Blob([cs.join(',') + '\n' + body], { type: 'text/csv' }));
   const a = document.createElement('a'); a.href = url; a.download = 'jobsquirrel.csv'; a.click(); URL.revokeObjectURL(url);
 };
@@ -3538,7 +3663,7 @@ $('#upd-go').onclick = async () => {
     });
   }
 })();
-initPanels(); initGridCols(); syncGroupingButton(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel();
+initPanels(); initGridCols(); syncGroupingButton(); loadGroups(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel();
 if (location.hash === '#knowledge') setTimeout(() => App.openKnowledge('map'), 400);
 if (location.hash === '#universe') setTimeout(() => App.openKnowledge('universe'), 400);
 // Clicking or dragging in the graph must not select text.

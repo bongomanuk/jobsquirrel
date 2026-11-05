@@ -768,3 +768,27 @@ body.knowledge-open .modal{z-index:60}
 .c-raw-step{padding:7px 9px;border-top:1px solid var(--line)}
 .c-raw-step b{display:block;font-size:11.5px;color:var(--muted);margin-bottom:4px}
 .c-raw-step pre{margin:0;max-height:30vh;overflow:auto;white-space:pre-wrap;font:11.5px/1.45 var(--mono);color:var(--muted)}
+
+/* Role groups (campaigns) — a tag on the row and a filter, independent of status */
+.gtags{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
+.gtag{display:inline-flex;align-items:center;gap:4px;font:10.5px/1.4 var(--sans);padding:1px 6px;
+  border-radius:10px;background:color-mix(in srgb,var(--gc) 16%,transparent);
+  border:1px solid color-mix(in srgb,var(--gc) 45%,transparent);color:var(--fg);
+  cursor:pointer;white-space:nowrap}
+.gtag::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--gc)}
+.gtag:hover{background:color-mix(in srgb,var(--gc) 28%,transparent)}
+
+/* Activity: a human summary first, raw logs on drill-down */
+#liveterm{font:12.5px/1.55 var(--sans);white-space:normal}
+#liveterm .act-now{margin-top:6px}
+#liveterm .act-taskhead{margin-top:8px}
+#liveterm .act-task{margin:2px 0 2px 8px}
+.tasklog-summary{flex:1;min-height:0;overflow:auto;font:12.5px/1.55 var(--sans);white-space:normal}
+.tasklog-raw{flex:0 1 auto;min-height:0;display:flex;flex-direction:column;
+  border-top:1px solid var(--line);margin-top:6px;padding-top:4px}
+.tasklog-raw[open]{flex:1}
+.tasklog-raw>summary{cursor:pointer;color:var(--muted);font:11.5px/1.5 var(--sans);list-style:none;padding:2px 0}
+.tasklog-raw>summary::-webkit-details-marker{display:none}
+.tasklog-raw>summary::before{content:'▸ ';color:var(--accent)}
+.tasklog-raw[open]>summary::before{content:'▾ ';}
+.tasklog-raw .tasklog-body{flex:1;min-height:120px}

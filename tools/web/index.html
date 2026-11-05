@@ -50,6 +50,8 @@
                 <option>REJECTED</option><option>BLOCKED</option><option>MANUAL</option><option>PREPARED</option><option>CLOSED</option></select>
               <select id="fqueue"><option value="">any queue</option><option value="pending">pending</option>
                 <option value="human">human-assist</option><option value="retry">retry</option><option value="finished">finished</option></select>
+              <select id="fgroup" title="Show only the roles in a group (campaign), regardless of status">
+                <option value="">any group</option></select>
               <select id="ftype" title="Filter by engagement type (read from the job ad, or set per row in the drawer)">
                 <option value="">any type</option>
                 <option value="full-time">full-time</option><option value="part-time">part-time</option>
@@ -84,6 +86,7 @@
           </details>
           <button id="export">Export CSV</button>
           <button id="grouping" class="small" title="Group rows by bucket (default) or show one flat sorted list — clicking a column header switches to the flat view">☰ Grouped</button>
+          <button id="newgroup" class="small" title="Create an empty group (campaign), then right-click roles to add them">🏷 New group</button>
           <button id="a-prepare-shown" title="Generate documents for the rows in this view (expanded groups) — runs the agent per role, a few minutes each; nothing is submitted">⚡ Prepare shown</button>
           <button id="a-submit-shown" class="risky" title="Submit the PREPARED rows in this view, with the documents already generated — sends applications; needs approval">🚀 Submit prepared</button>
           <button id="a-match" title="Recompute CV–job match for the rows in this view — instant (no agent)">↻ Match</button>
@@ -161,7 +164,11 @@
           <span id="tasklog-meta" class="muted mini"></span><span style="flex:1"></span>
           <button id="tasklog-close" class="small" title="Back to the activity summary">← Activity</button>
         </div>
-        <pre id="tasklog-body" class="tasklog-body">loading…</pre>
+        <div id="tasklog-summary" class="tasklog-summary">loading…</div>
+        <details class="tasklog-raw">
+          <summary>Technical details <span id="tasklog-lines" class="muted mini"></span></summary>
+          <pre id="tasklog-body" class="tasklog-body">loading…</pre>
+        </details>
       </div>
     </section>
   </div>

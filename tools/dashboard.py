@@ -258,6 +258,130 @@ def set_role_flags(key, dismissed=None, pinned=None):
     return {"ok": "updated"}
 
 
+# ---------------------------------------------------------------- role groups
+ROLE_GROUPS = os.path.join(STATE, "role-groups.json")
+GROUP_COLORS = ["#7aa2f7", "#9ece6a", "#e0af68", "#f7768e",
+                "#bb9af7", "#7dcfff", "#ff9e64", "#c0caf5"]
+
+
+def role_groups():
+    """Named groups (campaigns) and the roles in them, independent of status."""
+    try:
+        with open(ROLE_GROUPS, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    raw_groups = data.get("groups") if isinstance(data.get("groups"), dict) else {}
+    raw_roles = data.get("roles") if isinstance(data.get("roles"), dict) else {}
+    groups = {}
+    for gid, g in raw_groups.items():
+        if not isinstance(g, dict):
+            continue
+        name = str(g.get("name") or "").strip()[:60]
+        if not name:
+            continue
+        groups[str(gid)] = {"name": name, "color": str(g.get("color") or "")}
+    roles = {}
+    for key, ids in raw_roles.items():
+        if not isinstance(ids, list):
+            continue
+        keep = sorted({str(x) for x in ids if str(x) in groups})
+        if keep:
+            roles[str(key)] = keep
+    return {"groups": groups, "roles": roles}
+
+
+def _group_slug(name, existing):
+    base = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")[:40] or "group"
+    slug, i = base, 2
+    while slug in existing:
+        slug = f"{base}-{i}"
+        i += 1
+    return slug
+
+
+def _save_role_groups(data):
+    tmp = ROLE_GROUPS + ".tmp"
+    os.makedirs(os.path.dirname(tmp), exist_ok=True)
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=1, sort_keys=True)
+    os.replace(tmp, ROLE_GROUPS)
+
+
+def groups_view():
+    data = role_groups()
+    counts = {}
+    for ids in data["roles"].values():
+        for gid in ids:
+            counts[gid] = counts.get(gid, 0) + 1
+    groups = [{"id": gid, **g, "count": counts.get(gid, 0)}
+              for gid, g in sorted(data["groups"].items(),
+                                   key=lambda kv: kv[1]["name"].lower())]
+    return {"groups": groups, "roles": data["roles"]}
+
+
+def group_action(op, name="", group="", key="", on=None):
+    """Create, rename, delete or assign a role group."""
+    data = role_groups()
+    groups, roles = data["groups"], data["roles"]
+    op = (op or "").strip().lower()
+    if op == "create":
+        nm = (name or "").strip()[:60]
+        if not nm:
+            return {"error": "group name required"}
+        gid = _group_slug(nm, groups)
+        color = GROUP_COLORS[len(groups) % len(GROUP_COLORS)]
+        groups[gid] = {"name": nm, "color": color}
+        _save_role_groups(data)
+        return {"ok": "created", "group": {"id": gid, **groups[gid]}}
+    if op == "rename":
+        gid = str(group or "")
+        nm = (name or "").strip()[:60]
+        if gid not in groups:
+            return {"error": "unknown group"}
+        if not nm:
+            return {"error": "group name required"}
+        groups[gid]["name"] = nm
+        _save_role_groups(data)
+        return {"ok": "renamed", "group": {"id": gid, **groups[gid]}}
+    if op == "delete":
+        gid = str(group or "")
+        if gid not in groups:
+            return {"error": "unknown group"}
+        groups.pop(gid, None)
+        for k in list(roles):
+            ids = [x for x in roles[k] if x != gid]
+            if ids:
+                roles[k] = ids
+            else:
+                roles.pop(k, None)
+        _save_role_groups(data)
+        return {"ok": "deleted"}
+    if op == "assign":
+        gid = str(group or "")
+        k = str(key or "")
+        if gid not in groups:
+            return {"error": "unknown group"}
+        if not k:
+            return {"error": "role key required"}
+        ids = set(roles.get(k) or [])
+        if on is None:
+            on = True
+        if on:
+            ids.add(gid)
+        else:
+            ids.discard(gid)
+        if ids:
+            roles[k] = sorted(ids)
+        else:
+            roles.pop(k, None)
+        _save_role_groups(data)
+        return {"ok": "assigned", "key": k, "groups": sorted(ids)}
+    return {"error": "unknown group action"}
+
+
 # ---------------------------------------------------------------- drafted replies
 def drafts_list(company="", role=""):
     sys.path.insert(0, os.path.join(ROOT, "tools"))
@@ -1456,6 +1580,7 @@ def grid():
     """One row per application: register ⋈ queue ⋈ in-flight running tasks ⋈ provenance."""
     apps = _rows(os.path.join(STATE, "applications.csv"))
     flags = role_flags()
+    group_roles = role_groups()["roles"]
     _load_cov(); _load_emp()
     target = _salary_target()
     km, cvmap = _key_maps()
@@ -1553,6 +1678,7 @@ def grid():
                                          ats_key=ats_key, content_key=content_key),
                     "dismissed": bool((flags.get(key) or {}).get("dismissed")),
                     "pinned": bool((flags.get(key) or {}).get("pinned")),
+                    "groups": group_roles.get(key, []),
                     **_pay_work_fields(jd_key, notes, status, cov, target),
                     "hint": hint})
     # queued but not yet in the register — show the work that's waiting / in flight
@@ -1596,6 +1722,7 @@ def grid():
                     "notes": "", "letter": "", "action": "", "url": r.get("url", ""), "stages": st,
                     "dismissed": bool((flags.get(key) or {}).get("dismissed")),
                     "pinned": bool((flags.get(key) or {}).get("pinned")),
+                    "groups": group_roles.get(key, []),
                     **_pay_work_fields(key, "", stg, cov, target),
                     "hint": _hint(stg, "")})
     _save_cov(); _save_emp(); _save_meta()
@@ -4259,6 +4386,8 @@ class H(BaseHTTPRequestHandler):
                                            qs.get("limit", ["200"])[0], qs.get("offset", ["0"])[0]))
         if p == "/api/grid":
             return self._json(grid())
+        if p == "/api/groups":
+            return self._json(groups_view())
         if p == "/api/provenance":
             return self._json(provenance(qs.get("company", [""])[0], qs.get("role", [""])[0]))
         if p == "/api/queue":
@@ -4484,6 +4613,10 @@ class H(BaseHTTPRequestHandler):
             return self._json(set_role_flags(data.get("key", ""),
                                              dismissed=data.get("dismissed"),
                                              pinned=data.get("pinned")))
+        if p == "/api/groups":
+            return self._json(group_action(data.get("op", ""), data.get("name", ""),
+                                           data.get("group", ""), data.get("key", ""),
+                                           data.get("on")))
         if p == "/api/roles/discover":
             return self._json(discover(data.get("url", "")))
         if p == "/api/config":
