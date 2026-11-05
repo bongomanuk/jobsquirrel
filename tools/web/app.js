@@ -1653,6 +1653,7 @@ App.rowMenu = (ev, i) => {
     { icon: '🏷', label: closed ? 'Reopen as' : 'Set status', sub: STATUSES.map(x => ({
         label: (cur(x) ? '✓ ' : '') + x,
         run: () => App.setStatus(r, x) })) },
+    !closed ? { icon: '🚪', label: 'Close role', hint: 'status CLOSED', run: () => App.closeRole(r) } : null,
     (!closed && !r.running) ? { icon: '⚑', label: r.action ? 'Update follow-up flag…' : 'Flag follow-up…', run: () => App.flagAction(r) } : null,
     r.action ? { icon: '⚐', label: 'Clear follow-up flag', run: () => App.clearFlag(r) } : null,
     { icon: '📌', label: r.pinned ? 'Unpin' : 'Pin to top', run: () => App.togglePin(r) },
@@ -1709,6 +1710,20 @@ App.setStatus = async (r, status) => {
   const d = await api('/api/register/row', { company: r.company, role: r.role, status, key: r.key });
   toast(d.ok || d.error, !!d.error);
   if (!d.error) { await loadGrid(); if (CUR) openDetail(CUR); }
+};
+
+App.closeRole = async (r) => {
+  if (!confirm(`Close “${r.company} — ${r.role}”?\n\nThis sets the status to CLOSED and clears the follow-up flag. The row moves to Done.`)) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const d = await api('/api/register/row', {
+    company: r.company, role: r.role, status: 'CLOSED', action: '', key: r.key,
+    notes: `${today}: closed from the row menu (not pursuing).`
+  });
+  if (d.error) return toast(d.error, true);
+  await api('/api/roles/flags', { key: r.key, dismissed: false });   // show it in Done
+  toast('closed — moved to Done');
+  await loadGrid();
+  if (CUR) openDetail(CUR);
 };
 
 App.flagAction = async (r) => {
