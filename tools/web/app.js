@@ -2434,7 +2434,7 @@ async function liveTick() {
   }
   if (!$('#peras').classList.contains('hide')) {         // background-run monitor
     const sm = a.summary || {};
-    let h = `<div class="act-h">${a.running ? NUT : '✓'} ${esc(aname || 'working…')} <span class="muted">${a.running ? 'running…' : 'finished'}</span></div>`;
+    let h = `<div class="act-h">${a.running ? '🥜' : '✓'} ${esc(aname || 'working…')} <span class="muted">${a.running ? 'running…' : 'finished'}</span></div>`;
     if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
     if ((sm.notable || []).length) h += '<ul class="act-list">' + sm.notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
     const ptasks = d.running_tasks || (d.running || []).map(x => ({ label: x, log: '' }));
@@ -2460,7 +2460,7 @@ async function liveTick() {
     const tech = [];
     let h = '';
     if (a.name) {
-      h += `<div class="act-h">${a.running ? NUT : '✓'} ` +
+      h += `<div class="act-h">${a.running ? '🥜' : '✓'} ` +
         `${a.running ? '' : 'Last action: '}${esc(aname || 'last action')} ` +
         `<span class="muted">${a.running ? 'running…' : 'finished'}</span></div>`;
       if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
@@ -2922,7 +2922,7 @@ let DELEGATED_SEEN = null;                              // subagent ids already 
 let CHAT_TURN_RUNNING = false, LIVE_BUSY = false;       // chat turn + any action/subagent running
 function actionCard(a) {
   const sm = a.summary || {}, ov = a.overview || [];
-  let h = `<div class="c-user">${a.running ? NUT : ''}${esc(a.name)} <span class="muted">${a.running ? 'running…' : 'done'}</span></div>`;
+  let h = `<div class="c-user">${a.running ? '🥜 ' : ''}${esc(a.name)} <span class="muted">${a.running ? 'running…' : 'done'}</span></div>`;
   if (ov.length) {
     h += '<div class="act-h" style="margin-top:6px">Where we are</div>';
     h += '<ul class="act-list">' + ov.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
