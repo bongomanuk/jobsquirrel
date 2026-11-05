@@ -416,11 +416,19 @@ docs/                       # documentation (this folder)
 9. **Reconcile**: `gmail_reconcile.py` matches replies to rows and sets
    INTERVIEW / REJECTED / SUBMITTED, surfacing verification links for you to act on.
 
-## Statuses
+## Statuses: the application state machine
 
-`QUEUED, PREPARED, IN_PROGRESS, SUBMITTED, INTERVIEW, OFFER, REJECTED, BLOCKED,
-MANUAL, CLOSED`. `PREPARED` means the documents were built and gated but nothing
-was sent; `INTERVIEW` means an interview thread exists (invited, booked or held).
+Every application is a **state machine**. One register row moves through a fixed
+set of statuses — `QUEUED → DRAFTING → PREPARED → SUBMITTED → IN_PROGRESS →
+INTERVIEW → OFFER`, with `BLOCKED`/`MANUAL` branches and `REJECTED`/`CLOSED`
+terminals — and the queue, the gates, the reconciler and the dashboard all read
+and write that one state. There is no second copy of "where this role is".
+
+`PREPARED` means the documents were built and gated but nothing was sent;
+`INTERVIEW` means an interview thread exists (invited, booked or held). The
+dashboard draws the machine above the grid, and each status expands into the
+human **sub-states** inside it (for example `INTERVIEW` → invited — reply ·
+scheduled · replied — awaiting a reply · interviewed — awaiting outcome).
 
 ## Documentation
 

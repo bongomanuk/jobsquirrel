@@ -40,6 +40,8 @@ before that column existed fall back to `company|role`.
 
 Statuses: `QUEUED, PREPARED, IN_PROGRESS, SUBMITTED, INTERVIEW, OFFER, REJECTED,
 BLOCKED, MANUAL, CLOSED` (`PREPARED` = documents built and gated, nothing sent).
+The application process is a **state machine**: this one `status` is the machine
+stage, every tool transitions it, and the dashboard renders the same machine.
 Managed by `tools/register.py`: read with `--stats/--list/--show`, edit with
 `--set/--render/--delete`, and **audit** with `--audit` (exits non-zero on a
 duplicate row or key, a `queue.done` entry with no row, a `SUBMITTED` row with no

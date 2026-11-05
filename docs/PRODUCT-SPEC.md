@@ -331,11 +331,14 @@ contains a non-canonical fact wording fails before it can be submitted.
 - **Regenerate archetype CVs:** `build_archetypes.py`. Safe.
 - Runs are detached and logged to `state/logs/dashboard-action.log`.
 
-### 9.9b State model
+### 9.9b State model: the application state machine
 
-The register `status` is the machine stage (gates, queue, reconciliation). The dashboard
-derives a human **sub-state** from the row's notes and follow-up flag and exposes it on every
-grid row:
+The application process is a **state machine**: one register row moves through the statuses
+`QUEUED → DRAFTING → PREPARED → SUBMITTED → IN_PROGRESS → INTERVIEW → OFFER`, with
+`BLOCKED`/`MANUAL` branches and `REJECTED`/`CLOSED` terminals. The register `status` is that
+machine stage (gates, queue, reconciliation); the dashboard draws the same machine above the
+grid. On top of it the dashboard derives a human **sub-state** from the row's notes and
+follow-up flag and exposes it on every grid row:
 
 | Field | Meaning |
 |---|---|
@@ -356,7 +359,7 @@ and `info` as waiting on the candidate, alongside flagged actions, invites and o
 | `NO RESULT` | no result |
 | `SUBMITTED` | acknowledged · awaiting reply · assessment to take · assessment overdue · follow up |
 | `IN_PROGRESS` | assessment · interviewing · background check · processing |
-| `INTERVIEW` | invited — reply · scheduled · interview today · next round · final round · interviewed — awaiting outcome · interviewed — follow up |
+| `INTERVIEW` | invited — reply · scheduled · interview today · replied — awaiting a reply · next round · final round · interviewed — awaiting outcome · interviewed — follow up |
 | `OFFER` | offer received · verbal offer · negotiating · accepted · declined |
 | `BLOCKED` | CAPTCHA · login / 2FA · email application · recruiter lead · site problem · missing information · blocked |
 | `MANUAL` | email application · recruiter lead · verification · needs you |

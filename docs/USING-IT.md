@@ -114,12 +114,17 @@ Everything is observable. Useful things to ask for, or run yourself:
 - **Human-only items**: `state/queue-human.tsv`, opened with
   `bash tools/human_assist.sh`.
 
-## State model: status and sub-state
+## State model: the application state machine
 
-The register keeps a small, stable set of **statuses** — the machine stage used by the
-pre-submit gates, the queue and the reconciler. On top of that, the dashboard derives a
-**sub-state** from the role's notes and follow-up flag. The sub-state is the human answer
-to “what is actually happening, and what should I do next?”.
+The application process is a **state machine**. The register keeps a small, stable set of
+**statuses** — the machine stage used by the pre-submit gates, the queue and the reconciler —
+and one row moves through them (`QUEUED → DRAFTING → PREPARED → SUBMITTED → IN_PROGRESS →
+INTERVIEW → OFFER`, with `BLOCKED`/`MANUAL` branches and `REJECTED`/`CLOSED` terminals). The
+dashboard draws that machine above the grid and every tool reads and writes the same state.
+
+On top of each status the dashboard derives a **sub-state** from the role's notes and
+follow-up flag. The sub-state is the human answer to “what is actually happening, and what
+should I do next?”.
 
 - The **Status** cell shows the status chip and, underneath, the sub-state when it adds detail.
 - **Filters → any sub-state** narrows the grid to one sub-state; like a group, it crosses the
@@ -136,7 +141,7 @@ to “what is actually happening, and what should I do next?”.
 | `NO RESULT` | no result | A run finished without an ad, documents or a submission. |
 | `SUBMITTED` | acknowledged · awaiting reply · assessment to take · assessment overdue · follow up | Sent; waiting, a test to take (or its deadline has passed), or time to chase. |
 | `IN_PROGRESS` | assessment · interviewing · background check · processing | The employer is processing the application. |
-| `INTERVIEW` | invited — reply · scheduled · interview today · next round · final round · interviewed — awaiting outcome · interviewed — follow up | The interview stage, from arranging to awaiting the result. |
+| `INTERVIEW` | invited — reply · scheduled · interview today · replied — awaiting a reply · next round · final round · interviewed — awaiting outcome · interviewed — follow up | The interview stage, from arranging to awaiting the result. |
 | `OFFER` | offer received · verbal offer · negotiating · accepted · declined | The offer stage. |
 | `BLOCKED` | CAPTCHA · login / 2FA · email application · recruiter lead · site problem · missing information · blocked | A wall; the ones that need you appear under **Needs you**. |
 | `MANUAL` | email application · recruiter lead · verification · needs you | A human step the pipeline will not take. |
