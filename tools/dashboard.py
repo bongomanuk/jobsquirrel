@@ -2243,11 +2243,15 @@ CHAT_PREAMBLE = (
     "'how's it going' as job-search progress (applications, interviews, replies, queue) unless the "
     "operator explicitly asks about the code. Be concise; use the repo's tools; never take an "
     "irreversible action (submitting applications, sending email, deleting mail) without explicit approval. "
-    "BATCH WORK MUST LEAVE THIS CHAT: when asked to prepare or submit more than one role, do not work "
-    "through them in this session. Build a scoped queue and run `tools/run_queue.sh` in the background "
-    "(or use `tools/delegate.py`), with PARALLEL=N for document preparation and PARALLEL=1 when the roles "
-    "share one ATS account (parallel browser sessions on one account conflict). Tell the operator the "
-    "queue is running and where to watch it. This chat is for one role, a quick check, or a decision. "
+    "THIS CHAT IS A CONTROL ROOM, NOT THE WORKER: for any request that changes files, runs commands, "
+    "prepares or submits applications, reconciles mail, researches, or takes more than one quick read, "
+    "do not do the work here. Hand it to a background subagent with `python3 tools/delegate.py --title "
+    "... --prompt ...` and reply with the task id plus one line on what it will do. It runs detached and "
+    "is reported in the Activity pane. Never use shell, write, edit, read or web tools directly in this "
+    "chat unless it is a single quick status check that cannot be delegated. Batch work must leave the "
+    "chat: build a scoped queue and run `tools/run_queue.sh` in the background (or delegate it), with "
+    "PARALLEL=N for document preparation and PARALLEL=1 when the roles share one ATS account. Tell the "
+    "operator where to watch. This chat is for conversation, one role, a quick check, or a decision. "
     "NEVER send email yourself: save a draft with tools/draft_email.py and ask the candidate to press "
     "Send with approval in the role drawer. gmail_send.py refuses non-draft sends and drafts without a "
     "human dashboard receipt; do not try to set APPROVE_SEND_EMAIL, call the Gmail API directly, "
@@ -3010,10 +3014,63 @@ def _chat_pump():
         _chat_spawn(q.pop(0))
 
 
+CHAT_ACTION = re.compile(
+    r"\b(prepare|submit|apply|run|reconcile|discover|scan|find|search|build|rebuild|"
+    r"fix|update|change|add|remove|delete|recapture|clean|prune|link|attach|import|"
+    r"sync|check|investigate|review|draft|record|book|schedule|send|make|create|"
+    r"write|edit|install|setup|set up|look at|look into|research|compare|verify|"
+    r"test|deploy|publish|release|document|refactor|improve|implement|migrate|"
+    r"move|rename|copy)\b", re.I)
+CHAT_QUESTION = re.compile(
+    r"^(why|what|how|when|where|who|which|whose|explain|tell me|is|are|was|were|"
+    r"does|do|did|should|would)\b", re.I)
+CHAT_REQUEST = re.compile(r"^(please\s+)?(can|could|would|will)\s+you\b", re.I)
+CHAT_IMPERATIVE = re.compile(
+    r"^(please\s+)?(prepare|submit|apply|run|reconcile|discover|scan|find|search|"
+    r"build|rebuild|fix|update|change|add|remove|delete|recapture|clean|prune|link|"
+    r"attach|import|sync|check|investigate|review|draft|record|book|schedule|send|"
+    r"make|create|write|edit|install|setup|set up|look at|look into|research|compare|"
+    r"verify|test|deploy|publish|release|document|refactor|improve|implement|migrate|"
+    r"move|rename|copy)\b", re.I)
+
+
+def _looks_like_action(message):
+    """True when the chat should hand the request to a background subagent.
+
+    Questions stay in the chat; anything that reads/writes/runs is delegated so
+    the conversation is never blocked by a long task.
+    """
+    msg = (message or "").strip()
+    if not msg:
+        return False
+    if CHAT_REQUEST.match(msg) or CHAT_IMPERATIVE.match(msg):
+        return bool(CHAT_ACTION.search(msg))
+    if CHAT_QUESTION.match(msg):
+        return False
+    return bool(CHAT_ACTION.search(msg))
+
+
+def _chat_status(text):
+    os.makedirs(LOGS, exist_ok=True)
+    with open(CHAT_LOG, "a", encoding="utf-8") as fh:
+        fh.write(f"\n> [run] {text}\n")
+
+
 def chat_start(message):
     message = (message or "").strip()[:8000]
     if not message:
         return {"error": "empty message"}
+    if _looks_like_action(message):
+        title = " ".join(message.splitlines())[:80]
+        res = delegate_start(message, title=title)
+        _chat_echo(message)
+        if res.get("error"):
+            _chat_status("Could not start a background subagent: " + str(res["error"]))
+            return res
+        _chat_status(f"Handed to a background subagent: {res.get('title', title)} "
+                     f"(task {res.get('id', '')}). Watch the Activity pane.")
+        return {"status": "delegated", "delegated": True, "id": res.get("id", ""),
+                "title": res.get("title", title)}
     if _chat_running():
         _CHAT.setdefault("queue", []).append(message)      # queue it — never lose the message
         _chat_echo(message)

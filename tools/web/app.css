@@ -747,3 +747,24 @@ body.knowledge-open .modal{z-index:60}
 #knowledge .kg3d-labels, #knowledge .uni-labels, #knowledge .kg3d-hit {
   user-select: none; -webkit-user-select: none;
 }
+
+/* Human-readable agent tool sections. Raw commands and output stay under
+   "Technical details"; the summary reads as a task, not a shell transcript. */
+.c-tools>summary{display:flex;align-items:center;gap:7px;color:var(--fg);font-size:12.5px;padding:7px 10px;white-space:normal}
+.c-tools>summary .c-ico{width:18px;text-align:center;flex:0 0 auto}
+.c-tools>summary .c-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.c-tools>summary .c-count{color:var(--muted);font-size:11px;white-space:nowrap}
+.c-act-link{margin-left:4px;padding:1px 7px;font-size:11px;white-space:nowrap}
+.c-steps{padding:2px 0 5px;border-top:1px solid var(--line)}
+.c-step{display:flex;align-items:center;gap:8px;padding:4px 12px;font-size:12.5px;color:var(--fg)}
+.c-step-ico{width:18px;text-align:center;flex:0 0 auto}
+.c-step-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.c-step-detail{margin-left:auto;font-size:11px;white-space:nowrap}
+.c-tool-raw{margin:5px 10px 9px;border:1px solid var(--line);border-radius:6px;background:#07090c}
+.c-tool-raw>summary{cursor:pointer;padding:5px 9px;color:var(--muted);font-size:11.5px;list-style:none}
+.c-tool-raw>summary::-webkit-details-marker{display:none}
+.c-tool-raw>summary::before{content:'▸ ';color:var(--accent)}
+.c-tool-raw[open]>summary::before{content:'▾ '}
+.c-raw-step{padding:7px 9px;border-top:1px solid var(--line)}
+.c-raw-step b{display:block;font-size:11.5px;color:var(--muted);margin-bottom:4px}
+.c-raw-step pre{margin:0;max-height:30vh;overflow:auto;white-space:pre-wrap;font:11.5px/1.45 var(--mono);color:var(--muted)}

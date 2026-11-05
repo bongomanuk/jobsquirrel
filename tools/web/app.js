@@ -242,6 +242,7 @@ const App = {
     if (CF_SEC === 'kb') return setKB(b);
     if (CF_SEC === 'graph') return setGraph(b);
     if (CF_SEC === 'perms') return setPerms(b);
+    if (CF_SEC === 'captcha') return setCaptcha(b);
     if (CF_SEC === 'data') return setData(b);
     return setProfile(b);
   },
@@ -352,6 +353,18 @@ const App = {
   savePerms: async () => {
     const policy = {}; document.querySelectorAll('#set-body select[data-cat]').forEach(s => policy[s.dataset.cat] = s.value);
     const d = await api('/api/permissions', { policy }); toast(d.error ? d.error : 'permissions saved', !!d.error);
+  },
+  saveCaptcha: async () => {
+    const d = await api('/api/captcha', {
+      enabled: $('#captcha-enabled') && $('#captcha-enabled').checked,
+      provider: $('#captcha-provider') && $('#captcha-provider').value,
+      timeout: $('#captcha-timeout') && $('#captcha-timeout').value,
+      model: $('#captcha-model') && $('#captcha-model').value,
+      api_key: $('#captcha-key') && $('#captcha-key').value,
+      clear_key: $('#captcha-clear') && $('#captcha-clear').checked
+    });
+    toast(d.ok || d.error, !!d.error);
+    if (!d.error) App.settings('captcha');
   },
   aiAdd: () => {
     const k = $('#ai-env-k').value.trim(), v = $('#ai-env-v').value;
@@ -531,6 +544,24 @@ const App = {
       if (!KG) App.graphTypes();
     }
   },
+  openEnrich: async () => {
+    const m = $('#enrich'); if (!m) return;
+    m.classList.remove('hide');
+    const b = $('#enrich-body'), msg = $('#enrich-msg');
+    if (b) b.innerHTML = '<span class="muted mini">scanning the graph for grounded gaps…</span>';
+    const d = await api('/api/graph/enrich');
+    if (!b) return;
+    if (!d || d.error) { b.textContent = (d && d.error) || 'could not scan the graph'; return; }
+    const ps = d.proposals || [];
+    if (!ps.length) { b.innerHTML = '<span class="muted">No grounded gaps found.</span>'; return; }
+    b.innerHTML = ps.map(p => `<label class="enrich-item" style="display:block;padding:9px 0;border-bottom:1px solid var(--line);cursor:pointer">
+      <input type="checkbox" data-id="${esc(p.id)}" style="margin-right:6px;vertical-align:top">
+      <b>${esc(p.title || '')}</b> <span class="mini muted">${esc(p.type || p.kind || '')}</span>
+      <div class="mini" style="margin:4px 0 0 22px">${esc(p.evidence || p.description || '')}</div>
+      <div class="mini muted" style="margin-left:22px">${esc(p.source || p.source_doc || '')}</div>
+    </label>`).join('');
+    if (msg) msg.textContent = `${ps.length} grounded proposal(s) · ${(d.overlay && d.overlay.nodes) || 0} node(s), ${(d.overlay && d.overlay.links) || 0} link(s) already added`;
+  },
   roleEvidence: async (key) => {
     const m = $('#roleev'); if (!m) return;
     m.classList.remove('hide');
@@ -622,24 +653,6 @@ const App = {
     App.closeNodeEdit();
     if (KGMODE === 'universe' && window.__uni) await window.__uni.reload();
     else if (KGMODE === 'map') await App.graphTypes();
-  },
-  openEnrich: async () => {
-    const m = $('#enrich'); if (!m) return;
-    m.classList.remove('hide');
-    const b = $('#enrich-body'), msg = $('#enrich-msg');
-    if (b) b.innerHTML = '<span class="muted mini">scanning the graph for grounded gaps…</span>';
-    const d = await api('/api/graph/enrich');
-    if (!b) return;
-    if (!d || d.error) { b.textContent = (d && d.error) || 'could not scan the graph'; return; }
-    const ps = d.proposals || [];
-    if (!ps.length) { b.innerHTML = '<span class="muted">No grounded gaps found.</span>'; return; }
-    b.innerHTML = ps.map(p => `<label class="enrich-item" style="display:block;padding:9px 0;border-bottom:1px solid var(--line);cursor:pointer">
-      <input type="checkbox" data-id="${esc(p.id)}" style="margin-right:6px;vertical-align:top">
-      <b>${esc(p.title || '')}</b> <span class="mini muted">${esc(p.type || p.kind || '')}</span>
-      <div class="mini" style="margin:4px 0 0 22px">${esc(p.evidence || p.description || '')}</div>
-      <div class="mini muted" style="margin-left:22px">${esc(p.source || p.source_doc || '')}</div>
-    </label>`).join('');
-    if (msg) msg.textContent = `${ps.length} grounded proposal(s) · ${(d.overlay && d.overlay.nodes) || 0} node(s), ${(d.overlay && d.overlay.links) || 0} link(s) already added`;
   },
   closeEnrich: () => { const m = $('#enrich'); if (m) m.classList.add('hide'); },
   enrichAll: (on) => { document.querySelectorAll('#enrich-body input[type=checkbox]').forEach(x => { x.checked = !!on; }); },
@@ -919,7 +932,11 @@ const App = {
     if (d.error) { toast(d.error, true); CHAT.running = false; setSpin(false); renderChat(); return; }  // keep your text
     rememberChat(m);
     inp.value = '';
-    if (d.queued) toast(`queued — the agent is busy (${d.pending} waiting)`);
+    if (d.delegated) {
+      CHAT.running = false; setSpin(false);
+      toast('Handed to a background subagent — watch Activity');
+      App.showActivity();
+    } else if (d.queued) toast(`queued — the agent is busy (${d.pending} waiting)`);
     chatOffset = 0; clearInterval(CHAT_TIMER); CHAT_TIMER = setInterval(chatPoll, 1200);
   },
   chatStop: async () => {
@@ -927,11 +944,15 @@ const App = {
     toast(d.ok || d.error, !!d.error);
     CHAT.running = false; setSpin(false); chatPoll();
   },
+  showActivity: () => {
+    if (document.body.dataset.act !== 'open') document.querySelector('#act-toggle')?.click();
+  },
   newChat: async () => {
     const d = await api('/api/chat/new', {});
     if (d.error) { toast(d.error, true); return; }
     clearInterval(CHAT_TIMER); CHAT_TIMER = null;
     ACT = null; ACT_SIG = '';
+    CHAT_OPEN.clear();
     CHAT = { segments: [], running: false }; setSpin(false); renderChat(); toast('agent history cleared');
   },
   open: (i) => openDetail(GRID[i]),
@@ -1138,6 +1159,7 @@ const App = {
     const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     el.innerHTML = (d.segments && d.segments.length) ? roleSegsHTML(d.segments, d.running)
       : '<span class="muted">Ask anything about this role — e.g. “what should I say back?”, “what will they probe?”, “draft a follow-up”.</span>';
+    el.querySelectorAll('details[data-k]').forEach(x => { x.open = CHAT_OPEN.has(x.getAttribute('data-k')); });
     if (stick) el.scrollTop = el.scrollHeight;
     const st = $('#rc-stop'); if (st) st.classList.toggle('hide', !d.running);
   },
@@ -2549,7 +2571,14 @@ function setSpin(v) {
   const s = $('#chat-spin'); if (s) s.classList.toggle('hide', !v);   // the single "agent working" indicator
   const b = $('#chat-stop'); if (b) b.classList.toggle('hide', !v);   // Stop is only meaningful mid-turn
 }
-function openKeys(el) { return new Set([...el.querySelectorAll('details[open]')].map(d => d.getAttribute('data-k')).filter(Boolean)); }
+// Remember what the reader opened/closed. Reading the DOM during a poll can
+// race the browser's own toggle, which made a closed step reopen itself.
+const CHAT_OPEN = new Set();
+document.addEventListener('toggle', e => {
+  const d = e.target;
+  if (!d || d.tagName !== 'DETAILS' || !d.dataset.k) return;
+  if (d.open) CHAT_OPEN.add(d.dataset.k); else CHAT_OPEN.delete(d.dataset.k);
+}, true);
 let CHAT_STICK = true;                                        // follow new output only if the reader is at the bottom
 function chatAtBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 60; }
 let ACT = null, ACT_SIG = '', ACT_IGNORE = '', LAST_ACT_NAME = '';   // last dashboard action, shown in the chat
@@ -2569,30 +2598,130 @@ function actionCard(a) {
   if (log.length) h += `<details class="act-raw" data-k="a:${esc(a.name)}"><summary>full output · ${log.length} lines</summary><pre>${esc(log.join('\n'))}</pre></details>`;
   return `<div class="c-act">${h}</div>`;
 }
+const FRIENDLY_TOOLS = {
+  register: 'Checked the application register',
+  prepare_role: 'Prepared a role',
+  finalise_docs: 'Finalised the documents',
+  run_queue: 'Ran the application queue',
+  discover: 'Looked for new roles',
+  email_opportunities: 'Checked recruiter emails',
+  gmail_reconcile: 'Reconciled the inbox',
+  draft_email: 'Drafted a reply',
+  record_submission: 'Recorded a submission',
+  check_documents: 'Checked the documents',
+  check_alignment: 'Checked the role alignment',
+  ats_keywords: 'Extracted job-ad keywords',
+  kb_graphrag: 'Searched the knowledge graph',
+  graph_quality: 'Checked the graph',
+  graph_attach_orphans: 'Linked graph evidence',
+  dashboard: 'Checked the dashboard',
+  delegate: 'Handed work to a background task',
+  accounts: 'Checked an account',
+  doctor: 'Checked the system',
+  init_config: 'Checked the setup',
+  jd_guard: 'Checked the job ad',
+  gate_receipt: 'Checked the gate',
+  backup: 'Managed backups',
+  secrets_store: 'Checked the secrets store',
+  kb_ingest: 'Updated the knowledge base',
+  kb_update: 'Updated the knowledge base',
+  setup_kb: 'Rebuilt the knowledge base',
+  graph_prune_sensitive: 'Cleaned the graph',
+  graph_explore: 'Explored the graph',
+  graph_importance: 'Scored the graph',
+  calendar_event: 'Managed the calendar',
+  camoufox_browser: 'Used the browser',
+  camoufox_server: 'Started the browser',
+};
+function baseName(p) {
+  return String(p || '').replace(/\\/g, '/').split('/').filter(Boolean).pop() || '';
+}
+function toolInfo(s) {
+  const tool = String(s.tool || '').toLowerCase();
+  const cmd = String(s.cmd || '').trim();
+  const first = cmd.split('\n')[0].replace(/\s+/g, ' ').trim();
+  const file = baseName(cmd);
+  const looksPath = /[\/.]/.test(cmd) && !/^(read|write|edit|bash|shell)$/i.test(cmd);
+  const py = first.match(/(?:python3?|\.venv[^ ]*\/python)\s+(?:tools\/)?([\w.-]+)\.py/);
+  if (tool === 'task' || /(^|\s)(delegate\.py|tools\/delegate)\b/.test(first)) {
+    return { icon: '🧵', label: 'Handed work to a background task', detail: 'runs in Activity', activity: true };
+  }
+  if (tool === 'read') return { icon: '📄', label: 'Read ' + (looksPath && file ? file : 'a file'), detail: '' };
+  if (tool === 'write' || tool === 'edit') return { icon: '✏️', label: 'Updated ' + (looksPath && file ? file : 'a file'), detail: '' };
+  if (/^(git\s+(status|diff|log|show|branch))/.test(first)) return { icon: '🔎', label: 'Checked the repository', detail: '' };
+  if (/(^|\s)(pytest|py\.test|npm test|go test|cargo test|make test)/.test(first)) return { icon: '🧪', label: 'Ran tests', detail: '' };
+  if (/\b(bash|sh)\s+tools\/run_queue\.sh/.test(first) || /(^|[;&]\s*)([A-Z_]+=\S+\s+)*bash\s+tools\/run_queue\.sh/.test(first))
+    return { icon: '🚀', label: 'Ran the application queue', detail: '' };
+  if (/\bpython3?\s+tools\/register\.py/.test(first)) return { icon: '⚙️', label: 'Checked the application register', detail: '' };
+  if (/\bsleep\b/.test(first) && /\b(tail|cat|grep|ls|wc)\b/.test(first))
+    return { icon: '⏳', label: 'Waited for the task and checked the logs', detail: '' };
+  if (/\bsleep\b/.test(first)) return { icon: '⏳', label: 'Waited for the task', detail: '' };
+  if (/\b(pgrep|ps|kill)\b/.test(first)) return { icon: '🔎', label: 'Checked running tasks', detail: '' };
+  if (tool === 'grep' || tool === 'glob' || /\b(rg|grep|glob)\b/.test(first)) return { icon: '🔎', label: 'Searched the code or logs', detail: '' };
+  if (/\b(find|ls|tree)\b/.test(first)) return { icon: '📁', label: 'Looked through the files', detail: '' };
+  if (/\b(cat|sed|head|tail|less|wc)\b/.test(first)) return { icon: '📄', label: 'Read files or logs', detail: '' };
+  if (py) {
+    const name = py[1].replace(/-/g, '_');
+    return { icon: '⚙️', label: FRIENDLY_TOOLS[name] || 'Ran a job-search tool', detail: '' };
+  }
+  if (tool === 'websearch') return { icon: '🔎', label: 'Searched the web', detail: '' };
+  if (tool === 'webfetch') return { icon: '🌐', label: 'Read a web page', detail: '' };
+  if (tool === 'todowrite' || tool === 'todoread') return { icon: '🗒️', label: 'Planned the work', detail: '' };
+  if (/^(curl|wget)\b/.test(first)) return { icon: '🌐', label: 'Checked an online source', detail: '' };
+  if (/^python|^bash|^sh\b/.test(first)) return { icon: '⚙️', label: 'Ran a script', detail: '' };
+  return { icon: '🛠️', label: 'Worked on the task', detail: '' };
+}
+function toolSection(grp, start, prefix = '') {
+  const infos = grp.map(toolInfo);
+  const labels = [...new Set(infos.map(x => x.label))];
+  const title = labels.length === 1 ? labels[0]
+    : labels.length === 2 ? `${labels[0]} and ${labels[1].toLowerCase()}`
+      : `${labels[0]} +${labels.length - 1} more`;
+  const rows = infos.map((x, j) => `<div class="c-step"><span class="c-step-ico">${x.icon}</span>` +
+    `<span class="c-step-label">${esc(x.label)}</span>` +
+    (x.detail ? `<span class="c-step-detail muted">${esc(x.detail)}</span>` : '') + '</div>').join('');
+  const raw = grp.map((s, j) => `<div class="c-raw-step"><b>${esc(infos[j].label)}</b>` +
+    `<pre>${esc([s.cmd, s.body].filter(Boolean).join('\n\n'))}</pre></div>`).join('');
+  const activity = infos.some(x => x.activity)
+    ? '<button class="small c-act-link" onclick="event.preventDefault();event.stopPropagation();App.showActivity()">View in Activity</button>' : '';
+  const k = `${prefix}g:${start}`;
+  return `<details class="c-tools" data-k="${k}"><summary><span class="c-ico">${infos[0].icon}</span>` +
+    `<span class="c-title">${esc(title)}</span>` +
+    `<span class="c-count">${grp.length} step${grp.length === 1 ? '' : 's'}</span>${activity}</summary>` +
+    `<div class="c-steps">${rows}</div>` +
+    `<details class="c-tool-raw" data-k="${prefix}r:${start}"><summary>Technical details</summary>${raw}</details></details>`;
+}
+
 function renderChat() {
   const el = $('#chat'), segs = (CHAT && CHAT.segments) || [];
   if (!segs.length && !CHAT.running && !ACT) { el.innerHTML = '<span class="muted">ask the agent anything…</span>'; return; }
-  const keys = openKeys(el);                                  // keep expanded steps open across re-renders
   let h = '', i = 0;
   while (i < segs.length) {
     const s = segs[i];
-    if (s.t === 'tool') {                       // collapse runs of tool calls into one group
-      const grp = [];
-      while (i < segs.length && segs[i].t === 'tool') { grp.push(segs[i]); i++; }
-      h += grp.length === 1 ? toolBlock(grp[0])
-        : `<details class="c-tools" data-k="g:${esc(grp.map(x => x.cmd).join('|')).slice(0, 90)}"><summary>🔧 ${grp.length} steps</summary>${grp.map(toolBlock).join('')}</details>`;
+    if (s.t === 'tool') {                       // one human section per run of tool calls
+      const start = i, grp = [];
+      // The agent emits a blank text segment between many tool calls; treat it
+      // as part of the same run so a turn reads as one section, not twenty.
+      while (i < segs.length && (segs[i].t === 'tool' || (segs[i].t === 'text' && !String(segs[i].body || '').trim()))) {
+        if (segs[i].t === 'tool') grp.push(segs[i]);
+        i++;
+      }
+      h += toolSection(grp, start);
       continue;
     }
+    if (s.t === 'text' && !String(s.body || '').trim()) { i++; continue; }
     if (s.t === 'user') h += `<div class="c-user"><div class="md">${md(s.body)}</div></div>`;
-    else if (s.t === 'status') h += `<div class="c-status">${esc(s.body)}</div>`;
-    else if (looksLikeDump(s.body)) h += `<details class="c-code" data-k="d:${esc(s.body).slice(0, 80)}"><summary>output <span class="muted mini">· ${s.body.split('\n').length} lines</span></summary><pre>${esc(s.body)}</pre></details>`;
+    else if (s.t === 'status') h += /Handed to a background subagent/i.test(s.body)
+      ? `<div class="c-status">${esc(s.body)} <button class="small c-act-link" onclick="App.showActivity()">Activity</button></div>`
+      : `<div class="c-status">${esc(s.body)}</div>`;
+    else if (looksLikeDump(s.body)) h += `<details class="c-code" data-k="d:${i}"><summary>output <span class="muted mini">· ${s.body.split('\n').length} lines</span></summary><pre>${esc(s.body)}</pre></details>`;
     else h += `<div class="md">${collapseCode(md(s.body))}</div>`;
     i++;
   }
   if (ACT) h += actionCard(ACT);
   if (CHAT.running) h += `<div class="working"><span class="muted">▮ working…</span></div>`;
   el.innerHTML = h;
-  el.querySelectorAll('details[data-k]').forEach(d => { if (keys.has(d.getAttribute('data-k'))) d.open = true; });
+  el.querySelectorAll('details[data-k]').forEach(d => { d.open = CHAT_OPEN.has(d.getAttribute('data-k')); });
   if (CHAT_STICK) el.scrollTop = el.scrollHeight;             // never yank the reader back down
 }
 
@@ -2602,15 +2731,20 @@ function roleSegsHTML(segs, running) {
   while (i < segs.length) {
     const s = segs[i];
     if (s.t === 'tool') {
-      const grp = [];
-      while (i < segs.length && segs[i].t === 'tool') { grp.push(segs[i]); i++; }
-      h += grp.length === 1 ? toolBlock(grp[0])
-        : `<details class="c-tools"><summary>🔧 ${grp.length} steps</summary>${grp.map(toolBlock).join('')}</details>`;
+      const start = i, grp = [];
+      while (i < segs.length && (segs[i].t === 'tool' || (segs[i].t === 'text' && !String(segs[i].body || '').trim()))) {
+        if (segs[i].t === 'tool') grp.push(segs[i]);
+        i++;
+      }
+      h += toolSection(grp, start, 'rc:');
       continue;
     }
+    if (s.t === 'text' && !String(s.body || '').trim()) { i++; continue; }
     if (s.t === 'user') h += `<div class="c-user"><div class="md">${md(s.body)}</div></div>`;
-    else if (s.t === 'status') h += `<div class="c-status">${esc(s.body)}</div>`;
-    else if (looksLikeDump(s.body)) h += `<details class="c-code"><summary>output <span class="muted mini">· ${s.body.split('\n').length} lines</span></summary><pre>${esc(s.body)}</pre></details>`;
+    else if (s.t === 'status') h += /Handed to a background subagent/i.test(s.body)
+      ? `<div class="c-status">${esc(s.body)} <button class="small c-act-link" onclick="App.showActivity()">Activity</button></div>`
+      : `<div class="c-status">${esc(s.body)}</div>`;
+    else if (looksLikeDump(s.body)) h += `<details class="c-code" data-k="rc:d:${i}"><summary>output <span class="muted mini">· ${s.body.split('\n').length} lines</span></summary><pre>${esc(s.body)}</pre></details>`;
     else h += `<div class="md">${collapseCode(md(s.body))}</div>`;
     i++;
   }
@@ -3059,6 +3193,41 @@ async function setGraph(b) {
     <p class="muted mini" style="margin-top:10px">Search communities and entities, drill from the highest-level community down to
       individual entities, and open any entity's ego network. The graph fills the page and keeps the job grid out of the way.</p>`;
 }
+async function setCaptcha(b) {
+  const d = await api('/api/captcha');
+  if (CF_SEC !== 'captcha') return;
+  if (!d || d.error) { b.innerHTML = `<span class="bad">${esc((d && d.error) || 'could not read CAPTCHA settings')}</span>`; return; }
+  const on = d.enabled !== false;
+  b.innerHTML = `<p class="muted">Private build only. When enabled, the browser solves a reCAPTCHA visually
+      with the vision model above (or a solver service if one is selected), injects the token and continues the
+      application. The vision provider needs no key. The public build never does this. Solving a CAPTCHA can
+      breach a site's terms; use it only where you are authorised.</p>
+    <div class="row" style="margin:10px 0"><label class="row" style="gap:6px">
+      <input type="checkbox" id="captcha-enabled" ${on ? 'checked' : ''}> Solve CAPTCHAs automatically</label>
+      <span class="pill">${on ? 'ON' : 'OFF'}</span></div>
+    <div class="row" style="margin:8px 0"><span class="muted" style="min-width:130px">Provider</span>
+      <select id="captcha-provider" style="min-width:220px">
+        <option value="vision" ${d.provider === 'vision' ? 'selected' : ''}>Vision (agent model)</option>
+        <option value="2captcha" ${d.provider === '2captcha' ? 'selected' : ''}>2Captcha</option>
+        <option value="capsolver" ${d.provider === 'capsolver' ? 'selected' : ''}>CapSolver</option>
+      </select>
+      <span class="muted" style="min-width:100px;margin-left:10px">Timeout</span>
+      <input id="captcha-timeout" type="number" min="30" max="600" value="${esc(d.timeout || 180)}" style="max-width:90px"> s</div>
+    <div class="row" style="margin:8px 0"><span class="muted" style="min-width:130px">Vision model</span>
+      <input id="captcha-model" style="flex:1" value="${esc(d.model || 'opencode-go/deepseek-v4.1-flash')}"
+        placeholder="opencode-go/deepseek-v4.1-flash">
+      <span class="pill">${d.provider === 'vision' ? 'no key' : 'optional'}</span></div>
+    <div class="row" style="margin:8px 0"><span class="muted" style="min-width:130px">API key</span>
+      <input id="captcha-key" type="password" autocomplete="new-password" style="flex:1"
+        placeholder="${d.key_set ? '•••• stored — leave blank to keep' : 'only for 2Captcha / CapSolver'}">
+      <span class="pill">${d.key_set ? 'stored' : 'not needed for vision'}</span></div>
+    <div class="row" style="margin:8px 0"><label class="mini"><input type="checkbox" id="captcha-clear"> clear the stored key</label></div>
+    <div class="row" style="margin:10px 0"><button onclick="App.saveCaptcha()">Save CAPTCHA settings</button>
+      <span class="muted mini">${d.key_name ? `Key name: <code>${esc(d.key_name)}</code> · stored in the encrypted secrets store.` : 'Vision needs no key.'}</span></div>
+    <p class="muted mini">If solving fails, the role is recorded BLOCKED. The queue prompt only tells the agent to solve
+      when this setting is on.</p>`;
+}
+
 async function setPerms(b) {
   const d = await api('/api/permissions');
   if (CF_SEC !== 'perms') return;

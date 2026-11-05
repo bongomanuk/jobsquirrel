@@ -69,9 +69,13 @@ Everything is observable. Useful things to ask for, or run yourself:
     plus the entities and source documents it referenced, resolved from the index.
   - **Agent console** (dockable — **left by default**; drag its header to any edge, or the pullout
     tab when collapsed; panes resize with the splitters). Chat drives whichever agent
-    `tools/agent_run.sh` resolves — opencode, Claude Code, or any `AGENT=` CLI — remembers the
-    conversation across messages (＋ New to reset), collapses tool runs, and shows a 🥜 spinner
-    while it works. An **Activity** pane shows action output, compressed to the lines that matter.
+    `tools/agent_run.sh` resolves — opencode, Claude Code, or any `AGENT=` CLI — and remembers the
+    conversation across messages (＋ New to reset). Tool runs are grouped into plain-language
+    sections ("Checked the application register", "Read files", "Ran tests"), with the exact
+    commands and output under **Technical details**; opening or closing a section survives the
+    live refresh. Work requests are handed to **background subagents** and reported in the
+    **Activity** pane, so the chat stays responsive. The chat answers questions and quick checks
+    directly and shows a 🥜 spinner only while it is doing that.
   - **Settings** (⚙ Config): **Accounts** (credential status + Gmail/Calendar authorisation),
     **Knowledge base** (list / upload / delete source documents, rebuild the index), **GraphRAG**
     (browse entities, relationships, communities and documents), and **Profile & CV** (edit
