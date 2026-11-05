@@ -49,7 +49,27 @@ const FOCUS_GROUPS = [
 ];
 const NEEDS_STATUS = new Set(['MANUAL', 'OFFER']);
 // Sub-states that are genuinely waiting on the candidate, not the employer.
-const NEEDS_SUBSTATES = new Set(['assessment', 'stale', 'captcha', 'login', 'email', 'lead', 'verify', 'info']);
+const NEEDS_SUBSTATES = new Set(['assessment', 'assessment-overdue', 'stale', 'captcha', 'login', 'email', 'lead', 'verify', 'info', 'held-followup', 'today']);
+// Process/action order inside each status: the things that need you first.
+const SUBSTATE_ORDER = {
+  QUEUED: ['queued'],
+  DRAFTING: ['drafting'],
+  PREPARED: ['review', 'ready'],
+  'NO RESULT': ['no-result'],
+  SUBMITTED: ['assessment-overdue', 'assessment', 'stale', 'acknowledged', 'awaiting'],
+  IN_PROGRESS: ['assessment-overdue', 'assessment', 'interviewing', 'background', 'processing'],
+  INTERVIEW: ['invited', 'today', 'scheduled', 'held-followup', 'held', 'next', 'final'],
+  OFFER: ['received', 'verbal', 'negotiating', 'accepted', 'declined'],
+  BLOCKED: ['captcha', 'login', 'email', 'lead', 'info', 'site', 'blocked'],
+  MANUAL: ['email', 'lead', 'verify', 'manual'],
+  REJECTED: ['after-interview', 'after-application'],
+  CLOSED: ['withdrawn', 'duplicate', 'not-eligible', 'filled', 'expired', 'closed'],
+};
+function substateRank(st, key) {
+  const o = SUBSTATE_ORDER[st] || [];
+  const i = o.indexOf(key);
+  return i === -1 ? 999 : i;
+}
 function bucketOf(r) {
   const s = r.status, lb = r.label || s;
   if (s === 'CLOSED' || s === 'REJECTED') return 'done';
@@ -1284,7 +1304,7 @@ function renderStateGraph() {
     by[k].n++;
   });
   const subsFor = (st) => Object.values(by).filter(x => x.status === st)
-    .sort((a, b) => b.n - a.n || String(a.label).localeCompare(String(b.label)));
+    .sort((a, b) => substateRank(st, a.key) - substateRank(st, b.key) || b.n - a.n || String(a.label).localeCompare(String(b.label)));
   const active = ($('#fstatus') || {}).value || '';
   const fs = ($('#fsubstate') || {}).value || '';
   const expanded = SG_EXPANDED;
@@ -1296,7 +1316,7 @@ function renderStateGraph() {
   const sideStackH = sideRows ? sideRows * 30 + 24 : 0;
   const svgH = sideY + 56 + sideStackH + 20;
   const busY = sideY - 20;
-  const short = (v, n = 22) => { v = String(v || ''); return v.length > n ? v.slice(0, n - 1) + '…' : v; };
+  const short = (v, n = 30) => { v = String(v || ''); return v.length > n ? v.slice(0, n - 1) + '…' : v; };
   const arrow = '<defs><marker id="sg-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#4b5563"/></marker></defs>';
   const edge = ([x1, y1, x2, y2, label]) => {
     const midx = (x1 + x2) / 2, midy = (y1 + y2) / 2;
@@ -1326,7 +1346,7 @@ function renderStateGraph() {
     `<text class="sg-subtext" x="${x + 8}" y="${y + 17}">${esc(short(label))}</text>` +
     `<text class="sg-subcount" x="${x + w - 8}" y="${y + 17}" text-anchor="end">${count}</text></g>`;
   const stack = (n, parentBottom, startY, subs) => {
-    const w = 150;
+    const w = 190;
     const x = Math.max(14, Math.min(n.x - 10, 1220 - w - 14));
     const cx = n.x + SG_W / 2;
     let h = `<path class="sg-edge-path" d="M${cx},${parentBottom} L${cx},${startY}"/>`;
@@ -1484,7 +1504,7 @@ function renderSubstateFilter() {
   let html = '<option value="">any sub-state</option>';
   order.forEach(st => {
     const items = Object.values(by).filter(x => x.status === st)
-      .sort((a, b) => b.n - a.n || a.label.localeCompare(b.label));
+      .sort((a, b) => substateRank(st, a.key) - substateRank(st, b.key) || b.n - a.n || a.label.localeCompare(b.label));
     if (!items.length) return;
     html += `<optgroup label="${esc(st)}">` +
       items.map(x => `<option value="${esc(st + ':' + x.key)}">${esc(x.label)} (${x.n})</option>`).join('') +
@@ -1544,7 +1564,7 @@ function renderRows() {
   const k = SORT.k;
   const rank = (r) => r.running ? 0 : (r.status === 'QUEUED' ? 1 : 2);   // in-flight + queued float to the top
   const needRank = (r) => r.status === 'OFFER' ? 0
-    : ((r.label || '') === 'INVITED' || ['assessment', 'stale'].includes(r.substate) ? 1
+    : ((r.label || '') === 'INVITED' || ['assessment', 'assessment-overdue', 'held-followup', 'today', 'stale'].includes(r.substate) ? 1
       : (r.action || NEEDS_SUBSTATES.has(r.substate) ? 2 : 3));
   const sortRows = (arr, group) => arr.slice().sort((a, b) => {
     const pa = a.pinned ? 0 : 1, pb = b.pinned ? 0 : 1;

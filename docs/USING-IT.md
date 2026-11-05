@@ -132,9 +132,9 @@ to “what is actually happening, and what should I do next?”.
 | `DRAFTING` | drafting | Ad/keywords saved; documents still being built. |
 | `PREPARED` | needs review · ready to submit | Documents gated; review/send, or submit when ready. |
 | `NO RESULT` | no result | A run finished without an ad, documents or a submission. |
-| `SUBMITTED` | acknowledged · awaiting reply · assessment to take · follow up | Sent; waiting, a test to take, or time to chase. |
+| `SUBMITTED` | acknowledged · awaiting reply · assessment to take · assessment overdue · follow up | Sent; waiting, a test to take (or its deadline has passed), or time to chase. |
 | `IN_PROGRESS` | assessment · interviewing · background check · processing | The employer is processing the application. |
-| `INTERVIEW` | invited — reply · scheduled · next round · final round · held — awaiting outcome | The interview stage, from arranging to awaiting the result. |
+| `INTERVIEW` | invited — reply · scheduled · interview today · next round · final round · interviewed — awaiting outcome · interviewed — follow up | The interview stage, from arranging to awaiting the result. |
 | `OFFER` | offer received · verbal offer · negotiating · accepted · declined | The offer stage. |
 | `BLOCKED` | CAPTCHA · login / 2FA · email application · recruiter lead · site problem · missing information · blocked | A wall; the ones that need you appear under **Needs you**. |
 | `MANUAL` | email application · recruiter lead · verification · needs you | A human step the pipeline will not take. |

@@ -1554,6 +1554,34 @@ def _interview_time(notes):
     return best
 
 
+def _deadline_time(notes):
+    """Latest deadline/expiry date mentioned in the notes (epoch seconds, 0 if none).
+
+    Used for assessments and other dated actions, so a missed deadline becomes
+    a different sub-state instead of looking like it is still to do."""
+    best = 0.0
+    for seg in re.split(r"\s*\|\s*", notes or ""):
+        sl = seg.strip().lower()
+        if not any(w in sl for w in ("expir", "deadline", "due", "before", "closes", "by ")):
+            continue
+        for m in re.finditer(r"\b(20\d{2})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?", seg):
+            try:
+                best = max(best, time.mktime((int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                                              int(m.group(4) or 23), int(m.group(5) or 59),
+                                              0, 0, 0, -1)))
+            except (OverflowError, ValueError):
+                pass
+        for m in re.finditer(r"\b(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+                             r"[a-z]*\.?\s+(20\d{2})(?:[ ,]+(\d{1,2}):(\d{2}))?", seg, re.I):
+            try:
+                best = max(best, time.mktime((int(m.group(3)), _MONTHS[m.group(2).lower()[:3]],
+                                              int(m.group(1)), int(m.group(4) or 23),
+                                              int(m.group(5) or 59), 0, 0, 0, -1)))
+            except (OverflowError, ValueError):
+                pass
+    return best
+
+
 def _interview_label(status, notes):
     """Distinguish the interview sub-states for the grid.
 
@@ -1565,7 +1593,7 @@ def _interview_label(status, notes):
     if status != "INTERVIEW":
         return status, ""
     iv = _interview_time(notes)
-    if iv > time.time():
+    if iv > time.time() - 3600:          # still in the interview window
         return "SCHEDULED", time.strftime("%Y-%m-%d %H:%M", time.localtime(iv))
     if iv:
         return "INTERVIEW", time.strftime("%Y-%m-%d %H:%M", time.localtime(iv))
@@ -1631,6 +1659,13 @@ def _substate(status, notes="", action="", label=""):
         return ("manual", "needs you", "A human step is required; open the row for what to do.")
     if st == "SUBMITTED":
         if has("assessment", "test", "kattis", "abstract reasoning", "coding challenge", "take-home", "case study"):
+            dl = _deadline_time(notes)
+            if dl and dl < time.time():
+                return ("assessment-overdue", "assessment overdue",
+                        "The assessment deadline has passed; contact the recruiter.")
+            hint = ("Complete it by " + time.strftime("%d %b", time.localtime(dl)) + ".")
+            if dl:
+                return ("assessment", "assessment to take", hint)
             return ("assessment", "assessment to take", "The employer sent a test/assessment; complete it before the deadline.")
         if has("no reply", "no response", "follow up", "follow-up", "stale", "chase", "nudge"):
             return ("stale", "follow up", "No reply yet; it is time to follow up.")
@@ -1639,6 +1674,10 @@ def _substate(status, notes="", action="", label=""):
         return ("awaiting", "awaiting reply", "Application sent; waiting for the employer.")
     if st == "IN_PROGRESS":
         if has("assessment", "test", "kattis", "coding challenge", "take-home", "case study"):
+            dl = _deadline_time(notes)
+            if dl and dl < time.time():
+                return ("assessment-overdue", "assessment overdue",
+                        "The assessment deadline has passed; contact the recruiter.")
             return ("assessment", "assessment", "An assessment/test is in progress or waiting for you.")
         if has("background", "reference", "check"):
             return ("background", "background check", "The employer is running checks/references.")
@@ -1646,15 +1685,25 @@ def _substate(status, notes="", action="", label=""):
             return ("interviewing", "interviewing", "The process is at an interview stage.")
         return ("processing", "processing", "The employer is processing the application.")
     if st == "INTERVIEW":
+        iv = _interview_time(notes)
+        now = time.time()
         if has("final round", "final interview", "last round"):
             return ("final", "final round", "You are at the final interview stage.")
         if has("next round", "second round", "2nd round", "next stage", "next interview"):
             return ("next", "next round", "You advanced to the next round; prepare for it.")
-        if label == "SCHEDULED" or has("booked", "scheduled", "confirmed"):
-            return ("scheduled", "scheduled", "An interview is booked; prepare and attend.")
-        if label == "INVITED" or has("invit", "schedul", "availabil", "reschedul", "still interested"):
+        if label == "SCHEDULED":
+            if iv and time.strftime("%Y-%m-%d", time.localtime(iv)) == time.strftime("%Y-%m-%d", time.localtime(now)):
+                return ("today", "interview today",
+                        "Your interview is today at " + time.strftime("%H:%M", time.localtime(iv)) + ".")
+            hint = ("Booked for " + time.strftime("%d %b %H:%M", time.localtime(iv)) + "; prepare.") if iv else \
+                   "An interview is booked; prepare and attend."
+            return ("scheduled", "scheduled", hint)
+        if label == "INVITED":
             return ("invited", "invited — reply", "The employer invited you; reply with availability.")
-        return ("held", "held — awaiting outcome", "The interview happened; waiting for the outcome.")
+        if iv and now - iv > 7 * 86400:
+            return ("held-followup", "interviewed — follow up",
+                    "The interview was over a week ago; follow up for the outcome.")
+        return ("held", "interviewed — awaiting outcome", "The interview happened; waiting for the outcome.")
     if st == "OFFER":
         if has("negotiat", "counter", "package"):
             return ("negotiating", "negotiating", "An offer is on the table; negotiate the package.")

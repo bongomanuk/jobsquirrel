@@ -348,9 +348,9 @@ and `info` as waiting on the candidate, alongside flagged actions, invites and o
 | `DRAFTING` | drafting |
 | `PREPARED` | needs review · ready to submit |
 | `NO RESULT` | no result |
-| `SUBMITTED` | acknowledged · awaiting reply · assessment to take · follow up |
+| `SUBMITTED` | acknowledged · awaiting reply · assessment to take · assessment overdue · follow up |
 | `IN_PROGRESS` | assessment · interviewing · background check · processing |
-| `INTERVIEW` | invited — reply · scheduled · next round · final round · held — awaiting outcome |
+| `INTERVIEW` | invited — reply · scheduled · interview today · next round · final round · interviewed — awaiting outcome · interviewed — follow up |
 | `OFFER` | offer received · verbal offer · negotiating · accepted · declined |
 | `BLOCKED` | CAPTCHA · login / 2FA · email application · recruiter lead · site problem · missing information · blocked |
 | `MANUAL` | email application · recruiter lead · verification · needs you |
