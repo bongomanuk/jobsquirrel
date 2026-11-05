@@ -1213,9 +1213,7 @@ function approve(purpose, callText) {
 
 /* ---------- grid ---------- */
 let GRID_TIMER = null, LIVE_RUNNING = false, IDLE_TICKS = 0, WAS_BUSY = false, BUSY_NAME = '', DTAB = 0;
-let SHOW_DISMISSED = localStorage.getItem('showDismissed') === '1';
 let GROUPED = localStorage.getItem('grid.grouped') !== '0';
-const shown = (r) => SHOW_DISMISSED || !r.dismissed;
 async function loadGrid() {
   const sc = document.querySelector('.scroll'), y = sc ? sc.scrollTop : 0;
   const g = await api('/api/grid');
@@ -1226,8 +1224,8 @@ async function loadGrid() {
 }
 function bucketCounts() {
   const c = { needs: 0, prepared: 0, ongoing: 0, pipeline: 0, done: 0 };
-  GRID.forEach(r => { if (!shown(r)) return; const k = bucketOf(r); c[k] = (c[k] || 0) + 1; });
-  const live = GRID.filter(shown);
+  GRID.forEach(r => { const k = bucketOf(r); c[k] = (c[k] || 0) + 1; });
+  const live = GRID;
   return { ...c, focus: live.filter(r => r.focus || r.focus_unknown).length,
            active: c.needs + c.prepared + c.ongoing + c.pipeline, all: live.length };
 }
@@ -1306,7 +1304,7 @@ function renderStateGraph() {
     arrow + SG_EDGES.map(edge).join('') + paths +
     SG_MAIN.map(n => node(n, 50, SG_H)).join('') +
     SG_SIDE.map(n => node(n, 185, SG_H2)).join('') +
-    `<text class="sg-cap" x="20" y="262">Counts exclude dismissed roles · click a state to filter · REJECTED can follow any applied state; CLOSED any state</text></svg>`;
+    `<text class="sg-cap" x="20" y="262">Click a state to filter · REJECTED can follow any applied state; CLOSED any state</text></svg>`;
   box.innerHTML = svg;
   // Side states are reached from several places; say so in the caption area.
 }
@@ -1389,13 +1387,12 @@ function renderRows() {
   const payMatch = (r) => !mp || (r.salary_eur != null && r.salary_eur >= mp);
   const fitMatch = (r) => !mf || (r.match != null && r.match >= mf);
   const workMatch = (r) => !wm || (r.work_model || 'unknown') === wm;
-  const filt = (r) => shown(r) && statusMatch(r) && typeMatch(r) && actMatch(r) && payMatch(r) && fitMatch(r) && workMatch(r) &&
+  const filt = (r) => statusMatch(r) && typeMatch(r) && actMatch(r) && payMatch(r) && fitMatch(r) && workMatch(r) &&
     (!fg || (r.groups || []).includes(fg)) &&
     (!qq || r.queue === qq) &&
     (!q || (r.company + ' ' + r.role + ' ' + (r.ats || '') + ' ' + (r.action || '')).toLowerCase().includes(q));
   let rows = GRID.filter(filt);
-  // A group is a campaign: it crosses every status and bucket. Dismissed roles
-  // still obey the "show dismissed" control, so Dismiss always removes the row.
+  // A group is a campaign: it crosses every status and bucket.
   if (!fg) {
     if (BUCKET === 'active') rows = rows.filter(r => bucketOf(r) !== 'done');
     else if (BUCKET === 'focus') rows = rows.filter(r => r.focus || r.focus_unknown);
@@ -1523,11 +1520,7 @@ function renderRows() {
     else
       $('#count').textContent = `${rows.length} ${((BUCKETS.find(b => b.k === BUCKET) || {}).label || BUCKET).toLowerCase()}`;
   }
-  const dismissedN = GRID.filter(r => r.dismissed).length;
-  if (dismissedN && $('#count') && !SHOW_DISMISSED)
-    $('#count').innerHTML += ` <button type="button" class="countlink" onclick="App.toggleDismissedView(true)" title="Show the roles you dismissed from the lists">· ${dismissedN} dismissed</button>`;
   if ($('#fact-count')) { const n = GRID.filter(r => r.action && shown(r)).length; $('#fact-count').textContent = n ? `(${n})` : ''; }
-  if ($('#fdismissed-count')) { const n = GRID.filter(r => r.dismissed).length; $('#fdismissed-count').textContent = n ? `(${n})` : ''; }
   if ($('#filt-n')) {
     const n = [st, qq, ft, fa ? '1' : '', mp, mf, wm, q, fg].filter(Boolean).length;
     $('#filt-n').textContent = n ? `(${n})` : '';
@@ -1662,9 +1655,6 @@ App.rowMenu = (ev, i) => {
     (!closed && !r.running) ? { icon: '⚑', label: r.action ? 'Update follow-up flag…' : 'Flag follow-up…', run: () => App.flagAction(r) } : null,
     r.action ? { icon: '⚐', label: 'Clear follow-up flag', run: () => App.clearFlag(r) } : null,
     { icon: '📌', label: r.pinned ? 'Unpin' : 'Pin to top', run: () => App.togglePin(r) },
-    r.dismissed
-      ? { icon: '↩', label: 'Restore to list', run: () => App.toggleDismiss(r) }
-      : { icon: '✕', label: 'Dismiss from list', run: () => App.toggleDismiss(r) },
     { icon: '🏷', label: 'Groups', sub: groupItems },
     ((!applied && !queued) || blocked) ? { sep: true } : null,
     (!applied && !prepared && !queued && !closed && !r.running)
@@ -1725,7 +1715,6 @@ App.closeRole = async (r) => {
     notes: `${today}: closed from the row menu (not pursuing).`
   });
   if (d.error) return toast(d.error, true);
-  await api('/api/roles/flags', { key: r.key, dismissed: false });   // show it in Done
   toast('closed — moved to Done');
   await loadGrid();
   if (CUR) openDetail(CUR);
@@ -1743,12 +1732,6 @@ App.clearFlag = async (r) => {
   const d = await api('/api/register/row', { company: r.company, role: r.role, action: '', key: r.key });
   toast(d.ok || d.error, !!d.error);
   if (!d.error) { await loadGrid(); if (CUR) openDetail(CUR); }
-};
-
-App.toggleDismiss = async (r) => {
-  const d = await api('/api/roles/flags', { key: r.key, dismissed: !r.dismissed });
-  toast(d.error ? d.error : (r.dismissed ? 'restored to the list' : 'dismissed from the list'), !!d.error);
-  if (!d.error) { await loadGrid(); if (CUR && CUR.key === r.key && !r.dismissed) setPanel('detail', { open: false }); }
 };
 
 App.togglePin = async (r) => {
@@ -1782,11 +1765,6 @@ App.groupFilter = (id) => {
   renderBuckets(); renderRows();
 };
 
-App.toggleDismissedView = (on) => {
-  SHOW_DISMISSED = !!on;
-  localStorage.setItem('showDismissed', SHOW_DISMISSED ? '1' : '0');
-  renderBuckets(); renderRows();
-};
 function sortIndicators() {
   document.querySelectorAll('#grid thead th[data-s]').forEach(th => {
     const on = th.dataset.s === SORT.k;
@@ -3578,8 +3556,6 @@ if (newgroup) newgroup.onclick = () => App.newGroupFor(null);
   el.onchange = () => { renderRows(); };      // quality filters apply within the current bucket
 });
 $('#fclear').onclick = () => App.clearFilters();
-const fd = $('#fdismissed');
-if (fd) { fd.checked = SHOW_DISMISSED; fd.onchange = () => App.toggleDismissedView(fd.checked); }
 $('#a-prepare-shown').onclick = () => App.prepareShown();
 $('#a-submit-shown').onclick = () => App.submitPrepared();
 $('#a-match').onclick = () => App.matchShown($('#a-match'));

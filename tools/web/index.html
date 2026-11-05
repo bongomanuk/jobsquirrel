@@ -79,8 +79,6 @@
                 <option value="unknown">unknown</option></select>
               <label class="row mini" id="faction-wrap" title="Only rows that need a reply or other follow-up">
                 <input type="checkbox" id="faction"> ⚑ needs a reply/follow-up <span id="fact-count" class="muted"></span></label>
-              <label class="row mini" id="fdismissed-wrap" title="Show the roles you dismissed from the lists (right-click a row to dismiss, pin or flag it)">
-                <input type="checkbox" id="fdismissed"> show dismissed <span id="fdismissed-count" class="muted"></span></label>
               <button id="fclear" class="small" type="button">Clear filters</button>
             </div>
           </details>
@@ -432,9 +430,9 @@
         <dt>ATS</dt><dd>The applicant-tracking system the application went through.</dd>
         <dt>Status</dt><dd>Where the application currently stands (list below).</dd>
         <dt>⚑ action</dt><dd>A reply or follow-up is needed (e.g. answer an interview email, complete an assessment). Tick the box under Filters to show only those; set or clear the flag in the row's drawer or from the right-click menu.</dd>
-        <dt>Application states</dt><dd>The collapsible graph above the grid is the pipeline: each state shows how many live roles are in it, and clicking a state filters the grid to that status (Clear filters resets). Counts exclude dismissed roles. CLOSED can follow any state.</dd>
+        <dt>Application states</dt><dd>The collapsible graph above the grid is the pipeline: each state shows how many live roles are in it, and clicking a state filters the grid to that status (Clear filters resets). CLOSED can follow any state.</dd>
         <dt>Sorting</dt><dd>Click a column header to sort the whole list (the grid switches to a flat view); click again to reverse. <b>☰ Grouped</b> in the toolbar returns to the bucket sections.</dd>
-        <dt>Right-click a row</dt><dd>Opens the row menu: open details/documents/the ad, prepare, submit prepared, recompute match, draft a reply, add to a group (campaign) or create one, set status, close the role (status CLOSED), flag a follow-up, pin to the top, dismiss from the lists, re-queue, hand to you, or copy the company/role/link/key. <b>📌</b> = pinned; a dismissed row is hidden until <b>show dismissed</b> is ticked under Filters.</dd>
+        <dt>Right-click a row</dt><dd>Opens the row menu: open details/documents/the ad, prepare, submit prepared, recompute match, draft a reply, add to a group (campaign) or create one, set status, close the role (status CLOSED), flag a follow-up, pin to the top, re-queue, hand to you, or copy the company/role/link/key. <b>📌</b> = pinned.</dd>
         <dt>Fit</dt><dd>How much of the ad's ATS keyword list the tailored CV covers. <b>align✗</b> = the pre-submit alignment gate failed. Click to sort.</dd>
         <dt>Pay</dt><dd>Estimated annual pay in EUR from the ad (hourly/day rates annualised at 1,600h/220d; approximate FX). Hover for the source text. <span class="muted">—</span> = no figure in the ad — set one in the row's Summary. Click to sort.</dd>
         <dt>Work</dt><dd>Remote / hybrid / on-site detected from the ad. Set an override in the row's Summary. Click to sort.</dd>

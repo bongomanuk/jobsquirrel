@@ -197,20 +197,18 @@ Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files �
   and floats **in-flight** rows (🥜) and **QUEUED** rows (queued but not yet in the register) to the top.
 - **Application states graph** above the grid (collapsed by default): a clickable diagram of
   QUEUED → DRAFTING → PREPARED → SUBMITTED → IN_PROGRESS → INTERVIEW → OFFER, with BLOCKED/MANUAL
-  branches and REJECTED/CLOSED terminals. Each node shows its live count (dismissed excluded) and a
+  branches and REJECTED/CLOSED terminals. Each node shows its live count and a
   one-line annotation; clicking a node filters the grid to that status, and the open/closed state is
   remembered.
 - **Right-click a row** for the full action menu: open details / documents / the ad / the apply page,
   discuss the role, prepare documents, submit prepared (approval-gated), recompute the match, draft a
-  reply with the agent, set the status, flag or clear a follow-up, **pin to the top**, **dismiss from
-  the lists**, re-queue, hand to a human, unblock/remove from the queue, and copy the company, role,
+  reply with the agent, set the status, flag or clear a follow-up, **pin to the top**, re-queue, hand to a human, unblock/remove from the queue, and copy the company, role,
   URL or key. Keyboard: arrows move, Escape closes.
 - The menu is **state-aware**: it opens with the company, role, status chip, fit, ⚑ flag and interview
   time, and only offers actions that apply (no submit unless `PREPARED`, no reply draft on a closed
   role, no queue action on a prepared one, "Reopen as" instead of "Set status" on a rejected/closed
   one). Items that cannot apply are omitted rather than greyed out.
-- **Dismiss** hides a role without changing its status (`state/role-flags.json`; tick **show dismissed**
-  under Filters to bring it back). **Pin** sorts it first inside its group (📌).
+- **Pin** sorts a role first inside its group (📌).
 
 ### 9.4 Detail drawer (right-hand)
 Clicking a row opens a drawer with tabs:

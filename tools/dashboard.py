@@ -228,25 +228,27 @@ ROLE_FLAGS = os.path.join(STATE, "role-flags.json")
 
 
 def role_flags():
-    """Per-role UI triage: dismissed from lists, pinned to the top."""
+    """Per-role UI triage: pinned to the top."""
     try:
         with open(ROLE_FLAGS, encoding="utf-8") as fh:
             data = json.load(fh)
-        return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
+    if not isinstance(data, dict):
+        return {}
+    # Older builds stored a "dismissed" flag; ignore it and keep only pins.
+    return {k: {"pinned": True} for k, v in data.items()
+            if isinstance(v, dict) and v.get("pinned")}
 
 
-def set_role_flags(key, dismissed=None, pinned=None):
+def set_role_flags(key, pinned=None):
     if not key:
         return {"error": "key required"}
     data = role_flags()
     entry = dict(data.get(key) or {})
-    if dismissed is not None:
-        entry["dismissed"] = bool(dismissed)
     if pinned is not None:
         entry["pinned"] = bool(pinned)
-    if entry.get("dismissed") or entry.get("pinned"):
+    if entry.get("pinned"):
         data[key] = entry
     else:
         data.pop(key, None)
@@ -1676,7 +1678,6 @@ def grid():
                     "url": qrow.get(ck, {}).get("url", "") or subm_url.get(ck, ""),
                     "stages": stages_for(key, ck in subm, jd_key=jd_key,
                                          ats_key=ats_key, content_key=content_key),
-                    "dismissed": bool((flags.get(key) or {}).get("dismissed")),
                     "pinned": bool((flags.get(key) or {}).get("pinned")),
                     "groups": group_roles.get(key, []),
                     **_pay_work_fields(jd_key, notes, status, cov, target),
@@ -1720,7 +1721,6 @@ def grid():
                     "spec": key in specs, "jd_key": key, "applied": ck in subm,
                     "match": cov, "alignment": m.get("alignment", ""), "running": ck in running,
                     "notes": "", "letter": "", "action": "", "url": r.get("url", ""), "stages": st,
-                    "dismissed": bool((flags.get(key) or {}).get("dismissed")),
                     "pinned": bool((flags.get(key) or {}).get("pinned")),
                     "groups": group_roles.get(key, []),
                     **_pay_work_fields(key, "", stg, cov, target),
@@ -4611,7 +4611,6 @@ class H(BaseHTTPRequestHandler):
             return self._json(delegate_start(data.get("prompt", ""), data.get("title", "")))
         if p == "/api/roles/flags":
             return self._json(set_role_flags(data.get("key", ""),
-                                             dismissed=data.get("dismissed"),
                                              pinned=data.get("pinned")))
         if p == "/api/groups":
             return self._json(group_action(data.get("op", ""), data.get("name", ""),
