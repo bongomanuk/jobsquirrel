@@ -60,7 +60,7 @@ but on a subset.
 | **Communities** | The generated community hierarchy; double-click a community to descend until you reach entities. | Knowledge → Map → **Communities**. |
 | **Entities** | The entities behind a topic or a leaf community. | Click a topic or open a community. |
 | **Ego** | One entity plus its direct neighbours. | Double-click an entity, or **Focus ego network** in the node pane. |
-| **Universe** | Every entity, grouped into level-0 theme islands. | The **Universe** button. |
+| **Universe** | Every entity, grouped into level-0 theme islands. | **Knowledge** → the **Universe** toggle. |
 
 Search works in every view. **Semantic** runs a natural-language search over the
 entity vector store; results show similarity, impact and type, and selecting one

@@ -3522,7 +3522,6 @@ $('#a-prepare').onclick = () => App.run('prepare');
 $('#a-submit').onclick = () => App.run('submit_queue');
 $('#a-reconcile').onclick = () => App.run('reconcile');
 $('#a-knowledge').onclick = () => App.openKnowledge('map');
-$('#a-universe').onclick = () => App.openKnowledge('universe');
 const brandHome = $('#brand-home');
 if (brandHome) {
   brandHome.onclick = () => App.home();

@@ -53,6 +53,7 @@ Components:
 |---|---|
 | `state/applications.csv` | Canonical register: `date,company,role,ats,status,letter,notes,employment,action,key,apply_url`. One row per role. `key` is the role's single identity (the queue row's last column, also what `queue.done` stores); rows written before it existed fall back to `company|role`. `action` is a short follow-up flag (reply/assessment/booking) surfaced as ⚑ in the grid and filterable. |
 | `state/submissions.csv` | Provenance ledger: paths + sha256 + snapshot dir + evidence + confidence (`verified`/`forced`/`inferred`). |
+| `state/role-groups.json` | Named groups (campaigns): `{groups:{id:{name,color}},roles:{key:[id]}}`, independent of status. |
 | `state/queue.tsv` | Pending roles: `company␉role␉url␉cv-archetype␉ats␉key`. |
 | `state/queue.done` / `queue.retry` / `queue-human.tsv` | Completion, retry, human-assist queues. |
 | `state/logs/runs.jsonl` | Structured per-task result: `{ts,company,role,outcome,rc,reason}`. |
@@ -292,6 +293,8 @@ Clicking a row opens a drawer with tabs:
 | GET | `/api/grounding` | `key` | a role's context pack + the entities/sources it cited, resolved |
 | GET | `/api/runs` · `/api/log` · `/api/live` · `/api/tasks` · `/api/logs/tail` · `/api/agent` · `/api/chat/stream` | — | as named |
 | POST | `/api/register/row` | `{company,role,status,notes}` | update a register row |
+| GET | `/api/groups` | — | groups (campaigns), memberships and counts |
+| POST | `/api/groups` | `{op:create\|rename\|delete\|assign,name,group,key,on}` | create, rename, delete or assign a role |
 | POST | `/api/queue/action` | `{action,company,role}` | `delete` / `retry` / `unblock` |
 | GET | `/api/drafts?company=&role=` | — | drafts for a role |
 | GET | `/api/draft?path=` | — | one draft (headers + body) |
@@ -328,7 +331,8 @@ The full guide is **[KNOWLEDGE-GRAPH.md](KNOWLEDGE-GRAPH.md)**; this is the
 interface contract.
 
 - **Full-page workspace.** Universe and Map fill the area below the header; the
-  job grid is out of the way.
+  job grid is out of the way. The **Universe** / **Map** toggle inside the page
+  switches views (Universe is no longer a separate top-bar button).
 - **Universe.** The whole index: level-0 communities as islands, weighted
   importance, community nebulae, zoom-tiered labels, a 1–3 hop focus slider and
   the same point-star renderer as the Map.

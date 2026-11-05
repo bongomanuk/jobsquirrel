@@ -68,6 +68,14 @@ Everything is observable. Useful things to ask for, or run yourself:
     groups. Groups are independent of status and survive renames and queue runs. Hover anything for
     what it means; click a row for the detail drawer
     (Summary · Provenance · Job spec · ATS · **Grounding** · Tailored).
+  - **Groups / campaigns.** A group is a named campaign that crosses status. Create one with the
+    **🏷 Groups** toolbar button (or right-click a row → Groups → New group…). Add or remove a role
+    from right-click → Groups; a tick marks membership. Filter with the **any group** dropdown; a
+    group view shows every member regardless of status, but still applies the ordinary
+    search/status/queue filters. Group tags appear under the role title, and clicking one filters
+    to that group. **🏷 Groups** also renames and deletes groups — deleting removes memberships, not
+    roles. Groups live in `state/role-groups.json`, independent of the register, so status changes,
+    renames and queue runs do not disturb them; CSV export includes a `groups` column.
   - **Grounding** shows how your knowledge graph was used for that role: the cited context pack
     plus the entities and source documents it referenced, resolved from the index.
   - **Agent console** (dockable — **left by default**; drag its header to any edge, or the pullout
@@ -107,7 +115,8 @@ Everything is observable. Useful things to ask for, or run yourself:
 ## The Knowledge workspace
 
 The top-bar **Knowledge** page is the full-page view of your knowledge base.
-**Universe** shows the whole graph as theme islands; **Map** drills through
+Inside it, the **Universe** / **Map** toggle switches views: **Universe** shows
+the whole graph as theme islands; **Map** drills through
 **Topics** (ontology classes), **Communities** (the generated hierarchy),
 **Entities** and **Ego** networks. Click an entity for its description, sources,
 neighbours and strongest connections; double-click opens its ego network.
