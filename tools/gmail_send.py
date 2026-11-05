@@ -62,7 +62,9 @@ def _parse_draft(path):
         if ":" in line:
             key, value = line.split(":", 1)
             meta[key.strip().lower()] = value.strip()
-    attaches = re.findall(r"[^\s,;()]+\.(?:docx|pdf|doc|txt|png|jpe?g)", meta.get("attachment", ""))
+    attaches = re.findall(
+        r"[^\s,;()]+\.(?:docx|pdf|doc|txt|png|jpe?g|gif|webp|mp4|webm|mov|mkv|zip)",
+        meta.get("attachment", ""), re.I)
     return meta, body.strip("\n"), attaches
 
 
