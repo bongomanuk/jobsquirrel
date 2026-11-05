@@ -1578,6 +1578,120 @@ def _interview_label(status, notes):
 
 
 
+def _substate(status, notes="", action="", label=""):
+    """The human sub-state inside a coarse register status.
+
+    The register status is the machine stage (gates, reconciliation, queue);
+    the substate is what is actually happening and what the candidate should do.
+    Returns (key, label, hint). The rules are deliberately keyword-led so they
+    work from the notes the pipeline and the reconciler already write.
+    """
+    st = (status or "").upper()
+    segments = [x.strip() for x in (notes or "").split(" | ") if x.strip()]
+    text = " ".join(x for x in (action or "", notes or "", label or "") if x).lower()
+    if st in ("CLOSED", "REJECTED") and segments:
+        # Terminal rows are append-only: the last note is the actual closure or
+        # rejection, so an old "eligible" note must not override it.
+        text = " ".join((action or "", *segments[-2:])).lower()
+
+    def has(*words):
+        return any(w in text for w in words)
+
+    if st == "QUEUED":
+        return ("queued", "queued", "In the apply queue; nothing sent yet.")
+    if st == "DRAFTING":
+        return ("drafting", "drafting", "Ad and keywords saved; documents are still being built.")
+    if st == "PREPARED":
+        if has("review", "send the drafted", "draft ready", "approve", "email draft", "awaiting human"):
+            return ("review", "needs review", "Documents are ready but you need to review and send them.")
+        return ("ready", "ready to submit", "Documents are gated; submit when you are ready.")
+    if st == "NO RESULT":
+        return ("no-result", "no result", "A run finished without an ad, documents or a submission; re-prepare or remove it.")
+    if st == "BLOCKED":
+        if has("captcha", "recaptcha", "bot check", "human check", "are you a robot"):
+            return ("captcha", "CAPTCHA", "A CAPTCHA/bot check stopped the submission; solve it and retry.")
+        if has("2fa", "two-factor", "login", "log in", "sign in", "sso", "verification code", "verify"):
+            return ("login", "login / 2FA", "The site needs a login, SSO or 2FA step from you.")
+        if has("email", "careers@", "mailto"):
+            return ("email", "email application", "The employer only accepts email; send the drafted application.")
+        if has("recruiter", "agency", "lead", "intro"):
+            return ("lead", "recruiter lead", "A recruiter/agency lead needs a human reply.")
+        if has("404", "site", "page", "form", "closed", "expired"):
+            return ("site", "site problem", "The application page/form is broken or gone; check the ad.")
+        if has("missing", "eligib", "question", "salary", "authoris", "permit", "language"):
+            return ("info", "missing information", "A question or eligibility point needs your answer.")
+        return ("blocked", "blocked", "A hard wall stopped the submission; open the row for the exact reason.")
+    if st == "MANUAL":
+        if has("email", "careers@", "mailto"):
+            return ("email", "email application", "Email-only employer; send the drafted application.")
+        if has("recruiter", "agency", "lead", "intro"):
+            return ("lead", "recruiter lead", "A recruiter/agency lead needs a human reply.")
+        if has("verify", "verification", "code"):
+            return ("verify", "verification", "A verification link/code needs you.")
+        return ("manual", "needs you", "A human step is required; open the row for what to do.")
+    if st == "SUBMITTED":
+        if has("assessment", "test", "kattis", "abstract reasoning", "coding challenge", "take-home", "case study"):
+            return ("assessment", "assessment to take", "The employer sent a test/assessment; complete it before the deadline.")
+        if has("no reply", "no response", "follow up", "follow-up", "stale", "chase", "nudge"):
+            return ("stale", "follow up", "No reply yet; it is time to follow up.")
+        if has("acknowledg", "confirmation", "received", "thank you for applying", "thanks for applying"):
+            return ("acknowledged", "acknowledged", "The employer confirmed receipt; waiting for the next step.")
+        return ("awaiting", "awaiting reply", "Application sent; waiting for the employer.")
+    if st == "IN_PROGRESS":
+        if has("assessment", "test", "kattis", "coding challenge", "take-home", "case study"):
+            return ("assessment", "assessment", "An assessment/test is in progress or waiting for you.")
+        if has("background", "reference", "check"):
+            return ("background", "background check", "The employer is running checks/references.")
+        if has("interview", "round", "stage"):
+            return ("interviewing", "interviewing", "The process is at an interview stage.")
+        return ("processing", "processing", "The employer is processing the application.")
+    if st == "INTERVIEW":
+        if has("final round", "final interview", "last round"):
+            return ("final", "final round", "You are at the final interview stage.")
+        if has("next round", "second round", "2nd round", "next stage", "next interview"):
+            return ("next", "next round", "You advanced to the next round; prepare for it.")
+        if label == "SCHEDULED" or has("booked", "scheduled", "confirmed"):
+            return ("scheduled", "scheduled", "An interview is booked; prepare and attend.")
+        if label == "INVITED" or has("invit", "schedul", "availabil", "reschedul", "still interested"):
+            return ("invited", "invited — reply", "The employer invited you; reply with availability.")
+        return ("held", "held — awaiting outcome", "The interview happened; waiting for the outcome.")
+    if st == "OFFER":
+        if has("negotiat", "counter", "package"):
+            return ("negotiating", "negotiating", "An offer is on the table; negotiate the package.")
+        if has("accept", "signed"):
+            return ("accepted", "accepted", "Offer accepted.")
+        if has("declin", "turned down"):
+            return ("declined", "declined", "Offer declined.")
+        if has("verbal", "verbally"):
+            return ("verbal", "verbal offer", "A verbal offer; get it in writing.")
+        return ("received", "offer received", "An offer is on the table; respond.")
+    if st == "REJECTED":
+        if has("can't invite you for an interview", "cannot invite you for an interview",
+               "not invite you for an interview", "interview had been cancelled",
+               "interview cancelled", "no interview"):
+            return ("after-application", "after application", "Rejected without an interview; no action.")
+        if has("after interview", "post-interview", "interviewed", "final round",
+               "interview held", "interview took place", "interview confirmed",
+               "interview booked", "technical interview", "video interview",
+               "recruiter interview", "thank you for the call", "spoke with",
+               "interview had been held"):
+            return ("after-interview", "after interview", "Rejected after interview; no action.")
+        return ("after-application", "after application", "Rejected after applying; no action.")
+    if st == "CLOSED":
+        if has("withdraw", "withdrew", "not pursuing", "not pursued", "ignore/drop", "dropped"):
+            return ("withdrawn", "withdrawn", "You withdrew or dropped it; no action.")
+        if has("duplicate", "dupe"):
+            return ("duplicate", "duplicate", "Duplicate of another application; no action.")
+        if has("not eligible", "eligib", "language", "swedish", "authoris", "permit"):
+            return ("not-eligible", "not eligible", "Not eligible for this role; no action.")
+        if has("filled", "position filled"):
+            return ("filled", "filled", "The position was filled; no action.")
+        if has("expired", "no longer", "404", "gone", "removed"):
+            return ("expired", "expired / gone", "The ad is no longer live; no action.")
+        return ("closed", "closed", "Closed; no action.")
+    return (st.lower() or "unknown", st.lower() or "unknown", "")
+
+
 def grid():
     """One row per application: register ⋈ queue ⋈ in-flight running tasks ⋈ provenance."""
     apps = _rows(os.path.join(STATE, "applications.csv"))
@@ -1668,8 +1782,10 @@ def grid():
                                 else "interview held — awaiting the outcome"))
         employment = ((r.get("employment") or "").strip().lower()
                       or _employment_from_jd(jd_key) or _employment_from_notes(notes))
+        sub = _substate(status, notes, r.get("action", ""), label)
         out.append({"date": r.get("date", ""), "company": co, "role": role, "ats": r.get("ats", ""),
                     "status": status, "label": label, "interview_at": interview_at, "key": key,
+                    "substate": sub[0], "substate_label": sub[1], "substate_hint": sub[2],
                     "employment": employment,
                     "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, ""),
                     "spec": jd_key in specs, "jd_key": jd_key, "applied": ck in subm,
@@ -1714,8 +1830,10 @@ def grid():
             stg = "DRAFTING"
         else:
             stg = "QUEUED"
+        sub = _substate(stg, "", "", stg)
         out.append({"date": qdate, "company": co, "role": role, "ats": r.get("ats", ""),
                     "status": stg, "label": stg, "interview_at": "", "key": key,
+                    "substate": sub[0], "substate_label": sub[1], "substate_hint": sub[2],
                     "employment": r.get("employment", "") or _employment_from_jd(key),
                     "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, "pending"),
                     "spec": key in specs, "jd_key": key, "applied": ck in subm,

@@ -112,6 +112,39 @@ Everything is observable. Useful things to ask for, or run yourself:
 - **Human-only items**: `state/queue-human.tsv`, opened with
   `bash tools/human_assist.sh`.
 
+## State model: status and sub-state
+
+The register keeps a small, stable set of **statuses** — the machine stage used by the
+pre-submit gates, the queue and the reconciler. On top of that, the dashboard derives a
+**sub-state** from the role's notes and follow-up flag. The sub-state is the human answer
+to “what is actually happening, and what should I do next?”.
+
+- The **Status** cell shows the status chip and, underneath, the sub-state when it adds detail.
+- **Filters → any sub-state** narrows the grid to one sub-state; like a group, it crosses the
+  bucket boundaries.
+- The **Application states** panel shows the coarse flow and a clickable breakdown by sub-state.
+- **Needs you** includes the sub-states that genuinely wait on you: assessments, follow-ups,
+  CAPTCHA/2FA and other human walls, plus invites and offers.
+
+| Status | Sub-states | What it means |
+|---|---|---|
+| `QUEUED` | queued | In the apply queue; nothing sent yet. |
+| `DRAFTING` | drafting | Ad/keywords saved; documents still being built. |
+| `PREPARED` | needs review · ready to submit | Documents gated; review/send, or submit when ready. |
+| `NO RESULT` | no result | A run finished without an ad, documents or a submission. |
+| `SUBMITTED` | acknowledged · awaiting reply · assessment to take · follow up | Sent; waiting, a test to take, or time to chase. |
+| `IN_PROGRESS` | assessment · interviewing · background check · processing | The employer is processing the application. |
+| `INTERVIEW` | invited — reply · scheduled · next round · final round · held — awaiting outcome | The interview stage, from arranging to awaiting the result. |
+| `OFFER` | offer received · verbal offer · negotiating · accepted · declined | The offer stage. |
+| `BLOCKED` | CAPTCHA · login / 2FA · email application · recruiter lead · site problem · missing information · blocked | A wall; the ones that need you appear under **Needs you**. |
+| `MANUAL` | email application · recruiter lead · verification · needs you | A human step the pipeline will not take. |
+| `REJECTED` | after application · after interview | Not selected; no action. |
+| `CLOSED` | withdrawn · expired / gone · duplicate · not eligible · filled · closed | No further action. |
+
+Sub-states are derived from the notes and follow-up flag the pipeline and the reconciler
+already write, so they need no extra bookkeeping. Correcting a note (or setting/clearing the
+follow-up flag) updates the sub-state on the next refresh.
+
 ## The Knowledge workspace
 
 The top-bar **Knowledge** page is the full-page view of your knowledge base.

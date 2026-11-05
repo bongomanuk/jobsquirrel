@@ -310,8 +310,9 @@ You steer it with plain English. Typical prompts:
 ```
 
 **Prefer a GUI?** Open the built-in web UI — `python3 tools/dashboard.py --open` — to
-watch runs, browse the register in one master grid, group roles into campaigns, explore
-the knowledge graph, and configure accounts / import documents. See [docs/USING-IT.md](docs/USING-IT.md).
+watch runs, browse the register in one master grid, group roles into campaigns, see the
+human sub-state inside each application (assessment, interview booked, follow-up due),
+explore the knowledge graph, and configure accounts / import documents. See [docs/USING-IT.md](docs/USING-IT.md).
 
 Watch a run live with `bash tools/watch_queue.sh`; ask for *"status + what it's
 cost so far"* any time. Full prompt/monitoring guide: [docs/USING-IT.md](docs/USING-IT.md).

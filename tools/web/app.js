@@ -48,10 +48,13 @@ const FOCUS_GROUPS = [
   { k: 'focus_unknown', title: 'High fit, pay not stated', desc: 'strong fit — check the ad or set a salary', test: r => r.focus_unknown },
 ];
 const NEEDS_STATUS = new Set(['MANUAL', 'OFFER']);
+// Sub-states that are genuinely waiting on the candidate, not the employer.
+const NEEDS_SUBSTATES = new Set(['assessment', 'stale', 'captcha', 'login', 'email', 'lead', 'verify', 'info']);
 function bucketOf(r) {
   const s = r.status, lb = r.label || s;
   if (s === 'CLOSED' || s === 'REJECTED') return 'done';
-  if (r.action || NEEDS_STATUS.has(s) || lb === 'INVITED' || r.queue === 'human') return 'needs';
+  if (r.action || NEEDS_STATUS.has(s) || lb === 'INVITED' || r.queue === 'human' ||
+      NEEDS_SUBSTATES.has(r.substate)) return 'needs';
   if (['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW'].includes(s)) return 'ongoing';
   if (s === 'PREPARED') return 'prepared';
   return 'pipeline';
@@ -1218,6 +1221,7 @@ async function loadGrid() {
   const sc = document.querySelector('.scroll'), y = sc ? sc.scrollTop : 0;
   const g = await api('/api/grid');
   if (Array.isArray(g)) GRID = g;          // keep the last good grid through a transient error
+  renderSubstateFilter();
   renderBuckets();
   renderRows();
   if (sc) sc.scrollTop = y;
@@ -1305,8 +1309,29 @@ function renderStateGraph() {
     SG_MAIN.map(n => node(n, 50, SG_H)).join('') +
     SG_SIDE.map(n => node(n, 185, SG_H2)).join('') +
     `<text class="sg-cap" x="20" y="262">Click a state to filter · REJECTED can follow any applied state; CLOSED any state</text></svg>`;
-  box.innerHTML = svg;
-  // Side states are reached from several places; say so in the caption area.
+  // Sub-state breakdown: the coarse flow above, the human detail below.
+  const by = {};
+  GRID.forEach(r => {
+    if (!r.substate) return;
+    const k = r.status + ':' + r.substate;
+    if (!by[k]) by[k] = { status: r.status, key: r.substate, label: r.substate_label || r.substate, hint: r.substate_hint || '', n: 0 };
+    by[k].n++;
+  });
+  const fs = ($('#fsubstate') || {}).value || '';
+  const order = ['QUEUED', 'DRAFTING', 'PREPARED', 'SUBMITTED', 'IN_PROGRESS', 'INTERVIEW',
+                 'OFFER', 'BLOCKED', 'MANUAL', 'REJECTED', 'CLOSED'];
+  const subs = order.map(st => {
+    const items = Object.values(by).filter(x => x.status === st)
+      .sort((a, b) => b.n - a.n || a.label.localeCompare(b.label));
+    if (!items.length) return '';
+    return `<div class="sg-subrow"><span class="sg-substate">${esc(st)}</span><span class="sg-subchips">` +
+      items.map(x => {
+        const val = st + ':' + x.key;
+        return `<button type="button" class="sg-sub${fs === val ? ' on' : ''}" data-sub="${esc(val)}"` +
+          ` title="${esc(x.hint)}">${esc(x.label)} <b>${x.n}</b></button>`;
+      }).join('') + '</span></div>';
+  }).join('');
+  box.innerHTML = svg + (subs ? `<div class="sg-subs">${subs}</div>` : '');
 }
 (() => {
   const sg = document.getElementById('sg');
@@ -1319,6 +1344,17 @@ function renderStateGraph() {
   const body = document.getElementById('sg-body');
   if (!body) return;
   body.addEventListener('click', (e) => {
+    const sub = e.target.closest('.sg-sub');
+    if (sub) {
+      const st = sub.dataset.sub.split(':')[0];
+      const sel = $('#fstatus'), fs = $('#fsubstate');
+      clearFilterInputs();
+      if (sel) sel.value = st;
+      if (fs) fs.value = sub.dataset.sub;
+      BUCKET = 'all'; BUCKET_BEFORE_SEARCH = null;
+      renderBuckets(); renderRows();
+      return;
+    }
     const g = e.target.closest('.sg-node');
     if (!g) return;
     const sel = $('#fstatus');
@@ -1382,8 +1418,43 @@ function renderGroupList() {
     `</div>`).join('');
 }
 
+let SUBSTATE_SIG = '';
+function renderSubstateFilter() {
+  const sel = $('#fsubstate'); if (!sel) return;
+  const by = {};
+  GRID.forEach(r => {
+    if (!r.substate) return;
+    const k = r.status + ':' + r.substate;
+    if (!by[k]) by[k] = { status: r.status, key: r.substate, label: r.substate_label || r.substate, n: 0 };
+    by[k].n++;
+  });
+  const sig = JSON.stringify(by);
+  if (sig === SUBSTATE_SIG) return;
+  SUBSTATE_SIG = sig;
+  const cur = sel.value;
+  const order = ['QUEUED', 'DRAFTING', 'PREPARED', 'SUBMITTED', 'IN_PROGRESS', 'INTERVIEW',
+                 'OFFER', 'BLOCKED', 'MANUAL', 'REJECTED', 'CLOSED'];
+  let html = '<option value="">any sub-state</option>';
+  order.forEach(st => {
+    const items = Object.values(by).filter(x => x.status === st)
+      .sort((a, b) => b.n - a.n || a.label.localeCompare(b.label));
+    if (!items.length) return;
+    html += `<optgroup label="${esc(st)}">` +
+      items.map(x => `<option value="${esc(st + ':' + x.key)}">${esc(x.label)} (${x.n})</option>`).join('') +
+      '</optgroup>';
+  });
+  sel.innerHTML = html;
+  if (cur && by[cur]) sel.value = cur;
+}
+function subLineHTML(r) {
+  const base = String(r.label || r.status || '').toLowerCase();
+  const sub = String(r.substate_label || '');
+  if (!sub || sub.toLowerCase() === base) return '';
+  return `<div class="subchip"${T(r.substate_hint || r.hint || '')}>${esc(sub)}</div>`;
+}
+
 function clearFilterInputs() {
-  ['fstatus', 'fqueue', 'ftype', 'fpay', 'ffit', 'fwork', 'fgroup'].forEach(id => {
+  ['fstatus', 'fqueue', 'ftype', 'fpay', 'ffit', 'fwork', 'fgroup', 'fsubstate'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const fa = document.getElementById('faction'); if (fa) fa.checked = false;
@@ -1399,6 +1470,7 @@ function renderRows() {
   const mf = parseInt(($('#ffit') || {}).value || '0', 10) || 0;
   const wm = ($('#fwork') || {}).value || '';
   const fg = ($('#fgroup') || {}).value || '';          // group filter is independent of bucket/status
+  const fs = ($('#fsubstate') || {}).value || '';       // sub-state within a status
   const cy = String(new Date().getFullYear());
   const shortDate = (d) => { const [y, m, dd] = d.split('-'); return y === cy ? `${m}-${dd}` : `${y.slice(2)}-${m}-${dd}`; };
   const disp = (r) => r.label || r.status;               // INTERVIEW rows show SCHEDULED when an interview is still ahead
@@ -1410,11 +1482,12 @@ function renderRows() {
   const workMatch = (r) => !wm || (r.work_model || 'unknown') === wm;
   const filt = (r) => statusMatch(r) && typeMatch(r) && actMatch(r) && payMatch(r) && fitMatch(r) && workMatch(r) &&
     (!fg || (r.groups || []).includes(fg)) &&
+    (!fs || (r.status + ':' + r.substate) === fs) &&
     (!qq || r.queue === qq) &&
     (!q || (r.company + ' ' + r.role + ' ' + (r.ats || '') + ' ' + (r.action || '')).toLowerCase().includes(q));
   let rows = GRID.filter(filt);
-  // A group is a campaign: it crosses every status and bucket.
-  if (!fg) {
+  // A group or sub-state is a view: it crosses the bucket boundaries.
+  if (!fg && !fs) {
     if (BUCKET === 'active') rows = rows.filter(r => bucketOf(r) !== 'done');
     else if (BUCKET === 'focus') rows = rows.filter(r => r.focus || r.focus_unknown);
     else if (BUCKET !== 'all') rows = rows.filter(r => bucketOf(r) === BUCKET);
@@ -1423,7 +1496,9 @@ function renderRows() {
 
   const k = SORT.k;
   const rank = (r) => r.running ? 0 : (r.status === 'QUEUED' ? 1 : 2);   // in-flight + queued float to the top
-  const needRank = (r) => r.status === 'OFFER' ? 0 : ((r.label || '') === 'INVITED' ? 1 : (r.action ? 2 : 3));
+  const needRank = (r) => r.status === 'OFFER' ? 0
+    : ((r.label || '') === 'INVITED' || ['assessment', 'stale'].includes(r.substate) ? 1
+      : (r.action || NEEDS_SUBSTATES.has(r.substate) ? 2 : 3));
   const sortRows = (arr, group) => arr.slice().sort((a, b) => {
     const pa = a.pinned ? 0 : 1, pb = b.pinned ? 0 : 1;
     if (pa !== pb) return pa - pb;
@@ -1469,7 +1544,7 @@ function renderRows() {
       `<td${T(r.company + '  ·  employer / recruiter')}>${r.running ? `<a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="event.stopPropagation();App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show the live log"><span class="spin">🥜</span></a> ` : (PENDING.has(r.key) ? '<span class="spin" title="Queued — waiting to start">🥜</span> ' : '')}${r.pinned ? `<span class="pinned"${T('Pinned to the top of its group')}>📌</span> ` : ''}${r.action ? `<span class="actflag"${T(r.action)}>⚑</span> ` : ''}${esc(r.company)}</td>` +
       `<td${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}${gtags ? `<div class="gtags">${gtags}</div>` : ''}</td>` +
       `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
-      `<td>${chip(r.label || r.status)}${r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : ''}</td><td>${mbadge(r)}</td>` +
+      `<td>${chip(r.label || r.status)}${subLineHTML(r) || (r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : '')}</td><td>${mbadge(r)}</td>` +
       `<td>${payBadge(r)}</td><td>${workBadge(r)}</td>` +
       `<td${T(QUEUE_HELP[r.queue] || 'Not in any queue')}>${['pending', 'human', 'retry'].includes(r.queue)
         ? `<span class="badge ${r.queue === 'human' ? 'bad' : r.queue === 'retry' ? 'mid' : 'good'}">${esc(r.queue)}</span>`
@@ -1483,7 +1558,7 @@ function renderRows() {
     <button class="small" type="button" onclick="App.bucket('all')">Show all</button></td></tr>`;
   let html = '';
   let rendered = [];
-  const advanced = !!(st || qq || ft || fa || mp || mf || wm || q || fg);
+  const advanced = !!(st || qq || ft || fa || mp || mf || wm || q || fg || fs);
   let groups = null;
   if (!fg && GROUPED && (BUCKET === 'active' || BUCKET === 'all')) {
     groups = BUCKET_GROUPS.filter(g => BUCKET === 'all' || g.k !== 'done')
@@ -1543,7 +1618,7 @@ function renderRows() {
   }
   if ($('#fact-count')) { const n = GRID.filter(r => r.action).length; $('#fact-count').textContent = n ? `(${n})` : ''; }
   if ($('#filt-n')) {
-    const n = [st, qq, ft, fa ? '1' : '', mp, mf, wm, q, fg].filter(Boolean).length;
+    const n = [st, qq, ft, fa ? '1' : '', mp, mf, wm, q, fg, fs].filter(Boolean).length;
     $('#filt-n').textContent = n ? `(${n})` : '';
   }
 }
@@ -3535,6 +3610,15 @@ window.legendClose = () => $('#legend-modal').classList.add('hide');
 $('#legend').onclick = () => {
   $('#legend-views').innerHTML = BUCKETS.map(b => `<dt>${esc(b.label)}</dt><dd>${esc(b.hint)}</dd>`).join('');
   $('#legend-status').innerHTML = Object.entries(STATUS_HELP).map(([k, v]) => `<dt>${chip(k)}</dt><dd>${esc(v)}</dd>`).join('');
+  const order = ['QUEUED', 'DRAFTING', 'PREPARED', 'SUBMITTED', 'IN_PROGRESS', 'INTERVIEW',
+                 'OFFER', 'BLOCKED', 'MANUAL', 'REJECTED', 'CLOSED'];
+  const subs = new Map();
+  GRID.forEach(r => { if (r.substate) subs.set(r.status + ':' + r.substate, r); });
+  $('#legend-subs').innerHTML = [...subs.values()]
+    .sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status) ||
+      String(a.substate_label).localeCompare(String(b.substate_label)))
+    .map(r => `<dt>${chip(r.status)} ${esc(r.substate_label)}</dt><dd>${esc(r.substate_hint)}</dd>`).join('')
+    || '<dd class="muted">No sub-states in the current grid.</dd>';
   $('#legend-queue').innerHTML = Object.entries(QUEUE_HELP).map(([k, v]) => `<dt><code>${esc(k)}</code></dt><dd>${esc(v)}</dd>`).join('');
   $('#legend-modal').classList.remove('hide');
 };
@@ -3598,6 +3682,8 @@ $('#q').oninput = () => {
 });
 const fgroup = $('#fgroup');
 if (fgroup) fgroup.onchange = () => { if (fgroup.value) BUCKET = 'all'; renderBuckets(); renderRows(); };
+const fsubstate = $('#fsubstate');
+if (fsubstate) fsubstate.onchange = () => { if (fsubstate.value) BUCKET = 'all'; renderBuckets(); renderRows(); };
 const groupsBtn = $('#groups');
 if (groupsBtn) groupsBtn.onclick = () => groupsOpen();
 ['#fpay', '#ffit', '#fwork'].forEach(sel => {

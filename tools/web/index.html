@@ -47,6 +47,8 @@
               <select id="fstatus"><option value="">any status</option>
                 <option>QUEUED</option><option>DRAFTING</option><option>NO RESULT</option><option>SUBMITTED</option><option>IN_PROGRESS</option><option>INTERVIEW</option><option>SCHEDULED</option><option>INVITED</option><option>OFFER</option>
                 <option>REJECTED</option><option>BLOCKED</option><option>MANUAL</option><option>PREPARED</option><option>CLOSED</option></select>
+              <select id="fsubstate" title="Filter by a sub-state within a status (assessment, scheduled, CAPTCHA, …)">
+                <option value="">any sub-state</option></select>
               <select id="fqueue"><option value="">any queue</option><option value="pending">pending</option>
                 <option value="human">human-assist</option><option value="retry">retry</option><option value="finished">finished</option></select>
               <select id="fgroup" title="Show only the roles in a group (campaign), regardless of status">
@@ -443,6 +445,8 @@
     <div class="legend-col">
       <h4>Status</h4>
       <dl id="legend-status"></dl>
+      <h4 style="margin-top:12px">Sub-states</h4>
+      <dl id="legend-subs"></dl>
       <h4 style="margin-top:12px">Queue</h4>
       <dl id="legend-queue"></dl>
     </div>

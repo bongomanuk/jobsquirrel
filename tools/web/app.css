@@ -798,3 +798,16 @@ body.knowledge-open .modal{z-index:60}
 .group-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--line);
   border-radius:8px;background:#0a0c10}
 .group-row .gtag{cursor:default}
+
+/* Sub-states: the human detail inside a coarse status */
+.subchip{display:inline-block;margin-top:3px;font:10.5px/1.4 var(--sans);color:var(--muted);
+  border:1px solid var(--line);border-radius:10px;padding:0 6px;white-space:nowrap;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.sg-subs{margin-top:8px;display:flex;flex-direction:column;gap:5px}
+.sg-subrow{display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap}
+.sg-substate{font:700 11px var(--sans);color:var(--muted);min-width:96px;text-transform:uppercase;letter-spacing:.04em}
+.sg-subchips{display:flex;flex-wrap:wrap;gap:4px}
+.sg-sub{font:11px var(--sans);background:#0a0c10;border:1px solid var(--line);border-radius:999px;
+  padding:1px 7px;color:var(--fg);cursor:pointer}
+.sg-sub b{color:var(--accent);margin-left:4px}
+.sg-sub:hover,.sg-sub.on{border-color:var(--accent)}

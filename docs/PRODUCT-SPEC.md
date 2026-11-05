@@ -325,7 +325,39 @@ All POSTs require header `X-Session: <token>` (else 403); the token is injected 
 - **Regenerate archetype CVs:** `build_archetypes.py`. Safe.
 - Runs are detached and logged to `state/logs/dashboard-action.log`.
 
-### 9.9b Knowledge workspace (top-bar **Knowledge**)
+### 9.9b State model
+
+The register `status` is the machine stage (gates, queue, reconciliation). The dashboard
+derives a human **sub-state** from the row's notes and follow-up flag and exposes it on every
+grid row:
+
+| Field | Meaning |
+|---|---|
+| `substate` | stable key (e.g. `assessment`, `scheduled`, `captcha`) |
+| `substate_label` | short human label (e.g. "assessment to take", "scheduled") |
+| `substate_hint` | what it means / what to do next |
+
+The grid shows the sub-state under the status chip; **Filters → any sub-state** filters on
+`status:substate`; the Application states panel adds a clickable sub-state breakdown. The
+`Needs you` bucket treats `assessment`, `stale`, `captcha`, `login`, `email`, `lead`, `verify`
+and `info` as waiting on the candidate, alongside flagged actions, invites and offers.
+
+| Status | Sub-states |
+|---|---|
+| `QUEUED` | queued |
+| `DRAFTING` | drafting |
+| `PREPARED` | needs review · ready to submit |
+| `NO RESULT` | no result |
+| `SUBMITTED` | acknowledged · awaiting reply · assessment to take · follow up |
+| `IN_PROGRESS` | assessment · interviewing · background check · processing |
+| `INTERVIEW` | invited — reply · scheduled · next round · final round · held — awaiting outcome |
+| `OFFER` | offer received · verbal offer · negotiating · accepted · declined |
+| `BLOCKED` | CAPTCHA · login / 2FA · email application · recruiter lead · site problem · missing information · blocked |
+| `MANUAL` | email application · recruiter lead · verification · needs you |
+| `REJECTED` | after application · after interview |
+| `CLOSED` | withdrawn · expired / gone · duplicate · not eligible · filled · closed |
+
+### 9.9c Knowledge workspace (top-bar **Knowledge**)
 
 The full guide is **[KNOWLEDGE-GRAPH.md](KNOWLEDGE-GRAPH.md)**; this is the
 interface contract.
