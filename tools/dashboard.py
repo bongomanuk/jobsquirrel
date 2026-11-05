@@ -3717,6 +3717,35 @@ def _pid_alive(pid):
         return False
 
 
+def _delegated_done(log):
+    """True when the subagent has printed its final RESULT/EXIT line.
+
+    The opencode CLI can linger after the task itself is over. The log is the
+    authoritative completion signal, so a finished task must leave the Activity
+    pane even while its process is still winding down.
+    """
+    path = os.path.join(LOGS, (log or "") + ".log")
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - 16384))
+            tail = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return False
+    lines = [ln.strip() for ln in tail.splitlines() if ln.strip()]
+    if not lines:
+        return False
+    result_at = tool_at = -1
+    for i, raw in enumerate(lines):
+        ln = re.sub(r"\x1b\[[0-9;]*m", "", raw).strip()
+        if re.match(r"^(?:RESULT:|EXIT:)", ln):
+            result_at = i
+        if re.match(r"^(?:\$ |% |◈ )", ln):
+            tool_at = i
+    return result_at > tool_at
+
+
 def delegated_live():
     """Background subagents that are still running, newest last."""
     out = []
@@ -3733,9 +3762,11 @@ def delegated_live():
                 rec = json.load(fh)
         except (OSError, ValueError):
             continue
+        log = rec.get("log", "")
+        if _delegated_done(log):
+            continue
         if not _pid_alive(rec.get("pid")):
             continue
-        log = rec.get("log", "")
         age = size = None
         try:
             st = os.stat(os.path.join(LOGS, log + ".log"))
