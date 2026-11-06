@@ -1977,13 +1977,9 @@ def grid():
                 "grounding": jk in kb_set or ak in kb_set,
                 "documents": ck in cv_set or key in cv_set, "applied": bool(applied)}
     running = set()
-    if WQ:
-        try:
-            for k in WQ.live_tasks():
-                co, _, role = k.partition("|")
-                running.add((co.strip().lower(), role.strip().lower()))
-        except Exception:
-            running = set()
+    for k in _live_task_keys():
+        co, _, role = k.partition("|")
+        running.add((co.strip().lower(), role.strip().lower()))
     out = []
     seen = set()
     for r in apps:
@@ -2135,13 +2131,9 @@ def task_log_items(limit=80):
     .log.gz is reported once, from the live file.
     """
     running = {}
-    if WQ:
-        try:
-            for k in WQ.live_tasks():
-                co, _, role = k.partition("|")
-                running[f"{co}-{role}".translate(str.maketrans(" /|", "___"))] = True
-        except Exception:
-            pass
+    for k in _live_task_keys():
+        co, _, role = k.partition("|")
+        running[f"{co}-{role}".translate(str.maketrans(" /|", "___"))] = True
     found = {}
     try:
         files = os.listdir(LOGS)
@@ -2200,7 +2192,7 @@ def _web_build():
 def live():
     _act_load()
     active = bool(WQ and WQ.runner_active())
-    running = sorted(WQ.live_tasks()) if WQ else []
+    running = list(_live_task_keys())
     tail_name, tail = "", []
     if running:
         cand = []
@@ -4746,6 +4738,35 @@ def _dir_sig(path):
         return "0"
 
 
+_LIVE_TASKS = {"t": 0.0, "log": None, "keys": ()}
+
+
+def _live_task_keys():
+    """Keys of the tasks an agent is working on right now, cached.
+
+    Scanning every process for every SSE tick is wasteful, so the scan is
+    reused for a few seconds unless a log file changed (which is what happens
+    when a task starts or stops).
+    """
+    now = time.time()
+    try:
+        log_sig = max((os.stat(os.path.join(LOGS, f)).st_mtime_ns
+                       for f in os.listdir(LOGS) if f.endswith(".log")), default=0)
+    except OSError:
+        log_sig = 0
+    c = _LIVE_TASKS
+    if c["log"] is not None and log_sig == c["log"] and now - c["t"] < 6:
+        return c["keys"]
+    keys = ()
+    if WQ:
+        try:
+            keys = tuple(sorted(WQ.live_tasks()))
+        except Exception:
+            keys = ()
+    c.update(t=now, log=log_sig, keys=keys)
+    return keys
+
+
 def _revision():
     """Cheap fingerprints for the grid and the live strip.
 
@@ -4760,12 +4781,8 @@ def _revision():
         sh.update((path + _stat_sig(path)).encode())
     for path in _STATE_DIRS:
         sh.update((path + _dir_sig(path)).encode())
-    if WQ:
-        try:
-            for key in sorted(WQ.live_tasks()):
-                sh.update(key.encode())
-        except Exception:
-            pass
+    for key in _live_task_keys():
+        sh.update(key.encode())
     lh = hashlib.blake2s(digest_size=10)
     for path in _LIVE_FILES:
         lh.update((path + _stat_sig(path)).encode())
@@ -4894,13 +4911,9 @@ class H(BaseHTTPRequestHandler):
 
     def _task_names(self):
         out = {}
-        if WQ:
-            try:
-                for k in WQ.live_tasks():
-                    co, _, role = k.partition("|")
-                    out[f"{co}-{role}".translate(str.maketrans(" /|", "___"))] = k.replace("|", " — ")
-            except Exception:
-                pass
+        for k in _live_task_keys():
+            co, _, role = k.partition("|")
+            out[f"{co}-{role}".translate(str.maketrans(" /|", "___"))] = k.replace("|", " — ")
         return out
 
     def _logs_page(self):
