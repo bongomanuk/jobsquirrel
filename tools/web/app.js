@@ -3200,7 +3200,7 @@ function setSpin(v) {
   // the nut appears on send, then liveTick keeps it accurate.
   const l = $('#live');
   if (l) {
-    if (v && !LIVE_BUSY) l.innerHTML = NUT + esc('● agent working…');
+    if (v && !LIVE_BUSY) l.textContent = 'agent working…';
     else if (!v && !LIVE_BUSY) l.textContent = '○ idle';
   }
 }
@@ -3334,6 +3334,14 @@ function toolSection(grp, start, prefix = '') {
     `<details class="c-tool-raw" data-k="${prefix}r:${start}"><summary>Technical details</summary>${raw}</details></details>`;
 }
 
+function friendlyAgent(text) {
+  return String(text || '')
+    .replace(/Provider request failed with HTTP 429:[^\n]*/g,
+      'The model provider is busy right now (HTTP 429: all replicas at capacity). Pick another model above, or try again in a minute.')
+    .replace(/Provider request failed with HTTP 400:[^\n]*/g,
+      'The model provider rejected that request (HTTP 400). Try again, or pick another model above.');
+}
+
 function renderChat() {
   const el = $('#chat'), segs = (CHAT && CHAT.segments) || [];
   if (!segs.length && !CHAT.running && !ACT) { el.innerHTML = '<span class="muted">ask the agent anything…</span>'; return; }
@@ -3357,12 +3365,11 @@ function renderChat() {
       ? `<div class="c-status">${esc(s.body)} <button class="small c-act-link" onclick="App.showActivity()">Activity</button></div>`
       : `<div class="c-status">${esc(s.body)}</div>`;
     else if (looksLikeDump(s.body)) h += `<details class="c-code" data-k="d:${i}"><summary>output <span class="muted mini">· ${s.body.split('\n').length} lines</span></summary><pre>${esc(s.body)}</pre></details>`;
-    else h += `<div class="md">${collapseCode(md(s.body))}</div>`;
+    else h += `<div class="md">${collapseCode(md(friendlyAgent(s.body)))}</div>`;
     i++;
   }
   if (ACT) h += actionCard(ACT);
   if (DONE_CARDS.length) h += DONE_CARDS.map(doneCard).join('');
-  if (CHAT.running) h += `<div class="working"><span class="muted spin">${ic('loader')} working…</span></div>`;
   el.innerHTML = h;
   el.querySelectorAll('details[data-k]').forEach(d => { d.open = CHAT_OPEN.has(d.getAttribute('data-k')); });
   if (CHAT_STICK) el.scrollTop = el.scrollHeight;             // never yank the reader back down
@@ -3388,10 +3395,9 @@ function roleSegsHTML(segs, running) {
       ? `<div class="c-status">${esc(s.body)} <button class="small c-act-link" onclick="App.showActivity()">Activity</button></div>`
       : `<div class="c-status">${esc(s.body)}</div>`;
     else if (looksLikeDump(s.body)) h += `<details class="c-code" data-k="rc:d:${i}"><summary>output <span class="muted mini">· ${s.body.split('\n').length} lines</span></summary><pre>${esc(s.body)}</pre></details>`;
-    else h += `<div class="md">${collapseCode(md(s.body))}</div>`;
+    else h += `<div class="md">${collapseCode(md(friendlyAgent(s.body)))}</div>`;
     i++;
   }
-  if (running) h += `<div class="working"><span class="muted spin">${ic('loader')} working…</span></div>`;
   return h;
 }
 function rolePoll() {

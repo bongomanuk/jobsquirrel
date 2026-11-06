@@ -23,8 +23,7 @@ header.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:
 .ic{width:15px;height:15px;flex:0 0 auto;stroke:currentColor;fill:none;stroke-width:1.7;
   stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px}
 .ic.lg{width:18px;height:18px;vertical-align:-3px}
-svg.mascot{width:34px;height:34px;overflow:visible;cursor:pointer;animation:bob 2.6s ease-in-out infinite}
-svg.mascot:focus{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+.mascot-slot{width:34px;height:34px;flex:0 0 auto}
 svg .sq-beer{opacity:0}
 /* 3D critters: one transparent canvas over the top bar */
 #critter-canvas{position:fixed;left:0;top:0;pointer-events:none;z-index:70;display:none}
@@ -1034,3 +1033,22 @@ html[data-theme="light"] .ctx-hint{color:#6b7484}
 html[data-theme="light"] .ctx-head{color:#3c4654}
 html[data-theme="light"] .stage.on{background:#e6f0e9;border-color:#bcd8c6;color:#35704e}
 html[data-theme="light"] .dnote.warn{color:#7d6a24;border-left-color:#c9b37a}
+html[data-theme="light"] .term,
+html[data-theme="light"] .role-log,
+html[data-theme="light"] .tasklog-body,
+html[data-theme="light"] pre.doc,
+html[data-theme="light"] .md pre,
+html[data-theme="light"] .act-raw pre,
+html[data-theme="light"] .c-tool>pre,
+html[data-theme="light"] .c-code,
+html[data-theme="light"] .c-tool,
+html[data-theme="light"] .c-tools,
+html[data-theme="light"] .c-raw-step pre{background:#ffffff;color:var(--fg);border-color:var(--line)}
+html[data-theme="light"] .md code,
+html[data-theme="light"] .legend code,
+html[data-theme="light"] .why,
+html[data-theme="light"] .statebox,
+html[data-theme="light"] .missk{background:#f2f4f7;border-color:var(--line);color:var(--fg)}
+html[data-theme="light"] .dock-grip:hover{background:#eef0f4}
+html[data-theme="light"] .chat-hist{background:#fff}
+html[data-theme="light"] .c-step-detail{color:var(--muted)}
