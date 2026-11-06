@@ -148,9 +148,12 @@ async function busyBtn(el, label, fn) {              // visible "working" state 
   $('#live').textContent = '● ' + (label || 'working') + ' …';
   try { return await fn(); } finally { if (el) { el.disabled = false; el.textContent = orig; } }
 }
-function warn(text) {
+function warn(text, title, okLabel, risky = true) {
   return new Promise(res => {
+    const h = $('#warn-title'); if (h) h.textContent = title || 'Confirm action';
     $('#warn-text').innerHTML = md(text);
+    const ok = $('#warn-ok');
+    if (ok) { ok.textContent = okLabel || 'Continue'; ok.classList.toggle('risky', risky !== false); }
     $('#warn').classList.remove('hide');
     $('#warn-ok').onclick = () => { $('#warn').classList.add('hide'); res(true); };
     $('#warn-cancel').onclick = () => { $('#warn').classList.add('hide'); res(false); };
@@ -162,7 +165,7 @@ const LONG = {
     '- It runs in the background — press **⏹ Stop** in the Activity monitor to cancel.\n\nStart the rebuild?',
   update: 'An incremental graph update only processes the new/changed sources, so it is usually much faster ' +
     'than a rebuild — but it still calls the LLM and can take several minutes. Continue?',
-  prepareMany: (n) => `Generating documents for **${n}** roles runs the agent once per role, so it can take ` +
+  prepareMany: (n) => `Generating documents for the **${n}** roles currently shown (expanded groups) runs the agent once per role, so it can take ` +
     `a while and use API tokens.\n\n- Roughly a few minutes **per role**.\n- Nothing is submitted.\n` +
     `- You can **⏹ Stop** it from the Activity monitor.\n\nContinue?`,
   prepareOne: 'Generating documents for one role runs the agent for a few minutes (GraphRAG + CV + letter + gates). ' +
@@ -1069,7 +1072,8 @@ const App = {
   },
   prepareRoles: async (keys) => {
     const n = (keys || []).length;
-    if (n && !await warn(n > 1 ? LONG.prepareMany(n) : LONG.prepareOne)) return;
+    if (n && !await warn(n > 1 ? LONG.prepareMany(n) : LONG.prepareOne,
+      'Prepare documents', 'Prepare', false)) return;
     starting('preparing documents', keys);
     const d = await api('/api/prepare', { keys });
     toast(d.error ? d.error : `preparing ${n} role(s) in the background — watch Activity`, !!d.error);
@@ -1077,28 +1081,43 @@ const App = {
   },
   prepareThis: (key) => App.prepareRoles([key]),
   prepareShown: () => App.prepareRoles(VISIBLE),
-  submitRoles: async (keys) => {
+  submitRoles: async (keys, scope = '') => {
     const n = (keys || []).length;
     if (!n) { toast('no prepared rows to submit — prepare them first', true); return; }
-    if (!await approve(`Submit ${n} prepared application(s) — this SENDS them through the employer's site and is irreversible.`,
+    const where = scope ? ` from ${scope}` : '';
+    if (!await approve(`Submit ${n} prepared application(s)${where} — this SENDS them through the employer's site and is irreversible.`,
       `POST /api/submit { "keys": [${n} role key(s)], "approval_token": "APPROVE_RUN_QUEUE" }`)) return;
     starting('submitting applications', keys);
     const d = await api('/api/submit', { keys, approval_token: 'APPROVE_RUN_QUEUE' });
     toast(d.error ? d.error : `submitting ${n} application(s) in the background — watch Activity`, !!d.error);
     if (!d.error) { openDock(true); App.showActivity(); } else { PENDING.clear(); LIVE_RUNNING = false; liveTick(); }
   },
-  submitThis: (key) => App.submitRoles([key]),
-  submitPrepared: () => App.submitRoles(GRID.filter(r => r.status === 'PREPARED' && VIEW.includes(r.key)).map(r => r.key)),
-  matchShown: async (el) => busyBtn(el, '⏳ recomputing match…', async () => {
-    const d = await api('/api/match/recompute', { keys: VIEW });
-    toast(d.error ? d.error : 'match recomputed for the rows shown', !!d.error);
-    if (!d.error) loadGrid();
-  }),
-  matchThis: async (key, el) => busyBtn(el, '⏳ recomputing…', async () => {
-    const d = await api('/api/match/recompute', { keys: [key] });
-    toast(d.error ? d.error : 'match recomputed', !!d.error);
-    if (!d.error) { await loadGrid(); if (CUR) openDetail(CUR); }
-  }),
+  submitThis: (key) => App.submitRoles([key], 'this role'),
+  submitPrepared: () => App.submitRoles(GRID.filter(r => r.status === 'PREPARED' && VIEW.includes(r.key)).map(r => r.key), 'the current view'),
+  matchShown: async (el) => {
+    const n = (VIEW || []).length;
+    if (!n) { toast('no rows in this view', true); return; }
+    const ok = await warn(
+      `Recompute the CV–job fit for the **${n}** row${n === 1 ? '' : 's'} currently shown.\n\n` +
+      `- Instant: no agent, no model tokens.\n- Updates the **Fit** column for this view.\n\nContinue?`,
+      'Recompute match', 'Recompute', false);
+    if (!ok) return;
+    await busyBtn(el, '⏳ recomputing match…', async () => {
+      const d = await api('/api/match/recompute', { keys: VIEW });
+      toast(d.error ? d.error : 'match recomputed for the rows shown', !!d.error);
+      if (!d.error) loadGrid();
+    });
+  },
+  matchThis: async (key, el) => {
+    const ok = await warn('Recompute the CV–job fit for this role.\n\n- Instant: no agent, no model tokens.\n- Updates the **Fit** column.\n\nContinue?',
+      'Recompute match', 'Recompute', false);
+    if (!ok) return;
+    await busyBtn(el, '⏳ recomputing…', async () => {
+      const d = await api('/api/match/recompute', { keys: [key] });
+      toast(d.error ? d.error : 'match recomputed', !!d.error);
+      if (!d.error) { await loadGrid(); if (CUR) openDetail(CUR); }
+    });
+  },
   stop: async () => { const d = await api('/api/action/stop', {}); toast(d.ok || d.error, !!d.error); },
   togglePause: async (on) => { const d = await api('/api/action/pause', { on }); toast(d.ok || d.error, !!d.error); },
   queueAct: async (action, company, role) => {
@@ -1134,13 +1153,13 @@ const App = {
     if (!d.error) { openDetail(CUR); loadGrid(); }
   },
   updateKB: async () => {
-    if (!await warn(LONG.update)) return;
+    if (!await warn(LONG.update, 'This may take a while', 'Start update')) return;
     starting('updating the knowledge graph');
     const d = await api('/api/action/run', { command: 'kb_update', approval_token: '' });
     toast(d.ok || d.error, !!d.error); if (!d.error) { openDock(true); App.showActivity(); } else { LIVE_RUNNING = false; liveTick(); }
   },
   rebuildKB: async () => {
-    if (!await warn(LONG.rebuild)) return;
+    if (!await warn(LONG.rebuild, 'This may take a while', 'Start rebuild')) return;
     starting('rebuilding the knowledge graph');
     const d = await api('/api/kb/rebuild', {}); toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true); else { LIVE_RUNNING = false; $('#peras').classList.add('hide'); }
   },

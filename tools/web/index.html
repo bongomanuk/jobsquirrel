@@ -23,7 +23,23 @@
     <div class="edge" data-edge="top"><div class="edge-panels" data-edge="top"></div><div class="splitter edge-split" data-edge="top" title="Drag to resize"></div></div>
     <div class="scroll">
       <main>
-        <div class="toolbar">
+        <details id="sg" class="stategraph">
+          <summary>
+            <span class="sg-headline"><b>Application states</b> <span class="muted">the pipeline as a graph</span></span>
+            <span class="sg-live">
+              <span class="livestrip" id="live"><span class="muted">idle — no run active</span></span>
+              <button id="live-log" class="small hide" title="Show the live log of the running task">📜 Live log</button>
+              <span id="runctl" class="runctl hide">
+                <button id="btn-pause" title="Finish the current task, then start nothing new">⏸ Pause</button>
+                <button id="btn-stop" class="risky" title="Stop now: no new tasks, terminate the in-flight work">⏹ Stop</button>
+              </span>
+            </span>
+            <span class="metrics" id="metrics"></span>
+          </summary>
+          <div id="sg-body" class="sg-body"></div>
+        </details>
+        <div class="gridcard">
+        <div class="toolbar grid-toolbar">
           <input id="q" placeholder="search company / role / ATS / notes…" style="flex:1;max-width:300px">
           <details id="filters" class="filters">
             <summary>Filters <span id="filt-n" class="muted"></span></summary>
@@ -67,30 +83,15 @@
               <button id="fclear" class="small" type="button">Clear filters</button>
             </div>
           </details>
-          <button id="export" class="small">Export CSV</button>
-          <button id="grouping" class="small" title="Group rows by bucket (default) or show one flat sorted list — clicking a column header switches to the flat view">☰ Grouped</button>
-          <button id="groups" class="small" title="Create, rename or delete groups (campaigns)">🏷 Groups</button>
-          <button id="a-gmail-review" class="small" title="Emails that could not be confidently classified or matched; review and mark Done">📬 Review <b id="review-count">0</b></button>
-          <button id="a-prepare-shown" title="Generate documents for the rows in this view (expanded groups) — runs the agent per role, a few minutes each; nothing is submitted">⚡ Prepare shown</button>
-          <button id="a-submit-shown" class="risky" title="Submit the PREPARED rows in this view, with the documents already generated — sends applications; needs approval">🚀 Submit prepared</button>
-          <button id="a-match" class="small" title="Recompute CV–job match for the rows in this view — instant (no agent)">↻ Match</button>
-          <button id="legend" class="small" title="What the columns, marks and statuses mean">ⓘ Legend</button>
+          <button id="export">Export CSV</button>
+          <button id="grouping" title="Group rows by bucket (default) or show one flat sorted list — clicking a column header switches to the flat view">☰ Grouped</button>
+          <button id="groups" title="Create, rename or delete groups (campaigns)">🏷 Groups</button>
+          <button id="a-gmail-review" title="Emails that could not be confidently classified or matched; review and mark Done">📬 Review <b id="review-count">0</b></button>
+          <button id="a-prepare-shown" title="Generate documents for the rows currently shown (expanded groups) — runs the agent per role, a few minutes each; nothing is submitted. You will be asked to confirm.">⚡ Prepare</button>
+          <button id="a-submit-shown" class="risky" title="Submit the PREPARED rows currently shown, with the documents already generated — sends applications. You will be asked to confirm.">🚀 Submit</button>
+          <button id="a-match" title="Recompute CV–job match for the rows currently shown — instant (no agent). You will be asked to confirm.">↻ Match</button>
+          <button id="legend" title="What the columns, marks and statuses mean">ⓘ Legend</button>
         </div>
-        <details id="sg" class="stategraph">
-          <summary>
-            <span class="sg-headline"><b>Application states</b> <span class="muted">the pipeline as a graph</span></span>
-            <span class="sg-live">
-              <span class="livestrip" id="live"><span class="muted">idle — no run active</span></span>
-              <button id="live-log" class="small hide" title="Show the live log of the running task">📜 Live log</button>
-              <span id="runctl" class="runctl hide">
-                <button id="btn-pause" title="Finish the current task, then start nothing new">⏸ Pause</button>
-                <button id="btn-stop" class="risky" title="Stop now: no new tasks, terminate the in-flight work">⏹ Stop</button>
-              </span>
-            </span>
-            <span class="metrics" id="metrics"></span>
-          </summary>
-          <div id="sg-body" class="sg-body"></div>
-        </details>
         <div class="gridwrap">
           <table id="grid">
         <thead><tr>
@@ -108,6 +109,7 @@
         </tr></thead>
             <tbody id="rows"></tbody>
           </table>
+        </div>
         </div>
       </main>
     </div>
@@ -314,10 +316,10 @@
 </div></div>
 
 <div id="warn" class="modal hide"><div class="modal-box">
-  <h2 style="text-transform:none;letter-spacing:0;color:var(--fg)">This may take a while</h2>
+  <h2 id="warn-title" style="text-transform:none;letter-spacing:0;color:var(--fg)">Confirm action</h2>
   <div id="warn-text" class="md muted"></div>
   <div class="row" style="justify-content:flex-end;margin-top:16px">
-    <button id="warn-cancel">Cancel</button><button id="warn-ok" class="risky">Start anyway</button></div>
+    <button id="warn-cancel">Cancel</button><button id="warn-ok" class="risky">Continue</button></div>
 </div></div>
 
 <div id="approve" class="modal hide"><div class="modal-box">

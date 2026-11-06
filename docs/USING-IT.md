@@ -28,7 +28,7 @@ built-in procedures:
 | *"What's in the queue?"* | shows pending rows and the order they'll run |
 | *"Prepare documents for the top 5, don't send"* | `REVIEW=1 … run_queue.sh`: builds + gates, records `PREPARED` |
 | *"Show me only contract roles"* | the toolbar's **any type** filter (full-time / part-time / contract / consultant / freelance / internship / temporary / unknown); set a row's type in its drawer |
-| *"Submit the prepared ones"* | *🚀 Submit prepared* (grid) or *Submit this application* (drawer): reuses the already-gated CV/letter and applies — two-step confirmation (`APPROVE_RUN_QUEUE`) |
+| *"Submit the prepared ones"* | *🚀 Submit* (grid) or *Submit this application* (drawer): reuses the already-gated CV/letter and applies — two-step confirmation (`APPROVE_RUN_QUEUE`) |
 | *"Run the pipeline"* / *"Apply to the queue"* | `PARALLEL=3 bash tools/run_queue.sh`, most senior first |
 | *"Use one fixed CV for these"* | `LIGHT=1 FIXED_CV=<path> … run_queue.sh` |
 | *"Apply to just this one: <url>"* | the per-role manual procedure (`AGENTS.md` §4) |
@@ -102,8 +102,9 @@ Everything is observable. Useful things to ask for, or run yourself:
     credits). Clicking the **health** pill in the header opens About and scrolls to the checks.
     Every field saves on change; there are no save buttons.
   - The header has three destinations: **Applications**, **Knowledge** and **Settings**. The
-    page-level actions are scoped to the grid: **Prepare shown** (REVIEW=1, no submits),
-    **Submit prepared** and **Review**. A `PREPARED` row's drawer has **Submit this application**.
+    page-level actions live in the grid card's action bar: **Prepare** (REVIEW=1, no submits),
+    **Submit** and **Review**. Prepare, Submit and Match each show a confirmation dialog with
+    the scope and effect before they run. A `PREPARED` row's drawer has **Submit this application**.
     Submitting uses the documents already generated — no re-generation — and needs a two-step
     confirmation (`APPROVE_RUN_QUEUE`). Every action needs the per-session token (anti-CSRF) and
     the UI binds to `127.0.0.1` only; the chat agent inherits the same approval gates — it cannot

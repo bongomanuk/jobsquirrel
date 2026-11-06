@@ -198,16 +198,20 @@ same record is never duplicated across separate pages.
   the full check list, version and instance details) · three destinations: **📋 Applications**,
   **🕸️ Knowledge** and **⚙ Settings**. Version, build/update status, logs and the
   About/credits live in Settings. The broad Prepare / Run Submissions actions are
-  not in the header; the grid toolbar has scoped **Prepare shown** and **Submit prepared**, and
+  not in the header; the grid card's action bar has scoped **Prepare** and **Submit**, and
   a `PREPARED` row's drawer has **Submit this application**.
-- **Toolbar:** search (company/role/ATS), status filter, queue filter, **Export CSV**,
-  **⚡ Prepare shown** (generate documents, review-only), **🚀 Submit prepared** (gated),
-  **📬 Review** (Gmail review queue and its triage filter) and **↻ Match** (recompute) for the rows shown.
+- **Grid card:** the grid, its search/filter/view controls and its actions are one bordered
+  card. The action bar sits directly above the table (not floating at the top of the page) with
+  consistently sized buttons: **Export CSV**, **☰ Grouped**, **🏷 Groups**, **📬 Review**,
+  **⚡ Prepare** (generate documents for the rows currently shown; review-only),
+  **🚀 Submit** (submit the prepared rows in this view; approval-gated), **↻ Match** (recompute
+  fit) and **ⓘ Legend**. Prepare, Submit and Match each show a plain-language confirmation
+  dialog with the scope and effect before they run.
 - **Application states header:** the section carries the bucket filter chips
   (**Active · Focus · Probably scams · Shelved · Needs you · Prepared · Ongoing · To apply · Done · All**)
   with live counts, plus the live-tail line (`/api/live`) and the run controls. Click a chip to filter the
   grid to that bucket; the active chip is highlighted. There is no separate metric strip, and the section
-  sits directly above the grid.
+  sits directly above the grid card.
 - **Process control:** while a run is active the Application states header shows **⏸ Pause** (workers
   finish the current task then wait) and **⏹ Stop** (no new tasks; terminate the in-flight action).
   Backend: `POST /api/action/pause` + `/api/action/stop` (`state/queue.pause` / `state/queue.stop`).

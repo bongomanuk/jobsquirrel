@@ -322,6 +322,12 @@ tr.grp .grp-n .countlink:hover{color:var(--accent)}
 .livestrip{flex:0 1 auto;min-width:0;max-width:360px;color:var(--muted);font-family:var(--mono);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .runctl{display:flex;gap:6px;flex:0 0 auto}
 .toolbar{display:flex;gap:6px;align-items:center;margin:14px 0 10px;flex-wrap:wrap}
+.gridcard{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+.gridcard>.gridwrap{border:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius)}
+.grid-toolbar{margin:0;padding:7px 10px;background:var(--surface);border-bottom:1px solid var(--line);border-radius:var(--radius) var(--radius) 0 0}
+.grid-toolbar button,.grid-toolbar .filters>summary{height:32px;padding:0 11px;font-size:13px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.grid-toolbar button.small{height:32px;padding:0 11px;font-size:13px}
+.grid-toolbar input{height:32px;min-height:32px}
 .gridwrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius)}
 /* the grid shrinks with the pane but never wraps: fixed layout + ellipsis */
 #grid{table-layout:fixed}

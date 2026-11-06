@@ -226,7 +226,7 @@ LIGHT=1 FIXED_CV=documents/archetypes/<Prefix>_CV_<Archetype>.docx PARALLEL=3 ba
 **E. One role, manually**: follow §4 (for a single URL or a retry).
 
 **F. Submit what's already prepared** (reuse the gated CV/letter, no re-generation)
-The dashboard's **🚀 Submit prepared** (grid) / **Submit this application** (a `PREPARED`
+The dashboard's **🚀 Submit** (grid) / **Submit this application** (a `PREPARED`
 row's drawer) build a scoped queue and run `run_queue.sh` in **submit-prepared mode**
 (`PREPARED=1`) over just those rows: no GraphRAG, no CV/letter generation, no alignment
 gate — only the pre-submit gate (to re-stamp the receipt) and then the browser apply.
