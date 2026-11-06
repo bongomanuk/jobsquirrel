@@ -1122,6 +1122,12 @@ const App = {
       if (!d.error) { await loadGrid(); if (CUR) openDetail(CUR); }
     });
   },
+  crittersOn: () => { try { return localStorage.getItem('ui.critters') !== '0'; } catch (e) { return true; } },
+  toggleCritters: (on) => {
+    try { localStorage.setItem('ui.critters', on ? '1' : '0'); } catch (e) {}
+    window.dispatchEvent(new CustomEvent('critters-toggle', { detail: { off: !on } }));
+    toast(on ? 'squirrel animation on' : 'squirrel animation off', false);
+  },
   stop: async () => { const d = await api('/api/action/stop', {}); toast(d.ok || d.error, !!d.error); },
   togglePause: async (on) => { const d = await api('/api/action/pause', { on }); toast(d.ok || d.error, !!d.error); },
   queueAct: async (action, company, role) => {
@@ -4059,6 +4065,11 @@ function setAbout(b) {
         target="_blank" rel="noopener">release notes ↗</a>
     </div>
     <div id="about-updname" class="muted mini"></div>
+    <h4>Interface</h4>
+    <label class="row mini" title="The squirrel on the titlebar, his friends, the acorns and the beer">
+      <input type="checkbox" id="critters-on"${App.crittersOn() ? ' checked' : ''}
+        onchange="App.toggleCritters(this.checked)"> Stupid Squirrel Animation
+    </label>
     <h4 id="about-health">Health</h4>
     <div id="about-health-box" class="health-box"><span class="muted">checking the system…</span></div>
     <h4>This instance</h4>
