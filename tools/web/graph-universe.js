@@ -752,7 +752,7 @@ function islandTitle(c) {
   return t || (c && c.name) || '';
 }
 
-function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function esc(s) { return String(s == null ? '' : s).replace(/[—–]/g, '-').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
 /* ------------------------------------------------------------------ loop --- */
 
@@ -1054,7 +1054,7 @@ function renderNodeSide(d) {
       ${esc(n.title)} <span>${esc(n.type)} · ${n.weight}</span></button>`).join('')
     || '<span class="muted mini">No direct neighbours.</span>';
   const conns = (d.connections || []).slice(0, 8).map(c =>
-    `<div class="uni-conn">${esc(c.source)} → ${esc(c.target)} <span>${c.weight}</span></div>`).join('')
+    `<div class="uni-conn">${esc(c.source)} to ${esc(c.target)} <span>${c.weight}</span></div>`).join('')
     || '<span class="muted mini">No strong local connections.</span>';
   box.innerHTML = `<div class="uni-kind">${esc(d.class_label || d.type || 'entity')} · impact ${Math.round((d.importance || 0) * 100)}%${d.grounded ? ' · grounded' : ''}</div>
     <h3>${esc(d.title)}</h3>

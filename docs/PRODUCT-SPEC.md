@@ -205,8 +205,8 @@ same record is never duplicated across separate pages.
   consistently sized buttons: **Export CSV**, **☰ Grouped**, **🏷 Groups**, **📬 Review**,
   **⚡ Prepare** (generate documents for the rows currently shown; review-only),
   **🚀 Submit** (submit the prepared rows in this view; approval-gated), **↻ Match** (recompute
-  fit) and **ⓘ Legend**. Prepare, Submit and Match each show a plain-language confirmation
-  dialog with the scope and effect before they run.
+  fit) and **ⓘ Legend**. Prepare, Submit, Match and Export CSV each show a plain-language
+  confirmation dialog with the scope and effect before they run.
 - **Application states header:** the section carries the bucket filter chips
   (**Active · Focus · Probably scams · Shelved · Needs you · Prepared · Ongoing · To apply · Done · All**)
   with live counts, plus the live-tail line (`/api/live`) and the run controls. Click a chip to filter the
@@ -420,14 +420,15 @@ The full guide is **[KNOWLEDGE-GRAPH.md](KNOWLEDGE-GRAPH.md)**; this is the
 interface contract.
 
 - **Full-page workspace.** Universe and Map fill the area below the header; the
-  job grid is out of the way. The **Universe** / **Map** toggle inside the page
+  job grid is out of the way. One toolbar holds the title, the **Universe** /
+  **Map** toggle, the stats, the search controls and the actions. The toggle
   switches views (Universe is no longer a separate top-bar button).
 - **Universe.** The whole index: level-0 communities as islands, weighted
-  importance, community nebulae, zoom-tiered labels, a 1–3 hop focus slider and
+  importance, community nebulae, zoom-tiered labels, a 1 to 3 hop focus slider and
   the same point-star renderer as the Map.
 - **Map.** The same renderer drilled down through **Topics** (ontology classes),
   **Communities** (the generated hierarchy), **Entities** and **Ego** networks.
-  The toolbar has a 1–3 hop focus selector and breadcrumbs.
+  The same toolbar has a 1 to 3 hop focus selector; breadcrumbs appear below it.
 - **Focus and fade.** Selecting an entity frames it and its direct neighbours,
   lights the selected hops, dims the rest and fades back after roughly four
   seconds plus a one-second fade. The selected node keeps its marker, size and

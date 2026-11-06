@@ -103,8 +103,8 @@ Everything is observable. Useful things to ask for, or run yourself:
     Every field saves on change; there are no save buttons.
   - The header has three destinations: **Applications**, **Knowledge** and **Settings**. The
     page-level actions live in the grid card's action bar: **Prepare** (REVIEW=1, no submits),
-    **Submit** and **Review**. Prepare, Submit and Match each show a confirmation dialog with
-    the scope and effect before they run. A `PREPARED` row's drawer has **Submit this application**.
+    **Submit** and **Review**. Prepare, Submit, Match and Export CSV each show a confirmation
+    dialog with the scope and effect before they run. A `PREPARED` row's drawer has **Submit this application**.
     Submitting uses the documents already generated — no re-generation — and needs a two-step
     confirmation (`APPROVE_RUN_QUEUE`). Every action needs the per-session token (anti-CSRF) and
     the UI binds to `127.0.0.1` only; the chat agent inherits the same approval gates — it cannot
@@ -162,7 +162,7 @@ should I do next?”.
   CAPTCHA/2FA and other human walls, plus invites and offers.
 - **Shelved** is a view overlay, not a status. Right-click a row → **Shelve for later**; its
   status, notes, documents and provenance stay unchanged, and it moves to the **Shelved** bucket
-  and the **SHELVED** node in the state graph. Unshelve from the same menu. The node sits next to
+  at the bottom of the grid and the **SHELVED** node in the state graph. Unshelve from the same menu. The node sits next to
   SCAMS but is independent of it.
 
 | Status | Sub-states | What it means |
@@ -210,8 +210,9 @@ follow-ups. See **[SCAMS.md](SCAMS.md)** for the full list and what to do.
 ## The Knowledge workspace
 
 The top-bar **Knowledge** page is the full-page view of your knowledge base.
-Inside it, the **Universe** / **Map** toggle switches views: **Universe** shows
-the whole graph as theme islands; **Map** drills through
+It uses one toolbar for the title, the **Universe** / **Map** toggle, search,
+view controls and actions. **Universe** shows the whole graph as theme islands;
+**Map** drills through
 **Topics** (ontology classes), **Communities** (the generated hierarchy),
 **Entities** and **Ego** networks. Click an entity for its description, sources,
 neighbours and strongest connections; double-click opens its ego network.

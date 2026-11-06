@@ -46,11 +46,11 @@ description: Jobsquirrel is an open, self-hosted job-application agent: it finds
 ## A look at it
 
 <div class="js-shots">
-  <div class="js-shot"><img src="screenshots/grid.png" alt="Application grid"><span>The grid — every role, its stage and its fit.</span></div>
-  <div class="js-shot"><img src="screenshots/drawer.png" alt="Role detail drawer"><span>The role drawer — stage, gates, evidence, one-click action.</span></div>
-  <div class="js-shot"><img src="screenshots/graph-universe.png" alt="Knowledge universe"><span>The knowledge universe — a central career hub, theme islands and weighted stars.</span></div>
-  <div class="js-shot"><img src="screenshots/settings.png" alt="Settings About with health checks"><span>Settings → About — full health, version and this instance.</span></div>
-  <div class="js-shot"><img src="screenshots/evidence.png" alt="Evidence overlay"><span>Evidence — every CV line scored against the ad and the graph.</span></div>
+  <div class="js-shot"><img src="screenshots/grid.png" alt="Application grid"><span>The grid: every role, its stage and its fit.</span></div>
+  <div class="js-shot"><img src="screenshots/drawer.png" alt="Role detail drawer"><span>The role drawer: stage, gates, evidence, one-click action.</span></div>
+  <div class="js-shot"><img src="screenshots/graph-universe.png" alt="Knowledge universe"><span>The knowledge universe: a central career hub, theme islands and weighted stars.</span></div>
+  <div class="js-shot"><img src="screenshots/settings.png" alt="Settings About with health checks"><span>Settings → About: full health, version and this instance.</span></div>
+  <div class="js-shot"><img src="screenshots/evidence.png" alt="Evidence overlay"><span>Evidence: every CV line scored against the ad and the graph.</span></div>
 </div>
 
 ## What the forest says

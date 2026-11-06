@@ -1,22 +1,23 @@
-/* Jobsquirrel WebUI — single master data grid + detail drawer (zero-build) */
+/* Jobsquirrel WebUI. Single master data grid + detail drawer (zero-build) */
 const TOKEN = document.body.dataset.sessionToken;
 const $ = (s) => document.querySelector(s);
-const esc = (s) => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const esc = (s) => (s == null ? '' : String(s).replace(/[—–]/g, '-')).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const plain = (s) => String(s == null ? '' : s).replace(/[—–]/g, '-');
 const STATUS_HELP = {
-  QUEUED: 'In the apply queue — nothing done yet; applied when you run the queue',
-  DRAFTING: 'In progress — the ad/keywords are saved but no finished documents yet',
-  'NO RESULT': 'A run finished but produced nothing (no ad, no documents, no application) — re-prepare it, or remove it',
-  SUBMITTED: 'Application sent — awaiting a reply',
+  QUEUED: 'In the apply queue: nothing done yet; applied when you run the queue',
+  DRAFTING: 'In progress: the ad/keywords are saved but no finished documents yet',
+  'NO RESULT': 'A run finished but produced nothing (no ad, no documents, no application): re-prepare it, or remove it',
+  SUBMITTED: 'Application sent: awaiting a reply',
   IN_PROGRESS: 'Application in progress (multi-step form being completed)',
-  INTERVIEW: 'Interview held — awaiting the outcome',
-  SCHEDULED: 'Interview booked but not happened yet — prepare for it',
-  INVITED: 'Interview requested — not booked yet; reply and arrange a time',
+  INTERVIEW: 'Interview held: awaiting the outcome',
+  SCHEDULED: 'Interview booked but not happened yet: prepare for it',
+  INVITED: 'Interview requested: not booked yet; reply and arrange a time',
   OFFER: 'Offer received',
   REJECTED: 'Rejected / declined by the employer',
-  BLOCKED: 'Blocked — CAPTCHA, bot check or a hard wall stopped submission',
-  MANUAL: 'Needs you — 2FA/CAPTCHA, or a reply that could not be auto-matched',
+  BLOCKED: 'Blocked: CAPTCHA, bot check or a hard wall stopped submission',
+  MANUAL: 'Needs you: 2FA/CAPTCHA, or a reply that could not be auto-matched',
   PREPARED: 'Documents generated and gated, but not submitted yet',
-  CLOSED: 'Closed / withdrawn / expired — no further action',
+  CLOSED: 'Closed / withdrawn / expired: no further action',
 };
 // Recruitment scams: the rule is shown with every warning, and the marker is a
 // warning, never an automatic rejection (a human decides).
@@ -27,41 +28,41 @@ function scamBox(sc) {
   const level = SCAM_LEVELS.includes(sc.level) ? sc.level : 'medium';
   const sigs = (sc.signals || []).filter(x => x.level === sc.level).slice(0, 5);
   return `<div class="scambox ${esc(level)}"><b>⚠ Scam check: ${esc(level.toUpperCase())}</b>` +
-    (sigs.length ? `<ul>${sigs.map(x => `<li><b>${esc(x.key)}</b> — ${esc(x.why)} <span class="muted">${esc(x.advice)}</span></li>`).join('')}</ul>` : '') +
+    (sigs.length ? `<ul>${sigs.map(x => `<li><b>${esc(x.key)}</b>: ${esc(x.why)} <span class="muted">${esc(x.advice)}</span></li>`).join('')}</ul>` : '') +
     `<div class="muted mini">${esc(SCAM_RULE)}</div></div>`;
 }
 const QUEUE_HELP = {
   pending: 'Queued to apply (state/queue.tsv)',
   human: 'Handed to you for a human step (state/queue-human.tsv)',
-  retry: 'Failed once — queued to retry',
-  finished: 'Finished — the runner processed it (moved to queue.done)',
+  retry: 'Failed once: queued to retry',
+  finished: 'Finished: the runner processed it (moved to queue.done)',
 };
 /* Lifecycle buckets: the primary way to read the grid, no fine filtering needed.
    Each row lands in exactly one bucket, by urgency: done > needs > ongoing > pipeline. */
 const BUCKETS = [
   { k: 'active', label: 'Active', hint: 'Everything not finished: probable scams + needs you + prepared + ongoing + to apply' },
   { k: 'focus', label: 'Focus', hint: 'Roles that pay at least your target and fit at least 70%; also shows high-fit roles with no pay figure' },
-  { k: 'scams', label: 'Probably scams', hint: 'A HIGH or MEDIUM scam signal on the advert or a message — verify the employer before replying or applying' },
-  { k: 'shelved', label: 'Shelved', hint: 'Parked for later — the original status is unchanged' },
+  { k: 'scams', label: 'Probably scams', hint: 'A HIGH or MEDIUM scam signal on the advert or a message. Verify the employer before replying or applying' },
   { k: 'needs', label: 'Needs you', hint: 'Replies, interviews to book, assessments, offers or manual steps' },
-  { k: 'prepared', label: 'Prepared', hint: 'Documents generated and gated — review or submit' },
-  { k: 'ongoing', label: 'Ongoing', hint: 'Submitted, in progress or interviewing — waiting on the employer' },
+  { k: 'prepared', label: 'Prepared', hint: 'Documents generated and gated. Review or submit' },
+  { k: 'ongoing', label: 'Ongoing', hint: 'Submitted, in progress or interviewing. Waiting on the employer' },
   { k: 'pipeline', label: 'To apply', hint: 'Queued, drafting, blocked or with no result yet' },
-  { k: 'done', label: 'Done', hint: 'Rejected or closed — finished, no action' },
+  { k: 'done', label: 'Done', hint: 'Rejected or closed. Finished, no action' },
+  { k: 'shelved', label: 'Shelved', hint: 'Parked for later. The original status is unchanged' },
   { k: 'all', label: 'All', hint: 'Every row, including finished ones' },
 ];
 const BUCKET_GROUPS = [
   { k: 'scams', title: 'Probably scams', desc: 'verify the employer before replying or applying' },
-  { k: 'shelved', title: 'Shelved', desc: 'parked for later — original status kept' },
   { k: 'needs', title: 'Needs you', desc: 'reply, book a time, complete an assessment, or clear a manual step' },
-  { k: 'prepared', title: 'Prepared', desc: 'documents ready — review or submit' },
+  { k: 'prepared', title: 'Prepared', desc: 'documents ready. Review or submit' },
   { k: 'ongoing', title: 'Ongoing', desc: 'waiting on the employer' },
   { k: 'pipeline', title: 'To apply', desc: 'queued, drafting, or blocked before applying' },
-  { k: 'done', title: 'Done', desc: 'rejected or closed — no action' },
+  { k: 'done', title: 'Done', desc: 'rejected or closed. No action' },
+  { k: 'shelved', title: 'Shelved', desc: 'parked for later. Original status kept' },
 ];
 const FOCUS_GROUPS = [
   { k: 'focus_pay', title: 'Pays well + fits', desc: 'known pay at or above your target · strong fit', test: r => r.focus },
-  { k: 'focus_unknown', title: 'High fit, pay not stated', desc: 'strong fit — check the ad or set a salary', test: r => r.focus_unknown },
+  { k: 'focus_unknown', title: 'High fit, pay not stated', desc: 'strong fit: check the ad or set a salary', test: r => r.focus_unknown },
 ];
 const NEEDS_STATUS = new Set(['MANUAL', 'OFFER']);
 // Sub-states that are genuinely waiting on the candidate, not the employer.
@@ -129,7 +130,7 @@ function starting(label, keys) {
   $('#peras').classList.add('hide');      // background work lives in Activity, not a blocking modal
   (keys || []).forEach(k => PENDING.add(k));
   const rc = $('#runctl'); if (rc) rc.classList.remove('hide');
-  const l = $('#live'); if (l) l.innerHTML = NUT + esc('● ' + (label || 'working') + ' — starting…');
+  const l = $('#live'); if (l) l.innerHTML = NUT + esc('● ' + (label || 'working') + ': starting…');
   ACT = { name: label || 'working', running: true, summary: {}, log: [] };
   ACT_SIG = ''; ACT_IGNORE = LAST_ACT_NAME;
   CHAT_STICK = true;
@@ -145,7 +146,7 @@ function working(label) {                         // immediate "something is hap
 async function busyBtn(el, label, fn) {              // visible "working" state on a button
   const orig = el ? el.textContent : '';
   if (el) { el.disabled = true; el.textContent = label; }
-  $('#live').textContent = '● ' + (label || 'working') + ' …';
+  $('#live').textContent = plain('● ' + (label || 'working') + ' …');
   try { return await fn(); } finally { if (el) { el.disabled = false; el.textContent = orig; } }
 }
 function warn(text, title, okLabel, risky = true) {
@@ -161,15 +162,15 @@ function warn(text, title, okLabel, risky = true) {
 }
 const LONG = {
   rebuild: 'Rebuilding the knowledge graph re-indexes **every** source document with the LLM.\n\n' +
-    '- It can take **20–30+ minutes** (longer for a big corpus).\n- It uses API tokens/quota.\n' +
-    '- It runs in the background — press **⏹ Stop** in the Activity monitor to cancel.\n\nStart the rebuild?',
+    '- It can take **20-30+ minutes** (longer for a big corpus).\n- It uses API tokens/quota.\n' +
+    '- It runs in the background: press **⏹ Stop** in the Activity monitor to cancel.\n\nStart the rebuild?',
   update: 'An incremental graph update only processes the new/changed sources, so it is usually much faster ' +
-    'than a rebuild — but it still calls the LLM and can take several minutes. Continue?',
+    'than a rebuild: but it still calls the LLM and can take several minutes. Continue?',
   prepareMany: (n) => `Generating documents for the **${n}** roles currently shown (expanded groups) runs the agent once per role, so it can take ` +
     `a while and use API tokens.\n\n- Roughly a few minutes **per role**.\n- Nothing is submitted.\n` +
     `- You can **⏹ Stop** it from the Activity monitor.\n\nContinue?`,
   prepareOne: 'Generating documents for one role runs the agent for a few minutes (GraphRAG + CV + letter + gates). ' +
-    'It runs in the background — nothing is submitted. Continue?',
+    'It runs in the background: nothing is submitted. Continue?',
 };
 window.perasClose = () => $('#peras').classList.add('hide');
 
@@ -183,7 +184,7 @@ function toast(msg, bad) {
   let t = document.getElementById('toast');
   if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
   t.className = 'toast ' + (bad ? 'bad' : 'ok') + ' show';   // one notification surface, never a stack
-  t.textContent = msg;
+  t.textContent = plain(msg);
   clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => t.classList.remove('show'), 6000);
 }
@@ -265,7 +266,7 @@ function assetVer() {
 const App = {
   async run(command) {
     if (command === 'submit_queue') {
-      const ok = await approve('Run the apply queue — this SUBMITS applications and is irreversible.',
+      const ok = await approve('Run the apply queue: this SUBMITS applications and is irreversible.',
         'POST /api/action/run { "command": "submit_queue", "approval_token": "APPROVE_RUN_QUEUE" }');
       if (!ok) return;
     }
@@ -396,7 +397,7 @@ const App = {
     const confirm = $('#cl-confirm').value.trim();
     if (confirm.toUpperCase() !== 'CLEAR') return toast('type CLEAR to confirm', true);
     const what = scope === 'full'
-      ? 'every application, every document AND the knowledge-graph index (a rebuild takes 20–30 minutes)'
+      ? 'every application, every document AND the knowledge-graph index (a rebuild takes 20-30 minutes)'
       : 'the register, queues, drafts, saved job ads and every generated document';
     if (!window.confirm('Delete ' + what + '?\n\nConfig and kb/sources/ are kept.\n' +
       'A safety backup is written to backups/ first, but this cannot be undone from the UI.')) return;
@@ -664,7 +665,7 @@ const App = {
     head.innerHTML = `<b>${d.coverage || 0}% keyword coverage</b> · ${covered.length} matched · ${gaps.length} gaps · ${(d.evidence || []).length} strong evidence cards`;
     const chips = (k, ok) => `<span class="kg-tag" style="border-color:${ok ? 'rgba(34,197,94,.5)' : 'rgba(239,68,68,.5)'};color:${ok ? '#bbf7d0' : '#fecaca'}">${esc(k)}</span>`;
     body.innerHTML = `<div class="muted mini" style="margin:4px 0 6px">Matched requirements</div><div class="row" style="flex-wrap:wrap;gap:4px">${covered.map(k => chips(k, true)).join('') || '<span class="muted mini">none</span>'}</div>
-      <div class="muted mini" style="margin:10px 0 6px">Gaps — not evidenced in the graph</div><div class="row" style="flex-wrap:wrap;gap:4px">${gaps.map(k => chips(k, false)).join('') || '<span class="muted mini">none</span>'}</div>
+      <div class="muted mini" style="margin:10px 0 6px">Gaps: not evidenced in the graph</div><div class="row" style="flex-wrap:wrap;gap:4px">${gaps.map(k => chips(k, false)).join('') || '<span class="muted mini">none</span>'}</div>
       <h4 style="margin:14px 0 4px">Strongest grounded evidence</h4>` +
       (d.evidence || []).map(e => `<div class="enrich-item" style="display:block;padding:8px 0;border-bottom:1px solid var(--line)">
         <b>${esc(e.title)}</b> <span class="mini muted">${esc(e.type)} · impact ${Math.round((e.importance || 0) * 100)}%</span>
@@ -890,7 +891,7 @@ const App = {
     body.innerHTML = `<p class="muted mini">Add a fact or skill to the knowledge base. It is written as a source document, attributed to the employer or project you name, and becomes available to the next rebuild.</p>
       <input id="kg-fact-skill" placeholder="Skill or fact" style="width:100%;margin:4px 0">
       <input id="kg-fact-source" placeholder="Source (employer, project, certification…)" style="width:100%;margin:4px 0">
-      <textarea id="kg-fact-detail" placeholder="Detail / evidence — what did you do, at what scale, with what result?" style="width:100%;height:78px;margin:4px 0"></textarea>
+      <textarea id="kg-fact-detail" placeholder="Detail / evidence: what did you do, at what scale, with what result?" style="width:100%;height:78px;margin:4px 0"></textarea>
       <div class="row"><button onclick="App.addFact()">Add fact</button>
         <button class="small" onclick="App.kgSide('sources')">Manage documents</button></div>
       <p class="muted mini" style="margin-top:8px">A fact is a knowledge-base source, not a graph edit. Rebuild the graph when you want the new evidence in the index and in future CVs.</p>`;
@@ -901,7 +902,7 @@ const App = {
     const detail = (($('#kg-fact-detail') || {}).value || '').trim();
     if (!skill) { toast('name the skill or fact first', true); return; }
     const d = await api('/api/skills/evidence', { skill, source, detail });
-    toast(d.error ? d.error : 'fact added — rebuild the graph to index it', !!d.error);
+    toast(d.error ? d.error : 'fact added: rebuild the graph to index it', !!d.error);
     if (!d.error) { $('#kg-fact-skill').value = ''; $('#kg-fact-source').value = ''; $('#kg-fact-detail').value = ''; }
   },
   kgUpload: async () => {
@@ -1024,10 +1025,10 @@ const App = {
     if (d.delegated) {
       CHAT.running = false; setSpin(false);
       if (d.id && DELEGATED_SEEN) DELEGATED_SEEN.add(d.id);
-      toast('Handed to a background subagent — watch Activity');
+      toast('Handed to a background subagent: watch Activity');
       openDock(true);
       App.showActivity();
-    } else if (d.queued) toast(`queued — the agent is busy (${d.pending} waiting)`);
+    } else if (d.queued) toast(`queued: the agent is busy (${d.pending} waiting)`);
     chatOffset = 0; clearInterval(CHAT_TIMER); CHAT_TIMER = setInterval(chatPoll, 1200);
   },
   chatStop: async () => {
@@ -1048,7 +1049,7 @@ const App = {
     setSpin(false); renderChat(); toast('agent history cleared');
   },
   open: (i) => openDetail(GRID[i]),
-  showTaskLogFor: (company, role) => openTaskLog(taskLogName(company, role), `${company} — ${role}`),
+  showTaskLogFor: (company, role) => openTaskLog(taskLogName(company, role), `${company}: ${role}`),
   bucket: (kind) => {
     clearFilterInputs();
     BUCKET = BUCKETS.some(b => b.k === kind) ? kind : 'active';
@@ -1076,20 +1077,20 @@ const App = {
       'Prepare documents', 'Prepare', false)) return;
     starting('preparing documents', keys);
     const d = await api('/api/prepare', { keys });
-    toast(d.error ? d.error : `preparing ${n} role(s) in the background — watch Activity`, !!d.error);
+    toast(d.error ? d.error : `preparing ${n} role(s) in the background: watch Activity`, !!d.error);
     if (!d.error) { openDock(true); App.showActivity(); } else { PENDING.clear(); LIVE_RUNNING = false; liveTick(); }
   },
   prepareThis: (key) => App.prepareRoles([key]),
   prepareShown: () => App.prepareRoles(VISIBLE),
   submitRoles: async (keys, scope = '') => {
     const n = (keys || []).length;
-    if (!n) { toast('no prepared rows to submit — prepare them first', true); return; }
+    if (!n) { toast('no prepared rows to submit: prepare them first', true); return; }
     const where = scope ? ` from ${scope}` : '';
-    if (!await approve(`Submit ${n} prepared application(s)${where} — this SENDS them through the employer's site and is irreversible.`,
+    if (!await approve(`Submit ${n} prepared application(s)${where}: this SENDS them through the employer's site and is irreversible.`,
       `POST /api/submit { "keys": [${n} role key(s)], "approval_token": "APPROVE_RUN_QUEUE" }`)) return;
     starting('submitting applications', keys);
     const d = await api('/api/submit', { keys, approval_token: 'APPROVE_RUN_QUEUE' });
-    toast(d.error ? d.error : `submitting ${n} application(s) in the background — watch Activity`, !!d.error);
+    toast(d.error ? d.error : `submitting ${n} application(s) in the background: watch Activity`, !!d.error);
     if (!d.error) { openDock(true); App.showActivity(); } else { PENDING.clear(); LIVE_RUNNING = false; liveTick(); }
   },
   submitThis: (key) => App.submitRoles([key], 'this role'),
@@ -1098,7 +1099,7 @@ const App = {
     const n = (VIEW || []).length;
     if (!n) { toast('no rows in this view', true); return; }
     const ok = await warn(
-      `Recompute the CV–job fit for the **${n}** row${n === 1 ? '' : 's'} currently shown.\n\n` +
+      `Recompute the CV-job fit for the **${n}** row${n === 1 ? '' : 's'} currently shown.\n\n` +
       `- Instant: no agent, no model tokens.\n- Updates the **Fit** column for this view.\n\nContinue?`,
       'Recompute match', 'Recompute', false);
     if (!ok) return;
@@ -1109,7 +1110,7 @@ const App = {
     });
   },
   matchThis: async (key, el) => {
-    const ok = await warn('Recompute the CV–job fit for this role.\n\n- Instant: no agent, no model tokens.\n- Updates the **Fit** column.\n\nContinue?',
+    const ok = await warn('Recompute the CV-job fit for this role.\n\n- Instant: no agent, no model tokens.\n- Updates the **Fit** column.\n\nContinue?',
       'Recompute match', 'Recompute', false);
     if (!ok) return;
     await busyBtn(el, '⏳ recomputing…', async () => {
@@ -1121,7 +1122,7 @@ const App = {
   stop: async () => { const d = await api('/api/action/stop', {}); toast(d.ok || d.error, !!d.error); },
   togglePause: async (on) => { const d = await api('/api/action/pause', { on }); toast(d.ok || d.error, !!d.error); },
   queueAct: async (action, company, role) => {
-    if (action === 'human') { starting('opening a browser for you'); working('Opening a visible Camoufox browser — pre-filling the form…'); }
+    if (action === 'human') { starting('opening a browser for you'); working('Opening a visible Camoufox browser: pre-filling the form…'); }
     const d = await api('/api/queue/action', { action, company, role });
     toast(d.ok || d.error, !!d.error); if (!d.error) { loadGrid(); if (action !== 'human' && action !== 'delete') openDetail(CUR); } else { LIVE_RUNNING = false; }
   },
@@ -1137,7 +1138,7 @@ const App = {
     $('#evid').classList.add('hide');
     loadGrid();                                       // fit updates immediately
     if (CUR) openDetail(CUR);
-    toast('saved — fit updated; re-prepare the role to fold it into the CV (no graph rebuild needed)');
+    toast('saved: fit updated; re-prepare the role to fold it into the CV (no graph rebuild needed)');
   },
   addKeyword: async () => {
     if (!CUR) return;
@@ -1181,7 +1182,7 @@ const App = {
     if (!d.error) { CUR.action = v; if (DTAB === 0) dt(0); loadGrid(); }
   },
   clearScam: async (key, company, role) => {
-    if (!confirm(`Clear the scam warning for ${company} — ${role}?\n\nOnly do this after verifying the employer independently.`)) return;
+    if (!confirm(`Clear the scam warning for ${company}: ${role}?\n\nOnly do this after verifying the employer independently.`)) return;
     const d = await api('/api/scam/clear', { key, company, role });
     toast(d.ok || d.error, !!d.error);
     if (!d.error) { await loadGrid(); if (CUR) openDetail(CUR); }
@@ -1199,10 +1200,10 @@ const App = {
     el.innerHTML = items.length ? items.map(x => {
       return `<div class="draftrow"><div class="row"><b>${esc(x.subject || '(no subject)')}</b><span style="flex:1"></span>
         <button class="mini" onclick='App.draftEdit(${JSON.stringify(x.path)})'>Edit</button>
-        <button class="mini" onclick='App.draftSend(${JSON.stringify(x.path)})' title="Send this saved draft — one approval dialog">Send…</button>
+        <button class="mini" onclick='App.draftSend(${JSON.stringify(x.path)})' title="Send this saved draft: one approval dialog">Send…</button>
         <button class="mini" onclick='App.draftDelete(${JSON.stringify(x.path)})'>Delete</button></div>
         <div class="muted mini">${esc(x.to || 'no recipient')} · updated ${esc((x.modified || '').slice(0, 16))}</div></div>`;
-    }).join('') : '<span class="muted">no open drafts — sent replies are archived in state/drafts/sent.json.</span>';
+    }).join('') : '<span class="muted">no open drafts: sent replies are archived in state/drafts/sent.json.</span>';
   },
   draftNew: () => { DRAFT = null; openDraft({}); },
   draftEdit: async (path) => {
@@ -1212,10 +1213,10 @@ const App = {
   },
   draftSend: async (path) => {
     if (!CUR || !path) return;
-    if (DRAFT_SENDING) { toast('this draft is already sending — use the open approval dialog', true); return; }
+    if (DRAFT_SENDING) { toast('this draft is already sending: use the open approval dialog', true); return; }
     DRAFT_SENDING = true;
     try {
-      toast('sending — approve the prompt when it appears');
+      toast('sending: approve the prompt when it appears');
       const s = await api('/api/draft/send', { path, clear_action: true });
       if (s.error) {
         if (/session/i.test(s.error)) return location.reload();
@@ -1231,7 +1232,7 @@ const App = {
   },
   draftSave: async (send) => {
     if (!CUR) return;
-    if (send && DRAFT_SENDING) { toast('this draft is already sending — use the open approval dialog', true); return; }
+    if (send && DRAFT_SENDING) { toast('this draft is already sending: use the open approval dialog', true); return; }
     if (send) { DRAFT_SENDING = true; const sb = $('#dr-send'); if (sb) sb.disabled = true; }
     try {
       const payload = { path: DRAFT && DRAFT.path || '', company: CUR.company, role: CUR.role,
@@ -1243,7 +1244,7 @@ const App = {
       if (!send) { toast('draft saved'); App.loadDrafts(); return; }
       if (!(d.draft.to || '').trim()) return toast('add a recipient before sending', true);
       if (!$('#dr-subject').value.trim()) return toast('add a subject before sending', true);
-      toast('sending — approve the prompt when it appears');
+      toast('sending: approve the prompt when it appears');
       draftClose();                                  // the approval dialog must not sit behind the draft
       const s = await api('/api/draft/send', { path: DRAFT.path, clear_action: $('#dr-clear').checked });
       if (s.error) {
@@ -1272,7 +1273,7 @@ const App = {
     const el = $('#rc-log'); if (!el) return;
     const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     el.innerHTML = (d.segments && d.segments.length) ? roleSegsHTML(d.segments, d.running)
-      : '<span class="muted">Ask anything about this role — e.g. “what should I say back?”, “what will they probe?”, “draft a follow-up”.</span>';
+      : '<span class="muted">Ask anything about this role: e.g. “what should I say back?”, “what will they probe?”, “draft a follow-up”.</span>';
     el.querySelectorAll('details[data-k]').forEach(x => { x.open = CHAT_OPEN.has(x.getAttribute('data-k')); });
     if (stick) el.scrollTop = el.scrollHeight;
     const st = $('#rc-stop'); if (st) st.classList.toggle('hide', !d.running);
@@ -1378,9 +1379,9 @@ const SG_SIDE = [
   { s: 'CLOSED', x: 1070, note: 'withdrawn / expired / dup' },
 ];
 const SG_EDGES = [
-  [150, 81, 193, 81, 'ad saved'], [325, 81, 368, 81, 'docs gated'],
-  [500, 81, 543, 81, 'sent'], [675, 81, 718, 81, 'reply'],
-  [850, 81, 893, 81, 'invite'], [1025, 81, 1068, 81, 'offer'],
+  [150, 51, 193, 51, 'ad saved'], [325, 51, 368, 51, 'docs gated'],
+  [500, 51, 543, 51, 'sent'], [675, 51, 718, 51, 'reply'],
+  [850, 51, 893, 51, 'invite'], [1025, 51, 1068, 51, 'offer'],
   [590, 112, 590, 183, 'wall'], [675, 213, 718, 213, 'hand over'],
 ];
 let SG_EXPANDED = '';
@@ -1409,7 +1410,7 @@ function renderStateGraph() {
   const sideExp = SG_SIDE.some(n => n.s === expanded) ? subsFor(expanded) : null;
   const mainRows = mainExp ? mainExp.length + 1 : 0;
   const sideRows = sideExp ? sideExp.length + 1 : 0;
-  const sideY = mainExp ? 122 + mainRows * 30 + 24 : 185;
+  const sideY = mainExp ? 92 + mainRows * 30 + 24 : 155;
   const sideStackH = sideRows ? sideRows * 30 + 24 : 0;
   const svgH = sideY + 56 + sideStackH + 20;
   const busY = sideY - 20;
@@ -1460,23 +1461,23 @@ function renderStateGraph() {
   };
 
   const staticEdges = SG_EDGES.filter(e => e[4] !== 'wall' && e[4] !== 'hand over');
-  if (expanded !== 'SUBMITTED') staticEdges.push([590, 112, 590, sideY - 2, 'wall']);
+  if (expanded !== 'SUBMITTED') staticEdges.push([590, 82, 590, sideY - 2, 'wall']);
   staticEdges.push([675, sideY + 28, 718, sideY + 28, 'hand over']);
-  staticEdges.push([85, 112, 85, sideY - 2, 'scam check']);
+  staticEdges.push([85, 82, 85, sideY - 2, 'scam check']);
   const drops = [610, 785, 960].map(x => {
     const start = (mainExp && Math.abs(x - (SG_MAIN.find(n => n.s === expanded).x + SG_W / 2)) < 2)
-      ? 122 + mainRows * 30 : 112;
+      ? 92 + mainRows * 30 : 82;
     return `M${x},${start} L${x},${busY}`;
   }).join(' ');
   const paths = `<path class="sg-edge-path dashed" d="${drops} M610,${busY} L960,${busY} L960,${sideY - 2}" marker-end="url(#sg-arrow)"/>` +
     `<text class="sg-edge" x="785" y="${busY - 6}" text-anchor="middle">not selected</text>`;
 
   let body = arrow + staticEdges.map(edge).join('') + paths +
-    SG_MAIN.map(n => node(n, 50, SG_H)).join('') +
+    SG_MAIN.map(n => node(n, 20, SG_H)).join('') +
     SG_SIDE.map(n => node(n, sideY, SG_H2)).join('');
   if (mainExp) {
     const n = SG_MAIN.find(x => x.s === expanded);
-    body += stack(n, 112, 122, mainExp);
+    body += stack(n, 82, 92, mainExp);
   }
   if (sideExp) {
     const n = SG_SIDE.find(x => x.s === expanded);
@@ -1569,7 +1570,7 @@ function groupTagsHTML(r) {
     const g = groupById(id); if (!g) return '';
     return `<span class="gtag" style="--gc:${esc(g.color || '#7aa2f7')}"` +
       ` onclick="event.stopPropagation();App.groupFilter('${esc(id)}')"` +
-      ` title="Group: ${esc(g.name)} — click to show this group">${esc(g.name)}</span>`;
+      ` title="Group: ${esc(g.name)}: click to show this group">${esc(g.name)}</span>`;
   }).join('');
 }
 
@@ -1695,18 +1696,18 @@ function renderRows() {
     const av = a[k] || '', bv = b[k] || '';
     return av < bv ? -SORT.dir : av > bv ? SORT.dir : 0;
   });
-  const mbadge = (r) => r.match == null ? '<span class="muted"' + T('No score — this role has no saved job ad (ATS keywords) and/or no CV to compare') + '>—</span>'
+  const mbadge = (r) => r.match == null ? '<span class="muted"' + T('No score: this role has no saved job ad (ATS keywords) and/or no CV to compare') + '>-</span>'
     : `<span class="badge ${r.match >= 70 ? 'good' : r.match >= 40 ? 'mid' : 'bad'}"${T("CV-to-job fit: this % of the ad's ATS keywords are covered by the tailored CV")}>${r.match}%</span>`
-      + (r.alignment === 'FAIL' ? ' <span class="badge bad"' + T('Pre-submit alignment gate FAILED for this role — open the row to see why') + '>✗</span>' : '');
+      + (r.alignment === 'FAIL' ? ' <span class="badge bad"' + T('Pre-submit alignment gate FAILED for this role: open the row to see why') + '>✗</span>' : '');
   const payBadge = (r) => r.salary_eur == null
     ? (r.salary_override && r.salary_raw
-        ? `<span class="badge bad"${T('Could not parse the salary override: ' + r.salary_raw + ' — edit it in the row’s Summary')}>?</span>`
-        : `<span class="muted"${T('No salary figure in the ad — add one in the row’s Summary, or read the ad')}>—</span>`)
-    : `<span class="badge ${r.salary_band === 'good' ? 'good' : r.salary_band === 'mid' ? 'mid' : 'bad'}"${T('Estimated annual pay in EUR' + (r.salary_override ? ' (manual override)' : ' from the ad') + (r.salary_raw ? ': ' + r.salary_raw : ''))}>${esc(r.salary_label || '—')}</span>`;
+        ? `<span class="badge bad"${T('Could not parse the salary override: ' + r.salary_raw + ': edit it in the row’s Summary')}>?</span>`
+        : `<span class="muted"${T('No salary figure in the ad: add one in the row’s Summary, or read the ad')}>-</span>`)
+    : `<span class="badge ${r.salary_band === 'good' ? 'good' : r.salary_band === 'mid' ? 'mid' : 'bad'}"${T('Estimated annual pay in EUR' + (r.salary_override ? ' (manual override)' : ' from the ad') + (r.salary_raw ? ': ' + r.salary_raw : ''))}>${esc(r.salary_label || '-')}</span>`;
   const workBadge = (r) => {
     const w = r.work_model || 'unknown';
     if (w === 'unknown')
-      return `<span class="muted"${T('Work model not found in the ad — set an override in the row’s Summary')}>—</span>`;
+      return `<span class="muted"${T('Work model not found in the ad: set an override in the row’s Summary')}>-</span>`;
     const cls = w === 'remote' ? 'wm-remote' : w === 'hybrid' ? 'wm-hybrid' : 'wm-onsite';
     return `<span class="badge ${cls}"${T('Work model ' + (r.work_override ? '(manual override)' : 'detected from the ad') + ': ' + (r.work_label || w))}>${esc(r.work_label || w)}</span>`;
   };
@@ -1716,17 +1717,17 @@ function renderRows() {
       && PANELS.detail && PANELS.detail.open) ? ' sel' : '';
     const gtags = groupTagsHTML(r);
     return `<tr class="click${sel}" onclick="App.open(${i})" oncontextmenu="return App.rowMenu(event, ${i})">` +
-      `<td class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet — queued, not applied')}>${r.date ? esc(shortDate(r.date)) : '—'}</td>` +
-      `<td${T(r.company + '  ·  employer / recruiter')}>${r.running ? `<a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="event.stopPropagation();App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show the live log"><span title="working">🥜</span></a> ` : (PENDING.has(r.key) ? '<span title="Queued — waiting to start">🥜</span> ' : '')}${r.pinned ? `<span class="pinned"${T('Pinned to the top of its group')}>📌</span> ` : ''}${r.shelved ? `<span class="shelved"${T('Shelved — original status kept')}>🗄</span> ` : ''}${r.scam && ['high', 'medium'].includes(r.scam.level) ? `<span class="scamflag ${esc(r.scam.level)}"${T('Scam check: ' + r.scam.level.toUpperCase() + ' — open the role for the signals')}>⚠</span> ` : ''}${r.action ? `<span class="actflag"${T(r.action)}>⚑</span> ` : ''}${esc(r.company)}</td>` +
+      `<td class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet: queued, not applied')}>${r.date ? esc(shortDate(r.date)) : '-'}</td>` +
+      `<td${T(r.company + '  ·  employer / recruiter')}>${r.running ? `<a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="event.stopPropagation();App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show the live log"><span title="working">🥜</span></a> ` : (PENDING.has(r.key) ? '<span title="Queued: waiting to start">🥜</span> ' : '')}${r.pinned ? `<span class="pinned"${T('Pinned to the top of its group')}>📌</span> ` : ''}${r.shelved ? `<span class="shelved"${T('Shelved: original status kept')}>🗄</span> ` : ''}${r.scam && ['high', 'medium'].includes(r.scam.level) ? `<span class="scamflag ${esc(r.scam.level)}"${T('Scam check: ' + r.scam.level.toUpperCase() + ': open the role for the signals')}>⚠</span> ` : ''}${r.action ? `<span class="actflag"${T(r.action)}>⚑</span> ` : ''}${esc(r.company)}</td>` +
       `<td${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}${gtags ? `<div class="gtags">${gtags}</div>` : ''}</td>` +
       `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
       `<td>${chip(r.label || r.status)}${subLineHTML(r) || (r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : '')}</td><td>${mbadge(r)}</td>` +
       `<td>${payBadge(r)}</td><td>${workBadge(r)}</td>` +
       `<td${T(QUEUE_HELP[r.queue] || 'Not in any queue')}>${['pending', 'human', 'retry'].includes(r.queue)
         ? `<span class="badge ${r.queue === 'human' ? 'bad' : r.queue === 'retry' ? 'mid' : 'good'}">${esc(r.queue)}</span>`
-        : `<span class="muted">—</span>`}</td>` +
-      `<td${T(r.applied ? 'Provenance recorded — exact CV, letter and SHA-256 hashes on file' : 'No submission recorded (not applied, or not reconciled yet)')}>${r.applied ? '✓' : '<span class="muted">—</span>'}</td>` +
-      `<td${T(r.spec ? 'A saved job description exists — open the row for the ad, ATS keywords and grounded context' : 'No saved job description')}>${r.spec ? '✓' : '<span class="muted">—</span>'}</td></tr>`;
+        : `<span class="muted">-</span>`}</td>` +
+      `<td${T(r.applied ? 'Provenance recorded: exact CV, letter and SHA-256 hashes on file' : 'No submission recorded (not applied, or not reconciled yet)')}>${r.applied ? '✓' : '<span class="muted">-</span>'}</td>` +
+      `<td${T(r.spec ? 'A saved job description exists: open the row for the ad, ATS keywords and grounded context' : 'No saved job description')}>${r.spec ? '✓' : '<span class="muted">-</span>'}</td></tr>`;
   };
 
   const empty = (msg) => `<tr><td colspan="11" class="muted">${msg}
@@ -1740,7 +1741,7 @@ function renderRows() {
     groups = BUCKET_GROUPS.filter(g => BUCKET === 'all' || g.k !== 'done')
       .map(g => ({ ...g, test: r => bucketOf(r) === g.k }));
     if (BUCKET === 'active' && !advanced && !rows.some(r => ['needs', 'scams'].includes(bucketOf(r))))
-      html += '<tr class="grp calm"><td colspan="11">✓ Nothing needs you right now — ongoing applications and the apply queue are below.</td></tr>';
+      html += '<tr class="grp calm"><td colspan="11">✓ Nothing needs you right now: ongoing applications and the apply queue are below.</td></tr>';
   } else if (!fg && BUCKET === 'focus') {
     groups = FOCUS_GROUPS;
   }
@@ -1985,14 +1986,14 @@ App.setStatus = async (r, status) => {
 };
 
 App.closeRole = async (r) => {
-  if (!confirm(`Close “${r.company} — ${r.role}”?\n\nThis sets the status to CLOSED and clears the follow-up flag. The row moves to Done.`)) return;
+  if (!confirm(`Close “${r.company}: ${r.role}”?\n\nThis sets the status to CLOSED and clears the follow-up flag. The row moves to Done.`)) return;
   const today = new Date().toISOString().slice(0, 10);
   const d = await api('/api/register/row', {
     company: r.company, role: r.role, status: 'CLOSED', action: '', key: r.key,
     notes: `${today}: closed from the row menu (not pursuing).`
   });
   if (d.error) return toast(d.error, true);
-  toast('closed — moved to Done');
+  toast('closed: moved to Done');
   await loadGrid();
   if (CUR) openDetail(CUR);
 };
@@ -2175,7 +2176,7 @@ async function openDetail(r) {
   if (ROLE_TIMER) { clearInterval(ROLE_TIMER); ROLE_TIMER = null; }
   ROLE_DATA = { segments: [], running: false, pending: 0 };
   setPanel('detail', { open: true });            // also re-renders the grid, marking this row
-  $('#d-title').textContent = `${r.company} — ${r.role}`;
+  $('#d-title').textContent = `${r.company}: ${r.role}`;
   const tabs = ['Summary', 'Discuss', 'Provenance', 'Job spec', 'ATS', 'Grounding', 'Documents'];
   $('#dtabs').innerHTML = tabs.map((t, i) => `<a class="${i === DTAB ? 'on' : ''}" onclick="dt(${i})">${t}</a>`).join('');
   $('#d-body').innerHTML = '<span class="muted">loading…</span>';
@@ -2188,7 +2189,7 @@ window.dt = (i) => {
   const r = CUR, map = [summary, discuss, prov, spec, ats, grounding, tailored];
   DTAB = i;
   document.querySelectorAll('#dtabs a').forEach((a, n) => a.classList.toggle('on', n === i));
-  $('#d-body').innerHTML = map[i](r) || '<span class="muted">—</span>';
+  $('#d-body').innerHTML = map[i](r) || '<span class="muted">-</span>';
   if (i === 0) App.loadDrafts();
   if (i === 1) {
     if (!ROLE_TIMER) ROLE_TIMER = setInterval(rolePoll, 1500);
@@ -2228,24 +2229,24 @@ function summary(r) {
         const cell = (k, label) => `<span class="stage ${st[k] ? 'on' : ''}" title="${st[k] ? 'done' : 'not yet'}">${st[k] ? '✓' : '○'} ${label}</span>`;
         return cell('ad', 'Ad saved') + cell('keywords', 'Keywords') + cell('grounding', 'Grounded') + cell('documents', 'Documents') + cell('applied', 'Applied');
       })()}</div>
-      <div class="state-meta mini muted">ATS: ${esc(r.ats || '—')}${r.employment ? ' · type: ' + esc(r.employment) : ''} · Pay: ${esc(r.salary_label || '—')}${r.salary_override ? ' (manual)' : ''} · Work: ${esc(wl(r.work_model))}${r.work_override ? ' (manual)' : ''} · Queue: ${esc(r.queue || 'not queued')}${r.date ? ' · updated ' + esc(r.date) : ''}${r.interview_at ? ' · interview ' + esc(r.interview_at) : ''} · <span class="mono">${esc(r.key)}</span></div>
-      ${r.running ? `<div class="working"><a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show what this run is doing"><span title="working">🥜</span> being worked on right now — show live log</a></div>` : ''}
+      <div class="state-meta mini muted">ATS: ${esc(r.ats || '-')}${r.employment ? ' · type: ' + esc(r.employment) : ''} · Pay: ${esc(r.salary_label || '-')}${r.salary_override ? ' (manual)' : ''} · Work: ${esc(wl(r.work_model))}${r.work_override ? ' (manual)' : ''} · Queue: ${esc(r.queue || 'not queued')}${r.date ? ' · updated ' + esc(r.date) : ''}${r.interview_at ? ' · interview ' + esc(r.interview_at) : ''} · <span class="mono">${esc(r.key)}</span></div>
+      ${r.running ? `<div class="working"><a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show what this run is doing"><span title="working">🥜</span> being worked on right now: show live log</a></div>` : ''}
     </div>` +
     `<div class="row" style="margin:6px 0 10px"><span class="muted">Set status</span>
-      <select id="dt-status"><option value="">— keep as ${esc(r.label || r.status || 'is')} —</option>` +
+      <select id="dt-status"><option value="">- keep as ${esc(r.label || r.status || 'is')} -</option>` +
       reg.map(x => `<option ${x === r.status ? 'selected' : ''}>${x}</option>`).join('') + '</select>' +
       `<span class="muted">Type</span><select id="dt-emp">` +
       ['', 'full-time', 'part-time', 'contract', 'consultant', 'freelance', 'internship', 'temporary']
-        .map(x => `<option value="${x}" ${x === (r.employment || '') ? 'selected' : ''}>${x || '— unknown —'}</option>`).join('') + '</select>' +
+        .map(x => `<option value="${x}" ${x === (r.employment || '') ? 'selected' : ''}>${x || '- unknown -'}</option>`).join('') + '</select>' +
       `<button onclick="App.saveRow()">Save</button>
       <button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>Prepare this role</button>
       <button data-act onclick='App.roleEvidence(${JSON.stringify(r.key)})'>🧠 Graph evidence</button>
-      ${r.status === 'PREPARED' ? `<button class="risky" data-act onclick='App.submitThis(${JSON.stringify(r.key)})' title="Submit this application now with the documents already prepared — sends it, needs approval">🚀 Submit this application</button>` : ''}
+      ${r.status === 'PREPARED' ? `<button class="risky" data-act onclick='App.submitThis(${JSON.stringify(r.key)})' title="Submit this application now with the documents already prepared: sends it, needs approval">🚀 Submit this application</button>` : ''}
       <button data-act onclick='App.matchThis(${JSON.stringify(r.key)}, this)'>Recompute match</button></div>` +
     `<div class="row" style="margin:0 0 10px">
       <span class="muted">Work</span>
       <select id="dt-work">
-        <option value="">auto — ${esc(wl(r.work_detected))}</option>
+        <option value="">auto: ${esc(wl(r.work_detected))}</option>
         ${['remote', 'hybrid', 'on-site'].map(x => `<option value="${x}" ${r.work_override && r.work_model === x ? 'selected' : ''}>${wl(x).toLowerCase()}</option>`).join('')}
       </select>
       <span class="muted">Pay</span>
@@ -2254,12 +2255,12 @@ function summary(r) {
     </div>` +
     `<div class="row">${m.alignment ? `<span class="badge ${m.alignment === 'PASS' ? 'good' : 'bad'}">alignment ${m.alignment}</span>` : ''}` +
     `${m.coverage != null ? `<span class="badge ${m.coverage >= 70 ? 'good' : 'mid'}">coverage ${m.coverage}%</span>` : ''}${known ? '' : '<span class="muted mini">(runner-derived state)</span>'}</div>` +
-    (m.missing && m.missing.length ? `<div class="muted mini" style="margin-top:8px">missing skills — click one to add where you have it:
+    (m.missing && m.missing.length ? `<div class="muted mini" style="margin-top:8px">missing skills: click one to add where you have it:
       <div style="margin-top:4px">${m.missing.map(x => {
         const ev = (m.evidenced || []).some(e => e.toLowerCase() === x.toLowerCase());
-        return `<a class="missk${ev ? ' evidenced' : ''}" title="${ev ? 'you have recorded evidence — re-prepare this role to apply it (grounding already includes it)' : 'click to record where you have this skill'}" onclick='App.addEvidence(${JSON.stringify(x)},${JSON.stringify(r.key)})'>${ev ? '✓ ' : ''}${esc(x)}</a>`;
+        return `<a class="missk${ev ? ' evidenced' : ''}" title="${ev ? 'you have recorded evidence: re-prepare this role to apply it (grounding already includes it)' : 'click to record where you have this skill'}" onclick='App.addEvidence(${JSON.stringify(x)},${JSON.stringify(r.key)})'>${ev ? '✓ ' : ''}${esc(x)}</a>`;
       }).join('')}</div></div>
-      ${(m.evidenced || []).length ? `<div class="row" style="margin-top:6px"><span class="muted mini">${m.evidenced.length} skill(s) have evidence — re-prepare this role to fold them into the CV (grounding includes them now).</span>
+      ${(m.evidenced || []).length ? `<div class="row" style="margin-top:6px"><span class="muted mini">${m.evidenced.length} skill(s) have evidence: re-prepare this role to fold them into the CV (grounding includes them now).</span>
         <button class="small" onclick='App.prepareThis(${JSON.stringify(r.key)})'>↻ Re-prepare with the new evidence</button></div>` : ''}` : '') +
     `<div class="row" style="margin-top:8px"><input id="dt-addkw" placeholder="add a requirement from the job ad" style="flex:1">
       <button class="small" onclick="App.addKeyword()">Add keyword</button>
@@ -2281,7 +2282,7 @@ function summary(r) {
 }
 function openDraft(d) {
   DRAFT = d && d.path ? d : null;
-  $('#draftm-title').textContent = 'Draft reply' + (CUR ? ` — ${CUR.company} · ${CUR.role}` : '');
+  $('#draftm-title').textContent = 'Draft reply' + (CUR ? `: ${CUR.company} · ${CUR.role}` : '');
   $('#dr-to').value = d.to || '';
   $('#dr-cc').value = d.cc || '';
   $('#dr-subject').value = d.subject || '';
@@ -2296,18 +2297,18 @@ function prov(r) {
   const st = ((r && r.status) || '').toUpperCase();
   if (!Object.keys(P).length) {
     if (['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER'].includes(st))
-      return `<span class="muted">This row is <b>${esc(st)}</b> but has no provenance entry — it predates the ledger, or was recorded by hand. Provenance is written automatically by <code>record_submission.py</code>; backfill an old one with <code>--inferred</code>.</span>`;
+      return `<span class="muted">This row is <b>${esc(st)}</b> but has no provenance entry: it predates the ledger, or was recorded by hand. Provenance is written automatically by <code>record_submission.py</code>; backfill an old one with <code>--inferred</code>.</span>`;
     return `<span class="muted">No submission recorded for this role${st ? ' (status ' + esc(st) + ')' : ''}. The provenance ledger is written by <code>record_submission.py</code> the moment an application is sent, so rows that were never applied to are empty by design.</span>`;
   }
-  const sha = (s) => s ? `<span class="sha" title="copy" onclick='navigator.clipboard.writeText(${JSON.stringify(s)})'>${esc(s.slice(0, 16))}…</span>` : '—';
+  const sha = (s) => s ? `<span class="sha" title="copy" onclick='navigator.clipboard.writeText(${JSON.stringify(s)})'>${esc(s.slice(0, 16))}…</span>` : '-';
   return `<table><tbody>` +
-    `<tr><td class="muted">CV</td><td>${esc(P.cv_file || '—')} ${sha(P.cv_sha256)}${vbtn(P.cv_file, 'CV')}</td></tr>` +
-    `<tr><td class="muted">letter</td><td>${esc(P.letter_file || '—')} ${sha(P.letter_sha256)}${vbtn(P.letter_file, 'Cover letter')}</td></tr>` +
+    `<tr><td class="muted">CV</td><td>${esc(P.cv_file || '-')} ${sha(P.cv_sha256)}${vbtn(P.cv_file, 'CV')}</td></tr>` +
+    `<tr><td class="muted">letter</td><td>${esc(P.letter_file || '-')} ${sha(P.letter_sha256)}${vbtn(P.letter_file, 'Cover letter')}</td></tr>` +
     `<tr><td class="muted">confidence</td><td>${chip((P.confidence || '').toUpperCase())}</td></tr>` +
-    `<tr><td class="muted">evidence</td><td class="md">${P.evidence ? md(P.evidence) : '—'}</td></tr>` +
-    `<tr><td class="muted">recorded</td><td class="mini muted">${esc(P.date || '—')}</td></tr>` +
-    `<tr><td class="muted">snapshot</td><td class="mini mono">${esc(P.snapshot_dir || '—')}</td></tr>` +
-    `<tr><td class="muted">screenshots</td><td class="mini mono">${(P.screenshots || []).map(esc).join('<br>') || '—'}</td></tr></tbody></table>`;
+    `<tr><td class="muted">evidence</td><td class="md">${P.evidence ? md(P.evidence) : '-'}</td></tr>` +
+    `<tr><td class="muted">recorded</td><td class="mini muted">${esc(P.date || '-')}</td></tr>` +
+    `<tr><td class="muted">snapshot</td><td class="mini mono">${esc(P.snapshot_dir || '-')}</td></tr>` +
+    `<tr><td class="muted">screenshots</td><td class="mini mono">${(P.screenshots || []).map(esc).join('<br>') || '-'}</td></tr></tbody></table>`;
 }
 const spec = () => sec(D.jd), ats = () => sec(D.ats, true), kb = () => sec(D.kb);
 
@@ -2330,7 +2331,7 @@ function evRow(text, kws, kbText, sec) {
   const s = matched.length && grounded.length ? 'good' : matched.length ? 'warn' : 'plain';
   const icon = s === 'good' ? '✓' : s === 'warn' ? '~' : '·';
   const tip = s === 'good' ? 'evidence-backed: names a requirement the knowledge base supports'
-    : s === 'warn' ? 'names a requirement the knowledge base does not confirm — see the Grounding tab'
+    : s === 'warn' ? 'names a requirement the knowledge base does not confirm: see the Grounding tab'
       : 'supporting detail: no job requirement keyword';
   const chips = matched.map(k => `<span class="missk${grounded.includes(k) ? ' evidenced' : ''}">${esc(k)}</span>`).join(' ');
   return `<div class="claim ${s}" data-sec="${esc(sec)}" data-kws="${esc(matched.join(', '))}" title="${esc(tip)}">`
@@ -2349,7 +2350,7 @@ function renderEvidence() {
   const pct = kws.length ? Math.round(100 * covered.length / kws.length) : 0;
   const list = (arr, sec) => (arr || []).map((b, i) => evRow(b, kws, kbText, sec + ' #' + (i + 1))).join('');
   const exp = (pack.experience || []).map(e => {
-    const hdr = `<div class="evjob">${esc(e.employer || '')}${e.title ? ' — ' + esc(e.title) : ''}<span class="muted">${e.dates ? ' · ' + esc(e.dates) : ''}</span></div>`;
+    const hdr = `<div class="evjob">${esc(e.employer || '')}${e.title ? ': ' + esc(e.title) : ''}<span class="muted">${e.dates ? ' · ' + esc(e.dates) : ''}</span></div>`;
     const bs = list(e.bullets, e.employer || 'role');
     const gs = (e.groups || []).map(g => list(g.bullets, g.label || e.employer || 'role')).join('');
     return hdr + bs + gs;
@@ -2377,7 +2378,7 @@ function renderEvidence() {
 function tailored() {
   const d = D.docs || {};
   if (!d.cv && !d.cv_pdf && !d.letter && !d.letter_pdf) {
-    return '<span class="muted">No rendered documents yet — run Prepare (review).</span>';
+    return '<span class="muted">No rendered documents yet: run Prepare (review).</span>';
   }
   const raw = (p) => '/raw?path=' + encodeURIComponent(p);
   setTimeout(async () => {
@@ -2431,7 +2432,7 @@ function grounding(r) {
           <td class="muted mini">${esc(e.description || '')}</td></tr>`).join('')}</tbody></table>` : '') +
       ((d.documents || []).length ? `<h4>Source documents</h4><ul class="mini">${d.documents.map(x =>
         `<li>${esc(x.title)} <span class="muted">(${x.chars} chars)</span></li>`).join('')}</ul>` : '') +
-      `<h4>Context pack</h4><div class="md">${md(d.pack || '(none — this role has no grounding pack)')}</div>`;
+      `<h4>Context pack</h4><div class="md">${md(d.pack || '(none: this role has no grounding pack)')}</div>`;
   }, 0);
   return '<div id="grd"><span class="muted">loading grounding…</span></div>';
 }
@@ -2464,15 +2465,15 @@ function humanActivity(lines) {
     if (!s) continue;
     s = s.replace(/^(START|DONE|STATUS|INFRA-FAIL|TOKEN-LIMIT)\s+\d{2}:\d{2}:\d{2}\s+/, '$1 ');
     let m;
-    if ((m = s.match(/^START\s+(.+?)\s*\|\s*(.+)$/))) { out.push(`Started ${m[1]} — ${m[2]}`); continue; }
+    if ((m = s.match(/^START\s+(.+?)\s*\|\s*(.+)$/))) { out.push(`Started ${m[1]}: ${m[2]}`); continue; }
     if ((m = s.match(/^DONE\s+(.+?)\s*\|\s*(.+?)(?:\s+\(rc=(\d+)\))?$/))) {
-      out.push(`Finished ${m[1]} — ${m[2]}${m[3] && m[3] !== '0' ? ' (exit ' + m[3] + ')' : ''}`); continue;
+      out.push(`Finished ${m[1]}: ${m[2]}${m[3] && m[3] !== '0' ? ' (exit ' + m[3] + ')' : ''}`); continue;
     }
     if ((m = s.match(/^STATUS\s+(.+?)\s*\|\s*(.+?)\s*\|\s*([^|]+?)\s*\|\s*(.*)$/))) {
-      out.push(`${m[1]} — ${m[2]}: ${m[3].trim()}${m[4] ? ' — ' + m[4] : ''}`); continue;
+      out.push(`${m[1]} ${m[2]}: ${m[3].trim()}${m[4] ? ' - ' + m[4] : ''}`); continue;
     }
-    if (/^INFRA-FAIL/i.test(s)) { out.push('Stalled — ' + s.replace(/^INFRA-FAIL\s*/i, '')); continue; }
-    if (/^TOKEN-LIMIT/i.test(s)) { out.push('Model limit — ' + s.replace(/^TOKEN-LIMIT\s*/i, '')); continue; }
+    if (/^INFRA-FAIL/i.test(s)) { out.push('Stalled: ' + s.replace(/^INFRA-FAIL\s*/i, '')); continue; }
+    if (/^TOKEN-LIMIT/i.test(s)) { out.push('Model limit: ' + s.replace(/^TOKEN-LIMIT\s*/i, '')); continue; }
     if (/^queue complete/i.test(s)) { out.push('Queue finished'); continue; }
     if (/^\[p\]\s*/.test(s)) { out.push(s.replace(/^\[p\]\s*/, '')); continue; }
     if (/^RESULT:/i.test(s)) { out.push(s); continue; }
@@ -2510,7 +2511,7 @@ async function liveTick() {
     const fresh = delegated.filter(x => !DELEGATED_SEEN.has(x.id));
     DELEGATED_SEEN = dIds;
     if (fresh.length && !document.hidden) {
-      toast(`Background task started: ${fresh[0].title || 'subagent'} — watch Activity`);
+      toast(`Background task started: ${fresh[0].title || 'subagent'}: watch Activity`);
       openDock(true);
       App.showActivity();
     }
@@ -2543,12 +2544,12 @@ async function liveTick() {
   LIVE_BUSY = busy || subagentBusy || CHAT_TURN_RUNNING;
   // One spinner only: the live strip is always visible and names the work.
   if (LIVE_BUSY) $('#live').innerHTML = NUT + esc(s);
-  else $('#live').textContent = s;
+  else $('#live').textContent = plain(s);
   LIVE_RUNNING = busy || LIVE_RUNNING;                 // stay optimistic until confirmed idle
   document.querySelectorAll('#a-prepare,#a-submit,#a-reconcile,#a-prepare-shown,#a-submit-shown,#a-match,#d-body [data-act]')
     .forEach(b => { b.disabled = LIVE_RUNNING; });
   const rc = $('#runctl'); if (rc) { rc.classList.toggle('hide', !LIVE_RUNNING); $('#btn-pause').textContent = d.paused ? '▶ Resume' : '⏸ Pause'; }
-  if (LIVE_RUNNING && !parts.length) $('#live').innerHTML = NUT + esc('● starting… (the run takes a few minutes — see the monitor)');
+  if (LIVE_RUNNING && !parts.length) $('#live').innerHTML = NUT + esc('● starting… (the run takes a few minutes: see the monitor)');
   if (busy) {
     IDLE_TICKS = 0; WAS_BUSY = true;
     BUSY_NAME = a.name || (d.active ? 'queue run' : 'run');
@@ -2562,8 +2563,8 @@ async function liveTick() {
       // Say what actually finished. An update is not a job run, and reporting
       // it as one made the software-update flow look like the pipeline had
       // applied to a role.
-      if (/^update\b/i.test(was)) toast('software updated — restart the dashboard to load the new code');
-      else toast(was === 'queue run' ? 'run finished — grid refreshed' : 'finished — grid refreshed');
+      if (/^update\b/i.test(was)) toast('software updated: restart the dashboard to load the new code');
+      else toast(was === 'queue run' ? 'run finished: grid refreshed' : 'finished: grid refreshed');
     }
     PENDING.clear(); $('#peras').classList.add('hide'); renderRows();
   }
@@ -2709,7 +2710,7 @@ async function permAnswer(decision, remember, save) {
       if (same) {
         id = same.id;
       } else {
-        toast('this request expired — showing the current one', true);
+        toast('this request expired: showing the current one', true);
         CUR_PERM = null; $('#perm').classList.add('hide');
         await permTick(true);
         return;
@@ -2750,7 +2751,7 @@ function suggText(s) {
   return [
     s.action === true ? 'ACTION needed' : s.action === false ? 'no action' : '',
     s.category ? `category: ${s.category}` : '',
-    (s.company || s.role) ? `match: ${s.company || '?'} — ${s.role || '?'}` : '',
+    (s.company || s.role) ? `match: ${s.company || '?'}: ${s.role || '?'}` : '',
     s.reason ? `reason: ${s.reason}` : '',
     s.evidence ? `evidence: "${s.evidence}"` : ''
   ].filter(Boolean).join(' · ');
@@ -2770,7 +2771,7 @@ function renderGmailReview() {
     const sgText = sg ? `${x.model || ''}: ${suggText(sg)}` : '';
     return `<div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08)">
       <div><b>${esc(x.category || '?')}</b> <span class="muted mini">${esc((x.date || '').slice(0, 16))}</span>
-        ${x.company ? ` · <b>${esc(x.company)}</b>` : ''}${x.role ? ` — ${esc(x.role)}` : ''}</div>
+        ${x.company ? ` · <b>${esc(x.company)}</b>` : ''}${x.role ? `: ${esc(x.role)}` : ''}</div>
       <div class="muted mini">${esc(x.sender || '')} · ${esc(x.subject || '')}</div>
       <div>${esc(x.reason || '')}</div>
       ${x.triage && x.triage.job ? `<div class="muted mini" style="margin:3px 0"><b>Triage:</b> job-related · ${esc(x.triage.category || 'OTHER')} · ${esc((x.triage.reasons || []).join(', '))}</div>` : ''}
@@ -2913,9 +2914,9 @@ async function taskLogPoll() {
     : 'last output ' + (age < 90 ? age + 's' : age < 5400 ? Math.round(age / 60) + 'm' : (age / 3600).toFixed(1) + 'h') + ' ago';
   let meta = (d && d.error) ? 'log not found'
     : `${size != null ? size : 0} bytes · ${agoText}` +
-      (live && age != null && age > 90 ? ' · quiet for ' + Math.floor(age / 60) + 'm — the model may be stalled (20m timeout)' : '');
+      (live && age != null && age > 90 ? ' · quiet for ' + Math.floor(age / 60) + 'm: the model may be stalled (20m timeout)' : '');
   if (!LIVE_TASKS.length) meta += ' · no task running now';
-  else if (!live) meta += ' · task finished — the runner moved on';
+  else if (!live) meta += ' · task finished: the runner moved on';
   const mEl = $('#tasklog-meta'); if (mEl) mEl.textContent = meta;
   const tech = raw.length ? raw
     : lines.map(x => (x.k === 'phase' ? '[phase] ' : '') + (x.t || ''));
@@ -2932,7 +2933,7 @@ async function taskLogPoll() {
       `<span class="muted">${esc(meta)}</span></div>` +
       (human.length
         ? '<ul class="act-list">' + human.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>'
-        : '<div class="muted">No human-readable progress yet — open Technical details for the raw log.</div>');
+        : '<div class="muted">No human-readable progress yet: open Technical details for the raw log.</div>');
   }
   const ln = $('#tasklog-lines'); if (ln) ln.textContent = tech.length ? `· ${tech.length} lines` : '';
   TASKLOG.timer = setTimeout(taskLogPoll, 1500);
@@ -2941,7 +2942,7 @@ function openTaskLog(name, title) {
   if (!name) return;
   clearTimeout(TASKLOG.timer);
   TASKLOG = { name, title: title || name, timer: null };
-  $('#tasklog-title').textContent = TASKLOG.title;
+  $('#tasklog-title').textContent = plain(TASKLOG.title);
   $('#tasklog-body').textContent = 'loading…';
   $('#tasklog').classList.remove('hide');
   document.body.dataset.tasklog = 'open';
@@ -3263,7 +3264,7 @@ function discuss(r) {
       <span style="flex:1"></span>
       <button class="small" id="rc-stop" onclick="App.roleChatStop()">⏹ Stop</button>
       <button class="small" onclick="App.roleChatNew()">🗑 Clear</button></div>
-    <div id="rc-log" class="term role-log"><span class="muted">Ask anything about this role — e.g. “what should I say back?”, “what will they probe?”, “draft a follow-up”.</span></div>
+    <div id="rc-log" class="term role-log"><span class="muted">Ask anything about this role: e.g. “what should I say back?”, “what will they probe?”, “draft a follow-up”.</span></div>
     <div class="row chat-in"><input id="rc-in" placeholder="ask about this role…" onkeydown="if(event.key==='Enter')App.roleChatSend()" style="flex:1"><button onclick="App.roleChatSend()">Send</button></div>
   </div>`;
 }
@@ -3291,11 +3292,11 @@ async function setData(b) {
       grounding and content packs, gate receipts) and, unless you untick it, <code>documents/</code> (rendered CVs,
       letters and the exact files you sent).</p>
     <div class="muted mini">${rows} <span class="pill">total ${fmtSize(total)}</span></div>
-    <p class="muted mini" style="margin-top:6px">⚠ A backup contains <b>your personal data</b> — CV, applications, and any Google client
+    <p class="muted mini" style="margin-top:6px">⚠ A backup contains <b>your personal data</b>: CV, applications, and any Google client
       secret stored in <code>config/google.json</code>. Keep it somewhere private and never commit it. The OAuth token lives outside
       the repo, so it is not in the zip. Agent transcripts (<code>state/logs/</code>), the mail cache and the GraphRAG index are
       deliberately left out.</p>
-    ${d.busy ? '<p class="muted mini"><b>A run is in progress</b> — downloading is paused until it finishes.</p>' : ''}
+    ${d.busy ? '<p class="muted mini"><b>A run is in progress</b>: downloading is paused until it finishes.</p>' : ''}
 
     <h4 style="margin:14px 0 4px">Back up</h4>
     <div class="row" style="margin:7px 0">
@@ -3322,7 +3323,7 @@ async function setData(b) {
     <div class="row" style="margin:7px 0">
       <input id="cl-confirm" placeholder="type CLEAR" style="max-width:190px">
       <button class="risky" onclick="App.clearData('data')">Clear pipeline data</button>
-      <button class="risky" onclick="App.clearData('full')" title="also deletes the GraphRAG index — a rebuild takes 20–30 min">Full reset (incl. index)</button>
+      <button class="risky" onclick="App.clearData('full')" title="also deletes the GraphRAG index: a rebuild takes 20-30 min">Full reset (incl. index)</button>
     </div>`;
 }
 const fmtSize = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n > 1024 ? (n / 1024).toFixed(0) + ' KB' : n + ' B';
@@ -3331,7 +3332,7 @@ function secretRowHTML(sec, r) {
     <code style="min-width:210px">${esc(r.name)}</code>
     ${r.username ? `<span class="muted mini" style="max-width:190px;overflow:hidden;text-overflow:ellipsis">${esc(r.username)}</span>` : ''}
     <span class="muted mini" data-mask>${r.set ? esc(r.value) : 'not set'}</span>
-    <input type="password" data-new autocomplete="new-password" placeholder="new value — saves on blur" style="flex:1;display:none"
+    <input type="password" data-new autocomplete="new-password" placeholder="new value: saves on blur" style="flex:1;display:none"
       onchange="App.secretSaveRow(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">
     <button class="small" onclick="App.secretReveal(this)">Replace</button>
     <button class="small" onclick="App.secretDel(this)" title="delete">✕</button>
@@ -3417,7 +3418,7 @@ async function setAccounts(b) {
     <div class="row" style="margin:6px 0"><span class="muted" style="min-width:118px">Client ID</span>
       <input id="g-id" placeholder="${esc(g.client_id || '…apps.googleusercontent.com')}" style="flex:1" onchange="App.googleSave()"></div>
     <div class="row" style="margin:6px 0"><span class="muted" style="min-width:118px">Client secret</span>
-      <input id="g-secret" type="password" placeholder="${g.has_client_secret ? '•••• stored — leave blank to keep' : ''}" style="flex:1" onchange="App.googleSave()"></div>
+      <input id="g-secret" type="password" placeholder="${g.has_client_secret ? '•••• stored: leave blank to keep' : ''}" style="flex:1" onchange="App.googleSave()"></div>
     <div class="row" style="margin:6px 0"><span class="muted" style="min-width:118px">Config dir</span>
       <input id="g-dir" value="${esc(g.config_dir)}" style="flex:1" onchange="App.googleSave()">
       <span class="muted mini">credentials ${dot(g.credentials_exists)} · token ${dot(g.token_exists)}</span></div>
@@ -3450,7 +3451,7 @@ async function setKB(b) {
   b.innerHTML = `<p class="muted">Documents in <code>kb/sources/</code> feed the GraphRAG knowledge graph. Add documents, then rebuild the index.</p>
     <div class="row" style="margin:8px 0"><input id="kb-group" placeholder="group (personal, contracts…)" style="max-width:230px">
       <input type="file" id="kb-file" multiple><button onclick="App.kbUpload()">Upload</button>
-      <button class="risky" onclick="App.rebuildKB()" title="Full re-index of the knowledge graph — can take 20–30+ minutes">Rebuild graph (slow)</button></div>
+      <button class="risky" onclick="App.rebuildKB()" title="Full re-index of the knowledge graph: can take 20-30+ minutes">Rebuild graph (slow)</button></div>
     <div class="kb-list">${list || '<span class="muted">no source documents yet</span>'}</div>
     <h4 style="margin:14px 0 4px">Index</h4>
     <div class="muted mini">${s.index ? `${s.entities} entities · ${s.relationships} relationships · ${s.communities} communities · ${s.documents} documents` : 'not built yet'}</div>
@@ -3691,7 +3692,7 @@ async function setGraph(b) {
       : 'Not built yet.'}</div>
     <div class="row" style="margin-top:10px">
       <button onclick="App.openKnowledge()">Open the knowledge graph</button>
-      <button class="small" onclick="App.rebuildKB()" title="Full re-index of the knowledge graph — can take 20–30+ minutes">Rebuild graph</button>
+      <button class="small" onclick="App.rebuildKB()" title="Full re-index of the knowledge graph: can take 20-30+ minutes">Rebuild graph</button>
     </div>
     <p class="muted mini" style="margin-top:10px">Search communities and entities, drill from the highest-level community down to
       individual entities, and open any entity's ego network. The graph fills the page and keeps the job grid out of the way.</p>`;
@@ -3723,7 +3724,7 @@ async function setCaptcha(b) {
       <span class="pill">${d.provider === 'vision' ? 'no key' : 'optional'}</span></div>
     <div class="row" style="margin:8px 0"><span class="muted" style="min-width:130px">API key</span>
       <input id="captcha-key" type="password" autocomplete="new-password" style="flex:1"
-        placeholder="${d.key_set ? '•••• stored — leave blank to keep' : 'only for 2Captcha / CapSolver'}"
+        placeholder="${d.key_set ? '•••• stored: leave blank to keep' : 'only for 2Captcha / CapSolver'}"
         onchange="App.saveCaptcha()">
       <span id="captcha-key-state" class="pill">${keyState}</span></div>
     <div class="row" style="margin:8px 0"><label class="mini"><input type="checkbox" id="captcha-clear" onchange="App.saveCaptcha()"> clear the stored key</label></div>
@@ -3740,7 +3741,7 @@ function stopLogs() {
   LOG_TIMER = null; LOG_NAME = ''; LOG_RUNNING = false;
 }
 function fmtAge(s) {
-  if (s == null) return '—';
+  if (s == null) return '-';
   if (s < 90) return s + 's ago';
   if (s < 5400) return Math.round(s / 60) + 'm ago';
   if (s < 172800) return (s / 3600).toFixed(1) + 'h ago';
@@ -3935,7 +3936,7 @@ async function setPerms(b) {
     write_repo: 'write files in this repo', write_external: 'write files outside the repo',
     bash: 'run shell commands', web: 'fetch web pages', task: 'launch subagents' };
   b.innerHTML = `<p class="muted">What the embedded agent may do <b>without asking</b>. <b>ask</b> shows you a
-      prompt (Allow once / Always allow / Deny) the moment the agent tries it — the agent waits for your answer.</p>
+      prompt (Allow once / Always allow / Deny) the moment the agent tries it: the agent waits for your answer.</p>
     <table><tbody>${cats.map(c => `<tr><td><code>${esc(c)}</code><div class="muted mini">${esc(help[c] || '')}</div></td>
       <td><select data-cat="${esc(c)}" onchange="App.savePerms()">${['allow', 'ask', 'deny'].map(v =>
         `<option value="${v}" ${(d.policy[c] === v) ? 'selected' : ''}>${v}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table>
@@ -4096,7 +4097,7 @@ if ($('#chat-model')) $('#chat-model').onchange = async (e) => {
   const val = e.target.value, who = e.target.dataset.agent || '', cfg = e.target.dataset.configured || '';
   const models = {}; if (who && val) models[who] = val;
   const d = await api('/api/agent/config', { agent: cfg, model: val, models });
-  toast(d.error ? d.error : `model: ${val || '(agent default)'} — applies to chat, role chats and queue/API runs`, !!d.error);
+  toast(d.error ? d.error : `model: ${val || '(agent default)'}: applies to chat, role chats and queue/API runs`, !!d.error);
   if (d.error) loadChatModel(true);
 };
 $('#btn-stop').onclick = () => App.stop();
@@ -4164,7 +4165,12 @@ $('#grouping').onclick = () => {
   syncGroupingButton();
   renderRows();
 };
-$('#export').onclick = () => {
+$('#export').onclick = async () => {
+  const n = (GRID || []).length;
+  const ok = await warn(`Export all **${n}** roles in the register to a CSV file.\n\n` +
+    `The file includes the fields shown in the grid.\n\nContinue?`,
+    'Export CSV', 'Export', false);
+  if (!ok) return;
   const cs = ['date', 'company', 'role', 'employment', 'work_model', 'salary_label', 'ats', 'status', 'action', 'match', 'focus', 'queue', 'applied', 'spec', 'groups', 'key'];
   const body = GRID.map(r => cs.map(c => {
     const v = c === 'groups' ? (r.groups || []).map(groupName).join('; ') : r[c];
@@ -4213,7 +4219,7 @@ setInterval(() => loadChatModel(true), 60000);
 window.App = App;
 async function healthPill() { const s = await api('/api/health'); const h = $('#health');
   h.textContent = 'health: ' + (s.v || '?'); h.className = 'pill ' + (s.v || 'unknown');
-  h.title = 'Open health and instance details' + (s.detail && s.detail !== 'all ok' ? ' — ' + s.detail : '');
+  h.title = 'Open health and instance details' + (s.detail && s.detail !== 'all ok' ? ': ' + s.detail : '');
   setTimeout(healthPill, 60000); }
 /* ---------- software updates ---------- */
 let UPD = {}, UPD_TIMER = null;

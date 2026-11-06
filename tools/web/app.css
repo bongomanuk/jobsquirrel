@@ -278,8 +278,8 @@ body[data-act="closed"] #tasklog{display:none}
 
 /* single-grid layout */
 .metrics{display:flex;gap:5px;flex-wrap:wrap;flex-basis:100%;margin-top:1px}
-.metric{background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:2px 9px;font-size:11px;color:var(--muted);cursor:pointer;line-height:1.6}
-.metric b{color:var(--accent);font-size:12px;margin-right:3px}
+.metric{background:var(--surface2);border:1px solid var(--line);border-radius:8px;height:32px;padding:0 11px;font-size:13px;color:var(--muted);cursor:pointer;line-height:1;display:inline-flex;align-items:center}
+.metric b{color:var(--accent);font-size:13px;margin-right:5px}
 .metric.hero{border-color:var(--accent)}
 .metric:hover{border-color:var(--accent);color:var(--fg)}
 .metric.on{border-color:var(--accent);color:var(--fg);background:var(--surface2);box-shadow:0 0 0 1px var(--accent) inset}
@@ -325,7 +325,11 @@ tr.grp .grp-n .countlink:hover{color:var(--accent)}
 .gridcard{border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
 .gridcard>.gridwrap{border:0;border-top:1px solid var(--line);border-radius:0 0 var(--radius) var(--radius)}
 .grid-toolbar{margin:0;padding:7px 10px;background:var(--surface);border-bottom:1px solid var(--line);border-radius:var(--radius) var(--radius) 0 0}
-.grid-toolbar button,.grid-toolbar .filters>summary{height:32px;padding:0 11px;font-size:13px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.grid-toolbar button,.grid-toolbar .filters>summary,
+.kg-toolbar button,.kg-toolbar .kg-modes button{height:32px;padding:0 11px;font-size:13px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;border-radius:8px}
+.kg-toolbar .kg-modes{height:32px;border-radius:8px}
+.kg-toolbar .kg-modes button{height:30px;padding:0 10px;border-radius:6px}
+.kg-toolbar input,.kg-toolbar select{height:32px;min-height:32px}
 .grid-toolbar button.small{height:32px;padding:0 11px;font-size:13px}
 .grid-toolbar input{height:32px;min-height:32px}
 .gridwrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius)}
@@ -542,7 +546,11 @@ mark.kw{background:#24405a;color:#bfe3ff;border-radius:3px;padding:0 2px}
 .sg-DRAFTING .sg-rect{fill:#182430;stroke:#2f4a63}
 
 /* ---- GraphRAG knowledge graph ---- */
-.kg-toolbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:8px 0}
+.kg-toolbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:8px 0;padding:0}
+.kg-title{font-size:16px;color:var(--fg);white-space:nowrap}
+.kg-spacer{flex:1}
+.kg-break{flex-basis:100%;height:0}
+.kg-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .kg-wrap{position:relative;display:flex;gap:10px;min-height:470px}
 .kg-canvas{flex:1;min-width:0;background:#07090c;border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .kg-canvas svg{display:block;width:100%;height:470px;cursor:grab;touch-action:none}
@@ -612,6 +620,7 @@ mark.kw{background:#24405a;color:#bfe3ff;border-radius:3px;padding:0 2px}
 #knowledge .kg-side{max-height:none;height:100%;flex:0 0 320px;width:320px}
 #knowledge .kg-legend{flex:0 0 auto}
 #knowledge .kg-toolbar{margin:0}
+#knowledge .kg-toolbar.kg-topbar{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:7px 10px}
 #knowledge .kg-results{max-height:150px}
 body.knowledge-open{overflow:hidden}
 
@@ -744,7 +753,7 @@ body.knowledge-open .modal{z-index:60}
 .uni-cluster-label:hover b{color:#fff}
 @media (max-width:760px){.uni-side{position:absolute;left:10px;right:10px;top:auto;bottom:10px;width:auto;max-height:32vh}}
 /* Knowledge page view switch */
-.kg-modes{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:#0a0d12}
+.kg-modes{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#0a0d12}
 .kg-modes button{background:none;border:0;color:var(--muted);font-size:11px;padding:4px 11px;cursor:pointer;letter-spacing:.02em}
 .kg-modes button:hover{color:var(--fg)}
 .kg-modes button.on{background:var(--accent);color:#0b0d10;font-weight:600}
@@ -783,7 +792,7 @@ body.knowledge-open .modal{z-index:60}
 .c-raw-step b{display:block;font-size:11.5px;color:var(--muted);margin-bottom:4px}
 .c-raw-step pre{margin:0;max-height:30vh;overflow:auto;white-space:pre-wrap;font:11.5px/1.45 var(--mono);color:var(--muted)}
 
-/* Role groups (campaigns) — a tag on the row and a filter, independent of status */
+/* Role groups (campaigns): a tag on the row and a filter, independent of status */
 .gtags{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}
 .gtag{display:inline-flex;align-items:center;gap:4px;font:10.5px/1.4 var(--sans);padding:1px 6px;
   border-radius:10px;background:color-mix(in srgb,var(--gc) 16%,transparent);
@@ -846,7 +855,7 @@ body.knowledge-open .modal{z-index:60}
 .sg-SHELVED .sg-rect{fill:#141c26;stroke:#4b6a88;stroke-width:1.4}
 .sg-SHELVED .sg-title{fill:#cfe3f5}
 
-/* Settings — About */
+/* Settings: About */
 .about-card{display:grid;grid-template-columns:auto 1fr;gap:7px 18px;align-items:baseline;
   margin:12px 0;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
 .about-card .k{color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
@@ -855,7 +864,7 @@ body.knowledge-open .modal{z-index:60}
   color:var(--muted);font-size:13px}
 .about-credit a{font-weight:600}
 
-/* Settings — Logs */
+/* Settings: Logs */
 .logspane{display:grid;grid-template-columns:minmax(190px,300px) 1fr;gap:12px;margin-top:8px;min-height:0}
 @media(max-width:820px){.logspane{grid-template-columns:1fr}}
 .loglist{border:1px solid var(--line);border-radius:9px;overflow:auto;max-height:56vh;
@@ -875,7 +884,7 @@ body.knowledge-open .modal{z-index:60}
 .logbody{flex:1;min-height:220px;max-height:56vh;overflow:auto;margin:0;
   font-size:11.5px;line-height:1.45;white-space:pre-wrap}
 
-/* Settings — About: health + instance */
+/* Settings: About health and instance */
 #health{cursor:pointer}
 #health:hover{filter:brightness(1.18)}
 #health:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
