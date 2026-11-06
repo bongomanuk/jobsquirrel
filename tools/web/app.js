@@ -2522,6 +2522,10 @@ async function liveTick() {
       if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
       if ((sm.notable || []).length) h += '<ul class="act-list">' + sm.notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
       tech.push(...(a.log || []));
+    } else if (a.name && a.finished) {
+      h += `<div class="act-h">✓ Last action: ${esc(aname || 'last action')} ` +
+        `<span class="muted">finished</span></div>`;
+      tech.push(...(a.log || []));
     }
     const tasks = d.running_tasks || (d.running || []).map(x => ({ label: x, log: '' }));
     if (tasks.length) {

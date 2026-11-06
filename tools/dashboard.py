@@ -2104,10 +2104,10 @@ def live():
     act_running = action_alive()
     delegated = delegated_live()
     act_lines = action_log(4000)
-    # The pane is for CURRENT activity. A finished action keeps its name and
-    # summary as "last action", but its transcript is history: sending it made
-    # the pane (and the chat) look like work was still happening.
-    act_log = act_lines[-400:] if act_running else []
+    # The transcript is always sent; the UI keeps a finished action's log behind
+    # a collapsed "Technical details" disclosure instead of showing it as live
+    # work. A running action shows it directly.
+    act_log = act_lines[-400:]
     act_name = _ACT.get("name", "")
     def _running_task(k):
         co, _, role = k.partition("|")
