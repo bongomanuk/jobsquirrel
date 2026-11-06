@@ -828,3 +828,8 @@ body.knowledge-open .modal{z-index:60}
 .scambox.low{border:1px solid rgba(234,179,8,.5);background:rgba(234,179,8,.08);color:#f5e6a8}
 .scambox ul{margin:6px 0 4px 18px;padding:0}
 .scambox li{margin:3px 0}
+
+/* Shelved roles: parked, original status kept. */
+.shelved{opacity:.72}
+.sg-SHELVED .sg-rect{fill:#141c26;stroke:#4b6a88;stroke-width:1.4}
+.sg-SHELVED .sg-title{fill:#cfe3f5}

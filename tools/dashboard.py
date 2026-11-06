@@ -262,6 +262,40 @@ def set_role_flags(key, pinned=None):
     return {"ok": "updated"}
 
 
+# ---------------------------------------------------------------- shelved roles
+SHELVED = os.path.join(STATE, "shelved.json")
+
+
+def shelved_roles():
+    """Roles parked by the operator. The register status is never changed."""
+    try:
+        with open(SHELVED, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): (v if isinstance(v, dict) else {}) for k, v in data.items()}
+
+
+def set_shelved(key, on=True, note=""):
+    key = str(key or "").strip()[:160]
+    if not key:
+        return {"error": "key required"}
+    data = shelved_roles()
+    if on:
+        data[key] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                     "note": str(note or "")[:400]}
+    else:
+        data.pop(key, None)
+    tmp = SHELVED + ".tmp"
+    os.makedirs(os.path.dirname(tmp), exist_ok=True)
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=1, sort_keys=True)
+    os.replace(tmp, SHELVED)
+    return {"ok": "shelved" if on else "unshelved", "key": key}
+
+
 # ---------------------------------------------------------------- role groups
 ROLE_GROUPS = os.path.join(STATE, "role-groups.json")
 GROUP_COLORS = ["#7aa2f7", "#9ece6a", "#e0af68", "#f7768e",
@@ -1200,7 +1234,7 @@ def _ats_key_for(company, role, key, stems=None):
             company_score = 10 + sum(len(t) for t in shared)
         hits = sum(1 for t in role_tokens if t in sn)
         if not hits:
-            # A company-level ad ("solita.md") can still describe this role.
+            # A company-level ad ("acme.md") can still describe this role.
             # Require at least two role words in the saved ad so a generic
             # employer page cannot claim every job at that company.
             jd_text = _read(os.path.join(STATE, "job-descriptions", s + ".md")).lower()
@@ -1837,6 +1871,7 @@ def grid():
     apps = _rows(os.path.join(STATE, "applications.csv"))
     email_scams = _email_scams()
     flags = role_flags()
+    shelved = shelved_roles()
     group_roles = role_groups()["roles"]
     _load_cov(); _load_emp()
     target = _salary_target()
@@ -1935,6 +1970,8 @@ def grid():
                     "stages": stages_for(key, ck in subm, jd_key=jd_key,
                                          ats_key=ats_key, content_key=content_key),
                     "pinned": bool((flags.get(key) or {}).get("pinned")),
+                    "shelved": key in shelved,
+                    "shelved_at": (shelved.get(key) or {}).get("at", ""),
                     "groups": group_roles.get(key, []),
                     **_pay_work_fields(jd_key, notes, status, cov, target),
                     "hint": hint})
@@ -4954,6 +4991,9 @@ class H(BaseHTTPRequestHandler):
             return self._json(queue_action(data.get("action", ""), data.get("company", ""), data.get("role", "")))
         if p == "/api/delegate":
             return self._json(delegate_start(data.get("prompt", ""), data.get("title", "")))
+        if p == "/api/roles/shelve":
+            return self._json(set_shelved(data.get("key", ""), bool(data.get("on")),
+                                          data.get("note", "")))
         if p == "/api/roles/flags":
             return self._json(set_role_flags(data.get("key", ""),
                                              pinned=data.get("pinned")))

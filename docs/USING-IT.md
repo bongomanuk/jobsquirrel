@@ -96,14 +96,15 @@ Everything is observable. Useful things to ask for, or run yourself:
     **Knowledge base** (list / upload / delete source documents, rebuild the index), **GraphRAG**
     (browse entities, relationships, communities and documents), and **Profile & CV** (edit
     `profile.md` / `cv.json` / `archetypes.json`, regenerate the archetype CVs).
-  - It can **start runs** from buttons: *Prepare (review)* is safe (REVIEW=1, no submits); *Submit
-    prepared* (grid toolbar) and *Submit this application* (a `PREPARED` row's drawer) apply with
-    the documents already generated — no re-generation — and *Apply
-    queue* submits, so both need a two-step confirmation (`APPROVE_RUN_QUEUE`). Every action needs
-    the per-session token (anti-CSRF) and the UI binds to `127.0.0.1` only; the chat agent inherits
-    the same approval gates — it cannot send or delete mail without them. Prepare, submit and
-    knowledge-base actions run detached in the background: the console stays usable and progress is
-    reported in **Activity**; only the explicit submit approval is a blocking dialog.
+  - The header has three destinations: **Applications**, **Knowledge** and **Config**. The
+    page-level actions are scoped to the grid: **Prepare shown** (REVIEW=1, no submits),
+    **Submit prepared** and **Review**. A `PREPARED` row's drawer has **Submit this application**.
+    Submitting uses the documents already generated — no re-generation — and needs a two-step
+    confirmation (`APPROVE_RUN_QUEUE`). Every action needs the per-session token (anti-CSRF) and
+    the UI binds to `127.0.0.1` only; the chat agent inherits the same approval gates — it cannot
+    send or delete mail without them. Prepare, submit and knowledge-base actions run detached in
+    the background: the console stays usable and progress is reported in **Activity**; only the
+    explicit submit approval is a blocking dialog.
 - **Register**: `python3 tools/register.py --stats`;
   `python3 tools/register.py --list --status INTERVIEW`;
   `python3 tools/register.py --show "<Company>"`.
@@ -150,6 +151,10 @@ should I do next?”.
 - The **Application states** panel shows the coarse flow; click a state to expand its sub-states and filter to it, then click a sub-state to narrow further.
 - **Needs you** includes the sub-states that genuinely wait on you: assessments, follow-ups,
   CAPTCHA/2FA and other human walls, plus invites and offers.
+- **Shelved** is a view overlay, not a status. Right-click a row → **Shelve for later**; its
+  status, notes, documents and provenance stay unchanged, and it moves to the **Shelved** bucket
+  and the **SHELVED** node in the state graph. Unshelve from the same menu. The node sits next to
+  SCAMS but is independent of it.
 
 | Status | Sub-states | What it means |
 |---|---|---|

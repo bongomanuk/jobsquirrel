@@ -57,6 +57,7 @@ Components:
 | `state/applications.csv` | Canonical register: `date,company,role,ats,status,letter,notes,employment,action,key,apply_url`. One row per role. `key` is the role's single identity (the queue row's last column, also what `queue.done` stores); rows written before it existed fall back to `company|role`. `action` is a short **human to-do** (reply/assessment/booking) surfaced as ⚑ in the grid and filterable. A passive waiting phrase ("await a reply") is dropped: the status and sub-state already say that, and recording a sent reply clears the flag. |
 | `state/submissions.csv` | Provenance ledger: paths + sha256 + snapshot dir + evidence + confidence (`verified`/`forced`/`inferred`). |
 | `state/role-groups.json` | Named groups (campaigns): `{groups:{id:{name,color}},roles:{key:[id]}}`, independent of status. |
+| `state/shelved.json` | Operator shelf: `{key:{at,note}}`. A view overlay only; the register status and artifacts are unchanged. |
 | `config/canonical-facts.json` | Canonical fact wording: regex replacements applied at KB ingest and CV/letter render; the gate fails forbidden variants. |
 | `config/email-triage.json` | Local additions for the language-agnostic email triage (extra ATS, hard/soft marketing domains). Private; the public example is `config/email-triage.example.json`. |
 | `state/queue.tsv` | Pending roles: `company␉role␉url␉cv-archetype␉ats␉key`. |
@@ -193,12 +194,15 @@ and stops at any CAPTCHA/2FA rather than working around it.
 ### 9.2 Shell (single-grid IA)
 The whole app is **one master data grid** — one canonical row per application, so the
 same record is never duplicated across separate pages.
-- **Header:** mascot 🐿️ · health pill (`/api/health`) · build marker · action bar
-  (**⚡ Prepare**, **🚀 Run Submissions** (gated), **📥 Reconcile**, **⚙ Config**, **💬 Agent**).
+- **Header:** mascot 🐿️ · health pill (`/api/health`) · build marker · three destinations:
+  **📋 Applications**, **🕸️ Knowledge**, **⚙ Config**. The broad Prepare / Run Submissions
+  actions are not in the header; the grid toolbar has scoped **Prepare shown** and
+  **Submit prepared**, and a `PREPARED` row's drawer has **Submit this application**.
 - **Strip:** metric pills (in process · interviews · blocked · human · offers · total · submissions)
   and a live-tail line (`/api/live`).
 - **Toolbar:** search (company/role/ATS), status filter, queue filter, **Export CSV**, row count,
-  **⚡ Prepare shown** (generate documents, review-only) and **↻ Match** (recompute) for the rows shown.
+  **⚡ Prepare shown** (generate documents, review-only), **🚀 Submit prepared** (gated),
+  **📬 Review** (Gmail review queue and its triage filter) and **↻ Match** (recompute) for the rows shown.
 - **Metric pills are filters:** click *in process / interviews / blocked / human / offers / total /
   submissions* to filter the grid to that set (click again or *total* to clear); the active pill is highlighted.
 - **Process control:** while a run is active the strip shows **⏸ Pause** (workers finish the current task
@@ -221,7 +225,8 @@ Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files �
   QUEUED → DRAFTING → PREPARED → SUBMITTED → IN_PROGRESS → INTERVIEW → OFFER, with BLOCKED/MANUAL
   branches and REJECTED/CLOSED terminals. Each node shows its live count and a
   one-line annotation; clicking a node expands its sub-states and filters the grid to that status,
-  and clicking a sub-state filters further. The open/closed state is remembered.
+  and clicking a sub-state filters further. **SCAMS** and **SHELVED** are side nodes that filter
+  their buckets. The open/closed state is remembered.
 - **Right-click a row** for the full action menu: open details / documents / the ad / the apply page,
   discuss the role, prepare documents, submit prepared (approval-gated), recompute the match, draft a
   reply with the agent, set the status, flag or clear a follow-up, **pin to the top**, re-queue, hand to a human, unblock/remove from the queue, and copy the company, role,
@@ -229,6 +234,10 @@ Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files �
 - **🏷 Groups** in the toolbar opens the group manager: create a campaign, rename or delete one.
   Deleting a group removes its memberships, not the roles. Right-click a row → Groups to add or
   remove that role.
+- **Shelved** is a view overlay, not a status: right-click a row → **Shelve for later** keeps its
+  status, notes, documents and provenance unchanged and moves it to the **Shelved** bucket and
+  the **SHELVED** node in the state graph. The node sits next to **SCAMS** but is independent of
+  it. Unshelve from the same menu.
 - The menu is **state-aware**: it opens with the company, role, status chip, fit, ⚑ flag and interview
   time, and only offers actions that apply (no submit unless `PREPARED`, no reply draft on a closed
   role, no queue action on a prepared one, "Reopen as" instead of "Set status" on a rejected/closed
@@ -446,7 +455,7 @@ interface contract.
   **Update now** (`git pull --ff-only`, approval-gated) — restart to apply.
 - Degrades to an empty state with no local data.
 - **One notification surface:** toasts replace in place (never stack), and the
-  Prepare / Run Submissions / Reconcile buttons are disabled while a run is active.
+  The scoped Prepare / Submit / Reconcile actions are disabled while a run is active.
 - **Agent console:** a dockable pullout — **left by default**, or top / bottom / right. **Drag the
   console's header** to an edge (highlighted drop zones) to dock it; a small tab pulls it out when
   collapsed. The console and its Chat / Activity panes are **resizable with drag splitters** (sizes

@@ -42,6 +42,7 @@ const BUCKETS = [
   { k: 'active', label: 'Active', hint: 'Everything not finished: probable scams + needs you + prepared + ongoing + to apply' },
   { k: 'focus', label: 'Focus', hint: 'Roles that pay at least your target and fit at least 70%; also shows high-fit roles with no pay figure' },
   { k: 'scams', label: 'Probably scams', hint: 'A HIGH or MEDIUM scam signal on the advert or a message — verify the employer before replying or applying' },
+  { k: 'shelved', label: 'Shelved', hint: 'Parked for later — the original status is unchanged' },
   { k: 'needs', label: 'Needs you', hint: 'Replies, interviews to book, assessments, offers or manual steps' },
   { k: 'prepared', label: 'Prepared', hint: 'Documents generated and gated — review or submit' },
   { k: 'ongoing', label: 'Ongoing', hint: 'Submitted, in progress or interviewing — waiting on the employer' },
@@ -51,6 +52,7 @@ const BUCKETS = [
 ];
 const BUCKET_GROUPS = [
   { k: 'scams', title: 'Probably scams', desc: 'verify the employer before replying or applying' },
+  { k: 'shelved', title: 'Shelved', desc: 'parked for later — original status kept' },
   { k: 'needs', title: 'Needs you', desc: 'reply, book a time, complete an assessment, or clear a manual step' },
   { k: 'prepared', title: 'Prepared', desc: 'documents ready — review or submit' },
   { k: 'ongoing', title: 'Ongoing', desc: 'waiting on the employer' },
@@ -87,6 +89,7 @@ function substateRank(st, key) {
 function bucketOf(r) {
   const s = r.status, lb = r.label || s;
   if (r.scam && ['high', 'medium'].includes(r.scam.level)) return 'scams';
+  if (r.shelved) return 'shelved';
   if (s === 'CLOSED' || s === 'REJECTED') return 'done';
   if (r.action || NEEDS_STATUS.has(s) || r.substate === 'invited' || r.queue === 'human' ||
       NEEDS_SUBSTATES.has(r.substate)) return 'needs';
@@ -1272,7 +1275,7 @@ async function loadGrid() {
   if (sc) sc.scrollTop = y;
 }
 function bucketCounts() {
-  const c = { scams: 0, needs: 0, prepared: 0, ongoing: 0, pipeline: 0, done: 0 };
+  const c = { scams: 0, shelved: 0, needs: 0, prepared: 0, ongoing: 0, pipeline: 0, done: 0 };
   GRID.forEach(r => { const k = bucketOf(r); c[k] = (c[k] || 0) + 1; });
   const live = GRID;
   return { ...c, focus: live.filter(r => r.focus || r.focus_unknown).length,
@@ -1303,6 +1306,7 @@ const SG_MAIN = [
 ];
 const SG_SIDE = [
   { s: 'SCAMS', x: 20, note: 'verify the employer' },
+  { s: 'SHELVED', x: 195, note: 'parked, status kept' },
   { s: 'BLOCKED', x: 545, note: 'wall: captcha / login' },
   { s: 'MANUAL', x: 720, note: 'needs you' },
   { s: 'REJECTED', x: 895, note: 'not selected' },
@@ -1323,6 +1327,7 @@ function renderStateGraph() {
   const counts = {};
   GRID.forEach(r => { counts[r.status] = (counts[r.status] || 0) + 1; });
   const scamCount = GRID.filter(r => r.scam && ['high', 'medium'].includes(r.scam.level)).length;
+  const shelvedCount = GRID.filter(r => r.shelved).length;
   const by = {};
   GRID.forEach(r => {
     if (!r.substate) return;
@@ -1356,14 +1361,15 @@ function renderStateGraph() {
       `<text class="sg-edge" ${labelPos}>${esc(label)}</text>`;
   };
   const node = (n, y, h) => {
-    const on = n.s === 'SCAMS' ? BUCKET === 'scams' : active === n.s;
+    const on = n.s === 'SCAMS' ? BUCKET === 'scams'
+      : (n.s === 'SHELVED' ? BUCKET === 'shelved' : active === n.s);
     const exp = expanded === n.s;
     const subs = subsFor(n.s);
     const caret = subs.length ? (exp ? ' ▾' : ' ▸') : '';
     return `<g class="sg-node sg-${n.s}${on ? ' active' : ''}${exp ? ' expanded' : ''}" data-status="${n.s}" role="button" tabindex="0" aria-label="${exp ? 'Collapse' : 'Expand'} ${n.s} sub-states">` +
       `<rect class="sg-rect" x="${n.x}" y="${y}" width="${SG_W}" height="${h}" rx="9"/>` +
       `<text class="sg-title" x="${n.x + 12}" y="${y + 23}">${n.s}${caret}</text>` +
-      `<text class="sg-count" x="${n.x + SG_W - 12}" y="${y + 23}" text-anchor="end">${n.s === 'SCAMS' ? scamCount : (counts[n.s] || 0)}</text>` +
+      `<text class="sg-count" x="${n.x + SG_W - 12}" y="${y + 23}" text-anchor="end">${n.s === 'SCAMS' ? scamCount : (n.s === 'SHELVED' ? shelvedCount : (counts[n.s] || 0))}</text>` +
       `<text class="sg-note" x="${n.x + 12}" y="${y + 44}">${esc(n.note)}</text></g>`;
   };
   const child = (x, y, w, label, count, cls, attrs, hint) =>
@@ -1411,7 +1417,7 @@ function renderStateGraph() {
     const n = SG_SIDE.find(x => x.s === expanded);
     body += stack(n, sideY + 56, sideY + 66, sideExp);
   }
-  const caption = 'Click a state to expand and filter · SCAMS filters the scam bucket · click a sub-state to narrow · REJECTED can follow any applied state; CLOSED any state';
+  const caption = 'Click a state to expand and filter · SCAMS and SHELVED filter their buckets · click a sub-state to narrow · REJECTED can follow any applied state; CLOSED any state';
   box.innerHTML = `<svg viewBox="0 0 1220 ${svgH}" class="sg-svg" role="img" aria-label="Application states">` +
     body + `<text class="sg-cap" x="20" y="${svgH - 10}">${esc(caption)}</text></svg>`;
 }
@@ -1447,6 +1453,11 @@ function renderStateGraph() {
     const st = g.dataset.status;
     if (st === 'SCAMS') {
       BUCKET = 'scams'; BUCKET_BEFORE_SEARCH = null;
+      renderBuckets(); renderRows();
+      return;
+    }
+    if (st === 'SHELVED') {
+      BUCKET = 'shelved'; BUCKET_BEFORE_SEARCH = null;
       renderBuckets(); renderRows();
       return;
     }
@@ -1641,7 +1652,7 @@ function renderRows() {
     const gtags = groupTagsHTML(r);
     return `<tr class="click${sel}" onclick="App.open(${i})" oncontextmenu="return App.rowMenu(event, ${i})">` +
       `<td class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet — queued, not applied')}>${r.date ? esc(shortDate(r.date)) : '—'}</td>` +
-      `<td${T(r.company + '  ·  employer / recruiter')}>${r.running ? `<a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="event.stopPropagation();App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show the live log"><span title="working">🥜</span></a> ` : (PENDING.has(r.key) ? '<span title="Queued — waiting to start">🥜</span> ' : '')}${r.pinned ? `<span class="pinned"${T('Pinned to the top of its group')}>📌</span> ` : ''}${r.scam && ['high', 'medium'].includes(r.scam.level) ? `<span class="scamflag ${esc(r.scam.level)}"${T('Scam check: ' + r.scam.level.toUpperCase() + ' — open the role for the signals')}>⚠</span> ` : ''}${r.action ? `<span class="actflag"${T(r.action)}>⚑</span> ` : ''}${esc(r.company)}</td>` +
+      `<td${T(r.company + '  ·  employer / recruiter')}>${r.running ? `<a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="event.stopPropagation();App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show the live log"><span title="working">🥜</span></a> ` : (PENDING.has(r.key) ? '<span title="Queued — waiting to start">🥜</span> ' : '')}${r.pinned ? `<span class="pinned"${T('Pinned to the top of its group')}>📌</span> ` : ''}${r.shelved ? `<span class="shelved"${T('Shelved — original status kept')}>🗄</span> ` : ''}${r.scam && ['high', 'medium'].includes(r.scam.level) ? `<span class="scamflag ${esc(r.scam.level)}"${T('Scam check: ' + r.scam.level.toUpperCase() + ' — open the role for the signals')}>⚠</span> ` : ''}${r.action ? `<span class="actflag"${T(r.action)}>⚑</span> ` : ''}${esc(r.company)}</td>` +
       `<td${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}${gtags ? `<div class="gtags">${gtags}</div>` : ''}</td>` +
       `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
       `<td>${chip(r.label || r.status)}${subLineHTML(r) || (r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : '')}</td><td>${mbadge(r)}</td>` +
@@ -1706,6 +1717,7 @@ function renderRows() {
         cl(c.pipeline, 'to apply', "App.bucket('pipeline')", 'Show the roles still to apply to');
     else if (BUCKET === 'all')
       $('#count').innerHTML = (c.scams ? cl(c.scams, 'probable scam' + (c.scams === 1 ? '' : 's'), "App.bucket('scams')") + dot : '') +
+        (c.shelved ? cl(c.shelved, 'shelved', "App.bucket('shelved')") + dot : '') +
         cl(c.needs, 'need you', "App.bucket('needs')") + dot +
         cl(c.prepared, 'prepared', "App.bucket('prepared')") + dot +
         cl(c.ongoing, 'ongoing', "App.bucket('ongoing')") + dot +
@@ -1854,6 +1866,7 @@ App.rowMenu = (ev, i) => {
     (!closed && !r.running) ? { icon: '⚑', label: r.action ? 'Update follow-up flag…' : 'Flag follow-up…', run: () => App.flagAction(r) } : null,
     r.action ? { icon: '⚐', label: 'Clear follow-up flag', run: () => App.clearFlag(r) } : null,
     { icon: '📌', label: r.pinned ? 'Unpin' : 'Pin to top', run: () => App.togglePin(r) },
+    { icon: '🗄', label: r.shelved ? 'Unshelve' : 'Shelve for later', run: () => App.toggleShelve(r) },
     { icon: '🏷', label: 'Groups', sub: groupItems },
     ((!applied && !queued) || blocked) ? { sep: true } : null,
     (!applied && !prepared && !queued && !closed && !r.running)
@@ -1933,6 +1946,11 @@ App.clearFlag = async (r) => {
   if (!d.error) { await loadGrid(); if (CUR) openDetail(CUR); }
 };
 
+App.toggleShelve = async (r) => {
+  const d = await api('/api/roles/shelve', { key: r.key, on: !r.shelved });
+  toast(d.ok || d.error, !!d.error);
+  if (!d.error) { await loadGrid(); if (CUR) openDetail(CUR); }
+};
 App.togglePin = async (r) => {
   const d = await api('/api/roles/flags', { key: r.key, pinned: !r.pinned });
   toast(d.error ? d.error : (r.pinned ? 'unpinned' : 'pinned to the top'), !!d.error);
@@ -3771,9 +3789,7 @@ function setProfile(b) {
 }
 
 /* ---------- wiring ---------- */
-$('#a-prepare').onclick = () => App.run('prepare');
-$('#a-submit').onclick = () => App.run('submit_queue');
-$('#a-reconcile').onclick = () => App.run('reconcile');
+$('#a-applications').onclick = () => App.home();
 $('#a-knowledge').onclick = () => App.openKnowledge('map');
 const brandHome = $('#brand-home');
 if (brandHome) {
@@ -3800,7 +3816,7 @@ $('#legend').onclick = () => {
   $('#legend-queue').innerHTML = Object.entries(QUEUE_HELP).map(([k, v]) => `<dt><code>${esc(k)}</code></dt><dd>${esc(v)}</dd>`).join('');
   $('#legend-modal').classList.remove('hide');
 };
-$('#a-drawer').onclick = () => openDock(!PANELS.agent.open);
+
 $('#a-gmail-review').onclick = () => reviewOpen();
 if ($('#review-filter')) $('#review-filter').onchange = renderGmailReview;
 loadGmailReview();

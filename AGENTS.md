@@ -363,6 +363,9 @@ bash tools/reconcile_loop.sh                # continuous reconcile + counts
   and annotates the review queue. Use the **triage: job-related** filter to find
   job mail the regex put in OTHER. It never changes a status; local domain
   additions live in `config/email-triage.json`.
+- **Shelved** is an operator overlay, not a status. `state/shelved.json` holds the keys;
+  shelving keeps the register status, notes, documents and provenance unchanged. Do not set a
+  status to "shelved"; unshelve from the row menu when the human asks.
 - An `action` is a **human to-do** ("reply to Ray about a time", "complete the
   assessment"), never a passive waiting state. Do **not** set "await a reply" (or
   similar): the status and sub-state already say that, and it used to linger
