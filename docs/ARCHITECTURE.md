@@ -122,8 +122,8 @@ role-to-evidence edges without changing the graph renderer.
 ## Machine-local state and compression
 
 Everything the pipeline learns about a run lives in `state/` and is machine-local.
-It is largely text — saved job ads, ATS keyword files, GraphRAG grounding packs,
-CV content packs, letters, gate receipts, agent transcripts — so it compresses
+It is largely text: saved job ads, ATS keyword files, GraphRAG grounding packs,
+CV content packs, letters, gate receipts, agent transcripts: so it compresses
 3-7x, and `tools/storage.py` packs the cold parts:
 
 | Area | Action | Read back by |
@@ -141,7 +141,7 @@ packs the cold leftovers when it finishes.
 
 Never packed: files that are appended to or written by shell redirection
 (`queue*.tsv`, `*.done`, `*.csv`, `state/drafts/`, live dashboard logs), symlinks,
-and — by default — anything git tracks (packing a tracked file is a deletion plus
+and, by default, anything git tracks (packing a tracked file is a deletion plus
 an untracked `.gz`; `--include-tracked` overrides). `documents/` holds `.docx` and
 `.pdf`, already-compressed containers; `kb/graphrag/output/` is read at query time
 and stays unpacked. Details: **[STORAGE.md](STORAGE.md)**.

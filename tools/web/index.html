@@ -182,38 +182,32 @@
 
 <section id="knowledge" class="page hide" aria-label="Knowledge graph">
   <div class="kg-toolbar kg-topbar">
-    <button class="kg-btn" onclick="App.closeKnowledge()" title="Back to the job grid">← Jobs</button>
-    <b class="kg-title">Knowledge graph</b>
-    <div class="kg-modes" role="tablist" aria-label="View">
-      <button id="kg-mode-map" class="on" onclick="App.setKGMode('map')" title="Drill down through communities and topics">🕸️ Map</button>
-      <button id="kg-mode-uni" onclick="App.setKGMode('universe')" title="Fly through the entire graph as a 3D universe">🌌 Universe</button>
-    </div>
-    <span id="kg-stats" class="muted mini"></span>
-    <span id="uni-stats" class="muted mini hide"></span>
+    <button class="kg-btn kg-icon" onclick="App.closeKnowledge()" title="Back to the job grid">←</button>
+    <div id="kg-crumbs" class="kg-crumbs kg-crumbs-inline"></div>
+    <span id="kg-stats" class="muted mini kg-stats"></span>
+    <span id="uni-stats" class="muted mini kg-stats hide"></span>
     <span class="kg-spacer"></span>
-    <span class="kg-actions">
-      <button class="kg-btn" onclick="App.openAsk()" title="Ask the knowledge graph a question; answers cite the graph">🧠 Ask</button>
-      <button class="kg-btn" onclick="App.openEnrich()" title="Find grounded gaps in the graph and add the ones you approve">✨ Enrich</button>
-      <button class="kg-btn" onclick="App.rebuildKB()" title="Full re-index of the knowledge graph. Can take 20 to 30+ minutes">Rebuild graph</button>
-    </span>
-    <span class="kg-break"></span>
-    <button id="kg-back" class="kg-btn" onclick="App.graphBack()" title="Up one level" style="visibility:hidden">← Back</button>
-    <input id="kg-q" placeholder="search communities, entities, types…" style="flex:1;max-width:380px"
+    <input id="kg-q" placeholder="Search the graph" style="flex:0 1 220px"
       onkeydown="if(event.key==='Enter')App.kgSearch(this.value)">
     <button id="kg-search-btn" class="kg-btn" onclick="App.kgSearch($('#kg-q').value)">Search</button>
     <button id="kg-semantic" class="kg-btn" onclick="App.kgSemantic($('#kg-q').value)" title="Natural-language semantic search over the graph embeddings">✨ Semantic</button>
     <button id="kg-tab-types" class="kg-btn" onclick="App.graphTypes()">Topics</button>
     <button id="kg-tab-comm" class="kg-btn" onclick="App.graphTop()">Communities</button>
-    <button id="kg-all" class="kg-btn" onclick="App.graphAll()" style="display:none">Show all</button>
-    <button id="kg-reset" class="kg-btn" onclick="App.kgReset()">Reset view</button>
-    <select id="kg-focus" onchange="App.kgFocusDepth(this.value)" title="How many hops around the selected node stay bright; the rest dims">
-      <option value="1">Focus: 1 hop</option>
-      <option value="2">Focus: 2 hops</option>
-      <option value="3">Focus: 3 hops</option>
+    <button id="kg-all" class="kg-btn" onclick="App.graphAll()" style="display:none">All</button>
+    <button id="kg-reset" class="kg-btn" onclick="App.kgReset()">Reset</button>
+    <select id="kg-focus" onchange="App.kgFocusDepth(this.value)" title="How many hops around the selected node stay bright">
+      <option value="1">1 hop</option>
+      <option value="2">2 hops</option>
+      <option value="3">3 hops</option>
     </select>
-    <span id="kg-msg" class="muted mini"></span>
+    <div class="kg-modes" role="tablist" aria-label="View">
+      <button id="kg-mode-map" class="on" onclick="App.setKGMode('map')" title="Drill down through communities and topics">🕸️ Map</button>
+      <button id="kg-mode-uni" onclick="App.setKGMode('universe')" title="Fly through the entire graph as a 3D universe">🌌 Universe</button>
+    </div>
+    <button class="kg-btn kg-icon" onclick="App.openAsk()" title="Ask the knowledge graph a question; answers cite the graph">🧠</button>
+    <button class="kg-btn kg-icon" onclick="App.openEnrich()" title="Find grounded gaps in the graph and add the ones you approve">✨</button>
+    <button class="kg-btn" onclick="App.rebuildKB()" title="Full re-index of the knowledge graph. Can take 20 to 30+ minutes">Rebuild</button>
   </div>
-  <div id="kg-crumbs" class="kg-crumbs"></div>
   <div id="kg-results" class="kg-results hide"></div>
   <div class="kg-page-body">
     <div class="kg-canvas full" id="kg-stage">

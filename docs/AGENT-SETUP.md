@@ -147,7 +147,7 @@ selection looks like:
 ### Run it fully local
 
 The pipeline does not need a cloud model. `tools/agent_run.sh` accepts any
-OpenAI-compatible chat endpoint as the agent model — **llama.cpp**
+OpenAI-compatible chat endpoint as the agent model: **llama.cpp**
 (`llama-server`), **Ollama**, **LM Studio**, **vLLM** or another
 OpenAI-compatible server.
 
@@ -264,9 +264,9 @@ if you hit quality walls.
 
 | Model (opencode id)          | Input $/1M | Output $/1M | Cache read $/1M | Typical cost per application |
 | ---------------------------- | ---------: | ----------: | --------------: | ---------------------------- |
-| `opencode/deepseek-v4-flash` |      $0.14 |       $0.28 |          $0.028 | ~$0.01–0.04                  |
-| `opencode/deepseek-v4.1-flash` |    $0.30 |       $1.20 |          $0.006 | ~$0.03–0.10                  |
-| `opencode/deepseek-v4-pro`   |      $1.74 |       $3.48 |          $0.145 | ~$0.15–0.60                  |
+| `opencode/deepseek-v4-flash` |      $0.14 |       $0.28 |          $0.028 | ~$0.01-0.04                  |
+| `opencode/deepseek-v4.1-flash` |    $0.30 |       $1.20 |          $0.006 | ~$0.03-0.10                  |
+| `opencode/deepseek-v4-pro`   |      $1.74 |       $3.48 |          $0.145 | ~$0.15-0.60                  |
 
 *(List prices are OpenCode's published rates and change over time; the provider
 also offers a free `opencode/deepseek-v4.1-flash-free` variant for a limited
@@ -298,9 +298,9 @@ the model, how many turns the browser driving takes, and how many retries happen
 
 Assumptions for one full **apply** run (one role, end to end):
 
-- ~150k–600k input tokens, **mostly cache reads** (the system prompt + history
+- ~150k-600k input tokens, **mostly cache reads** (the system prompt + history
   are re-sent each turn);
-- ~10k–40k output tokens (the CV content, the letter, browser actions);
+- ~10k-40k output tokens (the CV content, the letter, browser actions);
 - discovery, email reconciliation, and chatting with the agent are separate and
   small.
 
@@ -308,13 +308,13 @@ With those assumptions:
 
 | What                              | DeepSeek V4.1 Flash      |
 | --------------------------------- | ------------------------ |
-| One application (apply mode)      | ~$0.03–0.10 (≈$0.05 typ.) |
-| 50 applications                   | ~$2–5                    |
-| 100 applications                  | ~$3–10                   |
-| A month of active use + chatting  | ~$5–15 total             |
+| One application (apply mode)      | ~$0.03-0.10 (≈$0.05 typ.) |
+| 50 applications                   | ~$2-5                    |
+| 100 applications                  | ~$3-10                   |
+| A month of active use + chatting  | ~$5-15 total             |
 
 - **DeepSeek V4 Flash** cuts those roughly in half.
-- **DeepSeek V4 Pro** is ~4–6× the price of V4.1 Flash, reserve it for hard
+- **DeepSeek V4 Pro** is ~4-6× the price of V4.1 Flash, reserve it for hard
   cases.
 - **Review/Prepare mode** (no browser, no submit) is the cheapest useful run.
 - If you run a lot, a flat monthly subscription (OpenCode **Go**, $10/month)

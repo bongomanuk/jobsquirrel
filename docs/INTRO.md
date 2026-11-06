@@ -25,7 +25,7 @@ replies. You give it your CV and a few rules; it does the repetitive work.
    facts. The documents are written only from those facts, so nothing is invented.
 4. **Tailor**: it picks the CV family that matches the role, then writes a CV and
    a cover letter targeted at that specific job, in your voice.
-5. **Gate**: before anything is sent, it checks the documents: real identity, no
+5. **Gate**: before anything is sent, it checks the documents for real identity, no
    placeholders, no AI-slop, only supported claims, the right engagement (a
    contract rate only in contract applications), and good keyword coverage
    against the ad. **Nothing is submitted unless it passes.**
@@ -52,7 +52,7 @@ tireless assistant working under your instructions", not "press go and forget it
 - **Discover**: just find new roles and add them to the queue.
 - **Review / Prepare**: build the tailored CVs and letters and let **you review
   them before anything is sent**. Nothing goes out.
-- **Apply**: full auto: build the documents, gate them, and submit. (This is the
+- **Apply**: full auto. Build the documents, gate them, and submit. (This is the
   default; it applies to the most senior roles first.)
 - **Apply with a fixed CV**: use one CV for everything (fast, less tailored).
 - **One role at a time**: for a single job or a retry.

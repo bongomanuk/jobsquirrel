@@ -106,7 +106,7 @@ python3 tools/init_config.py                 # scaffold config/ from templates (
 
 Then edit (you, the agent) to produce:
 - `config/profile.md`, identity, eligibility, languages, availability, pay,
-  accuracy rules, EEO answers (from A–G).
+  accuracy rules, EEO answers (from A-G).
 - `config/cv.json`, the CV as data (from H).
 - `config/archetypes.json`, role families (from I).
 

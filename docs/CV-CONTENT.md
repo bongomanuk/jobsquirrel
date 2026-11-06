@@ -126,7 +126,7 @@ where the record says so (for example the Google hub at HAUD), not as decoration
 
 ## Canonical facts
 
-Some facts have one correct wording — an institution's full name, a superlative
+Some facts have one correct wording: an institution's full name, a superlative
 claim, a product name. `config/canonical-facts.json` holds the exact replacements
 and the forbidden variants. The knowledge-base ingest applies them before
 indexing, `cv_target.py` and `render_letter.py` apply them to the content pack

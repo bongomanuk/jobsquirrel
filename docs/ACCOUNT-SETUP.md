@@ -64,7 +64,7 @@ Everything here is done from the dashboard: **Settings → Accounts → Google**
    verification needed for personal use).
 2. **OAuth client**: Credentials → Create credentials → **OAuth client ID** →
    **Desktop app** → Create.
-3. **Configure it, then authorise** — either:
+3. **Configure it, then authorise**: either:
    - paste the **Client ID** and **Client secret** into Settings → Accounts and
      press **Save Google settings**; the pipeline writes `credentials.json` for
      you; or
@@ -157,7 +157,7 @@ python3 tools/calendar_event.py slots --days 5                    # free slots a
 ```
 
 `slots` is read-only and proposes interview times inside your working hours
-without overlapping existing events — pick one, then `create` the event. The
+without overlapping existing events: pick one, then `create` the event. The
 same consent as Gmail is all it needs; timezone, default length and working
 hours come from `config/calendar.json`, editable in Settings → Accounts.
 

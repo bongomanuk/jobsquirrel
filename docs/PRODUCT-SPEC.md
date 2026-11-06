@@ -1,4 +1,4 @@
-# Jobsquirrel — Product & Web Interface Specification
+# Jobsquirrel: Product & Web Interface Specification
 
 <div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
 
@@ -29,9 +29,9 @@ source of truth for every application and the exact files sent.
 
 ## 2. Personas & roles
 
-- **Candidate** — the owner. Supplies CV/rules, reviews output, approves risky actions, solves CAPTCHA/2FA.
-- **Agent** — an AI coding agent that operates the repo via its CLI tools (contract: `AGENTS.md`).
-- **Human-assist** — the person completing steps the automation must not (CAPTCHA, final submit in their own browser).
+- **Candidate**: the owner. Supplies CV/rules, reviews output, approves risky actions, solves CAPTCHA/2FA.
+- **Agent**: an AI coding agent that operates the repo via its CLI tools (contract: `AGENTS.md`).
+- **Human-assist**: the person completing steps the automation must not (CAPTCHA, final submit in their own browser).
 
 ## 3. Architecture
 
@@ -43,12 +43,12 @@ discover  ->  queue  ->  per-role: JD + keywords + GraphRAG context
 ```
 
 Components:
-- **CLI tools** (`tools/*.py`, `tools/*.sh`) — one concern each; the contract for the agent.
-- **Agent harness** (`tools/agent_run.sh`, `tools/run_queue.sh`) — resolves the agent and runs one headless task per role.
-- **Browser** (`tools/camoufox_server.py` + `camoufox_browser.py`) — Camoufox browser for real ATS forms.
-- **Knowledge base** — GraphRAG over `kb/sources/` (grounding for generated documents).
-- **State** — plain files under `state/` (the source of truth).
-- **Dashboard** (`tools/dashboard.py`) — web UI (this spec, §9).
+- **CLI tools** (`tools/*.py`, `tools/*.sh`): one concern each; the contract for the agent.
+- **Agent harness** (`tools/agent_run.sh`, `tools/run_queue.sh`): resolves the agent and runs one headless task per role.
+- **Browser** (`tools/camoufox_server.py` + `camoufox_browser.py`): Camoufox browser for real ATS forms.
+- **Knowledge base**: GraphRAG over `kb/sources/` (grounding for generated documents).
+- **State**: plain files under `state/` (the source of truth).
+- **Dashboard** (`tools/dashboard.py`): web UI (this spec, §9).
 
 ## 4. Data model (files are the API)
 
@@ -88,7 +88,7 @@ Components:
 
 - **Follow-up flags** (`action` in the register; ⚑ in the grid, a toolbar filter, and editable
   in the row drawer). Each row also lists its **drafted replies** (write one, or ask the agent; then
-  review and send with approval). Reconcile sets an action on an interview invite (`Reply to <sender> — <subject>`) and
+  review and send with approval). Reconcile sets an action on an interview invite (`Reply to <sender>: <subject>`) and
   clears it on a rejection; anything manual (assessment, booking) can be flagged/cleared in the UI.
 - **Engagement type** (`employment` in the register; shown as a per-row badge, editable in
   the drawer, filterable in the toolbar): `full-time | part-time | contract | consultant |
@@ -127,11 +127,11 @@ Components:
 | `kb_graphrag.py` | Build the cited context pack for a role. |
 | `discover.py` / `email_opportunities.py` | Find roles from LinkedIn alerts / recruiter mail. |
 | `gmail_readonly.py` / `gmail_reconcile.py` | Read-only inbox sync + reconcile the register (inbound status changes; outbound Sent mail adds dated notes only). |
-| `gmail_send.py` | Send a **saved draft** with attachments — requires a human dashboard receipt; no env bypass. |
+| `gmail_send.py` | Send a **saved draft** with attachments: requires a human dashboard receipt; no env bypass. |
 | `send_receipt.py` | One-time receipts bound to a draft's SHA-256 (issued by the dashboard after approval). |
 | `draft_email.py` | Draft replies tied to a role (`state/drafts/<company-role>/`); listed, edited and sent from the row drawer. |
 | `google_config.py` | Resolve/write the Google OAuth client + token paths (`--status`, `--paths`, `--write-credentials`). |
-| `calendar_event.py` | List/create/update events, import `.ics` invites, suggest free slots — writes **approval-gated**. |
+| `calendar_event.py` | List/create/update events, import `.ics` invites, suggest free slots: writes **approval-gated**. |
 | `approval.py` | Reusable human-approval gate (interactive y/N or `APPROVE_<TOKEN>=1`). |
 | `camoufox_server.py` / `camoufox_browser.py` | Camoufox browser API + CLI. |
 | `agent_run.sh` | Resolve + run the configured agent for one task. |
@@ -188,11 +188,11 @@ and stops at any CAPTCHA/2FA rather than working around it.
 - Python **stdlib only** (`http.server`, `subprocess`, `json`); single-page **vanilla JS**; no deps, no build.
 - Binds **127.0.0.1** by default; `--host`, `--port` (default 8765), `--open`.
 - A random **session token** is generated per launch, injected into the page, and required
-  (header `X-Session`) for every write — anti-CSRF.
+  (header `X-Session`) for every write: anti-CSRF.
 - Read-only until you act; the curated log view reuses `watch_queue` phase/noise knowledge.
 
 ### 9.2 Shell (single-grid IA)
-The whole app is **one master data grid** — one canonical row per application, so the
+The whole app is **one master data grid**: one canonical row per application, so the
 same record is never duplicated across separate pages.
 - **Header:** mascot 🐿️ · health pill (`/api/health`; click it to open Settings → About with
   the full check list, version and instance details) · three destinations: **📋 Applications**,
@@ -224,8 +224,8 @@ Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files �
   the toolbar returns to the bucket sections. The active sort carries an arrow. **Export CSV**.
 - **Match** = ATS-keyword coverage % of the CV (computed for every role that has a saved ad;
   shown with an `align✗` badge when the alignment gate failed).
-- **Queue** = `pending | human | retry | done`; **Files** = provenance recorded (✓/—);
-  **Job ad** = a saved job description exists (✓/—).
+- **Queue** = `pending | human | retry | done`; **Files** = provenance recorded (✓/-);
+  **Job ad** = a saved job description exists (✓/-).
 - The grid **auto-refreshes** (every ~8s, ~3s while a run is active) without losing scroll/sort/filter,
   and floats **in-flight** rows (🥜) and **QUEUED** rows (queued but not yet in the register) to the top.
 - **Application states graph** above the grid (collapsed by default): a clickable diagram of
@@ -234,6 +234,8 @@ Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files �
   one-line annotation; clicking a node expands its sub-states and filters the grid to that status,
   and clicking a sub-state filters further. **SCAMS** and **SHELVED** are side nodes that filter
   their buckets. The open/closed state is remembered.
+- **Columns:** right-click any column header to choose which columns are visible. The choice is
+  saved per browser. Drag a divider to resize a column; double-click it to reset that column.
 - **Right-click a row** for the full action menu: open details / documents / the ad / the apply page,
   discuss the role, prepare documents, submit prepared (approval-gated), recompute the match, draft a
   reply with the agent, set the status, flag or clear a follow-up, **pin to the top**, re-queue, hand to a human, unblock/remove from the queue, and copy the company, role,
@@ -252,16 +254,21 @@ Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files �
 - **Pin** sorts a role first inside its group (📌).
 
 ### 9.4 Detail drawer (right-hand)
-Clicking a row opens a drawer with tabs:
-- **Summary** — a **Why / history** block first (the register's reason/notes, status, last-updated),
-  then status (editable, writes back), ATS, queue, key, match, notes, and actions (Prepare).
-- **Discuss** — a chat box scoped to this role. The first turn carries the row, status, ⚑ action,
+Clicking a row opens a drawer with a single tab strip that never wraps:
+- **Summary**: structured sections rather than one long column. **Next action** flags, edits or
+  clears a follow-up. **Status** shows the status chip, sub-state, stage chips and a compact
+  metadata grid. **Actions** has Prepare, Graph evidence, Recompute match and, when prepared,
+  Submit. **Drafted replies** is a collapsible section. **Role settings** groups status, type,
+  work model and pay override behind one **Save changes**. **Match** shows alignment, coverage,
+  missing skills and keyword tools. **History and notes** is a collapsible section with past
+  updates and the editable notes.
+- **Chat**: a chat box scoped to this role. The first turn carries the row, status, ⚑ action,
   notes, the saved job ad and CV pack; each role keeps its own agent session and transcript
   (`state/logs/role-chat/<key>.log`), with Stop and Clear. Tool calls stay collapsed like the main console.
-- **Provenance** — CV/letter paths + sha256 (click to copy), confidence, evidence, snapshot, screenshots.
-- **Job spec · ATS · Grounding** — the ad text, keywords, and the GraphRAG context pack
+- **Files**: CV/letter paths + sha256 (click to copy), confidence, evidence, snapshot, screenshots.
+- **Job ad · ATS · Evidence**: the ad text, keywords, and the GraphRAG context pack
   **plus the entities and source documents it cited** (resolved from the index).
-- **Documents** — the **rendered** tailored CV (inline preview) and cover letter, with buttons to
+- **Docs**: the **rendered** tailored CV (inline preview) and cover letter, with buttons to
   open either in the viewer and to open the CV PDF; the raw content pack is behind a toggle.
 
 ### 9.5 Settings panel (⚙ Settings)
@@ -290,7 +297,7 @@ Clicking a row opens a drawer with tabs:
 
 ### 9.6 Agent console (dockable)
 - Dockable pullout (left by default; drag its header to any edge; splitters resize it and its panes;
-  an Activity pane toggles open/closed). Drives whatever `tools/agent_run.sh --which` resolves —
+  an Activity pane toggles open/closed). Drives whatever `tools/agent_run.sh --which` resolves -
   `opencode`, `claude`, or any `AGENT=` CLI.
 - `POST /api/chat` + `GET /api/chat/stream` return **typed segments** (user / tool / text / status);
   the conversation persists across messages (session pinned; `＋ New` resets), tool runs collapse,
@@ -308,24 +315,24 @@ Clicking a row opens a drawer with tabs:
 
 | Method | Path | Params | Returns |
 |---|---|---|---|
-| GET | `/` | — | the single-page UI (token injected) |
-| GET | `/api/state` | — | {kpis, counts, queue_counts, interviews} |
-| GET | `/api/health` | — | doctor.py result (cached 30s) |
-| GET | `/api/health?full=1[&refresh=1]` | — | full checks + this instance's version, runtime, paths and counts for Settings → About |
-| GET | `/api/grid` | — | the unified grid rows (register ⋈ queue ⋈ spec ⋈ provenance) |
+| GET | `/` |: | the single-page UI (token injected) |
+| GET | `/api/state` |: | {kpis, counts, queue_counts, interviews} |
+| GET | `/api/health` |: | doctor.py result (cached 30s) |
+| GET | `/api/health?full=1[&refresh=1]` |: | full checks + this instance's version, runtime, paths and counts for Settings → About |
+| GET | `/api/grid` |: | the unified grid rows (register ⋈ queue ⋈ spec ⋈ provenance) |
 | GET | `/api/backup` | `info=1`, `documents=0/1` | backup summary, or the `.zip` as a download (session token required) |
 | POST | `/api/backup/restore` | multipart `file`, `confirm=RESTORE` | restores over the current state after a safety backup |
 | POST | `/api/backup/clear` | `{scope: data|full, confirm=CLEAR}` | deletes generated data; `config/` and `kb/sources/` survive |
 | GET | `/api/register` | `q,status,limit,offset` | {total, rows} |
 | GET | `/api/provenance` | `company,role` | provenance row (sha256, evidence, snapshot) |
-| GET | `/api/queue` | — | {pending, human, retry, done} |
-| GET | `/api/roles` · `/api/roles/<key>` | — | spec list · {jd, ats, kb, tailored_cv, letter, match} |
+| GET | `/api/queue` |: | {pending, human, retry, done} |
+| GET | `/api/roles` · `/api/roles/<key>` |: | spec list · {jd, ats, kb, tailored_cv, letter, match} |
 | GET | `/api/config` | `target` | {target, content, format} |
-| GET | `/api/outcomes` | — | {by_ats, interview_rate} |
-| GET | `/api/accounts` | — | credential status (runs `setup_accounts.sh --check`) |
-| GET | `/api/kb` | — | {sources, stats, check} |
+| GET | `/api/outcomes` |: | {by_ats, interview_rate} |
+| GET | `/api/accounts` |: | credential status (runs `setup_accounts.sh --check`) |
+| GET | `/api/kb` |: | {sources, stats, check} |
 | GET | `/api/graph` | `kind,q,limit` | graph rows from the index (entities/relationships/communities/documents) |
-| GET | `/api/graph/ontology` | — | ontology classes, relation vocabulary and counts |
+| GET | `/api/graph/ontology` |: | ontology classes, relation vocabulary and counts |
 | GET | `/api/graph/types` | `limit` | canonical classes with aggregate links |
 | GET | `/api/graph/type` | `type,limit` | largest connected component for one class |
 | GET | `/api/graph/overview` | `parent,limit` | community hierarchy (roots or children) |
@@ -333,32 +340,32 @@ Clicking a row opens a drawer with tabs:
 | GET | `/api/graph/search` | `q,limit` | matching communities and entities |
 | GET | `/api/graph/ego` | `q,limit` | one entity plus its 1-hop network |
 | GET | `/api/kb/find` | `name` | resolve a graph document title to a `kb/sources/` file |
-| GET/POST | `/api/secrets` | — / `{section,name,value}` | masked secrets store read / write |
-| POST | `/api/secrets/delete` · `/api/secrets/encrypt` · `/api/secrets/migrate` | — | remove, encrypt or import |
+| GET/POST | `/api/secrets` |: / `{section,name,value}` | masked secrets store read / write |
+| POST | `/api/secrets/delete` · `/api/secrets/encrypt` · `/api/secrets/migrate` |: | remove, encrypt or import |
 | GET | `/api/grounding` | `key` | a role's context pack + the entities/sources it cited, resolved |
-| GET | `/api/runs` · `/api/log` · `/api/live` · `/api/tasks` · `/api/logs/tail` · `/api/agent` · `/api/chat/stream` | — | as named |
+| GET | `/api/runs` · `/api/log` · `/api/live` · `/api/tasks` · `/api/logs/tail` · `/api/agent` · `/api/chat/stream` |: | as named |
 | POST | `/api/register/row` | `{company,role,status,notes}` | update a register row |
-| GET | `/api/groups` | — | groups (campaigns), memberships and counts |
+| GET | `/api/groups` |: | groups (campaigns), memberships and counts |
 | POST | `/api/groups` | `{op:create\|rename\|delete\|assign,name,group,key,on}` | create, rename, delete or assign a role |
 | POST | `/api/queue/action` | `{action,company,role}` | `delete` / `retry` / `unblock` |
-| GET | `/api/drafts?company=&role=` | — | drafts for a role |
-| GET | `/api/draft?path=` | — | one draft (headers + body) |
+| GET | `/api/drafts?company=&role=` |: | drafts for a role |
+| GET | `/api/draft?path=` |: | one draft (headers + body) |
 | POST | `/api/draft/save` | `{path?,company,role,to,cc,subject,attachments,body}` | save/update a draft |
 | POST | `/api/draft/delete` | `{path}` | delete a draft |
 | POST | `/api/draft/send` | `{path,clear_action?}` | send it (asks you to approve first) |
-| GET | `/api/role-chat?key=` | — | that role's transcript segments + running state |
+| GET | `/api/role-chat?key=` |: | that role's transcript segments + running state |
 | POST | `/api/role-chat` | `{key,company,role,message}` | start/queue a role-scoped agent turn |
 | POST | `/api/role-chat/stop` | `{key}` | stop that role's turn |
 | POST | `/api/role-chat/new` | `{key}` | clear that role's transcript/session |
-| GET | `/api/agent/models?agent=` | — | models the chosen CLI can run (opencode/Claude) for the picker |
+| GET | `/api/agent/models?agent=` |: | models the chosen CLI can run (opencode/Claude) for the picker |
 | POST | `/api/roles/discover` | `{url}` | save a job spec from a URL |
 | POST | `/api/config` | `{target,content}` | save config (JSON validated, `.bak`) |
 | POST | `/api/action/run` | `{command, approval_token}` | `prepare` / `submit_queue` / `reconcile` / `build_archetypes` |
 | POST | `/api/kb/upload` | multipart (`group`, `files`) | save documents into `kb/sources/<group>/` |
 | POST | `/api/kb/delete` | `{path}` | remove a source document |
-| POST | `/api/kb/rebuild` | — | rebuild the GraphRAG index (detached) |
+| POST | `/api/kb/rebuild` |: | rebuild the GraphRAG index (detached) |
 | POST | `/api/accounts/auth` | `{kind}` | start Gmail/Calendar authorisation (detached) |
-| POST | `/api/chat` · `/api/chat/new` | `{message}` · — | start a chat turn · reset the conversation |
+| POST | `/api/chat` · `/api/chat/new` | `{message}` ·: | start a chat turn · reset the conversation |
 
 All POSTs require header `X-Session: <token>` (else 403); the token is injected into the page.
 
@@ -368,8 +375,8 @@ Dashboard actions run detached: the console stays usable while they work, and pr
 reported in the **Activity** pane. Only the explicit submit approval is a blocking dialog.
 The pre-submit gate also checks `config/canonical-facts.json`: a CV or letter that still
 contains a non-canonical fact wording fails before it can be submitted.
-- **Prepare:** `REVIEW=1 run_queue.sh` — builds docs + gates, records PREPARED; never submits/emails. Safe.
-- **Run Submissions:** `run_queue.sh` — **submits**. Requires the `APPROVE_RUN_QUEUE` approval token
+- **Prepare:** `REVIEW=1 run_queue.sh`: builds docs + gates, records PREPARED; never submits/emails. Safe.
+- **Run Submissions:** `run_queue.sh`: **submits**. Requires the `APPROVE_RUN_QUEUE` approval token
   (the two-step modal: acknowledge + Confirm); refused otherwise. Every decision is logged to `state/approvals.log`.
 - **Reconcile:** `gmail_reconcile.py` (read-only). It also annotates the Gmail
   review queue with a language-agnostic job-related triage hint
@@ -407,7 +414,7 @@ and `info` as waiting on the candidate, alongside flagged actions, invites and o
 | `NO RESULT` | no result |
 | `SUBMITTED` | acknowledged · awaiting reply · assessment to take · assessment overdue · follow up |
 | `IN_PROGRESS` | assessment · interviewing · background check · processing |
-| `INTERVIEW` | invited — reply · scheduled · interview today · replied — awaiting a reply · next round · final round · interviewed — awaiting outcome · interviewed — follow up |
+| `INTERVIEW` | invited: reply · scheduled · interview today · replied: awaiting a reply · next round · final round · interviewed: awaiting outcome · interviewed: follow up |
 | `OFFER` | offer received · verbal offer · negotiating · accepted · declined |
 | `BLOCKED` | CAPTCHA · login / 2FA · email application · recruiter lead · site problem · missing information · blocked |
 | `MANUAL` | email application · recruiter lead · verification · needs you |
@@ -468,21 +475,21 @@ interface contract.
 - **Software update:** the header shows the running **version**; when `/api/update`
   (GitHub `releases/latest` vs the `VERSION` file, cached 1h) reports a newer
   release, an **⬆ update** pill appears. Clicking it shows the release notes with
-  **Update now** (`git pull --ff-only`, approval-gated) — restart to apply.
+  **Update now** (`git pull --ff-only`, approval-gated): restart to apply.
 - Degrades to an empty state with no local data.
 - **One notification surface:** toasts replace in place (never stack), and the
   The scoped Prepare / Submit / Reconcile actions are disabled while a run is active.
-- **Agent console:** a dockable pullout — **left by default**, or top / bottom / right. **Drag the
+- **Agent console:** a dockable pullout: **left by default**, or top / bottom / right. **Drag the
   console's header** to an edge (highlighted drop zones) to dock it; a small tab pulls it out when
   collapsed. The console and its Chat / Activity panes are **resizable with drag splitters** (sizes
   + dock position persist in `localStorage`), and the Activity pane is a **collapsible toggle**
   (headline summary shown in its header). Chat replies render as Markdown with runs of tool calls
   grouped into a single collapsed step block (and multi-line code fences collapsed), so only the
   assistant's prose stays in the body; a token/cost footer closes the turn. Driven by the agent's
-  structured event stream — opencode `--format json`, Claude Code `stream-json` — with a
+  structured event stream (opencode `--format json`, Claude Code `stream-json`) with a
   plain-transcript fallback for any other `AGENT=` command. Action output is compressed to a
   headline + only the notable lines, with the full log behind a toggle. The pane shows **current**
-  activity: a finished action is a one-line "last action: <name> — finished" plus its summary, never
+  activity. A finished action is a one-line "last action: <name>: finished" plus its summary, never
   its transcript, and the header reads **idle** when nothing is running (the last action's name
   survives a server restart, its log does not).
 - **Background subagents.** The chat agent hands long work to `tools/delegate.py`, which posts to
@@ -493,12 +500,12 @@ interface contract.
 
 ## 10. Configuration schemas
 
-- **`config/profile.md`** — `- key: value` lines: identity, work authorisation/languages,
+- **`config/profile.md`**: `- key: value` lines for identity, work authorisation/languages,
   availability/pay, eligibility (based-in / accept / exclude), accuracy rules, EEO answers.
-- **`config/cv.json`** — `{name, headline_default, tagline_default, profile_default, skills[],
+- **`config/cv.json`**: `{name, headline_default, tagline_default, profile_default, skills[],
   experience[{employer,dates,title,location,bullets[],extras{}}], projects[], education[],
   certifications[], languages[], sidebar{...}}`.
-- **`config/archetypes.json`** — `[{key,title,headline,tagline,opening,profile,fit,skills[[cat,text]],tags[]}]`.
+- **`config/archetypes.json`**: `[{key,title,headline,tagline,opening,profile,fit,skills[[cat,text]],tags[]}]`.
 
 ## 11. Extensibility
 
@@ -509,7 +516,7 @@ interface contract.
 
 ## 12. Non-goals
 
-- Not a push-button "apply to 500 jobs autonomously" bot — the human owns decisions and approvals.
+- Not a push-button "apply to 500 jobs autonomously" bot: the human owns decisions and approvals.
 - No credential storage in the repo; no CAPTCHA evasion.
 - No fabricated claims, credentials, or identities.
 

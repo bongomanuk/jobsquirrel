@@ -28,7 +28,7 @@ built-in procedures:
 | *"What's in the queue?"* | shows pending rows and the order they'll run |
 | *"Prepare documents for the top 5, don't send"* | `REVIEW=1 … run_queue.sh`: builds + gates, records `PREPARED` |
 | *"Show me only contract roles"* | the toolbar's **any type** filter (full-time / part-time / contract / consultant / freelance / internship / temporary / unknown); set a row's type in its drawer |
-| *"Submit the prepared ones"* | *🚀 Submit* (grid) or *Submit this application* (drawer): reuses the already-gated CV/letter and applies — two-step confirmation (`APPROVE_RUN_QUEUE`) |
+| *"Submit the prepared ones"* | *🚀 Submit* (grid) or *Submit this application* (drawer) reuses the already-gated CV/letter and applies, with a two-step confirmation (`APPROVE_RUN_QUEUE`) |
 | *"Run the pipeline"* / *"Apply to the queue"* | `PARALLEL=3 bash tools/run_queue.sh`, most senior first |
 | *"Use one fixed CV for these"* | `LIGHT=1 FIXED_CV=<path> … run_queue.sh` |
 | *"Apply to just this one: <url>"* | the per-role manual procedure (`AGENTS.md` §4) |
@@ -57,7 +57,7 @@ Everything is observable. Useful things to ask for, or run yourself:
 - **Raw log**: `state/logs/run_queue.out`, `STATUS …` / `DONE` / `ABORT` lines
   and any model budget/rate-limit stop.
 - **Structured run log**: `state/logs/runs.jsonl`, one JSON line per task
-  (`company`, `role`, `outcome`, `rc`, `reason`) — the machine-readable
+  (`company`, `role`, `outcome`, `rc`, `reason`): the machine-readable
   counterpart to `run_queue.out` for scripts and dashboards.
 - **Health**: `python3 tools/doctor.py` (`--json` for scripts) checks config, the
   knowledge base, the browser, the register and git before you start a run.
@@ -70,20 +70,20 @@ Everything is observable. Useful things to ask for, or run yourself:
     one; the **🏷 Groups** toolbar button opens the group manager to create, rename or delete
     groups. Groups are independent of status and survive renames and queue runs. Hover anything for
     what it means; click a row for the detail drawer
-    (Summary · Provenance · Job spec · ATS · **Grounding** · Tailored).
+    (Summary · Chat · Files · Job ad · ATS · **Evidence** · Docs).
   - **Groups / campaigns.** A group is a named campaign that crosses status. Create one with the
     **🏷 Groups** toolbar button (or right-click a row → Groups → New group…). Add or remove a role
     from right-click → Groups; a tick marks membership. Filter with the **any group** dropdown; a
     group view shows every member regardless of status, but still applies the ordinary
     search/status/queue filters. Group tags appear under the role title, and clicking one filters
-    to that group. **🏷 Groups** also renames and deletes groups — deleting removes memberships, not
+    to that group. **🏷 Groups** also renames and deletes groups: deleting removes memberships, not
     roles. Groups live in `state/role-groups.json`, independent of the register, so status changes,
     renames and queue runs do not disturb them; CSV export includes a `groups` column.
-  - **Grounding** shows how your knowledge graph was used for that role: the cited context pack
+  - **Evidence** shows how your knowledge graph was used for that role: the cited context pack
     plus the entities and source documents it referenced, resolved from the index.
-  - **Agent console** (dockable — **left by default**; drag its header to any edge, or the pullout
+  - **Agent console** (dockable: **left by default**; drag its header to any edge, or the pullout
     tab when collapsed; panes resize with the splitters). Chat drives whichever agent
-    `tools/agent_run.sh` resolves — opencode, Claude Code, or any `AGENT=` CLI — and remembers the
+    `tools/agent_run.sh` resolves (opencode, Claude Code, or any `AGENT=` CLI) and remembers the
     conversation across messages (＋ New to reset). Tool runs are grouped into plain-language
     sections ("Checked the application register", "Read files", "Ran tests"), with the exact
     commands and output under **Technical details**; opening or closing a section survives the
@@ -105,9 +105,9 @@ Everything is observable. Useful things to ask for, or run yourself:
     page-level actions live in the grid card's action bar: **Prepare** (REVIEW=1, no submits),
     **Submit** and **Review**. Prepare, Submit, Match and Export CSV each show a confirmation
     dialog with the scope and effect before they run. A `PREPARED` row's drawer has **Submit this application**.
-    Submitting uses the documents already generated — no re-generation — and needs a two-step
+    Submitting uses the documents already generated, with no re-generation, and needs a two-step
     confirmation (`APPROVE_RUN_QUEUE`). Every action needs the per-session token (anti-CSRF) and
-    the UI binds to `127.0.0.1` only; the chat agent inherits the same approval gates — it cannot
+    the UI binds to `127.0.0.1` only; the chat agent inherits the same approval gates: it cannot
     send or delete mail without them. Prepare, submit and knowledge-base actions run detached in
     the background: the console stays usable and progress is reported in **Activity**; only the
     explicit submit approval is a blocking dialog.
@@ -142,7 +142,7 @@ with a category hint.
 ## State model: the application state machine
 
 The application process is a **state machine**. The register keeps a small, stable set of
-**statuses** — the machine stage used by the pre-submit gates, the queue and the reconciler —
+**statuses**: the machine stage used by the pre-submit gates, the queue and the reconciler -
 and one row moves through them (`QUEUED → DRAFTING → PREPARED → SUBMITTED → IN_PROGRESS →
 INTERVIEW → OFFER`, with `BLOCKED`/`MANUAL` branches and `REJECTED`/`CLOSED` terminals). The
 dashboard draws that machine above the grid and every tool reads and writes the same state.
@@ -151,6 +151,8 @@ On top of each status the dashboard derives a **sub-state** from the role's note
 follow-up flag. The sub-state is the human answer to “what is actually happening, and what
 should I do next?”.
 
+- **Columns:** right-click a column header to show or hide columns. The choice is remembered.
+  Drag a divider to resize a column; double-click it to reset that column.
 - The **Status** cell shows the status chip and, underneath, the sub-state when it adds detail.
 - **Filters → any sub-state** narrows the grid to one sub-state; like a group, it crosses the
   bucket boundaries.
@@ -173,7 +175,7 @@ should I do next?”.
 | `NO RESULT` | no result | A run finished without an ad, documents or a submission. |
 | `SUBMITTED` | acknowledged · awaiting reply · assessment to take · assessment overdue · follow up | Sent; waiting, a test to take (or its deadline has passed), or time to chase. |
 | `IN_PROGRESS` | assessment · interviewing · background check · processing | The employer is processing the application. |
-| `INTERVIEW` | invited — reply · scheduled · interview today · replied — awaiting a reply · next round · final round · interviewed — awaiting outcome · interviewed — follow up | The interview stage, from arranging to awaiting the result. |
+| `INTERVIEW` | invited: reply · scheduled · interview today · replied: awaiting a reply · next round · final round · interviewed: awaiting outcome · interviewed: follow up | The interview stage, from arranging to awaiting the result. |
 | `OFFER` | offer received · verbal offer · negotiating · accepted · declined | The offer stage. |
 | `BLOCKED` | CAPTCHA · login / 2FA · email application · recruiter lead · site problem · missing information · blocked | A wall; the ones that need you appear under **Needs you**. |
 | `MANUAL` | email application · recruiter lead · verification · needs you | A human step the pipeline will not take. |
@@ -184,7 +186,7 @@ Sub-states are derived from the notes and follow-up flag the pipeline and the re
 already write, so they need no extra bookkeeping. Correcting a note (or setting/clearing the
 follow-up flag) updates the sub-state on the next refresh. The flag is a **human to-do**
 ("reply to Ray", "book a time"), not a waiting state: "await a reply" is dropped, and once a
-reply has been sent the row reads **replied — awaiting a reply** instead of asking you again.
+reply has been sent the row reads **replied: awaiting a reply** instead of asking you again.
 
 ## Recruitment scams
 
@@ -228,7 +230,7 @@ The full guide is **[KNOWLEDGE-GRAPH.md](KNOWLEDGE-GRAPH.md)**.
 
 The graph and the application drawer share the same evidence: a claim you add
 under **Add** is appended to every GraphRAG context immediately and appears in
-the graph view through a live skill overlay, so no rebuild is needed —
+the graph view through a live skill overlay, so no rebuild is needed -
 re-prepare the role to fold it into the CV. Rebuild only when you
 change a document under Sources. A role you open under **Roles** uses the same
 grounding and gates as a queue run.
@@ -241,8 +243,8 @@ a job search: take a copy, put a copy back, or clear the system and start again.
 **Backup** writes one `.zip` with everything the pipeline cannot regenerate:
 `config/` (profile, CV, archetypes, mail/calendar and Google settings),
 `answers/`, `kb/sources/` (your corpus), `state/` (register, queues, provenance,
-drafts, saved ads, keyword files, grounding and content packs, gate receipts) and
-— unless you untick it — `documents/` (rendered CVs, letters, and the exact files
+drafts, saved ads, keyword files, grounding and content packs, gate receipts) and,
+unless you untick it, `documents/` (rendered CVs, letters, and the exact files
 you sent). Transcripts, the mail cache and the GraphRAG index are left out: they
 are noise or rebuildable.
 
@@ -251,7 +253,7 @@ are noise or rebuildable.
     python3 tools/backup.py list
     python3 tools/backup.py inspect backups/<file>.zip
 
-> ⚠️ The zip holds **your personal data** — CV, applications, and any Google
+> ⚠️ The zip holds **your personal data**: CV, applications, and any Google
 > client secret in `config/google.json`. Keep it private; `backups/` is
 > git-ignored for that reason.
 
@@ -264,7 +266,7 @@ progress, and **writes a safety backup first**, so a wrong choice is recoverable
 **Clear** deletes the pipeline's data and keeps your identity: the register,
 queues, drafts, saved ads, keyword files, grounding packs and every generated
 document go; `config/` and `kb/sources/` stay. *Full reset* additionally drops the
-GraphRAG index (a rebuild takes 20–30 minutes). It asks you to type `CLEAR` and
+GraphRAG index (a rebuild takes 20-30 minutes). It asks you to type `CLEAR` and
 takes a safety backup first:
 
     python3 tools/backup.py clear --scope data --yes
@@ -287,4 +289,4 @@ A handy catch-all prompt:
 - Prefer **REVIEW** and **LIGHT** modes while you tune; they skip the browser and
   per-role generation.
 - Keep a **single long agent session** so context stays cacheable.
-- See [AGENT-SETUP.md](AGENT-SETUP.md) §3–4 for the model choice and cost figures.
+- See [AGENT-SETUP.md](AGENT-SETUP.md) §3-4 for the model choice and cost figures.

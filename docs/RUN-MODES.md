@@ -78,7 +78,7 @@ keywords, ground with GraphRAG, pick the aligned archetype, build the targeted C
 
 - The queue's 4th column is the **starting archetype** (e.g. leadership vs
   AI-platform vs security); the runner verifies alignment and switches if needed.
-- **Generated** CVs (modes 2–3) are tailored per role and grounded in the KB.
+- **Generated** CVs (modes 2-3) are tailored per role and grounded in the KB.
 - **Fixed** (mode 4) uses your chosen archetype as-is.
 
 ## 6. Reconcile (track replies)

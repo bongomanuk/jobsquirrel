@@ -74,7 +74,7 @@ reports a clean config.
    opens the exact email (To/Cc/Subject/body) in an editable dialog: the human can
    amend it before approving, or save changes without sending. Never
    call `gmail_send.py` to send a new email, never send `--to/--body` directly, and
-   never set `APPROVE_SEND_EMAIL`, and never call the Gmail API directly — `gmail_send.py`
+   never set `APPROVE_SEND_EMAIL`, and never call the Gmail API directly: `gmail_send.py`
    requires a saved draft plus a one-time human receipt and refuses otherwise.
    Every send records a dated outbound note with the Gmail message id on the role:
    use a canonical `draft_email.py` draft (`Company:`/`Role:` headers) or pass
@@ -97,7 +97,7 @@ reports a clean config.
 7. **Keep the register current.** It is the single source of truth for resuming.
    Every role has one identity: the queue's `key`, stored in
    `state/applications.csv` (`key`, `apply_url`) and in `state/queue.done`.
-   Never key a role by raw company/role text — a rename or a `|` in a company
+   Never key a role by raw company/role text: a rename or a `|` in a company
    name used to create a second, orphaned row. After any reconcile or queue run:
    `python3 tools/register.py --audit` must print `0 problem(s)`; it checks for
    duplicate rows/keys, `queue.done` entries with no register row, SUBMITTED rows
@@ -123,7 +123,7 @@ reports a clean config.
    session (and it complies with the site's terms).
 9. **Reach outside the repo through the gate.** To read a file outside this repo,
    write a file, or run a shell command, use the gate so the operator can approve
-   it — `python3 tools/agent_access.py read <path>` / `write <path>` (content on
+   it: `python3 tools/agent_access.py read <path>` / `write <path>` (content on
    stdin) / `run -- <cmd>`. It asks the operator and only proceeds if they allow
    it (their policy lives in `config/agent-permissions.json`, editable in the
    dashboard's **Settings → Agent permissions**). Native access outside the repo
@@ -132,7 +132,7 @@ reports a clean config.
    user says they have skills, experience or achievements (from a job, project or
    hobby), capture them as **knowledge-base source documents** in
    `kb/sources/` (grounded, attributed to the employer/project, and honest about
-   level) so they flow into the tailored CVs and letters — then re-index. Never
+   level) so they flow into the tailored CVs and letters: then re-index. Never
    read "skills" as coding-agent skill packages, plugins, MCP servers or IDE
    extensions unless the user explicitly says their *career* isn't the topic.
    Read their projects/sites through the gate (rule 9) to gather the facts.
@@ -144,7 +144,7 @@ reports a clean config.
     `.env`, a prompt or a command line. For a site login, ask `python3 tools/accounts.py --get <host>`;
     for an API key, read the environment (the runners inject it) or
     `tools/secrets_store.py --get <section> <name>`.
-12. **The browser is Camoufox — never Chromium.** Every browser action goes through
+12. **The browser is Camoufox: never Chromium.** Every browser action goes through
    `tools/camoufox_server.py` + `tools/camoufox_browser.py`. Do **not** use
    Playwright, Chromium, Chrome, headless_shell or pinchtab anywhere in this
    project (applying, verifying, screenshots, testing the dashboard). Playwright's
@@ -172,9 +172,9 @@ they have not been set up, tell the human and stop (do not invent their details)
 
 ## 2a. Delegating work from the dashboard chat
 
-The chat is for conversation and quick checks. When a request is a job of work —
-preparing documents, applying, reconciling mail, a discovery sweep, research that
-takes more than a minute — hand it to a background subagent instead of doing it
+The chat is for conversation and quick checks. When a request is a job of work
+(preparing documents, applying, reconciling mail, a discovery sweep, or research
+that takes more than a minute), hand it to a background subagent instead of doing it
 inside the chat turn:
 
 ```bash
@@ -189,7 +189,7 @@ start a second subagent for the same work: check the Activity pane first.
 
 Multi-role batches go to the queue runner, not the chat: create a scoped queue and
 run `tools/run_queue.sh` with `PARALLEL=N` for document preparation. For
-submissions that share one ATS account, use `PARALLEL=1` — parallel browser
+submissions that share one ATS account, use `PARALLEL=1`. Parallel browser
 sessions on the same account conflict. Do not prepare or submit roles one by one
 inside the chat turn.
 
@@ -229,7 +229,7 @@ LIGHT=1 FIXED_CV=documents/archetypes/<Prefix>_CV_<Archetype>.docx PARALLEL=3 ba
 The dashboard's **🚀 Submit** (grid) / **Submit this application** (a `PREPARED`
 row's drawer) build a scoped queue and run `run_queue.sh` in **submit-prepared mode**
 (`PREPARED=1`) over just those rows: no GraphRAG, no CV/letter generation, no alignment
-gate — only the pre-submit gate (to re-stamp the receipt) and then the browser apply.
+gate: only the pre-submit gate (to re-stamp the receipt) and then the browser apply.
 Requires `APPROVE_RUN_QUEUE`. Equivalent CLI:
 
 ```bash
@@ -269,7 +269,7 @@ it. `register.py` now also refuses `PREPARED`, `SUBMITTED`, `INTERVIEW` and
 `IN_PROGRESS` without a substantive saved advert, and `record_submission.py`
 does the same. A recruiter email is not an advert: `email_opportunities.py`
 records those as `MANUAL` leads and saves the message as a lead brief
-(`Spec status: lead brief — no job advert supplied`), which deliberately does
+(`Spec status: lead brief, no job advert supplied`), which deliberately does
 **not** satisfy the gate. Network/profile rows are the only exemption. Do **not**
 bulk-backfill old rows; the guard reports them without changing them.
 
@@ -408,7 +408,7 @@ Stop and ask (or record `MANUAL`/`BLOCKED`) when:
 - "Run the pipeline." → `PARALLEL=3 bash tools/run_queue.sh`; then `gmail_reconcile.py`.
 - "Apply to the most senior roles first." → already default (most-senior-first).
 - "Reconcile with email." → `python3 tools/gmail_reconcile.py --apply`.
-- "Show me the CV you'd send for X." → build it (steps 1–5) and show the text;
+- "Show me the CV you'd send for X." → build it (steps 1-5) and show the text;
   don't submit until told / until eligible.
 - "Prepare documents for me to review before sending." → `REVIEW=1 PARALLEL=3 bash
   tools/run_queue.sh`, then show the file paths.
@@ -432,7 +432,7 @@ Stop and ask (or record `MANUAL`/`BLOCKED`) when:
  , CVs, letters, snapshots.
 - `backups/`, the system backup zips (yours plus the automatic safety copies
   taken before a restore or a clear); personal data, git-ignored. `tools/backup.py`
-  creates, restores and clears them — never delete a safety copy without asking.
+  creates, restores and clears them: never delete a safety copy without asking.
 - `tools/storage.py` + `tools/stateio.py`, compression of logs and of the
   cold per-role artifacts, restored on demand (`docs/STORAGE.md`). Logs older
   than a day are gzipped at the start of a run, a finished role's transcript is

@@ -12,11 +12,11 @@ The screenshots below use a small **synthetic demo graph** (fictional people,
 companies and projects), so the documentation can be public without exposing a
 real job search. Your own graph looks denser because it has your own evidence.
 
-| The Universe — themes as islands, weighted stars and a focus ring | Focus — the selected entity, its neighbourhood and the details pane |
+| The Universe: themes as islands, weighted stars and a focus ring | Focus: the selected entity, its neighbourhood and the details pane |
 |---|---|
 | ![The knowledge universe: eight synthetic theme islands connected by a central person](screenshots/graph-universe.png) | ![A selected synthetic person with the node details pane and bright neighbouring clusters](screenshots/graph-focus.png) |
 
-| Map — the generated community hierarchy |
+| Map: the generated community hierarchy |
 |---|
 | ![The Map view showing eight synthetic communities](screenshots/graph-communities.png) |
 
@@ -35,9 +35,9 @@ The graph is built from `kb/sources/` by Microsoft GraphRAG into
 
 Two operator overlays sit beside the index and are merged at read time:
 
-- `kb/graphrag/enrichment.json` — approved entities and links. New links are
+- `kb/graphrag/enrichment.json`: approved entities and links. New links are
   drawn in gold and marked as grounded.
-- `kb/graphrag/edits.json` — description and type overrides for existing nodes.
+- `kb/graphrag/edits.json`: description and type overrides for existing nodes.
 
 `kb/graphrag/orphan-links.json` holds the curated links used to attach entities
 that GraphRAG extracted without a relationship. See §9.
@@ -110,8 +110,8 @@ assignment immediately.
 
 The **Focus** control sets how many hops stay bright:
 
-- Universe: a slider (1–3 hops, default 2) in the bottom HUD.
-- Map: a selector in the toolbar (1–3 hops, default 1).
+- Universe: a slider (1-3 hops, default 2) in the bottom HUD.
+- Map: a selector in the toolbar (1-3 hops, default 1).
 
 Outside a focus, labels are tiered by zoom: the overview shows the key node of
 each large island and the top hubs; zooming in reveals well-connected entities,
@@ -143,16 +143,16 @@ node is and why it is in the graph:
 
 - title, ontology class, degree, mentions and community;
 - description and, when available, an evidence note;
-- **Subgraph** — node/link counts, maximum depth and a layer-by-layer breakdown;
-- **Sources** — the documents behind the entity, clickable in the Sources tab;
-- **Neighbours** — every directly connected entity, sorted by degree;
-- **Strongest connections** — the highest-weight local relationships;
-- **Edit details** — override the description or ontology type; the change goes
+- **Subgraph**: node/link counts, maximum depth and a layer-by-layer breakdown;
+- **Sources**: the documents behind the entity, clickable in the Sources tab;
+- **Neighbours**: every directly connected entity, sorted by degree;
+- **Strongest connections**: the highest-weight local relationships;
+- **Edit details**: override the description or ontology type; the change goes
   to `edits.json`, not the generated index;
-- **Add connection** — create a grounded link to another entity with the evidence
+- **Add connection**: create a grounded link to another entity with the evidence
   that supports it; the link goes to `enrichment.json`;
-- **Focus ego network** — open the entity and its neighbours in the Map;
-- **Open community** — travel to the community that contains it.
+- **Focus ego network**: open the entity and its neighbours in the Map;
+- **Open community**: travel to the community that contains it.
 
 Overridden types and descriptions are visible everywhere the node appears,
 including search and context packs.
@@ -162,10 +162,10 @@ including search and context packs.
 **Ask** turns a natural-language question into a cited answer from the index. It
 is not a chat model guessing from the CV; it is the graph retrieval engine:
 
-- **Local** — follows the entities and relationships nearest the question.
-- **Global** — uses community reports for a theme-level answer.
-- **Basic** — a direct vector retrieval pass.
-- **Drift** — a deeper local pass that follows several neighbourhoods.
+- **Local**: follows the entities and relationships nearest the question.
+- **Global**: uses community reports for a theme-level answer.
+- **Basic**: a direct vector retrieval pass.
+- **Drift**: a deeper local pass that follows several neighbourhoods.
 
 Every answer carries citations to the source documents and entities. Use it to
 answer questions such as "where is the evidence for the fraud platform?" or

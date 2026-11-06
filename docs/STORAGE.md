@@ -39,9 +39,9 @@ file.
 
 The dashboard reads both forms: `foo.log.gz` still appears as task `foo`.
 
-**`--state`** packs the per-role artifacts — `state/job-descriptions/`,
+**`--state`** packs the per-role artifacts: `state/job-descriptions/`,
 `state/ats/`, `state/kb-context/`, `state/cv-content/`, `state/letters-content/`,
-`state/gates/` and the register digest — once they are older than the window
+`state/gates/` and the register digest: once they are older than the window
 (7 days by default, `--state-days` overrides it). They are text, so they shrink
 2-4x; a fresh artifact from today's run is left alone.
 
@@ -49,7 +49,7 @@ Packing is invisible because `tools/stateio.py` resolves `x` or `x.gz` for every
 reader: `jd_guard`, `ats_keywords`, `kb_graphrag`, `check_alignment`,
 `cv_target`, `check_documents`, `gate_receipt` (a packed receipt still satisfies
 `record_submission`), and the dashboard, which reads the packed twin rather than
-restoring it — browsing the grid never undoes the saving. Anything that needs a
+restoring it: browsing the grid never undoes the saving. Anything that needs a
 real file calls `stateio.ensure()`, which restores it in place and keeps the
 artifact's original age.
 
@@ -75,7 +75,7 @@ reconcile does not re-inflate it.
 
 **`--graphrag-cache`** tars `kb/graphrag/cache/` into
 `kb/archives/graphrag-cache-<date>.tar.zst` and removes the loose files (roughly
-6x smaller). This cache only speeds up (re)indexing — queries read
+6x smaller). This cache only speeds up (re)indexing: queries read
 `kb/graphrag/output/`, so retrieval keeps working without it, and the archive is
 restorable if you would rather keep the incremental-index history:
 
@@ -109,7 +109,7 @@ A backup zip holds `config/`, `answers/`, `kb/sources/`, `state/` (minus logs an
 the mail cache) and optionally `documents/`; the GraphRAG index is excluded
 because it is rebuildable from the sources.
 
-Anything destructive — restore or clear — writes an automatic safety copy to
+Anything destructive (restore or clear) writes an automatic safety copy to
 `backups/` first (`pre-restore-*.zip`, `pre-clear-*.zip`), and only the newest
 five of those are kept. Your own `jobsquirrel-*.zip` backups are never pruned.
 `backups/` is git-ignored: it contains personal data.

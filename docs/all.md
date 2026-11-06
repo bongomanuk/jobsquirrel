@@ -12,7 +12,7 @@
 
 | | |
 |---|---|
-| 🚀 **[INTRO.md](INTRO.md)** | What Jobsquirrel is, how it works end to end, the safety guarantees and the run modes — the introduction the agent delivers. |
+| 🚀 **[INTRO.md](INTRO.md)** | What Jobsquirrel is, how it works end to end, the safety guarantees and the run modes: the introduction the agent delivers. |
 | 🧰 **[SETUP.md](SETUP.md)** | Install, dependencies, configuration, Gmail. |
 | 🧑‍💻 **[AGENT-SETUP.md](AGENT-SETUP.md)** | Per-agent instructions (opencode, Claude Code, Cursor), **fully-local model** settings, cheap-model settings and what it costs to run. |
 | 🗣️ **[BOOTSTRAP.md](https://github.com/bongomanuk/jobsquirrel/blob/main/BOOTSTRAP.md)** | The first-run interview: identity, eligibility, languages, accuracy rules, CV and knowledge base. |

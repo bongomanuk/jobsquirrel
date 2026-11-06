@@ -51,7 +51,7 @@ level, and an action. The patterns are deliberately specific: "crypto" and
 "download" are ordinary words in a security or engineering advert, so they only
 count in a scam context.
 
-### HIGH — a wall
+### HIGH: a wall
 
 | `key` | What it catches | Do |
 |---|---|---|
@@ -73,7 +73,7 @@ count in a scam context.
 | `file-host-download` | A file host (Mega, Drive, Dropbox, WeTransfer…) carrying an executable or archive | Do not download it. |
 | `dangerous-attachment` | An `.exe`, `.scr`, `.msi`, `.dmg`, `.pkg`, `.bat`, `.cmd`, `.ps1`, `.vbs`, `.js`, `.hta`, `.lnk`, `.iso`, `.jar`, `.apk` or a remote-access tool | Do not open it. |
 
-### MEDIUM — verify before you reply
+### MEDIUM: verify before you reply
 
 | `key` | What it catches | Do |
 |---|---|---|
@@ -85,14 +85,14 @@ count in a scam context.
 | `archive-attachment` | A `.zip`, `.rar`, `.7z` and similar archives that can hide an installer | Do not open it unless you can verify the sender and the contents. |
 | `no-interview-hire` | "Hired immediately, no interview/references required" | Ask for a real interview and a named hiring manager. |
 
-### LOW — a note, never a gate
+### LOW: a note, never a gate
 
 | `key` | What it catches |
 |---|---|
 | `urgency` | "Urgent", "immediate start", "reply within 24 hours", "limited positions" |
 | `shortened-link` | A `bit.ly`/`tinyurl`/`t.co` link that hides its destination |
 | `sender-domain-mismatch` | A completely different domain (often a legitimate agency or job board) |
-| `engagement-bait` | "Reply YES/INTERESTED" — an engagement hook used by fake-recruiter texts |
+| `engagement-bait` | "Reply YES/INTERESTED": an engagement hook used by fake-recruiter texts |
 
 ## Known scam families
 
@@ -117,22 +117,22 @@ agencies describe:
 
 ### Research and sources
 
-- **FTC** — *Job Scams*, *That job offer text is probably a scam*, *Job
+- **FTC**: *Job Scams*, *That job offer text is probably a scam*, *Job
   scammers are looking to hire you*, *Can you unbox the signs of a reshipping
   scam?* (`consumer.ftc.gov`).
-- **FBI IC3** — *Scammers Defraud Individuals via Work-From-Home Scams*,
+- **FBI IC3**: *Scammers Defraud Individuals via Work-From-Home Scams*,
   *Cryptocurrency Job Scams*, *False Job Advertisements Linked to Labor
   Trafficking at Scam Compounds*, and the 2025 IC3 report on AI/deepfake
   employment scams (`ic3.gov`, `fbi.gov`).
-- **Europol** — *How to spot fake job adverts*, *Crackdown on money mule service
+- **Europol**: *How to spot fake job adverts*, *Crackdown on money mule service
   providers*, and the crypto-investment-fraud guidance (`europol.europa.eu`).
-- **Scamwatch (Australia)** — *Jobs and employment scams* (`scamwatch.gov.au`).
-- **NAB / ANZ** — employment-scam red flags and money-mule guidance.
+- **Scamwatch (Australia)**: *Jobs and employment scams* (`scamwatch.gov.au`).
+- **NAB / ANZ**: employment-scam red flags and money-mule guidance.
 
 These sources describe the patterns; the scanner is a local heuristic layer, not
 a substitute for verifying the employer. It cannot detect a deepfake interview,
 a hijacked real advert, or a fake domain when there is no known company domain
-to compare against — those need the human checks below.
+to compare against: those need the human checks below.
 
 ## Email checks
 
@@ -198,7 +198,7 @@ the Application states graph jumps straight to it.
   equipment") is recognised and skipped.
 - Email matching still decides which role a message belongs to. A marketing mail
   that matches a role can raise a warning there; verify before acting.
-- A HIGH signal is a gate because the cost of being wrong is asymmetric — one
+- A HIGH signal is a gate because the cost of being wrong is asymmetric: one
   remote-access session can empty a wallet.
 
 ## Extending the rules

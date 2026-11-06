@@ -135,8 +135,9 @@ pre.doc{background:#07090c;border:1px solid var(--line);border-radius:var(--radi
 .list{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);max-height:70vh;overflow:auto}
 .list .it{padding:8px 12px;border-bottom:1px solid var(--line);cursor:pointer;font-size:13px}
 .list .it:hover,.list .it.on{background:var(--surface2)}
-.tabs2{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:12px;flex-wrap:wrap}
-.tabs2 a{padding:7px 12px;color:var(--muted);cursor:pointer;font-weight:600;font-size:13px;border-bottom:2px solid transparent}
+.tabs2{display:flex;gap:1px;border-bottom:1px solid var(--line);margin-bottom:12px;flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;scrollbar-width:none}
+.tabs2::-webkit-scrollbar{display:none}
+.tabs2 a{flex:0 0 auto;padding:7px 8px;color:var(--muted);cursor:pointer;font-weight:600;font-size:12px;border-bottom:2px solid transparent}
 .tabs2 a.on{color:var(--fg);border-bottom-color:var(--accent)}
 
 /* ---- app shell: shared dockable panels (edges) ---- */
@@ -355,8 +356,46 @@ tr.grp .grp-n .countlink:hover{color:var(--accent)}
 #grid tbody tr.click{cursor:pointer}
 #grid tbody tr.sel{background:rgba(96,165,250,.12);box-shadow:inset 3px 0 0 #60a5fa}
 #grid tbody tr.sel:hover{background:rgba(96,165,250,.18)}
-#detail .tabs2{padding:0 12px}
-.d-body{padding:14px;overflow:auto;flex:1}
+#detail .tabs2{padding:0 6px}
+.d-body{padding:14px;overflow:auto;flex:1;display:flex;flex-direction:column;gap:10px}
+.dsec{background:#0a0c10;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.dsec-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.dsec-h b{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--accent)}
+.dsec-h .muted{font-size:11px}
+.dsec-badges{margin-left:auto;display:flex;gap:5px;flex-wrap:wrap}
+.dsec-b{display:flex;flex-direction:column;gap:8px}
+.dsec > summary{display:flex;align-items:baseline;gap:8px;cursor:pointer;list-style:none}
+.dsec > summary::-webkit-details-marker{display:none}
+.dsec > summary::before{content:'▸';color:var(--accent);font-size:10px}
+.dsec[open] > summary::before{content:'▾'}
+.dsec[open] > summary{margin-bottom:8px}
+.dsec > summary b{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--accent)}
+.daction{padding:8px 10px;border-left:3px solid var(--accent);background:var(--surface2);border-radius:0 8px 8px 0;font-size:13px;line-height:1.45}
+.dstatus{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.statehint{font-size:12.5px;color:var(--fg)}
+.dmeta{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin:0}
+.dmeta > div{min-width:0}
+.dmeta dt{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.dmeta dd{margin:1px 0 0;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dmeta .wide{grid-column:1 / -1}
+.dmeta .wide dd{white-space:normal;overflow-wrap:anywhere}
+.dgrid2{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px}
+.dgrid2 label,.dlabel{display:flex;flex-direction:column;gap:3px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.dgrid2 input,.dgrid2 select,.dlabel textarea{width:100%;font-size:12.5px;text-transform:none;letter-spacing:0}
+.dlabel textarea{margin-top:2px}
+.dform-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.dform-row input{flex:1;min-width:150px}
+.dform-foot{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+.dbtnrow{display:flex;gap:6px;flex-wrap:wrap}
+.dnote{background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:12px;line-height:1.45}
+.dnote.warn{border-color:#8a6d09;color:#ffd479}
+.missk-wrap{margin-top:5px}
+.dsec .stages{margin-top:0}
+.dsec .working{margin-top:2px}
+.dsec-block{border-color:rgba(245,158,11,.55)}
+.d-body button{height:30px;padding:0 10px;font-size:12.5px;border-radius:8px}
+.d-body button.small{height:28px;padding:0 9px;font-size:12px}
+.d-body input,.d-body select{min-height:30px;font-size:12.5px}
 .mini{font-size:12px}
 
 /* evidence overlay: the generated CV scored against the job's requirements */
@@ -620,12 +659,22 @@ mark.kw{background:#24405a;color:#bfe3ff;border-radius:3px;padding:0 2px}
 #knowledge .kg-side{max-height:none;height:100%;flex:0 0 320px;width:320px}
 #knowledge .kg-legend{flex:0 0 auto}
 #knowledge .kg-toolbar{margin:0}
-#knowledge .kg-toolbar.kg-topbar{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:7px 10px}
+#knowledge .kg-toolbar.kg-topbar{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:7px 10px;flex-wrap:nowrap;overflow-x:auto;white-space:nowrap;scrollbar-width:none;gap:6px}
+#knowledge .kg-toolbar.kg-topbar::-webkit-scrollbar{display:none}
+.kg-crumbs-inline{margin:0;max-width:260px;min-width:0;overflow:hidden;white-space:nowrap;flex-wrap:nowrap;font-size:12px}
+.kg-crumbs-inline .kg-crumb{flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kg-stats{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px}
+.kg-spacer{flex:1;min-width:0}
+#knowledge .kg-toolbar.kg-topbar #kg-q{flex:0 1 220px;min-width:140px}
+.kg-toolbar .kg-modes{flex:0 0 auto}
+.kg-btn.kg-icon{padding:0 9px;min-width:32px;justify-content:center}
 #knowledge .kg-results{max-height:150px}
 body.knowledge-open{overflow:hidden}
 
 /* Knowledge sidebar tabs and source manager */
-.kg-side-tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:-2px 0 8px;padding-bottom:4px}
+.kg-side-tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:-2px 0 8px;padding-bottom:4px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+.kg-side-tabs::-webkit-scrollbar{display:none}
+.kg-side-tabs button{flex:0 0 auto}
 .kg-side-tabs button{background:none;border:0;color:var(--muted);cursor:pointer;font-size:11px;
   padding:3px 7px;border-radius:4px}
 .kg-side-tabs button:hover{color:var(--accent);background:#0a0c10}

@@ -73,7 +73,7 @@ privacy, before it starts the interview.
 - **Per role**: the agent runs the same steps for a single job (useful for a
   retry, a specific URL, or showing you a CV before applying).
 
-Both are described step-by-step with exact commands in `AGENTS.md` §3–§6 and
+Both are described step-by-step with exact commands in `AGENTS.md` §3-§6 and
 `docs/WORKFLOW.md`.
 
 ## 5. A worked exchange

@@ -424,7 +424,7 @@ function build(data) {
   S.lodKey = '';
   S.baseRadius = Math.max(2600, (S.maxDist || 2000) * 1.8);
   const st = document.getElementById('uni-stats');
-  if (st) st.textContent = `${n} entities · ${S.links.length} relationships · ${S.clusters.length} islands`;
+  if (st) st.textContent = `${n} entities · ${S.clusters.length} islands`;
   resetView();
   updateLOD(true);
 }
@@ -1264,7 +1264,7 @@ export function search(q) {
   q = String(q == null ? '' : q).trim().toLowerCase();
   const st = document.getElementById('uni-stats');
   if (!q || !S.nodes.length) {
-    if (st && S.nodes.length) st.textContent = `${S.nodes.length} entities · ${S.links.length} relationships · ${S.clusters.length} islands`;
+    if (st && S.nodes.length) st.textContent = `${S.nodes.length} entities · ${S.clusters.length} islands`;
     return 0;
   }
   const hits = S.nodes.filter(n => (n.title + ' ' + (n.description || '')).toLowerCase().includes(q));

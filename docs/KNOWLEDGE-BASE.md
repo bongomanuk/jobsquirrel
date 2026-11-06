@@ -40,7 +40,7 @@ the index contains under **Settings → GraphRAG**.
 
 - **Every version of your CV**: a master plus each old/role-specific one.
   Different versions hold different bullets; the graph merges them.
-- **A "brag document"**: every project with *numbers*: scale, users, revenue,
+- **A "brag document"**: every project with numbers such as scale, users, revenue,
   latency, uptime, team sizes, budgets, outcomes.
 - **Project / design / architecture notes**, RFCs, postmortems, talks, blog and
   README excerpts.
@@ -73,7 +73,7 @@ cp kb/graphrag/.env.example          kb/graphrag/.env
 ```
 
 - **Completion model**: any OpenAI-compatible endpoint
-  (`GRAPHRAG_API_BASE`, `GRAPHRAG_API_KEY`, `GRAPHRAG_LLM_MODEL`) — including a
+  (`GRAPHRAG_API_BASE`, `GRAPHRAG_API_KEY`, `GRAPHRAG_LLM_MODEL`): including a
   **local** llama.cpp, Ollama, LM Studio or vLLM server. The graph builder then
   runs entirely on your machine.
 - **Embeddings**: any OpenAI-compatible embeddings endpoint
@@ -150,23 +150,23 @@ The runner does this automatically (step "grounding") for each queued role.
 The dashboard's top-bar **Knowledge** page is a full-page, interactive view of
 the index. It is deliberately more than a graph picture:
 
-- **Universe** — every entity, grouped into level-0 themes as islands, with
+- **Universe**: every entity, grouped into level-0 themes as islands, with
   weighted importance, zoom-tiered labels, community nebulae and a focus control.
-- **Map** — the same renderer drilled down through **Topics** (ontology classes),
+- **Map**: the same renderer drilled down through **Topics** (ontology classes),
   **Communities** (the generated hierarchy), **Entities** and **Ego** networks.
-- **Focus** — selecting an entity frames its neighbourhood, lights the selected
+- **Focus**: selecting an entity frames its neighbourhood, lights the selected
   node and its hops, dims the rest, then fades back after a few seconds. Clicking
   empty space restores the previous view and the normal labels.
-- **Node pane** — description, class, sources, neighbours, strongest connections,
+- **Node pane**: description, class, sources, neighbours, strongest connections,
   subgraph depth and layer counts. Descriptions and types can be edited and
   evidence-backed links added; changes live in overlays, not the generated index.
-- **Ask** — cited answers from the graph in local, global, basic and drift modes.
-- **Semantic search** — entity search by meaning, not exact wording.
-- **Role evidence** — job-ad keywords mapped to grounded entities and explicit
+- **Ask**: cited answers from the graph in local, global, basic and drift modes.
+- **Semantic search**: entity search by meaning, not exact wording.
+- **Role evidence**: job-ad keywords mapped to grounded entities and explicit
   gaps.
-- **Grounded enrichment** — reviewable additions supported by existing text;
+- **Grounded enrichment**: reviewable additions supported by existing text;
   approved nodes and links are gold and marked as grounded.
-- **Sources / Add / Roles** — upload and rebuild the corpus, record a fact or
+- **Sources / Add / Roles**: upload and rebuild the corpus, record a fact or
   skill without a rebuild, and open a role in the application drawer.
 
 The full guide, including controls, the orphan policy, the quality gate and the
@@ -196,7 +196,7 @@ The graph is for work evidence, not the legal machinery of a contract. Contract
 and legal documents are excluded at ingest (`kb/sources/.ingestignore` includes
 `contracts/*`, `reference-cv/*Contract*` and `reference-cv/*Juridiska*`).
 `tools/graph_prune_sensitive.py` removes any contract/legal entities that
-slipped through — garden leave, pay in lieu of notice, notice/probation,
+slipped through: garden leave, pay in lieu of notice, notice/probation,
 disciplinary/grievance terms, salary/bonus/pension details, courts, tribunals,
 jurisdiction and generic contract parties. It also removes any entity left with
 no surviving text unit, its relationships, ungrounded communities and reports,

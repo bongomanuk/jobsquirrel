@@ -6,7 +6,7 @@ description: Jobsquirrel is an open, self-hosted job-application agent: it finds
   <div>
     <h1>🐿️ Jobsquirrel</h1>
     <p><strong>An open, self-hosted job-application agent: hand it your CV (resume) and it finds, tailors, gates and applies to jobs for you.</strong></p>
-    <p>Honest, targeted and auditable — with a real knowledge graph, hard gates before anything is sent, and a scam detector that knows the difference between a recruiter and a wallet drain.</p>
+    <p>Honest, targeted and auditable: with a real knowledge graph, hard gates before anything is sent, and a scam detector that knows the difference between a recruiter and a wallet drain.</p>
     <div class="js-badges">
       <img src="https://img.shields.io/github/v/release/bongomanuk/jobsquirrel?style=flat-square&label=version" alt="version">
       <img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0">
@@ -33,13 +33,13 @@ description: Jobsquirrel is an open, self-hosted job-application agent: it finds
   <div class="js-card"><div class="js-ico">🛡️</div><h3>Gate</h3><p>Alignment, evidence, ATS coverage, identity and no-AI-slop gates. Nothing is uploaded until they pass.</p></div>
   <div class="js-card"><div class="js-ico">🤖</div><h3>Apply</h3><p>Drives the employer's own ATS through a real Camoufox browser, then records the exact files and hashes.</p></div>
   <div class="js-card"><div class="js-ico">📬</div><h3>Track</h3><p>Reconciles Gmail, surfaces interviews and verification links, triages job mail the classifier missed, and keeps one source of truth for every role.</p></div>
-  <div class="js-card"><div class="js-ico">🕵️</div><h3>Warn</h3><p>Flags recruitment scams — remote-access interviews, wallet drains, task scams, money mules, reshipping — before you engage.</p></div>
+  <div class="js-card"><div class="js-ico">🕵️</div><h3>Warn</h3><p>Flags recruitment scams before you engage: remote-access interviews, wallet drains, task scams, money mules and reshipping.</p></div>
 </div>
 
 !!! tip "Everything is local"
     The dashboard, register, documents, browser and knowledge graph run on your
     machine. The only outbound calls are the ones you choose: the employer's site,
-    Gmail/Calendar if enabled, and the model provider — **which can be a local
+    Gmail/Calendar if enabled, and the model provider: **which can be a local
     model too**. Use opencode, Claude Code, Cursor or your own local AI agent.
     [Run it fully local →](AGENT-SETUP/#run-it-fully-local)
 
@@ -60,36 +60,36 @@ description: Jobsquirrel is an open, self-hosted job-application agent: it finds
 <div class="js-quotes">
   <div class="js-quote">
     <img src="assets/animals/rowan-red-squirrel.jpg" alt="Rowan Ash">
-    <blockquote>“I used to scatter applications like acorns and hope one took root. Jobsquirrel made me slow down. It found the roles, pulled the right evidence out of my own notes, and wrote a CV I could defend. I went from thirty rushed applications to four I believed in, and one of them became the role I have now.”<span class="js-who">Rowan Ash — Red Squirrel</span></blockquote>
+    <blockquote>“I used to scatter applications like acorns and hope one took root. Jobsquirrel made me slow down. It found the roles, pulled the right evidence out of my own notes, and wrote a CV I could defend. I went from thirty rushed applications to four I believed in, and one of them became the role I have now.”<span class="js-who">Rowan Ash: Red Squirrel</span></blockquote>
   </div>
   <div class="js-quote">
     <img src="assets/animals/hazel-hedgehog.jpg" alt="Hazel Thorn">
-    <blockquote>“The gate is the part I did not know I needed. It caught a line in my CV that said I thrived under pressure, which is not true. I am a hedgehog. I roll into a ball. Jobsquirrel made me take it out, and the interview went better because everything I said was mine.”<span class="js-who">Hazel Thorn — Hedgehog</span></blockquote>
+    <blockquote>“The gate is the part I did not know I needed. It caught a line in my CV that said I thrived under pressure, which is not true. I am a hedgehog. I roll into a ball. Jobsquirrel made me take it out, and the interview went better because everything I said was mine.”<span class="js-who">Hazel Thorn: Hedgehog</span></blockquote>
   </div>
   <div class="js-quote">
     <img src="assets/animals/alden-tawny-owl.jpg" alt="Alden Birch">
-    <blockquote>“I work nights, so I used to read recruiter mail at 3am and talk myself into things. Jobsquirrel read the same mail, matched it to the right role, and put the interview on my calendar. It also refused a role that wanted me to install a screen-sharing tool before the call. I have talons. I do not need remote access.”<span class="js-who">Alden Birch — Tawny Owl</span></blockquote>
+    <blockquote>“I work nights, so I used to read recruiter mail at 3am and talk myself into things. Jobsquirrel read the same mail, matched it to the right role, and put the interview on my calendar. It also refused a role that wanted me to install a screen-sharing tool before the call. I have talons. I do not need remote access.”<span class="js-who">Alden Birch: Tawny Owl</span></blockquote>
   </div>
   <div class="js-quote">
     <img src="assets/animals/bram-badger.jpg" alt="Bram Hollow">
-    <blockquote>“I am not a spreadsheet animal. Jobsquirrel kept every application, every document and every reply in one place, so I always knew which burrow I was in. When a rejection came, it closed the row and moved on. When an interview came, it was already on the calendar. I finished the season with a clean record and a job.”<span class="js-who">Bram Hollow — Badger</span></blockquote>
+    <blockquote>“I am not a spreadsheet animal. Jobsquirrel kept every application, every document and every reply in one place, so I always knew which burrow I was in. When a rejection came, it closed the row and moved on. When an interview came, it was already on the calendar. I finished the season with a clean record and a job.”<span class="js-who">Bram Hollow: Badger</span></blockquote>
   </div>
 </div>
 
 ## Start here
 
-- **[Introduction](INTRO.md)** — what it is, how it works end to end, the safety guarantees and the run modes.
-- **[Setup](SETUP.md)** — install, dependencies, configuration, Gmail.
-- **[Agent setup](AGENT-SETUP.md)** — opencode, Claude Code, Cursor, and **running it fully local**.
-- **[Using it](USING-IT.md)** — the daily prompts, monitoring, the state model and the grid.
-- **[The scam detector](SCAMS.md)** — the hard rule, every signal, the email checks and the limits.
-- **[All documentation](all.md)** — the full index.
+- **[Introduction](INTRO.md)**: what it is, how it works end to end, the safety guarantees and the run modes.
+- **[Setup](SETUP.md)**: install, dependencies, configuration, Gmail.
+- **[Agent setup](AGENT-SETUP.md)**: opencode, Claude Code, Cursor, and **running it fully local**.
+- **[Using it](USING-IT.md)**: the daily prompts, monitoring, the state model and the grid.
+- **[The scam detector](SCAMS.md)**: the hard rule, every signal, the email checks and the limits.
+- **[All documentation](all.md)**: the full index.
 
 ---
 
 <div align="center" markdown>
 
-**If it helps, give it a star** ⭐ — it helps other people find it.
+**If it helps, give it a star** ⭐: it helps other people find it.
 
 [GitHub](https://github.com/bongomanuk/jobsquirrel) · [Releases](https://github.com/bongomanuk/jobsquirrel/releases) · [Report an issue](https://github.com/bongomanuk/jobsquirrel/issues)
 

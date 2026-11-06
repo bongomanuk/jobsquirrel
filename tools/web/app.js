@@ -593,7 +593,7 @@ const App = {
     const d = await api('/api/graph?kind=stats');
     const st = $('#kg-stats');
     if (st) st.textContent = d && d.entities
-      ? `${d.entities} entities · ${d.relationships} relationships · ${d.communities} communities`
+      ? `${d.entities} entities · ${d.communities} communities`
       : 'Index not built yet';
     if (!d || !d.entities) {
       if ($('#kg-side-body')) {
@@ -2177,7 +2177,7 @@ async function openDetail(r) {
   ROLE_DATA = { segments: [], running: false, pending: 0 };
   setPanel('detail', { open: true });            // also re-renders the grid, marking this row
   $('#d-title').textContent = `${r.company}: ${r.role}`;
-  const tabs = ['Summary', 'Discuss', 'Provenance', 'Job spec', 'ATS', 'Grounding', 'Documents'];
+  const tabs = ['Summary', 'Chat', 'Files', 'Job ad', 'ATS', 'Evidence', 'Docs'];
   $('#dtabs').innerHTML = tabs.map((t, i) => `<a class="${i === DTAB ? 'on' : ''}" onclick="dt(${i})">${t}</a>`).join('');
   $('#d-body').innerHTML = '<span class="muted">loading…</span>';
   const jobs = [api(`/api/provenance?company=${encodeURIComponent(r.company)}&role=${encodeURIComponent(r.role)}`)];
@@ -2208,77 +2208,118 @@ function summary(r) {
   const act = (r.action || '').trim();
   const kbGap = /no direct evidence|not evidenced|unmet/i.test(D.kb || '');
   const scam = D.scam || r.scam || null;
+  const stage = (k, label) => {
+    const on = !!(r.stages || {})[k];
+    return `<span class="stage ${on ? 'on' : ''}" title="${on ? 'done' : 'not yet'}">${on ? '✓' : '○'} ${label}</span>`;
+  };
+  const meta = [
+    ['ATS', r.ats],
+    ['Type', r.employment],
+    ['Pay', r.salary_label ? `${r.salary_label}${r.salary_override ? ' (manual)' : ''}` : ''],
+    ['Work', r.work_model && r.work_model !== 'unknown' ? `${wl(r.work_model)}${r.work_override ? ' (manual)' : ''}` : ''],
+    ['Queue', r.queue && r.queue !== 'not queued' ? r.queue : ''],
+    ['Updated', r.date],
+    ['Interview', r.interview_at],
+  ].filter(([, v]) => v);
+  const metaHTML = meta.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd title="${esc(v)}">${esc(v)}</dd></div>`).join('') +
+    `<div class="wide"><dt>Key</dt><dd class="mono">${esc(r.key)}</dd></div>`;
+  const matchBadges = (m.alignment ? `<span class="badge ${m.alignment === 'PASS' ? 'good' : 'bad'}">alignment ${m.alignment}</span>` : '') +
+    (m.coverage != null ? `<span class="badge ${m.coverage >= 70 ? 'good' : 'mid'}">coverage ${m.coverage}%</span>` : '') ||
+    '<span class="muted mini">no match data yet</span>';
+  const missing = (m.missing || []).map(x => {
+    const ev = (m.evidenced || []).some(e => e.toLowerCase() === x.toLowerCase());
+    return `<a class="missk${ev ? ' evidenced' : ''}" title="${ev ? 'you have recorded evidence: re-prepare this role to apply it' : 'click to record where you have this skill'}" onclick='App.addEvidence(${JSON.stringify(x)},${JSON.stringify(r.key)})'>${ev ? '✓ ' : ''}${esc(x)}</a>`;
+  }).join('');
   return scamBox(scam) +
     (scam && ['high', 'medium'].includes(scam.level)
-      ? `<div class="row" style="margin:-6px 0 10px"><button class="small" onclick='App.clearScam(${JSON.stringify(r.jd_key || r.key)},${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Only after you have verified the employer independently">Clear scam warning</button></div>`
+      ? `<div class="dform-foot" style="justify-content:flex-start;margin:-2px 0 10px"><button class="small" onclick='App.clearScam(${JSON.stringify(r.jd_key || r.key)},${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Only after you have verified the employer independently">Clear scam warning</button></div>`
       : '') +
-    (act ? `<div class="actionbox"><span class="actflag">⚑</span> <b>Action:</b> ${esc(act)}</div>` : '') +
-    (kbGap ? `<div class="muted mini" style="color:#ffd479;margin:6px 0">⚠ The grounding report flags requirements with no direct evidence. Check the missing skills below before treating this as a fit.</div>` : '') +
-    `<div class="row" style="margin:6px 0 10px"><input id="dt-action" placeholder="needs a reply or follow-up? describe it…" value="${esc(act)}" style="flex:1">
-      <button onclick="App.saveAction()">${act ? 'Update flag' : '⚑ Flag action'}</button>
-      ${act ? '<button onclick="App.clearAction()">Clear</button>' : ''}</div>` +
-    `<div class="drafts"><div class="row"><b>Drafted replies</b><span class="muted mini">review before sending</span><span style="flex:1"></span>
-        <button class="small" onclick="App.draftAsk()" title="Ask the agent to read the latest email and save a draft for this role">🤖 Draft with agent</button>
-        <button class="small" onclick="App.draftNew()">＋ New</button>
-        <button class="small" onclick="App.loadDrafts()" title="Refresh drafts (the agent may have just saved one)">↻</button></div>
-      <div id="dt-draft-list" class="muted mini">loading…</div></div>` +
-    `<div class="statebox">
-      <div class="row">${chip(r.label || r.status)}${r.hint ? `<span class="statehint">${esc(r.hint)}</span>` : ''}</div>
-      <div class="stages">${(() => {
-        const st = r.stages || {};
-        const cell = (k, label) => `<span class="stage ${st[k] ? 'on' : ''}" title="${st[k] ? 'done' : 'not yet'}">${st[k] ? '✓' : '○'} ${label}</span>`;
-        return cell('ad', 'Ad saved') + cell('keywords', 'Keywords') + cell('grounding', 'Grounded') + cell('documents', 'Documents') + cell('applied', 'Applied');
-      })()}</div>
-      <div class="state-meta mini muted">ATS: ${esc(r.ats || '-')}${r.employment ? ' · type: ' + esc(r.employment) : ''} · Pay: ${esc(r.salary_label || '-')}${r.salary_override ? ' (manual)' : ''} · Work: ${esc(wl(r.work_model))}${r.work_override ? ' (manual)' : ''} · Queue: ${esc(r.queue || 'not queued')}${r.date ? ' · updated ' + esc(r.date) : ''}${r.interview_at ? ' · interview ' + esc(r.interview_at) : ''} · <span class="mono">${esc(r.key)}</span></div>
-      ${r.running ? `<div class="working"><a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show what this run is doing"><span title="working">🥜</span> being worked on right now: show live log</a></div>` : ''}
-    </div>` +
-    `<div class="row" style="margin:6px 0 10px"><span class="muted">Set status</span>
-      <select id="dt-status"><option value="">- keep as ${esc(r.label || r.status || 'is')} -</option>` +
-      reg.map(x => `<option ${x === r.status ? 'selected' : ''}>${x}</option>`).join('') + '</select>' +
-      `<span class="muted">Type</span><select id="dt-emp">` +
-      ['', 'full-time', 'part-time', 'contract', 'consultant', 'freelance', 'internship', 'temporary']
-        .map(x => `<option value="${x}" ${x === (r.employment || '') ? 'selected' : ''}>${x || '- unknown -'}</option>`).join('') + '</select>' +
-      `<button onclick="App.saveRow()">Save</button>
-      <button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>Prepare this role</button>
-      <button data-act onclick='App.roleEvidence(${JSON.stringify(r.key)})'>🧠 Graph evidence</button>
-      ${r.status === 'PREPARED' ? `<button class="risky" data-act onclick='App.submitThis(${JSON.stringify(r.key)})' title="Submit this application now with the documents already prepared: sends it, needs approval">🚀 Submit this application</button>` : ''}
-      <button data-act onclick='App.matchThis(${JSON.stringify(r.key)}, this)'>Recompute match</button></div>` +
-    `<div class="row" style="margin:0 0 10px">
-      <span class="muted">Work</span>
-      <select id="dt-work">
-        <option value="">auto: ${esc(wl(r.work_detected))}</option>
-        ${['remote', 'hybrid', 'on-site'].map(x => `<option value="${x}" ${r.work_override && r.work_model === x ? 'selected' : ''}>${wl(x).toLowerCase()}</option>`).join('')}
-      </select>
-      <span class="muted">Pay</span>
-      <input id="dt-salary" style="flex:1;max-width:380px" value="${esc(r.salary_override ? (r.salary_raw || '') : '')}" placeholder="${esc(r.salary_raw && !r.salary_override ? 'auto: ' + r.salary_raw : 'e.g. EUR 90000/yr')}">
-      <span class="muted mini">blank = auto from the ad</span>
-    </div>` +
-    `<div class="row">${m.alignment ? `<span class="badge ${m.alignment === 'PASS' ? 'good' : 'bad'}">alignment ${m.alignment}</span>` : ''}` +
-    `${m.coverage != null ? `<span class="badge ${m.coverage >= 70 ? 'good' : 'mid'}">coverage ${m.coverage}%</span>` : ''}${known ? '' : '<span class="muted mini">(runner-derived state)</span>'}</div>` +
-    (m.missing && m.missing.length ? `<div class="muted mini" style="margin-top:8px">missing skills: click one to add where you have it:
-      <div style="margin-top:4px">${m.missing.map(x => {
-        const ev = (m.evidenced || []).some(e => e.toLowerCase() === x.toLowerCase());
-        return `<a class="missk${ev ? ' evidenced' : ''}" title="${ev ? 'you have recorded evidence: re-prepare this role to apply it (grounding already includes it)' : 'click to record where you have this skill'}" onclick='App.addEvidence(${JSON.stringify(x)},${JSON.stringify(r.key)})'>${ev ? '✓ ' : ''}${esc(x)}</a>`;
-      }).join('')}</div></div>
-      ${(m.evidenced || []).length ? `<div class="row" style="margin-top:6px"><span class="muted mini">${m.evidenced.length} skill(s) have evidence: re-prepare this role to fold them into the CV (grounding includes them now).</span>
-        <button class="small" onclick='App.prepareThis(${JSON.stringify(r.key)})'>↻ Re-prepare with the new evidence</button></div>` : ''}` : '') +
-    `<div class="row" style="margin-top:8px"><input id="dt-addkw" placeholder="add a requirement from the job ad" style="flex:1">
-      <button class="small" onclick="App.addKeyword()">Add keyword</button>
-      <button class="small" onclick="App.refreshKeywords()" title="Re-extract keywords from the saved job ad with the current term list">↻ Re-extract</button></div>` +
-    `<div class="why" style="margin-top:12px"><div class="why-h"><span class="muted mini">WHY / HISTORY</span></div>
-      ${hist ? `<ul class="hist">${hist}</ul>` : '<div class="muted">no notes recorded for this row</div>'}
-      ${P.evidence ? `<div class="muted mini" style="margin-top:6px">submission evidence: ${esc(String(P.evidence).slice(0, 240))}</div>` : ''}</div>` +
-    `<div class="muted mini" style="margin:12px 0 4px">your notes (editable)</div><textarea id="dt-notes" style="min-height:12vh">${esc(r.notes || '')}</textarea>` +
-    `<div class="row" style="margin-top:8px"><button onclick="App.saveRow()">Save notes</button></div>` +
-    (['BLOCKED', 'MANUAL'].includes(r.status) ? `<div class="why resolve">
-      <div class="why-h"><span class="muted mini">GET PAST THE BLOCK</span></div>
-      ${r.url ? `<a class="mini" href="${esc(r.url)}" target="_blank">${esc(r.url.slice(0, 70))}</a>` : '<span class="muted mini">no apply URL recorded</span>'}
-      <div class="row" style="margin-top:8px">
-        <button class="risky" onclick='App.queueAct("human",${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Opens a VISIBLE browser, pre-fills everything (identity, EEO answers, your prepared CV and cover letter), then waits for you to solve the CAPTCHA/2FA and press Submit">🖐 Autofill &amp; finish</button>
-        <button onclick='App.queueAct("retry",${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Re-queue this role for another automated attempt">↻ Retry</button>
-        <button onclick='App.queueAct("unblock",${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Clear the blocked status and re-queue">✓ Unblock</button>
-        ${r.url ? `<button onclick='App.openPage(${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Open the apply page in your own browser">🌐 Open page</button>` : ''}
-      </div></div>` : '');
+    `<section class="dsec">
+      <div class="dsec-h"><b>Next action</b>${act ? '' : '<span class="muted mini">optional</span>'}</div>
+      <div class="dsec-b">
+        ${act ? `<div class="daction">${esc(act)}</div>` : ''}
+        <div class="dform-row"><input id="dt-action" placeholder="Add a follow-up or a note for this role" value="${esc(act)}"></div>
+        <div class="dform-foot" style="justify-content:flex-start">
+          <button onclick="App.saveAction()">${act ? 'Update action' : 'Flag action'}</button>
+          ${act ? '<button onclick="App.clearAction()">Clear</button>' : ''}
+        </div>
+      </div>
+    </section>` +
+    `<section class="dsec">
+      <div class="dsec-h"><b>Status</b>${known ? '' : '<span class="muted mini">runner derived</span>'}</div>
+      <div class="dsec-b">
+        <div class="dstatus">${chip(r.label || r.status)}${r.hint ? `<span class="statehint">${esc(r.hint)}</span>` : ''}</div>
+        <div class="stages">${stage('ad', 'Ad saved')}${stage('keywords', 'Keywords')}${stage('grounding', 'Grounded')}${stage('documents', 'Documents')}${stage('applied', 'Applied')}</div>
+        <dl class="dmeta">${metaHTML}</dl>
+        ${r.running ? `<div class="working"><a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show what this run is doing"><span title="working">🥜</span> Being worked on. Show the live log.</a></div>` : ''}
+      </div>
+    </section>` +
+    `<section class="dsec">
+      <div class="dsec-h"><b>Actions</b></div>
+      <div class="dsec-b"><div class="dbtnrow">
+        <button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>⚡ Prepare this role</button>
+        <button data-act onclick='App.roleEvidence(${JSON.stringify(r.key)})'>🧠 Graph evidence</button>
+        <button data-act onclick='App.matchThis(${JSON.stringify(r.key)}, this)'>↻ Recompute match</button>
+        ${r.status === 'PREPARED' ? `<button class="risky" data-act onclick='App.submitThis(${JSON.stringify(r.key)})' title="Submit this application now with the documents already prepared. Sends it and needs approval.">🚀 Submit this application</button>` : ''}
+      </div></div>
+    </section>` +
+    `<details class="dsec">
+      <summary><b>Drafted replies</b><span class="muted mini">review before sending</span></summary>
+      <div class="dsec-b">
+        <div class="dbtnrow">
+          <button class="small" onclick="App.draftAsk()" title="Ask the agent to read the latest email and save a draft for this role">🤖 Draft with agent</button>
+          <button class="small" onclick="App.draftNew()">＋ New</button>
+          <button class="small" onclick="App.loadDrafts()" title="Refresh drafts">↻</button>
+        </div>
+        <div id="dt-draft-list" class="muted mini">loading…</div>
+      </div>
+    </details>` +
+    `<section class="dsec">
+      <div class="dsec-h"><b>Role settings</b><span class="muted mini">status, type, pay and work model</span></div>
+      <div class="dsec-b">
+        <div class="dgrid2">
+          <label>Status<select id="dt-status">${reg.map(x => `<option ${x === r.status ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+          <label>Type<select id="dt-emp">${['', 'full-time', 'part-time', 'contract', 'consultant', 'freelance', 'internship', 'temporary'].map(x => `<option value="${x}" ${x === (r.employment || '') ? 'selected' : ''}>${x || 'unknown'}</option>`).join('')}</select></label>
+          <label>Work model<select id="dt-work"><option value="">auto: ${esc(wl(r.work_detected))}</option>${['remote', 'hybrid', 'on-site'].map(x => `<option value="${x}" ${r.work_override && r.work_model === x ? 'selected' : ''}>${wl(x).toLowerCase()}</option>`).join('')}</select></label>
+          <label>Pay override<input id="dt-salary" value="${esc(r.salary_override ? (r.salary_raw || '') : '')}" placeholder="${esc(r.salary_raw && !r.salary_override ? 'auto: ' + r.salary_raw : 'e.g. EUR 90000/yr')}"></label>
+        </div>
+        <div class="dform-foot"><span class="muted mini">Blank pay uses the ad figure.</span><button onclick="App.saveRow()">Save changes</button></div>
+      </div>
+    </section>` +
+    `<section class="dsec">
+      <div class="dsec-h"><b>Match</b><span class="dsec-badges">${matchBadges}</span></div>
+      <div class="dsec-b">
+        ${kbGap ? '<div class="dnote warn">The grounding report flags requirements with no direct evidence. Check the missing skills before treating this as a fit.</div>' : ''}
+        ${missing ? `<div class="dnote"><span class="muted mini">Missing skills. Click one to record where you have it.</span><div class="missk-wrap">${missing}</div></div>` : ''}
+        ${(m.evidenced || []).length ? `<div class="dform-foot"><span class="muted mini">${m.evidenced.length} skill(s) have evidence. Re-prepare to fold them into the CV.</span><button class="small" onclick='App.prepareThis(${JSON.stringify(r.key)})'>↻ Re-prepare</button></div>` : ''}
+        <div class="dform-row"><input id="dt-addkw" placeholder="Add a requirement from the job ad"></div>
+        <div class="dform-foot" style="justify-content:flex-start">
+          <button class="small" onclick="App.addKeyword()">Add keyword</button>
+          <button class="small" onclick="App.refreshKeywords()" title="Re-extract keywords from the saved job ad">↻ Re-extract</button>
+        </div>
+      </div>
+    </section>` +
+    `<details class="dsec">
+      <summary><b>History and notes</b><span class="muted mini">what happened on this role</span></summary>
+      <div class="dsec-b">
+        ${P.evidence ? `<div class="dnote">Submission evidence: ${esc(String(P.evidence).slice(0, 240))}</div>` : ''}
+        ${hist ? `<ul class="hist">${hist}</ul>` : '<div class="muted mini">No notes yet.</div>'}
+        <label class="dlabel">Your notes<textarea id="dt-notes" style="min-height:140px">${esc(r.notes || '')}</textarea></label>
+        <div class="dform-foot"><button onclick="App.saveRow()">Save notes</button></div>
+      </div>
+    </details>` +
+    (['BLOCKED', 'MANUAL'].includes(r.status) ? `<section class="dsec dsec-block">
+      <div class="dsec-h"><b>Get past the block</b></div>
+      <div class="dsec-b">
+        ${r.url ? `<a class="mini" href="${esc(r.url)}" target="_blank">${esc(r.url.slice(0, 90))}</a>` : '<span class="muted mini">No apply URL recorded.</span>'}
+        <div class="dbtnrow">
+          <button class="risky" onclick='App.queueAct("human",${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Opens a visible browser, pre-fills the form, then waits for you to solve the CAPTCHA or 2FA and press Submit">🖐 Autofill and finish</button>
+          <button onclick='App.queueAct("retry",${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Re-queue this role for another automated attempt">↻ Retry</button>
+          <button onclick='App.queueAct("unblock",${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Clear the blocked status and re-queue">✓ Unblock</button>
+          ${r.url ? `<button onclick='App.openPage(${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Open the apply page in your own browser">🌐 Open page</button>` : ''}
+        </div>
+      </div>
+    </section>` : '');
 }
 function openDraft(d) {
   DRAFT = d && d.path ? d : null;
@@ -2378,7 +2419,7 @@ function renderEvidence() {
 function tailored() {
   const d = D.docs || {};
   if (!d.cv && !d.cv_pdf && !d.letter && !d.letter_pdf) {
-    return '<span class="muted">No rendered documents yet: run Prepare (review).</span>';
+    return '<span class="muted">No rendered documents yet. Run Prepare (review).</span>';
   }
   const raw = (p) => '/raw?path=' + encodeURIComponent(p);
   setTimeout(async () => {
@@ -3260,7 +3301,7 @@ function rolePoll() {
 }
 function discuss(r) {
   return `<div class="rolechat">
-    <div class="row"><b>Discuss this role with the agent</b><span class="muted mini">it knows this row, its notes, the ad and your documents</span>
+    <div class="row"><b>Chat about this role with the agent</b><span class="muted mini">it knows this row, its notes, the ad and your documents</span>
       <span style="flex:1"></span>
       <button class="small" id="rc-stop" onclick="App.roleChatStop()">⏹ Stop</button>
       <button class="small" onclick="App.roleChatNew()">🗑 Clear</button></div>
