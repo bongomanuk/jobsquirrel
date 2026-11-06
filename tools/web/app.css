@@ -338,14 +338,8 @@ tr.grp .grp-n .countlink:hover{color:var(--accent)}
 #grid{table-layout:fixed}
 #grid th,#grid td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:8px 8px}
 #grid th{font-size:12px}
-#grid th:nth-child(1),#grid td:nth-child(1){width:8%}
-#grid th:nth-child(4),#grid td:nth-child(4){width:9%}
-#grid th:nth-child(5),#grid td:nth-child(5){width:14%}
-#grid th:nth-child(6),#grid td:nth-child(6){width:9%}
-#grid th:nth-child(7),#grid td:nth-child(7){width:8%}
-#grid th:nth-child(8),#grid td:nth-child(8){width:6%}
-#grid th:nth-child(9),#grid td:nth-child(9){width:4%}
-#grid td:nth-child(1){font-size:12px;color:var(--muted)}
+#grid td[data-col="date"]{font-size:12px;color:var(--muted)}
+#grid th[data-col],#grid td[data-col]{overflow:hidden}
 #grid .badge{padding:2px 8px}
 #grid thead th{position:sticky;top:0;z-index:2}
 #grid thead th .col-resize{position:absolute;top:0;right:0;width:8px;height:100%;cursor:col-resize;z-index:5;touch-action:none}
@@ -569,7 +563,6 @@ mark.kw{background:#24405a;color:#bfe3ff;border-radius:3px;padding:0 2px}
 .sg-edge-path{fill:none;stroke:#4b5563;stroke-width:1.3}
 .sg-edge-path.dashed{stroke-dasharray:4 3}
 .sg-edge{fill:var(--muted);font-size:8px;font-family:var(--sans)}
-.sg-cap{fill:#6b7280;font-size:9px;font-family:var(--sans)}
 .sg-QUEUED .sg-rect{fill:#161b25}
 .sg-PREPARED .sg-rect{fill:#2a2408;stroke:#8a6d09}
 .sg-SUBMITTED .sg-rect{fill:#0f2430;stroke:#1f5f7a}

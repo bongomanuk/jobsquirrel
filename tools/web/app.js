@@ -13,11 +13,11 @@ const STATUS_HELP = {
   SCHEDULED: 'Interview booked but not happened yet: prepare for it',
   INVITED: 'Interview requested: not booked yet; reply and arrange a time',
   OFFER: 'Offer received',
-  REJECTED: 'Rejected / declined by the employer',
+  REJECTED: 'Rejected / declined by the employer: can follow any applied state',
   BLOCKED: 'Blocked: CAPTCHA, bot check or a hard wall stopped submission',
   MANUAL: 'Needs you: 2FA/CAPTCHA, or a reply that could not be auto-matched',
   PREPARED: 'Documents generated and gated, but not submitted yet',
-  CLOSED: 'Closed / withdrawn / expired: no further action',
+  CLOSED: 'Closed / withdrawn / expired: no further action, from any state',
 };
 // Recruitment scams: the rule is shown with every warning, and the marker is a
 // warning, never an automatic rejection (a human decides).
@@ -1486,9 +1486,8 @@ function renderStateGraph() {
     const n = SG_SIDE.find(x => x.s === expanded);
     body += stack(n, sideY + 56, sideY + 66, sideExp);
   }
-  const caption = 'Click a state to expand and filter · SCAMS and SHELVED filter their buckets · click a sub-state to narrow · REJECTED can follow any applied state; CLOSED any state';
   box.innerHTML = `<svg viewBox="0 0 1220 ${svgH}" class="sg-svg" role="img" aria-label="Application states">` +
-    body + `<text class="sg-cap" x="20" y="${svgH - 10}">${esc(caption)}</text></svg>`;
+    body + `</svg>`;
 }
 
 (() => {
