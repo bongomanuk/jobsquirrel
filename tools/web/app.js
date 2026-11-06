@@ -292,6 +292,15 @@ const App = {
     if (CF_SEC === 'data') return setData(b);
     return setProfile(b);
   },
+  openHealth: async () => {
+    const cfg = $('#cfg'); if (cfg) cfg.classList.remove('hide');
+    await App.settings('about');
+    setTimeout(() => {
+      const el = $('#about-health');
+      if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }, 120);
+  },
+  refreshHealth: () => { HEALTH = null; loadAboutHealth(true); },
   auth: async (kind) => { const d = await api('/api/accounts/auth', { kind }); toast(d.ok || d.error, !!d.error); },
   secretSave: async (section, name, value, user) => {
     const v = section === 'accounts' ? { password: value, username: user || '' } : value;
@@ -1321,7 +1330,10 @@ function renderBuckets() {
   el.innerHTML = BUCKETS.map(b =>
     `<button type="button" class="metric bucket ${b.k === BUCKET ? 'on' : ''}${((b.k === 'needs' && c.needs) || (b.k === 'scams' && c.scams)) ? ' hot' : ''}" data-bucket="${b.k}"${T(b.hint)}><b>${c[b.k] || 0}</b>${esc(b.label)}</button>`
   ).join('');
-  el.querySelectorAll('.bucket').forEach(b => b.onclick = () => App.bucket(b.dataset.bucket));
+  el.querySelectorAll('.bucket').forEach(b => b.onclick = e => {
+    e.preventDefault(); e.stopPropagation();
+    App.bucket(b.dataset.bucket);
+  });
 }
 async function gridTick() {                 // keep the grid live (faster while a run is active)
   try { await loadGrid(); } catch (e) { console.warn('grid refresh failed', e); }
@@ -3766,6 +3778,8 @@ async function logRefresh() {
 }
 
 /* ---------- Settings: about ---------- */
+let HEALTH = null;
+
 function renderAbout() {
   const v = $('#about-ver'); if (v) v.textContent = 'v' + (UPD.current || '…');
   const st = $('#about-status');
@@ -3780,6 +3794,89 @@ function renderAbout() {
   if (rel) { rel.href = UPD.url || '#'; rel.classList.toggle('hide', !UPD.available); }
   const nm = $('#about-updname'); if (nm) nm.textContent = UPD.available ? (UPD.name || '') : '';
 }
+
+function fmtUptime(s) {
+  s = Math.max(0, Number(s) || 0);
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  if (d) return `${d}d ${h}h`;
+  if (h) return `${h}h ${m}m`;
+  return `${m}m ${s % 60}s`;
+}
+
+function healthCheckRow(c) {
+  const icon = c.status === 'pass' ? '✓' : c.status === 'warn' ? '!' : '✕';
+  return `<div class="hcheck ${esc(c.status)}" title="${esc(c.detail || c.name)}">
+    <span class="hico">${icon}</span><span class="hname">${esc(c.name)}</span>
+    <span class="hdetail">${esc(c.detail || '')}</span></div>`;
+}
+
+function renderHealth(data) {
+  const box = $('#about-health-box'); if (!box) return;
+  if (!data || data.error) {
+    box.innerHTML = `<div class="bad">${esc((data && data.error) || 'could not read health')}</div>`;
+    return;
+  }
+  const checks = data.checks || [];
+  const pass = checks.filter(c => c.status === 'pass').length;
+  const warn = checks.filter(c => c.status === 'warn').length;
+  const fail = checks.filter(c => c.status === 'fail').length;
+  const status = data.status || (fail ? 'FAIL' : 'PASS');
+  const reg = data.register || {};
+  box.innerHTML = `<div class="health-head">
+      <span class="pill ${status === 'PASS' ? 'PASS' : status === 'FAIL' ? 'FAIL' : 'unknown'}">${esc(status)}</span>
+      <span class="muted mini">${checks.length
+        ? `${pass} passed${warn ? ` · ${warn} warning${warn === 1 ? '' : 's'}` : ''}${fail ? ` · ${fail} failed` : ''}`
+        : esc(data.detail || '')}</span>
+      <span style="flex:1"></span>
+      <button class="small" onclick="App.refreshHealth()">↻ Re-check</button>
+    </div>
+    <div class="hchecks">${checks.map(healthCheckRow).join('') || '<span class="muted mini">no checks returned</span>'}</div>
+    ${reg.summary ? `<div class="muted mini" style="margin-top:6px">Register: ${esc(reg.summary)}</div>` : ''}`;
+  renderInstance(data.instance || {});
+  // Keep the header pill in sync with the full check.
+  const hp = $('#health');
+  if (hp) {
+    hp.textContent = 'health: ' + status;
+    hp.className = 'pill ' + (status === 'PASS' ? 'PASS' : status === 'FAIL' ? 'FAIL' : 'unknown');
+  }
+}
+
+function renderInstance(inst) {
+  const el = $('#about-instance'); if (!el) return;
+  const g = inst.graph || {};
+  const graphLine = g.error ? `unavailable · ${esc(g.error)}`
+    : (g.entities != null ? `${esc(g.relationships)} links · ${esc(g.communities)} communities` : 'not built');
+  const paths = inst.paths || {};
+  el.innerHTML = `<div class="igrid">
+      <div><span class="k">Version</span><b>v${esc(inst.version || '?')}</b>
+        <span class="muted mini">Web UI ${esc(inst.web_ui || '?')} · boot ${esc(String(inst.boot || '').slice(0, 8))}</span></div>
+      <div><span class="k">Started</span><b>${esc(inst.started || '?')}</b>
+        <span class="muted mini">up ${esc(fmtUptime(inst.uptime_s))} · PID ${esc(inst.pid)}</span></div>
+      <div><span class="k">Runtime</span><b>Python ${esc(inst.python || '?')}</b>
+        <span class="muted mini">${esc(inst.platform || '')}</span></div>
+      <div><span class="k">Repository</span><b>${esc(inst.root_name || '')}</b>
+        <span class="mono mini">${esc(inst.root || '')}</span></div>
+      <div><span class="k">Register</span><b>${esc(inst.register_rows)} rows</b>
+        <span class="muted mini">${esc(inst.submissions)} submissions · ${esc(inst.queue_rows)} queue rows · ${esc(inst.queue_done)} done</span></div>
+      <div><span class="k">Documents</span><b>${esc(inst.documents)} files</b>
+        <span class="muted mini">${esc(inst.kb_sources)} knowledge sources</span></div>
+      <div><span class="k">Knowledge graph</span><b>${g.entities != null ? `${esc(g.entities)} entities` : 'not built'}</b>
+        <span class="muted mini">${graphLine}</span></div>
+      <div><span class="k">Data</span><b>${esc(paths.config || 'config')} · ${esc(paths.state || 'state')}</b>
+        <span class="muted mini">${esc(paths.documents || 'documents')} · ${esc(paths.kb || 'kb/sources')} · ${esc(paths.logs || 'state/logs')}</span></div>
+    </div>`;
+}
+
+async function loadAboutHealth(force) {
+  if (CF_SEC !== 'about') return;
+  const box = $('#about-health-box');
+  if (box && !HEALTH) box.innerHTML = '<span class="muted">checking the system…</span>';
+  const d = await api('/api/health?full=1' + (force ? '&refresh=1' : ''));
+  if (CF_SEC !== 'about') return;
+  HEALTH = d || {};
+  renderHealth(HEALTH);
+}
+
 function setAbout(b) {
   b.innerHTML = `<p class="muted">Jobsquirrel is an open, self-hosted job-application agent: it finds roles,
       tailors a CV and cover letter for each one, gates them for accuracy, applies through the employer's own
@@ -3796,6 +3893,10 @@ function setAbout(b) {
         target="_blank" rel="noopener">release notes ↗</a>
     </div>
     <div id="about-updname" class="muted mini"></div>
+    <h4 id="about-health">Health</h4>
+    <div id="about-health-box" class="health-box"><span class="muted">checking the system…</span></div>
+    <h4>This instance</h4>
+    <div id="about-instance" class="about-grid"><span class="muted">loading…</span></div>
     <div class="row" style="margin:12px 0">
       <a class="pill" href="https://bongomanuk.github.io/jobsquirrel/" target="_blank" rel="noopener">Documentation ↗</a>
       <a class="pill" href="https://github.com/bongomanuk/jobsquirrel" target="_blank" rel="noopener">GitHub ↗</a>
@@ -3803,6 +3904,8 @@ function setAbout(b) {
     <div class="about-credit">Created by <a href="https://hollas.net" target="_blank" rel="noopener">Peter Hollas</a>
       · <a href="https://hollas.net" target="_blank" rel="noopener">hollas.net</a></div>`;
   renderAbout();
+  if (HEALTH) renderHealth(HEALTH);
+  loadAboutHealth();
 }
 
 async function setPerms(b) {
@@ -3939,6 +4042,15 @@ if (brandHome) {
   };
 }
 $('#a-settings').onclick = () => { $('#cfg').classList.remove('hide'); App.settings(CF_SEC); };
+const healthEl = $('#health');
+if (healthEl) {
+  healthEl.onclick = e => { e.stopPropagation(); App.openHealth(); };
+  healthEl.onkeydown = e => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault(); e.stopPropagation(); App.openHealth();
+    }
+  };
+}
 window.cfgClose = () => { stopLogs(); $('#cfg').classList.add('hide'); };
 window.legendClose = () => $('#legend-modal').classList.add('hide');
 $('#legend').onclick = () => {
@@ -4081,7 +4193,9 @@ window.addEventListener('focus', () => loadChatModel(true));
 setInterval(() => loadChatModel(true), 60000);
 window.App = App;
 async function healthPill() { const s = await api('/api/health'); const h = $('#health');
-  h.textContent = 'health: ' + (s.v || '?'); h.className = 'pill ' + (s.v || 'unknown'); h.title = s.detail || ''; setTimeout(healthPill, 60000); }
+  h.textContent = 'health: ' + (s.v || '?'); h.className = 'pill ' + (s.v || 'unknown');
+  h.title = 'Open health and instance details' + (s.detail && s.detail !== 'all ok' ? ' — ' + s.detail : '');
+  setTimeout(healthPill, 60000); }
 /* ---------- software updates ---------- */
 let UPD = {}, UPD_TIMER = null;
 async function updateCheck(refresh) {
@@ -4126,6 +4240,10 @@ $('#upd-go').onclick = async () => {
     });
   }
 })();
+const sgSummary = document.querySelector('#sg summary');
+if (sgSummary) sgSummary.addEventListener('click', e => {
+  if (e.target.closest('#metrics, #live-log, #runctl')) e.preventDefault();
+});
 initPanels(); initGridCols(); syncGroupingButton(); loadGroups(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel();
 if (location.hash === '#knowledge') setTimeout(() => App.openKnowledge('map'), 400);
 if (location.hash === '#universe') setTimeout(() => App.openKnowledge('universe'), 400);

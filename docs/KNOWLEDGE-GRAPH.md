@@ -14,7 +14,7 @@ real job search. Your own graph looks denser because it has your own evidence.
 
 | The Universe — themes as islands, weighted stars and a focus ring | Focus — the selected entity, its neighbourhood and the details pane |
 |---|---|
-| ![The knowledge universe: eight synthetic theme islands connected by a central person](screenshots/graph-universe.png) | ![A selected synthetic person with four bright neighbouring clusters and the node details pane](screenshots/graph-focus.png) |
+| ![The knowledge universe: eight synthetic theme islands connected by a central person](screenshots/graph-universe.png) | ![A selected synthetic person with the node details pane and bright neighbouring clusters](screenshots/graph-focus.png) |
 
 | Map — the generated community hierarchy |
 |---|

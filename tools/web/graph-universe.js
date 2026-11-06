@@ -14,7 +14,7 @@ const S = {
   nodes: [], links: [], byId: new Map(), clusters: [], clusterOf: new Map(),
   core: null, halo: null, lines: null, stars: null, nebula: null, hits: null, marker: null,
   labelPool: [], clusterPool: [], labelAssigned: [], clusterAssigned: [], widths: new Map(),
-  labelRange: 2600, lastAssign: 0, measureCtx: null, activeClusters: null, lodKey: '', lastLOD: 0,
+  labelRange: 3200, lastAssign: 0, measureCtx: null, activeClusters: null, lodKey: '', lastLOD: 0,
   selected: null, hovered: null, highlight: new Set(),
   W: 1, H: 1, orbit: { theta: 0.7, phi: 1.12, radius: 3000, target: new THREE.Vector3() },
   drag: null, lastInteract: 0, auto: true, raf: 0, fly: null, keys: new Set(),
@@ -181,7 +181,7 @@ function layout(nodes) {
     const jitter = (Math.random() - 0.5) * 260;
     const rr = R + jitter;
     const center = new THREE.Vector3(Math.cos(th) * rad * rr, y * rr * 0.86, Math.sin(th) * rad * rr);
-    const spread = Math.min(215, 14 + Math.sqrt(list.length) * 17);
+    const spread = Math.min(240, 16 + Math.sqrt(list.length) * 19);
     const rank = x => (Number(x.importance) || 0) * 100 + Math.min(40, x.degree || 0);
     const dom = list.reduce((a, b) => (rank(b) > rank(a) ? b : a), list[0]);
     const titled = list.find(x => x.community_title);
@@ -214,6 +214,18 @@ function layout(nodes) {
   // A little local repulsion turns each island into a cluster with structure
   // instead of a uniform ball (cheap: only within one island at a time).
   relax(S.clusters);
+
+  // Put a single dominant person at the centre of the universe: their links
+  // become the career spine between the theme islands.
+  const people = nodes.filter(n => (n.class || n.type) === 'PERSON');
+  if (people.length && S.clusters.length >= 4) {
+    const hub = people.reduce((a, b) => ((b.degree || 0) > (a.degree || 0) ? b : a), people[0]);
+    if ((hub.degree || 0) >= 6) {
+      hub.pos.set(0, 0, 0);
+      hub.central = true;
+      hub.radius = Math.max(hub.radius || 0, 18);
+    }
+  }
 
   // Operator-attached entities (for example a skill linked to a person) are
   // placed beside their strongest neighbour in the same island. Otherwise a
@@ -376,7 +388,7 @@ function build(data) {
   lg.setAttribute('color', new THREE.BufferAttribute(lc, 3));
   S.linkBaseColors = lc.slice();
   S.lines = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({
-    vertexColors: true, transparent: true, opacity: 0.085, depthWrite: false,
+    vertexColors: true, transparent: true, opacity: 0.11, depthWrite: false,
     blending: THREE.AdditiveBlending
   }));
   S.scene.add(S.lines);
@@ -387,7 +399,7 @@ function build(data) {
     if (c.size < 8 && Math.random() < 0.45) continue;
     const m = new THREE.SpriteMaterial({
       map: softTexture(), color: c.color, transparent: true,
-      opacity: c.size > 40 ? 0.16 : 0.1, depthWrite: false,
+      opacity: c.size > 40 ? 0.20 : 0.12, depthWrite: false,
       blending: THREE.AdditiveBlending
     });
     const sp = new THREE.Sprite(m);
@@ -410,7 +422,7 @@ function build(data) {
   S.clustersRanked = [...S.clusters].sort((a, b) => b.size - a.size);
   S.activeClusters = null;
   S.lodKey = '';
-  S.baseRadius = Math.max(3000, (S.maxDist || 2000) * 2.16);
+  S.baseRadius = Math.max(2600, (S.maxDist || 2000) * 1.8);
   const st = document.getElementById('uni-stats');
   if (st) st.textContent = `${n} entities · ${S.links.length} relationships · ${S.clusters.length} islands`;
   resetView();
@@ -571,7 +583,7 @@ function assignLabels() {
   const range = labelRange();
   const target = S.orbit.target;
   const tier = labelTier();
-  const minDeg = tier === 'major' ? 80 : tier === 'strong' ? 25 : tier === 'detail' ? 8 : 0;
+  const minDeg = tier === 'major' ? 55 : tier === 'strong' ? 20 : tier === 'detail' ? 8 : 0;
   const placed = [];
 
   const onScreen = n => {
@@ -1234,6 +1246,15 @@ export function selectByTitle(title) {
 }
 
 export function reset() { if (S.data) resetView(); }
+
+export function view(theta, phi, radius) {
+  if (!S.data) return;
+  if (theta != null) S.orbit.theta = Number(theta);
+  if (phi != null) S.orbit.phi = Number(phi);
+  if (radius != null) S.orbit.radius = Number(radius);
+  S.auto = false; S.fly = null;
+  updateLOD(true);
+}
 
 export function focusSelected() {
   if (S.selected) flyTo(S.selected.pos.clone(), 240 + Math.min(700, (S.selected.degree || 1) * 4.5), 800);

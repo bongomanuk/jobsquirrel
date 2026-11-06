@@ -9,7 +9,7 @@
 <body data-session-token="{{TOKEN}}" data-act="closed">
 <header class="top">
   <div class="brand" id="brand-home" role="link" tabindex="0" title="Back to the job grid"><span class="mascot">🐿️</span><h1>Jobsquirrel</h1>
-    <span id="health" class="pill unknown">health…</span></div>
+    <span id="health" class="pill unknown" role="button" tabindex="0" title="Open health and instance details">health…</span></div>
   <div class="actions">
     <button id="a-applications" title="The application grid">📋 Applications</button>
     <button id="a-knowledge" title="Open the knowledge graph">🕸️ Knowledge</button>
@@ -21,19 +21,10 @@
   <div class="edge" data-edge="left"><div class="edge-panels" data-edge="left"></div><div class="splitter edge-split" data-edge="left" title="Drag to resize"></div></div>
   <div id="main">
     <div class="edge" data-edge="top"><div class="edge-panels" data-edge="top"></div><div class="splitter edge-split" data-edge="top" title="Drag to resize"></div></div>
-    <div class="strip">
-      <div class="metrics" id="metrics"></div>
-      <div class="livestrip" id="live"><span class="muted">idle — no run active</span></div>
-      <button id="live-log" class="small hide" title="Show the live log of the running task">📜 Live log</button>
-      <span id="runctl" class="runctl hide">
-        <button id="btn-pause" title="Finish the current task, then start nothing new">⏸ Pause</button>
-        <button id="btn-stop" class="risky" title="Stop now: no new tasks, terminate the in-flight work">⏹ Stop</button>
-      </span>
-    </div>
     <div class="scroll">
       <main>
         <div class="toolbar">
-          <input id="q" placeholder="search company / role / ATS / notes…" style="flex:1;max-width:420px">
+          <input id="q" placeholder="search company / role / ATS / notes…" style="flex:1;max-width:300px">
           <details id="filters" class="filters">
             <summary>Filters <span id="filt-n" class="muted"></span></summary>
             <div class="filterbox">
@@ -76,18 +67,28 @@
               <button id="fclear" class="small" type="button">Clear filters</button>
             </div>
           </details>
-          <button id="export">Export CSV</button>
+          <button id="export" class="small">Export CSV</button>
           <button id="grouping" class="small" title="Group rows by bucket (default) or show one flat sorted list — clicking a column header switches to the flat view">☰ Grouped</button>
           <button id="groups" class="small" title="Create, rename or delete groups (campaigns)">🏷 Groups</button>
           <button id="a-gmail-review" class="small" title="Emails that could not be confidently classified or matched; review and mark Done">📬 Review <b id="review-count">0</b></button>
           <button id="a-prepare-shown" title="Generate documents for the rows in this view (expanded groups) — runs the agent per role, a few minutes each; nothing is submitted">⚡ Prepare shown</button>
           <button id="a-submit-shown" class="risky" title="Submit the PREPARED rows in this view, with the documents already generated — sends applications; needs approval">🚀 Submit prepared</button>
-          <button id="a-match" title="Recompute CV–job match for the rows in this view — instant (no agent)">↻ Match</button>
-          <button id="legend" title="What the columns, marks and statuses mean">ⓘ Legend</button>
-          <span id="count" class="muted"></span>
+          <button id="a-match" class="small" title="Recompute CV–job match for the rows in this view — instant (no agent)">↻ Match</button>
+          <button id="legend" class="small" title="What the columns, marks and statuses mean">ⓘ Legend</button>
         </div>
         <details id="sg" class="stategraph">
-          <summary><b>Application states</b> <span class="muted">the pipeline as a graph — click a state to expand its sub-states</span></summary>
+          <summary>
+            <span class="sg-headline"><b>Application states</b> <span class="muted">the pipeline as a graph</span></span>
+            <span class="sg-live">
+              <span class="livestrip" id="live"><span class="muted">idle — no run active</span></span>
+              <button id="live-log" class="small hide" title="Show the live log of the running task">📜 Live log</button>
+              <span id="runctl" class="runctl hide">
+                <button id="btn-pause" title="Finish the current task, then start nothing new">⏸ Pause</button>
+                <button id="btn-stop" class="risky" title="Stop now: no new tasks, terminate the in-flight work">⏹ Stop</button>
+              </span>
+            </span>
+            <span class="metrics" id="metrics"></span>
+          </summary>
           <div id="sg-body" class="sg-body"></div>
         </details>
         <div class="gridwrap">
@@ -240,8 +241,8 @@
         <span id="uni-focus-v" class="uni-hud-v">2 hops</span>
         <span class="uni-hud-sep">·</span>
         <label for="uni-range">label reach</label>
-        <input id="uni-range" type="range" min="300" max="7000" step="100" value="2600" title="How far from the centre of the view labels are drawn; it tightens automatically as you zoom in">
-        <span id="uni-range-v" class="uni-hud-v">2600</span>
+        <input id="uni-range" type="range" min="300" max="7000" step="100" value="3200" title="How far from the centre of the view labels are drawn; it tightens automatically as you zoom in">
+        <span id="uni-range-v" class="uni-hud-v">3200</span>
         <span class="uni-hud-sep">·</span>
         <span class="muted"><b id="uni-labelcount">0</b> labels</span>
         <span class="uni-hud-sep">·</span>

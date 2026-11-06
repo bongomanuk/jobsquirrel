@@ -88,17 +88,21 @@ demo data: a sample candidate and fictional companies.)
 |---|---|
 | ![Application grid](docs/screenshots/grid.png) | ![Role detail drawer](docs/screenshots/drawer.png) |
 
-| The knowledge universe — themes as islands, weighted stars and one central career hub |
+| Settings → About — full health checks, version and this instance |
+|---|
+| ![Settings About with the full health checks and instance details](docs/screenshots/settings.png) |
+
+| The knowledge universe — a central career hub, theme islands and weighted stars |
 |---|
 | ![The knowledge universe: synthetic theme islands connected by a central person](docs/screenshots/graph-universe.png) |
 
 | Focus — the selected entity, its bright neighbourhood and the evidence pane | Map — the generated community hierarchy |
 |---|---|
-| ![A selected entity with bright neighbouring clusters and the details pane](docs/screenshots/graph-focus.png) | ![The Map view showing the community hierarchy](docs/screenshots/graph-communities.png) |
+| ![A selected synthetic person with bright neighbouring clusters and the details pane](docs/screenshots/graph-focus.png) | ![The Map view showing the community hierarchy](docs/screenshots/graph-communities.png) |
 
-| The application states graph | Agent console — chat, delegated work and live activity |
+| Application states — the pipeline as a graph, with bucket filters and live counts | Agent console — chat, delegated work and live activity |
 |---|---|
-| ![Application states graph with a count for every stage](docs/screenshots/pipeline.png) | ![Agent console with chat and activity](docs/screenshots/agent.png) |
+| ![Application states graph with bucket filter chips and a count for every stage](docs/screenshots/pipeline.png) | ![Agent console with chat and activity](docs/screenshots/agent.png) |
 
 | Documents — the rendered, gated CV in place | Evidence overlay — every CV line scored against the ad and the knowledge base |
 |---|---|

@@ -18,6 +18,7 @@ import html as _html
 import json
 import mimetypes
 import os
+import platform
 import re
 import secrets
 import signal
@@ -43,6 +44,7 @@ LOGS = os.path.join(STATE, "logs")
 WEB = os.path.join(ROOT, "tools", "web")
 SESSION_TOKEN = secrets.token_urlsafe(24)
 BOOT_ID = secrets.token_urlsafe(8)          # changes on every restart; lets open tabs reload
+START_TS = time.time()
 
 try:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -124,32 +126,88 @@ def curate(text, limit=600):
 
 
 # ---------------------------------------------------------------- health
-_HEALTH = {"t": 0, "v": "unknown", "detail": ""}
+_HEALTH = {"t": 0, "v": "unknown", "detail": "", "checks": [], "register": {}}
 
 
-def health():
-    if time.time() - _HEALTH["t"] < 30:
+def health(force=False):
+    if not force and time.time() - _HEALTH["t"] < 30:
         return _HEALTH
-    v, detail = "unknown", ""
+    v, detail, checks, register = "unknown", "", [], {}
     try:
         r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "doctor.py"), "--json"],
                            cwd=ROOT, capture_output=True, text=True, timeout=60)
         d = json.loads(r.stdout)
+        checks = [{"name": str(c.get("name", "")), "status": str(c.get("status", "")),
+                   "detail": str(c.get("detail", ""))} for c in d.get("checks", [])]
         v = "PASS" if d.get("ok") else "FAIL"
         detail = "; ".join(f"{c['name']}:{c['status']}" for c in d.get("checks", []) if c["status"] != "pass") or "all ok"
         # The register audit is part of health: a contradictory register is not
         # a healthy system, whatever the environment checks say.
         a = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "register.py"), "--audit"],
                            cwd=ROOT, capture_output=True, text=True, timeout=60)
+        lines = (a.stdout or a.stderr or "").strip().splitlines()
+        summary = next((l for l in reversed(lines) if "problem(s)" in l), "")
+        m = re.search(r"(\d+)\s+problem", summary)
+        register = {"summary": summary, "problems": int(m.group(1)) if m else None}
         if a.returncode != 0:
             v = "FAIL"
-            last = (a.stdout or a.stderr or "").strip().splitlines()
-            reg = next((l for l in reversed(last) if "problem(s)" in l), "register audit failed")
+            reg = summary or "register audit failed"
             detail = (detail + "; " if detail and detail != "all ok" else "") + reg
     except Exception as e:
         v, detail = "unknown", str(e)[:120]
-    _HEALTH.update(t=time.time(), v=v, detail=detail)
+    _HEALTH.update(t=time.time(), v=v, detail=detail, checks=checks, register=register)
     return _HEALTH
+
+
+def _file_count(path):
+    n = 0
+    for _base, _dirs, files in os.walk(path):
+        n += len(files)
+    return n
+
+
+def health_full(force=False):
+    """The Settings → About view: full checks plus what this instance is."""
+    h = health(force=force)
+    apps = _rows(os.path.join(STATE, "applications.csv"))
+    q_total = _count(os.path.join(STATE, "queue.tsv"))
+    q_done = _count(os.path.join(STATE, "queue.done"))
+    submissions = _count(os.path.join(STATE, "submissions.csv"))
+    graph = graph_query("stats")
+    graph_info = {}
+    if isinstance(graph, dict) and not graph.get("error"):
+        graph_info = {k: graph.get(k) for k in ("index", "entities", "relationships",
+                                                "communities", "documents", "runtime_s")
+                      if k in graph}
+    elif isinstance(graph, dict):
+        graph_info = {"error": graph.get("error", "")}
+    return {
+        "status": h.get("v", "unknown"),
+        "detail": h.get("detail", ""),
+        "checks": h.get("checks", []),
+        "register": h.get("register", {}),
+        "instance": {
+            "version": current_version(),
+            "web_ui": "v6",
+            "boot": BOOT_ID,
+            "started": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(START_TS)),
+            "uptime_s": max(0, int(time.time() - START_TS)),
+            "pid": os.getpid(),
+            "python": platform.python_version(),
+            "platform": f"{platform.system()} {platform.release()}",
+            "root": ROOT,
+            "root_name": os.path.basename(ROOT.rstrip(os.sep)) or ROOT,
+            "paths": {"config": "config", "state": "state", "documents": "documents",
+                      "kb": "kb/sources", "logs": "state/logs"},
+            "register_rows": len(apps),
+            "submissions": submissions,
+            "queue_rows": q_total,
+            "queue_done": q_done,
+            "documents": _file_count(os.path.join(ROOT, "documents", "applications")),
+            "kb_sources": _file_count(os.path.join(ROOT, "kb", "sources")),
+            "graph": graph_info,
+        },
+    }
 
 
 # ---------------------------------------------------------------- state
@@ -4802,6 +4860,8 @@ class H(BaseHTTPRequestHandler):
                 return self._json(made, 500)
             return self._download(made["path"], made["name"])
         if p == "/api/health":
+            if qs.get("full", [""])[0]:
+                return self._json(health_full(force=qs.get("refresh", [""])[0] == "1"))
             return self._json(health())
         if p == "/api/register":
             return self._json(register_api(qs.get("q", [""])[0], qs.get("status", [""])[0],

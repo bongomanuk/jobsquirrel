@@ -97,8 +97,10 @@ Everything is observable. Useful things to ask for, or run yourself:
     (list / upload / delete source documents, rebuild the index), **GraphRAG** (browse entities,
     relationships, communities and documents), **Agent permissions**, **CAPTCHA**, **Profile & CV**
     (edit `profile.md` / `cv.json` / `archetypes.json`, regenerate the archetype CVs), **Logs**
-    (browse and tail task logs, or open the standalone page) and **About** (version, build/update
-    status, release notes and credits). Every field saves on change; there are no save buttons.
+    (browse and tail task logs, or open the standalone page) and **About** (full health checks,
+    version, build/update status, this instance's runtime/data paths/counts, release notes and
+    credits). Clicking the **health** pill in the header opens About and scrolls to the checks.
+    Every field saves on change; there are no save buttons.
   - The header has three destinations: **Applications**, **Knowledge** and **Settings**. The
     page-level actions are scoped to the grid: **Prepare shown** (REVIEW=1, no submits),
     **Submit prepared** and **Review**. A `PREPARED` row's drawer has **Submit this application**.
@@ -151,7 +153,10 @@ should I do next?”.
 - The **Status** cell shows the status chip and, underneath, the sub-state when it adds detail.
 - **Filters → any sub-state** narrows the grid to one sub-state; like a group, it crosses the
   bucket boundaries.
-- The **Application states** panel shows the coarse flow; click a state to expand its sub-states and filter to it, then click a sub-state to narrow further.
+- The **Application states** panel carries the bucket filter chips (Active, Focus, Probably scams,
+  Shelved, Needs you, Prepared, Ongoing, To apply, Done, All) with live counts, plus the live status
+  and run controls. Click a state to expand its sub-states and filter to it, then click a sub-state
+  to narrow further. There is no separate metric bar above the grid.
 - **Needs you** includes the sub-states that genuinely wait on you: assessments, follow-ups,
   CAPTCHA/2FA and other human walls, plus invites and offers.
 - **Shelved** is a view overlay, not a status. Right-click a row → **Shelve for later**; its

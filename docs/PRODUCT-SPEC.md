@@ -194,21 +194,23 @@ and stops at any CAPTCHA/2FA rather than working around it.
 ### 9.2 Shell (single-grid IA)
 The whole app is **one master data grid** — one canonical row per application, so the
 same record is never duplicated across separate pages.
-- **Header:** mascot 🐿️ · health pill (`/api/health`) · three destinations:
-  **📋 Applications**, **🕸️ Knowledge** and **⚙ Settings**. Version, build/update status,
-  logs and the About/credits live in Settings. The broad Prepare / Run Submissions actions are
+- **Header:** mascot 🐿️ · health pill (`/api/health`; click it to open Settings → About with
+  the full check list, version and instance details) · three destinations: **📋 Applications**,
+  **🕸️ Knowledge** and **⚙ Settings**. Version, build/update status, logs and the
+  About/credits live in Settings. The broad Prepare / Run Submissions actions are
   not in the header; the grid toolbar has scoped **Prepare shown** and **Submit prepared**, and
   a `PREPARED` row's drawer has **Submit this application**.
-- **Strip:** metric pills (in process · interviews · blocked · human · offers · total · submissions)
-  and a live-tail line (`/api/live`).
-- **Toolbar:** search (company/role/ATS), status filter, queue filter, **Export CSV**, row count,
+- **Toolbar:** search (company/role/ATS), status filter, queue filter, **Export CSV**,
   **⚡ Prepare shown** (generate documents, review-only), **🚀 Submit prepared** (gated),
   **📬 Review** (Gmail review queue and its triage filter) and **↻ Match** (recompute) for the rows shown.
-- **Metric pills are filters:** click *in process / interviews / blocked / human / offers / total /
-  submissions* to filter the grid to that set (click again or *total* to clear); the active pill is highlighted.
-- **Process control:** while a run is active the strip shows **⏸ Pause** (workers finish the current task
-  then wait) and **⏹ Stop** (no new tasks; terminate the in-flight action). Backend: `POST /api/action/pause`
-  + `/api/action/stop` (`state/queue.pause` / `state/queue.stop`).
+- **Application states header:** the section carries the bucket filter chips
+  (**Active · Focus · Probably scams · Shelved · Needs you · Prepared · Ongoing · To apply · Done · All**)
+  with live counts, plus the live-tail line (`/api/live`) and the run controls. Click a chip to filter the
+  grid to that bucket; the active chip is highlighted. There is no separate metric strip, and the section
+  sits directly above the grid.
+- **Process control:** while a run is active the Application states header shows **⏸ Pause** (workers
+  finish the current task then wait) and **⏹ Stop** (no new tasks; terminate the in-flight action).
+  Backend: `POST /api/action/pause` + `/api/action/stop` (`state/queue.pause` / `state/queue.stop`).
 
 ### 9.3 Master grid (the one table)
 Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files · Job ad**
@@ -266,8 +268,10 @@ Clicking a row opens a drawer with tabs:
   and launcher for the full-page Knowledge workspace), **Agent permissions**
   (per-category allow/ask/deny), **CAPTCHA** (private build: provider, model, timeout, key),
   **Profile & CV** (edit files, regenerate), **Logs** (browse and tail task logs, or open the
-  standalone page), **Backup & data**, and **About** (version, build/update status, release notes,
-  documentation/GitHub links and the credit).
+  standalone page), **Backup & data**, and **About** (full health checks from `doctor.py`, the
+  register audit, version, build/update status, the running instance's Python/platform/uptime/
+  PID/data paths/register/queue/graph counts, release notes, documentation/GitHub links and the
+  credit). Clicking the header health pill opens About and scrolls to the checks.
 - Every field saves on change; Settings has no save buttons. The CAPTCHA pane, the AI/agent
   pane and the secrets Replace field all write immediately and report the result in a toast.
 
@@ -302,7 +306,8 @@ Clicking a row opens a drawer with tabs:
 |---|---|---|---|
 | GET | `/` | — | the single-page UI (token injected) |
 | GET | `/api/state` | — | {kpis, counts, queue_counts, interviews} |
-| GET | `/api/health` | — | doctor.py result (cached 60s) |
+| GET | `/api/health` | — | doctor.py result (cached 30s) |
+| GET | `/api/health?full=1[&refresh=1]` | — | full checks + this instance's version, runtime, paths and counts for Settings → About |
 | GET | `/api/grid` | — | the unified grid rows (register ⋈ queue ⋈ spec ⋈ provenance) |
 | GET | `/api/backup` | `info=1`, `documents=0/1` | backup summary, or the `.zip` as a download (session token required) |
 | POST | `/api/backup/restore` | multipart `file`, `confirm=RESTORE` | restores over the current state after a safety backup |
