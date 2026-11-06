@@ -1326,7 +1326,8 @@ function approve(purpose, callText) {
 }
 
 /* ---------- grid ---------- */
-let GRID_TIMER = null, LIVE_RUNNING = false, IDLE_TICKS = 0, WAS_BUSY = false, BUSY_NAME = '', DTAB = 0;
+let GRID_TIMER = null, LIVE_TIMER = null, LIVE_RUNNING = false, IDLE_TICKS = 0, WAS_BUSY = false, BUSY_NAME = '', DTAB = 0;
+let EVENTS = null, EVENTS_OK = false, STATE_REV = '', LIVE_REV = '', REV_TIMER = null;
 let GROUPED = localStorage.getItem('grid.grouped') !== '0';
 async function loadGrid() {
   const sc = document.querySelector('.scroll'), y = sc ? sc.scrollTop : 0;
@@ -1356,9 +1357,10 @@ function renderBuckets() {
   });
 }
 async function gridTick() {                 // keep the grid live (faster while a run is active)
-  if (document.hidden) { setTimeout(gridTick, 15000); return; }
+  clearTimeout(GRID_TIMER);
+  if (document.hidden) { GRID_TIMER = setTimeout(gridTick, 15000); return; }
   try { await loadGrid(); } catch (e) { console.warn('grid refresh failed', e); }
-  setTimeout(gridTick, LIVE_RUNNING ? 3000 : 10000);
+  GRID_TIMER = setTimeout(gridTick, LIVE_RUNNING ? 3000 : (EVENTS_OK ? 60000 : 10000));
 }
 /* ---------- application state graph ---------- */
 const SG_W = 130, SG_H = 62, SG_H2 = 56;
@@ -2602,7 +2604,8 @@ function humanActivity(lines) {
 }
 
 async function liveTick() {
-  if (document.hidden) { setTimeout(liveTick, 10000); return; }
+  clearTimeout(LIVE_TIMER);
+  if (document.hidden) { LIVE_TIMER = setTimeout(liveTick, 10000); return; }
   const d = await api('/api/live');
   if (d && d.build) {                                  // server restarted or web files changed
     if (BUILD && d.build !== BUILD) { location.reload(); return; }
@@ -2748,7 +2751,7 @@ async function liveTick() {
       if (reopened) reopened.open = true;
     }
   }
-  setTimeout(liveTick, (LIVE_RUNNING || LIVE_TASKS.length) ? 2500 : 5000);
+  LIVE_TIMER = setTimeout(liveTick, (LIVE_RUNNING || LIVE_TASKS.length) ? 2500 : (EVENTS_OK ? 60000 : 5000));
   permTick();
 }
 /* the embedded agent asks before doing something risky (agent_access.py -> here) */
@@ -4384,8 +4387,31 @@ const sgSummary = document.querySelector('#sg summary');
 if (sgSummary) sgSummary.addEventListener('click', e => {
   if (e.target.closest('#metrics, #live-log, #runctl')) e.preventDefault();
 });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) loadGrid(); });
-initPanels(); initGridCols(); syncGroupingButton(); loadGroups(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { gridTick(); liveTick(); } });
+function startEvents() {
+  if (!window.EventSource) return;
+  try { EVENTS = new EventSource('/api/events'); } catch (e) { return; }
+  EVENTS.onopen = () => { EVENTS_OK = true; };
+  EVENTS.onerror = () => {
+    if (!EVENTS_OK) return;
+    EVENTS_OK = false;
+    gridTick(); liveTick();
+  };
+  EVENTS.onmessage = (e) => {
+    let d; try { d = JSON.parse(e.data || '{}'); } catch (err) { return; }
+    const first = !STATE_REV && !LIVE_REV;
+    let grid = false, live = false;
+    if (d.state && d.state !== STATE_REV) { STATE_REV = d.state; grid = true; }
+    if (d.live && d.live !== LIVE_REV) { LIVE_REV = d.live; live = true; }
+    if (first || (!grid && !live)) return;
+    clearTimeout(REV_TIMER);
+    REV_TIMER = setTimeout(() => {
+      if (grid) gridTick();
+      if (live) liveTick();
+    }, 200);
+  };
+}
+initPanels(); initGridCols(); syncGroupingButton(); loadGroups(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel(); startEvents();
 if (location.hash === '#knowledge') setTimeout(() => App.openKnowledge('map'), 400);
 if (location.hash === '#universe') setTimeout(() => App.openKnowledge('universe'), 400);
 // Clicking or dragging in the graph must not select text.

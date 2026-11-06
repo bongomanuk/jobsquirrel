@@ -13,6 +13,7 @@ import csv
 import email.utils
 import glob
 import gzip
+import hashlib
 from functools import lru_cache
 import html as _html
 import json
@@ -4697,8 +4698,91 @@ def _multipart(handler):
     return fields, files, ""
 
 
+# ---------------------------------------------------------------- change stream
+_REV = {"t": 0.0, "state": "", "live": ""}
+_STATE_FILES = (
+    os.path.join(STATE, "applications.csv"),
+    os.path.join(STATE, "queue.tsv"),
+    os.path.join(STATE, "queue.done"),
+    os.path.join(STATE, "queue-human.tsv"),
+    os.path.join(STATE, "queue.retry"),
+    os.path.join(STATE, "submissions.csv"),
+    os.path.join(STATE, "role-flags.json"),
+    os.path.join(STATE, "role-groups.json"),
+    os.path.join(STATE, "shelved.json"),
+    os.path.join(STATE, "gmail-review.json"),
+    os.path.join(LOGS, "dashboard-match.json"),
+    os.path.join(LOGS, "dashboard-role-meta.json"),
+    os.path.join(LOGS, "dashboard-employment.json"),
+    os.path.join(LOGS, "runs.jsonl"),
+)
+_STATE_DIRS = (
+    os.path.join(STATE, "job-descriptions"),
+    os.path.join(STATE, "ats"),
+    os.path.join(STATE, "kb-context"),
+    os.path.join(STATE, "cv-content"),
+    os.path.join(ROOT, "documents", "applications"),
+)
+_LIVE_FILES = (
+    os.path.join(STATE, "queue.pause"),
+    os.path.join(STATE, "queue.stop"),
+    os.path.join(LOGS, "runs.jsonl"),
+    os.path.join(LOGS, "dashboard-action.log"),
+)
+
+
+def _stat_sig(path):
+    try:
+        st = os.stat(path)
+        return f"{st.st_mtime_ns}:{st.st_size}"
+    except OSError:
+        return "0"
+
+
+def _dir_sig(path):
+    try:
+        return str(os.stat(path).st_mtime_ns)
+    except OSError:
+        return "0"
+
+
+def _revision():
+    """Cheap fingerprints for the grid and the live strip.
+
+    The SSE stream sends these to the browser. The grid is only rebuilt when
+    its own state changes, not on every log line.
+    """
+    now = time.time()
+    if now - _REV["t"] < 0.5:
+        return dict(_REV)
+    sh = hashlib.blake2s(digest_size=10)
+    for path in _STATE_FILES:
+        sh.update((path + _stat_sig(path)).encode())
+    for path in _STATE_DIRS:
+        sh.update((path + _dir_sig(path)).encode())
+    if WQ:
+        try:
+            for key in sorted(WQ.live_tasks()):
+                sh.update(key.encode())
+        except Exception:
+            pass
+    lh = hashlib.blake2s(digest_size=10)
+    for path in _LIVE_FILES:
+        lh.update((path + _stat_sig(path)).encode())
+    try:
+        latest = max((os.stat(os.path.join(LOGS, f)).st_mtime_ns
+                      for f in os.listdir(LOGS) if f.endswith(".log")), default=0)
+    except OSError:
+        latest = 0
+    lh.update(str(latest).encode())
+    _REV.update(t=now, state=sh.hexdigest(), live=lh.hexdigest())
+    return dict(_REV)
+
+
 # ---------------------------------------------------------------- HTTP
 class H(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
     def log_message(self, *a):
         pass
 
@@ -4709,6 +4793,46 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _events(self):
+        """Server-Sent Events: push a revision when the grid or live state changes."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.end_headers()
+
+        def chunk(data):
+            self.wfile.write(f"{len(data):X}\r\n".encode() + data + b"\r\n")
+            self.wfile.flush()
+
+        try:
+            chunk(b"retry: 3000\n\n")
+            last = None
+            beat = time.time()
+            while True:
+                d = _revision()
+                key = (d["state"], d["live"])
+                if key != last:
+                    last = key
+                    payload = json.dumps({"state": d["state"], "live": d["live"]}).encode()
+                    chunk(b"data: " + payload + b"\n\n")
+                now = time.time()
+                if now - beat >= 15:
+                    beat = now
+                    chunk(b": keepalive\n\n")
+                time.sleep(1)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            try:
+                self.wfile.write(b"0\r\n\r\n")
+                self.wfile.flush()
+            except OSError:
+                pass
+            self.close_connection = True
 
     def _file(self, path, ctype):
         try:
@@ -4846,6 +4970,11 @@ class H(BaseHTTPRequestHandler):
             return self._logs_page()
         if p == "/tasklog":
             return self._tasklog_page(qs.get("task", [""])[0])
+        if p == "/api/events":
+            return self._events()
+        if p == "/api/revision":
+            d = _revision()
+            return self._json({"state": d["state"], "live": d["live"]})
         if p == "/api/state":
             return self._json(state())
         if p == "/api/backup":
@@ -5285,6 +5414,7 @@ def main():
     url = f"http://{args.host}:{args.port}/"
     DASH["url"] = f"http://{args.host}:{args.port}"       # handed to the agent so it can ask for approval
     srv = ThreadingHTTPServer((args.host, args.port), H)
+    srv.daemon_threads = True
     if not args.serve:
         print(f"🐿️  Jobsquirrel WebUI  ->  {url}   (Ctrl-C to stop)", flush=True)
     if args.open:

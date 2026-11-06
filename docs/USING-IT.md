@@ -70,7 +70,9 @@ Everything is observable. Useful things to ask for, or run yourself:
     one; the **🏷 Groups** toolbar button opens the group manager to create, rename or delete
     groups. Groups are independent of status and survive renames and queue runs. Hover anything for
     what it means; click a row for the detail drawer
-    (Summary · Chat · Files · Job ad · ATS · **Evidence** · Docs).
+    (Summary · Chat · Files · Job ad · ATS · **Evidence** · Docs). The page uses one live event
+    stream: the grid only rebuilds when state changes, the live strip updates when logs or actions
+    change, and polling pauses while the tab is hidden.
   - **Groups / campaigns.** A group is a named campaign that crosses status. Create one with the
     **🏷 Groups** toolbar button (or right-click a row → Groups → New group…). Add or remove a role
     from right-click → Groups; a tick marks membership. Filter with the **any group** dropdown; a

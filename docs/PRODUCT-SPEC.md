@@ -226,7 +226,10 @@ Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files �
   shown with an `align✗` badge when the alignment gate failed).
 - **Queue** = `pending | human | retry | done`; **Files** = provenance recorded (✓/-);
   **Job ad** = a saved job description exists (✓/-).
-- The grid **auto-refreshes** (every ~8s, ~3s while a run is active) without losing scroll/sort/filter,
+- **Live updates:** the page opens one SSE stream (`/api/events`) and receives cheap state/live
+  revisions. It fetches the grid only when state changes and refreshes the live strip only when logs or
+  actions change. Polling remains a fallback (10s grid, 5s live) and pauses while the tab is hidden;
+  an active run keeps the 3s/2.5s cadence. Scroll, sort and filters are preserved across updates.
   and floats **in-flight** rows (🥜) and **QUEUED** rows (queued but not yet in the register) to the top.
 - **Application states graph** above the grid (collapsed by default): a clickable diagram of
   QUEUED → DRAFTING → PREPARED → SUBMITTED → IN_PROGRESS → INTERVIEW → OFFER, with BLOCKED/MANUAL
@@ -318,6 +321,9 @@ Clicking a row opens a drawer with a single tab strip that never wraps:
 | GET | `/` |: | the single-page UI (token injected) |
 | GET | `/api/state` |: | {kpis, counts, queue_counts, interviews} |
 | GET | `/api/health` |: | doctor.py result (cached 30s) |
+| GET | `/api/events` |: | SSE stream of cheap `state` and `live` revisions; one event per change, 15s heartbeat |
+| GET | `/api/revision` |: | the current `state` and `live` revision fingerprints |
+| GET | `/api/grid` |: | the unified grid rows (register ⋈ queue ⋈ spec ⋈ provenance) |
 | GET | `/api/health?full=1[&refresh=1]` |: | full checks + this instance's version, runtime, paths and counts for Settings → About |
 | GET | `/api/grid` |: | the unified grid rows (register ⋈ queue ⋈ spec ⋈ provenance) |
 | GET | `/api/backup` | `info=1`, `documents=0/1` | backup summary, or the `.zip` as a download (session token required) |
