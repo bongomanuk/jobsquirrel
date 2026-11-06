@@ -1356,8 +1356,9 @@ function renderBuckets() {
   });
 }
 async function gridTick() {                 // keep the grid live (faster while a run is active)
+  if (document.hidden) { setTimeout(gridTick, 15000); return; }
   try { await loadGrid(); } catch (e) { console.warn('grid refresh failed', e); }
-  setTimeout(gridTick, LIVE_RUNNING ? 3000 : 8000);
+  setTimeout(gridTick, LIVE_RUNNING ? 3000 : 10000);
 }
 /* ---------- application state graph ---------- */
 const SG_W = 130, SG_H = 62, SG_H2 = 56;
@@ -1717,20 +1718,20 @@ function renderRows() {
       && PANELS.detail && PANELS.detail.open) ? ' sel' : '';
     const gtags = groupTagsHTML(r);
     return `<tr class="click${sel}" onclick="App.open(${i})" oncontextmenu="return App.rowMenu(event, ${i})">` +
-      `<td class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet: queued, not applied')}>${r.date ? esc(shortDate(r.date)) : '-'}</td>` +
-      `<td${T(r.company + '  ·  employer / recruiter')}>${r.running ? `<a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="event.stopPropagation();App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show the live log"><span title="working">🥜</span></a> ` : (PENDING.has(r.key) ? '<span title="Queued: waiting to start">🥜</span> ' : '')}${r.pinned ? `<span class="pinned"${T('Pinned to the top of its group')}>📌</span> ` : ''}${r.shelved ? `<span class="shelved"${T('Shelved: original status kept')}>🗄</span> ` : ''}${r.scam && ['high', 'medium'].includes(r.scam.level) ? `<span class="scamflag ${esc(r.scam.level)}"${T('Scam check: ' + r.scam.level.toUpperCase() + ': open the role for the signals')}>⚠</span> ` : ''}${r.action ? `<span class="actflag"${T(r.action)}>⚑</span> ` : ''}${esc(r.company)}</td>` +
-      `<td${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}${gtags ? `<div class="gtags">${gtags}</div>` : ''}</td>` +
-      `<td class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
-      `<td>${chip(r.label || r.status)}${subLineHTML(r) || (r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : '')}</td><td>${mbadge(r)}</td>` +
-      `<td>${payBadge(r)}</td><td>${workBadge(r)}</td>` +
-      `<td${T(QUEUE_HELP[r.queue] || 'Not in any queue')}>${['pending', 'human', 'retry'].includes(r.queue)
+      `<td data-col="date" class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet: queued, not applied')}>${r.date ? esc(shortDate(r.date)) : '-'}</td>` +
+      `<td data-col="company"${T(r.company + '  ·  employer / recruiter')}>${r.running ? `<a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="event.stopPropagation();App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show the live log"><span title="working">🥜</span></a> ` : (PENDING.has(r.key) ? '<span title="Queued: waiting to start">🥜</span> ' : '')}${r.pinned ? `<span class="pinned"${T('Pinned to the top of its group')}>📌</span> ` : ''}${r.shelved ? `<span class="shelved"${T('Shelved: original status kept')}>🗄</span> ` : ''}${r.scam && ['high', 'medium'].includes(r.scam.level) ? `<span class="scamflag ${esc(r.scam.level)}"${T('Scam check: ' + r.scam.level.toUpperCase() + ': open the role for the signals')}>⚠</span> ` : ''}${r.action ? `<span class="actflag"${T(r.action)}>⚑</span> ` : ''}${esc(r.company)}</td>` +
+      `<td data-col="role"${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}${gtags ? `<div class="gtags">${gtags}</div>` : ''}</td>` +
+      `<td data-col="ats" class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
+      `<td data-col="status">${chip(r.label || r.status)}${subLineHTML(r) || (r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : '')}</td><td data-col="match">${mbadge(r)}</td>` +
+      `<td data-col="salary">${payBadge(r)}</td><td data-col="work">${workBadge(r)}</td>` +
+      `<td data-col="queue"${T(QUEUE_HELP[r.queue] || 'Not in any queue')}>${['pending', 'human', 'retry'].includes(r.queue)
         ? `<span class="badge ${r.queue === 'human' ? 'bad' : r.queue === 'retry' ? 'mid' : 'good'}">${esc(r.queue)}</span>`
         : `<span class="muted">-</span>`}</td>` +
-      `<td${T(r.applied ? 'Provenance recorded: exact CV, letter and SHA-256 hashes on file' : 'No submission recorded (not applied, or not reconciled yet)')}>${r.applied ? '✓' : '<span class="muted">-</span>'}</td>` +
-      `<td${T(r.spec ? 'A saved job description exists: open the row for the ad, ATS keywords and grounded context' : 'No saved job description')}>${r.spec ? '✓' : '<span class="muted">-</span>'}</td></tr>`;
+      `<td data-col="files"${T(r.applied ? 'Provenance recorded: exact CV, letter and SHA-256 hashes on file' : 'No submission recorded (not applied, or not reconciled yet)')}>${r.applied ? '✓' : '<span class="muted">-</span>'}</td>` +
+      `<td data-col="ad"${T(r.spec ? 'A saved job description exists: open the row for the ad, ATS keywords and grounded context' : 'No saved job description')}>${r.spec ? '✓' : '<span class="muted">-</span>'}</td></tr>`;
   };
 
-  const empty = (msg) => `<tr><td colspan="11" class="muted">${msg}
+  const empty = (msg) => `<tr><td colspan="11" data-span="all" class="muted">${msg}
     <button class="small" type="button" onclick="App.clearFilters()">Clear filters</button>
     <button class="small" type="button" onclick="App.bucket('all')">Show all</button></td></tr>`;
   let html = '';
@@ -1741,7 +1742,7 @@ function renderRows() {
     groups = BUCKET_GROUPS.filter(g => BUCKET === 'all' || g.k !== 'done')
       .map(g => ({ ...g, test: r => bucketOf(r) === g.k }));
     if (BUCKET === 'active' && !advanced && !rows.some(r => ['needs', 'scams'].includes(bucketOf(r))))
-      html += '<tr class="grp calm"><td colspan="11">✓ Nothing needs you right now: ongoing applications and the apply queue are below.</td></tr>';
+      html += '<tr class="grp calm"><td colspan="11" data-span="all">✓ Nothing needs you right now: ongoing applications and the apply queue are below.</td></tr>';
   } else if (!fg && BUCKET === 'focus') {
     groups = FOCUS_GROUPS;
   }
@@ -1753,7 +1754,7 @@ function renderRows() {
       const target = g.k === 'focus_pay' ? "App.focusGroup('pay')" :
         g.k === 'focus_unknown' ? "App.focusGroup('unknown')" : `App.bucket('${g.k}')`;
       html += `<tr class="grp ${g.k}${collapsed ? ' collapsed' : ''}" onclick="window.toggleGroup('${g.k}')">` +
-        `<td colspan="11"><span class="grp-caret">${collapsed ? '▸' : '▾'}</span>` +
+        `<td colspan="11" data-span="all"><span class="grp-caret">${collapsed ? '▸' : '▾'}</span>` +
         `<span class="grp-name" onclick="event.stopPropagation();${target}" title="Filter to this group">${esc(g.title)}</span>` +
         `<span class="grp-desc">${esc(g.desc)}</span>` +
         `<span class="grp-n"><button type="button" class="countlink" onclick="event.stopPropagation();${target}" title="Filter to this group">${gr.length}</button></span></td></tr>`;
@@ -1767,6 +1768,7 @@ function renderRows() {
   }
   VISIBLE = rendered.map(r => r.key);
   $('#rows').innerHTML = html;
+  if (window.applyGridCols) window.applyGridCols();
   sortIndicators();
   renderStateGraph();
   if ($('#count')) {
@@ -1852,7 +1854,8 @@ function ctxMenuEl(items, head, isSub = false) {
       ev.preventDefault(); ev.stopPropagation();
       if (it.disabled) return;
       if (it.sub) { ctxSub(b, it.sub); return; }
-      closeCtx(); it.run();
+      if (!it.keep) closeCtx();
+      it.run(b);
     };
     el.appendChild(b);
   });
@@ -2110,6 +2113,9 @@ function initGridCols() {
   const cols = ths.map((th, i) => th.dataset.col || th.dataset.s || ('c' + i));
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem('grid.cols') || '{}') || {}; } catch (e) { saved = {}; }
+  let hidden = [];
+  try { hidden = JSON.parse(localStorage.getItem('grid.hidden') || '[]') || []; } catch (e) { hidden = []; }
+  const HIDDEN = new Set((Array.isArray(hidden) ? hidden : []).filter(k => cols.includes(k)));
   const widths = {};
   const cg = document.createElement('colgroup');
   cols.forEach((k) => {
@@ -2122,30 +2128,64 @@ function initGridCols() {
   });
   table.insertBefore(cg, table.querySelector('thead'));
   table.style.tableLayout = 'fixed';
-  // Percentage widths: the table always fills the same width as the toolbar and
-  // the state graph, and every column scales with the window. The saved pixel
-  // widths remain the ratio between columns.
-  const applyWidth = () => {
-    const total = cols.reduce((n, k) => n + (widths[k] || 100), 0) || 1;
+
+  const apply = () => {
+    const visible = cols.filter(k => !HIDDEN.has(k));
+    const total = visible.reduce((n, k) => n + (widths[k] || 100), 0) || 1;
     cols.forEach((k, i) => {
-      cg.children[i].style.width = (100 * (widths[k] || 100) / total).toFixed(3) + '%';
+      const c = cg.children[i]; if (!c) return;
+      c.style.display = HIDDEN.has(k) ? 'none' : '';
+      c.style.width = HIDDEN.has(k) ? '0' : (100 * (widths[k] || 100) / total).toFixed(3) + '%';
+    });
+    ths.forEach(th => {
+      const k = th.dataset.col || th.dataset.s;
+      th.style.display = k && HIDDEN.has(k) ? 'none' : '';
+    });
+    table.querySelectorAll('tbody td[data-col]').forEach(td => {
+      td.style.display = HIDDEN.has(td.dataset.col) ? 'none' : '';
+    });
+    table.querySelectorAll('tbody td[data-span="all"]').forEach(td => {
+      td.colSpan = Math.max(1, visible.length);
     });
     table.style.width = '100%';
-    table.style.minWidth = '980px';
+    table.style.minWidth = Math.max(420, Math.min(980, visible.length * 85)) + 'px';
   };
-  applyWidth();
+  window.applyGridCols = apply;
+  window.toggleGridColumn = (key) => {
+    if (!cols.includes(key)) return null;
+    if (HIDDEN.has(key)) HIDDEN.delete(key);
+    else {
+      if (cols.filter(k => !HIDDEN.has(k)).length <= 1) {
+        toast('keep at least one column visible', true);
+        return null;
+      }
+      HIDDEN.add(key);
+    }
+    try { localStorage.setItem('grid.hidden', JSON.stringify([...HIDDEN])); } catch (e) {}
+    apply();
+    return !HIDDEN.has(key);
+  };
+  window.showAllGridColumns = () => {
+    HIDDEN.clear();
+    try { localStorage.setItem('grid.hidden', '[]'); } catch (e) {}
+    apply();
+  };
+  apply();
+
   const save = () => { try { localStorage.setItem('grid.cols', JSON.stringify(widths)); } catch (e) {} };
-  const reset = (k, i) => {
+  const reset = (k) => {
     widths[k] = COL_DEFAULTS[k] || 100;
-    applyWidth(); save();
+    apply(); save();
   };
   ths.forEach((th, i) => {
     const k = cols[i];
+    th.title = (th.title ? th.title + ' ' : '') + 'Right-click to choose columns.';
+    th.addEventListener('contextmenu', (ev) => columnMenu(ev));
     const h = document.createElement('span');
     h.className = 'col-resize';
     h.title = 'Drag to resize; double-click to reset';
     h.addEventListener('click', (e) => e.stopPropagation());
-    h.addEventListener('dblclick', (e) => { e.preventDefault(); e.stopPropagation(); reset(k, i); });
+    h.addEventListener('dblclick', (e) => { e.preventDefault(); e.stopPropagation(); reset(k); });
     h.addEventListener('pointerdown', (e) => {
       e.preventDefault(); e.stopPropagation();
       const startX = e.clientX, startW = th.getBoundingClientRect().width;
@@ -2153,7 +2193,7 @@ function initGridCols() {
       table.classList.add('resizing');
       const move = (ev) => {
         const w = Math.max(40, Math.min(800, Math.round(startW + ev.clientX - startX)));
-        widths[k] = w; applyWidth();
+        widths[k] = w; apply();
       };
       const up = () => {
         window.removeEventListener('pointermove', move);
@@ -2167,6 +2207,37 @@ function initGridCols() {
     });
     th.appendChild(h);
   });
+}
+
+function columnMenu(ev) {
+  ev.preventDefault(); ev.stopPropagation();
+  closeCtx();
+  const ths = [...document.querySelectorAll('#grid thead th[data-col]')];
+  const items = ths.map(th => {
+    const key = th.dataset.col;
+    const label = th.textContent.trim() || key;
+    const visible = th.style.display !== 'none';
+    return {
+      icon: visible ? '☑' : '☐', label, keep: true,
+      run: (btn) => {
+        const on = window.toggleGridColumn(key);
+        if (on == null) return;
+        const ic = btn && btn.querySelector('.ctx-ico');
+        if (ic) ic.textContent = on ? '☑' : '☐';
+      }
+    };
+  });
+  items.push({ sep: true });
+  items.push({ icon: '↺', label: 'Show all columns', run: () => window.showAllGridColumns() });
+  const el = ctxMenuEl(items, '<b>Columns</b><span class="muted mini" style="margin-left:8px">right-click a header</span>');
+  el.style.left = '0px'; el.style.top = '0px';
+  document.body.appendChild(el);
+  const w = el.offsetWidth, h = el.offsetHeight;
+  const x = ev.clientX || 40, y = ev.clientY || 40;
+  el.style.left = Math.max(6, Math.min(x, innerWidth - w - 8)) + 'px';
+  el.style.top = Math.max(6, Math.min(y, innerHeight - h - 8)) + 'px';
+  CTX = el;
+  el.querySelector('.ctx-item:not(.disabled)')?.focus();
 }
 
 /* ---------- detail drawer ---------- */
@@ -2531,6 +2602,7 @@ function humanActivity(lines) {
 }
 
 async function liveTick() {
+  if (document.hidden) { setTimeout(liveTick, 10000); return; }
   const d = await api('/api/live');
   if (d && d.build) {                                  // server restarted or web files changed
     if (BUILD && d.build !== BUILD) { location.reload(); return; }
@@ -2676,7 +2748,7 @@ async function liveTick() {
       if (reopened) reopened.open = true;
     }
   }
-  setTimeout(liveTick, 2500);
+  setTimeout(liveTick, (LIVE_RUNNING || LIVE_TASKS.length) ? 2500 : 5000);
   permTick();
 }
 /* the embedded agent asks before doing something risky (agent_access.py -> here) */
@@ -4258,7 +4330,9 @@ async function loadChatModel(force) {
 window.addEventListener('focus', () => loadChatModel(true));
 setInterval(() => loadChatModel(true), 60000);
 window.App = App;
-async function healthPill() { const s = await api('/api/health'); const h = $('#health');
+async function healthPill() {
+  if (document.hidden) { setTimeout(healthPill, 60000); return; }
+  const s = await api('/api/health'); const h = $('#health');
   h.textContent = 'health: ' + (s.v || '?'); h.className = 'pill ' + (s.v || 'unknown');
   h.title = 'Open health and instance details' + (s.detail && s.detail !== 'all ok' ? ': ' + s.detail : '');
   setTimeout(healthPill, 60000); }
@@ -4310,6 +4384,7 @@ const sgSummary = document.querySelector('#sg summary');
 if (sgSummary) sgSummary.addEventListener('click', e => {
   if (e.target.closest('#metrics, #live-log, #runctl')) e.preventDefault();
 });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) loadGrid(); });
 initPanels(); initGridCols(); syncGroupingButton(); loadGroups(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel();
 if (location.hash === '#knowledge') setTimeout(() => App.openKnowledge('map'), 400);
 if (location.hash === '#universe') setTimeout(() => App.openKnowledge('universe'), 400);
