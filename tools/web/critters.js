@@ -50,18 +50,33 @@ function makeCanvas() {
   const r = new THREE.WebGLRenderer({ canvas: c, alpha: true, antialias: true });
   r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
   r.setClearColor(0x000000, 0);
+  r.shadowMap.enabled = true;
+  r.shadowMap.type = THREE.PCFSoftShadowMap;
   state.renderer = r;
   state.canvas = c;
   state.scene = new THREE.Scene();
   state.clock = new THREE.Clock();
   state.scene.add(new THREE.AmbientLight(0xffffff, 1.15));
   const key = new THREE.DirectionalLight(0xfff3e2, 1.7);
-  key.position.set(-1.2, 3, 3.5);
+  key.position.set(-60, 120, 90);
+  key.castShadow = true;
+  key.shadow.mapSize.set(1024, 1024);
+  key.shadow.camera.left = -420; key.shadow.camera.right = 420;
+  key.shadow.camera.top = 160; key.shadow.camera.bottom = -120;
+  key.shadow.camera.near = 1; key.shadow.camera.far = 800;
+  key.shadow.bias = -0.0004;
   state.scene.add(key);
   const rim = new THREE.DirectionalLight(0xbfd4ff, 0.75);
   rim.position.set(2, 1.2, -3);
   state.scene.add(rim);
   resize();
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 240),
+    new THREE.ShadowMaterial({ opacity: 0.22 }));
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.set(0, FLOOR - 0.5, 0);
+  ground.receiveShadow = true;
+  state.scene.add(ground);
+  state.ground = ground;
   window.addEventListener('resize', resize);
   return c;
 }
@@ -73,6 +88,7 @@ function resize() {
   state.renderer.setSize(w, BAR, false);
   state.canvas.style.width = w + 'px';
   state.canvas.style.height = BAR + 'px';
+  if (state.ground) { state.ground.position.y = FLOOR - 0.5; }
   if (!state.camera) {
     state.camera = new THREE.OrthographicCamera(-w / 2, w / 2, BAR / 2, -BAR / 2, 0.1, 100);
     state.camera.position.set(0, 0, 20);
@@ -103,14 +119,14 @@ export function buildSquirrel(friend = false) {
   root.add(hips);
 
   const torso = ball(0.28, fur, 0, 0.04, 0.12);
-  torso.scale.set(0.62, 0.55, 1.1);            // ~0.35 wide, 0.31 tall, 0.62 long
+  torso.scale.set(0.74, 0.66, 1.06);           // rounder and softer
   hips.add(torso);
   const belly = ball(0.22, MAT.cream, 0, -0.06, 0.18);
-  belly.scale.set(0.62, 0.5, 0.95);
+  belly.scale.set(0.72, 0.62, 0.98);
   hips.add(belly);
   const vest = new THREE.Mesh(
     new THREE.SphereGeometry(0.29, 16, 12, Math.PI * 0.12, Math.PI * 0.76, 1.1, 1.1), MAT.vest);
-  vest.scale.set(0.64, 0.56, 1.12);
+  vest.scale.set(0.76, 0.68, 1.08);
   vest.position.set(0, 0.04, 0.12);
   hips.add(vest);
 
@@ -124,11 +140,16 @@ export function buildSquirrel(friend = false) {
   const head = new THREE.Group();
   neck.add(head);
   const skull = ball(0.2, fur, 0, 0, 0);
-  skull.scale.set(0.7, 0.62, 0.62);
+  skull.scale.set(0.8, 0.72, 0.7);
   head.add(skull);
   const muzzle = ball(0.1, MAT.cream, 0, -0.045, 0.09);
   muzzle.scale.set(0.55, 0.42, 0.6);
   head.add(muzzle);
+  for (const s of [-1, 1]) {
+    const cheek = ball(0.075, fur, 0.1 * s, -0.04, 0.06);
+    cheek.scale.set(0.9, 0.75, 0.75);
+    head.add(cheek);
+  }
   head.add(ball(0.02, MAT.dark, 0, -0.025, 0.15));
   head.add(ball(0.03, MAT.dark, 0.06, 0.045, 0.12));
   head.add(ball(0.03, MAT.dark, -0.06, 0.045, 0.12));
@@ -181,13 +202,13 @@ export function buildSquirrel(friend = false) {
     const shoulder = new THREE.Group();
     shoulder.position.set(0.12 * s, 0.0, 0.3);
     hips.add(shoulder);
-    const upper = limb(0.038, 0.1, MAT.furDark);
+    const upper = limb(0.05, 0.09, MAT.furDark);
     upper.position.y = -0.06;
     shoulder.add(upper);
     const elbow = new THREE.Group();
     elbow.position.y = -0.13;
     shoulder.add(elbow);
-    const fore = limb(0.034, 0.1, MAT.furDark);
+    const fore = limb(0.045, 0.09, MAT.furDark);
     fore.position.y = -0.06;
     elbow.add(fore);
     const paw = ball(0.055, MAT.furDark, 0, -0.13, 0.02);
@@ -202,13 +223,13 @@ export function buildSquirrel(friend = false) {
     const hip = new THREE.Group();
     hip.position.set(0.15 * s, 0.36, -0.1);
     root.add(hip);
-    const thigh = limb(0.07, 0.16, MAT.furDark);
+    const thigh = limb(0.085, 0.14, MAT.furDark);
     thigh.position.y = -0.1;
     hip.add(thigh);
     const knee = new THREE.Group();
     knee.position.y = -0.2;
     hip.add(knee);
-    const shin = limb(0.05, 0.12, MAT.furDark);
+    const shin = limb(0.06, 0.1, MAT.furDark);
     shin.position.y = -0.07;
     knee.add(shin);
     const foot = ball(0.075, MAT.furDark, 0, -0.17, 0.09);
@@ -241,13 +262,8 @@ export function buildSquirrel(friend = false) {
   handle.rotation.z = -0.4;
   beer.add(handle);
 
-  const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.3, 18),
-    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.16 }));
-  shadow.rotation.x = -Math.PI / 2;
-  shadow.position.y = 0.01;
-  shadow.scale.set(1.15, 0.7, 1);
-  root.add(shadow);
 
+  root.traverse(o => { if (o.isMesh) o.castShadow = true; });
   root.scale.setScalar(SCALE);
   return { root, hips, chest, neck, head, tail: [tail1, tail2, tail3],
            front, hind, tongue, beer, acorn };
@@ -277,6 +293,7 @@ function addCritter(opts) {
     dive: !!opts.dive, nextKick: performance.now() + 700,
     nextAction: performance.now() + 2500, home: opts.x, target: opts.x,
     adventuring: false, look: { x: 0, y: 0 }, pose: '', poseUntil: 0,
+    mode: 'travel', meetX: 0, drinkUntil: 0, clinkAt: 0, clink: false, fightUntil: 0, roll: 0,
   };
   state.critters.push(c);
   return c;
@@ -388,6 +405,29 @@ function animate(c, dt) {
     c.neck.rotation.y = Math.sin(p * 2) * 0.3;
   }
   if (c.tongue) c.tongue.visible = c.faceUntil > now;
+  if (c.mode === 'fight' && c.fightUntil > now) {
+    const k = Math.sin(p * 6);
+    c.root.rotation.z += c.roll * dt;
+    c.root.position.y = FLOOR + Math.abs(k) * 9;
+    c.hips.rotation.x = k * 0.25;
+    c.neck.rotation.z = -k * 0.3;
+    c.front.forEach(f => { f.shoulder.rotation.x = -1.4; f.elbow.rotation.x = -1.5; });
+    c.hind.forEach(h => { h.hip.rotation.x = -1.1; h.knee.rotation.x = 1.4; });
+  } else if (c.root.rotation.z) {
+    c.root.rotation.z *= Math.max(0, 1 - dt * 6);
+  }
+  if (c.drinkUntil > now) {
+    c.front[0].shoulder.rotation.x = -1.9;
+    c.front[0].elbow.rotation.x = -0.85;
+    if (c.beer) {
+      c.beer.visible = true;
+      c.beer.rotation.x = -0.85 + Math.sin(p * 2) * 0.12;
+      c.beer.rotation.z = c.clink ? 0.35 : 0;
+    }
+    c.neck.rotation.x = -0.18;
+  } else if (c.beer) {
+    c.beer.rotation.x = 0;
+  }
 
   if (c.hopUntil > now) {
     const k = 1 - (c.hopUntil - now) / 420;
@@ -455,13 +495,57 @@ function frame() {
   }
 
   for (const c of [...state.critters]) {
+    if (c.mode === 'meet') {
+      const d = c.meetX - c.x;
+      if (Math.abs(d) > 1.2) c.x += Math.sign(d) * Math.min(Math.abs(d), 150 * dt);
+      else {
+        c.mode = 'drink';
+        c.drinkUntil = now + 3000;
+        c.clinkAt = now + 1300;
+        c.beerOn = true;
+        const lead = state.resident;
+        if (lead) {
+          lead.beerOn = true;
+          lead.drinkUntil = c.drinkUntil;
+          lead.clinkAt = c.clinkAt;
+        }
+      }
+    }
+    if (c.mode === 'fight') {
+      const d = c.meetX - c.x;
+      if (Math.abs(d) > 20) c.x += Math.sign(d) * Math.min(Math.abs(d), 170 * dt);
+      else if (!c.fightUntil) {
+        c.fightUntil = now + 2400;
+        c.roll = (Math.random() < 0.5 ? -1 : 1) * 9;
+      }
+      if (c.fightUntil && now > c.fightUntil) {
+        c.mode = 'leave';
+        c.x += (Math.random() < 0.5 ? -1 : 1) * 2;
+      }
+    }
+    if (c.mode === 'drink') {
+      c.beerOn = now < c.drinkUntil;
+      c.clink = now > c.clinkAt && now < c.clinkAt + 400;
+      if (now > c.drinkUntil) {
+        c.mode = 'leave';
+        c.beerOn = false;
+        if (state.resident && state.resident.drinkUntil === c.drinkUntil) {
+          state.resident.beerOn = false;
+          state.resident.drinkUntil = 0;
+        }
+      }
+    }
+    if (c.mode === 'leave') {
+      c.x += 135 * dt;
+      if (c.x > state.W / 2 + 90) { removeCritter(c); continue; }
+    }
     if (c.holdAt && !c.held && c.x >= c.holdAt) {
       c.held = true;
       c.holdUntil = now + 2000;
       c.beerOn = true;
     }
     if (c.held && now > c.holdUntil) { c.held = false; c.beerOn = false; }
-    if (!c.resident) {
+    if (!c.resident && (c.mode === 'travel' || c.mode === 'leave')) {
       if (!c.held) c.x += c.speed * dt;
       if (c.dive && c.x > state.W + 40) c.y -= 220 * dt;
     }
@@ -469,7 +553,8 @@ function frame() {
     c.root.position.y = Math.max(c.y, FLOOR);
     const moving = c.resident ? Math.abs(c.target - c.x) > 1.2 : !c.held && c.speed > 0;
     let want = Math.PI / 2;
-    if (c.waveOn) want = 0;
+    if (c.mode === 'drink') want = -Math.PI / 2;
+    else if (c.waveOn) want = 0;
     else if (moving) want = (c.resident ? Math.sign(c.target - c.x) : 1) > 0 ? Math.PI / 2 : -Math.PI / 2;
     else if (c.resident) {
       const nd = Math.abs(state.pointer.x - c.x);
@@ -483,6 +568,20 @@ function frame() {
     }
     animate(c, dt);
     if (c.x > c.endX || c.y < -BAR) removeCritter(c);
+  }
+
+  for (let i = 0; i < state.critters.length; i++) {
+    for (let j = i + 1; j < state.critters.length; j++) {
+      const a = state.critters[i], b = state.critters[j];
+      if (a.mode !== 'travel' || b.mode !== 'travel') continue;
+      const d = b.x - a.x;
+      if (Math.abs(d) < 26) {
+        const push = (26 - Math.abs(d)) / 2 * (d >= 0 ? 1 : -1);
+        a.x -= push * 0.6;
+        b.x += push * 0.6;
+        if (Math.random() < 0.02) { a.hopUntil = now + 300; b.hopUntil = now + 300; }
+      }
+    }
   }
 
   for (const n of [...state.nuts]) {
@@ -563,8 +662,14 @@ function run(kind) {
   }
   const base = { endX: w + 90, speed: 115 + Math.random() * 50 };
   if (kind === 'hold') {
-    addCritter({ ...base, x: -w / 2 - 60, friend: true, holdAt: 0 });
-    addCritter({ ...base, x: -w / 2 - 150, friend: true, speed: base.speed + 25 });
+    const f = addCritter({ ...base, x: -w / 2 - 60, friend: true, holdAt: 0 });
+    f.mode = 'meet';
+    f.meetX = (lead ? lead.x : 0) + 58;
+  } else if (kind === 'fight') {
+    const f = addCritter({ ...base, x: -w / 2 - 60, friend: true, holdAt: 0 });
+    f.mode = 'fight';
+    f.meetX = (lead ? lead.x : 0) + 34;
+    if (lead) { lead.mode = 'fight'; lead.meetX = (f.meetX || 0) - 34; }
   } else if (kind === 'chase') {
     addCritter({ ...base, x: -w / 2 - 60, friend: true, speed: base.speed + 20 });
   } else if (kind === 'wave') {
@@ -585,7 +690,7 @@ function schedule() {
   const delay = 46000 + Math.random() * 70000;
   setTimeout(() => {
     const r = Math.random();
-    run(r < 0.12 ? 'dive' : r < 0.24 ? 'wave' : r < 0.44 ? 'chase' : r < 0.66 ? 'hold' : 'through');
+    run(r < 0.1 ? 'dive' : r < 0.2 ? 'wave' : r < 0.36 ? 'chase' : r < 0.62 ? 'hold' : r < 0.82 ? 'fight' : 'through');
     schedule();
   }, delay);
 }
