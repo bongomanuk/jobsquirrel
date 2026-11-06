@@ -117,6 +117,21 @@ Everything is observable. Useful things to ask for, or run yourself:
 - **Human-only items**: `state/queue-human.tsv`, opened with
   `bash tools/human_assist.sh`.
 
+### Gmail triage
+
+`gmail_reconcile.py` also annotates the review queue with a language-agnostic
+triage hint. The regex classifier is fast but language-specific, so clearly
+job-related mail can still land in OTHER. The triage layer checks ATS and
+company sender domains, application/requisition ids, meeting links with dates,
+LinkedIn job alerts and system senders, then marks the item as **job-related**
+with a category hint.
+
+- Open the Gmail review and choose **triage: job-related** to see only those
+  messages.
+- The hint is review-only: it never changes a status or sends anything.
+- Personal or local domain additions go in `config/email-triage.json`; the
+  public template is `config/email-triage.example.json`.
+
 ## State model: the application state machine
 
 The application process is a **state machine**. The register keeps a small, stable set of

@@ -359,6 +359,10 @@ bash tools/reconcile_loop.sh                # continuous reconcile + counts
 - Reconciliation matches mail to register rows and sets `INTERVIEW`/`REJECTED`,
   upgrades `PREPARED`→`SUBMITTED` on confirmation, and prints verification
   links/codes for the **human** to act on (never click/enter them yourself).
+- Reconciliation also runs a language-agnostic triage (`tools/email_triage.py`)
+  and annotates the review queue. Use the **triage: job-related** filter to find
+  job mail the regex put in OTHER. It never changes a status; local domain
+  additions live in `config/email-triage.json`.
 - An `action` is a **human to-do** ("reply to Ray about a time", "complete the
   assessment"), never a passive waiting state. Do **not** set "await a reply" (or
   similar): the status and sub-state already say that, and it used to linger

@@ -95,6 +95,12 @@ bash tools/reconcile_loop.sh                # keep it running (reconcile + count
 prints any **verification links/codes** for you to act on manually (it never
 clicks or enters them). Ambiguous multi-role matches are reported, not guessed.
 
+The reconciler also annotates the review queue with a language-agnostic triage
+hint (`tools/email_triage.py`): ATS and company sender domains, application ids,
+meeting links, system senders. It is review-only and never changes a status; use
+the **triage: job-related** filter in the dashboard's Gmail review. Local domain
+additions live in `config/email-triage.json`.
+
 ## Human steps the pipeline will not do
 
 Some walls are for a human: CAPTCHAs / bot checks, SMS/app 2FA, "possible spam"

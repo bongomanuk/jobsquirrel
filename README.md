@@ -449,6 +449,8 @@ docs/                       # documentation (this folder)
    register.
 9. **Reconcile**: `gmail_reconcile.py` matches replies to rows and sets
    INTERVIEW / REJECTED / SUBMITTED, surfacing verification links for you to act on.
+   A language-agnostic triage layer also flags job-related mail the regex put in
+   OTHER, so it appears under the review queue's **triage: job-related** filter.
 
 ## Statuses: the application state machine
 
@@ -521,6 +523,11 @@ interviewed — awaiting outcome).
   rule: **never download or install software for an interview, never join a
   chat-only interview, never share a wallet or seed phrase, never pay a fee or
   move money.** See [docs/SCAMS.md](docs/SCAMS.md).
+- **Email triage is local and review-only.** A small feature baseline (ATS and
+  company sender domains, application ids, meeting links, system senders)
+  annotates the Gmail review queue. It never changes a status. Personal domain
+  additions live in `config/email-triage.json`; the public example is
+  `config/email-triage.example.json`.
 
 ## Legal and acceptable use
 

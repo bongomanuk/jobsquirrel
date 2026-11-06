@@ -58,6 +58,7 @@ Components:
 | `state/submissions.csv` | Provenance ledger: paths + sha256 + snapshot dir + evidence + confidence (`verified`/`forced`/`inferred`). |
 | `state/role-groups.json` | Named groups (campaigns): `{groups:{id:{name,color}},roles:{key:[id]}}`, independent of status. |
 | `config/canonical-facts.json` | Canonical fact wording: regex replacements applied at KB ingest and CV/letter render; the gate fails forbidden variants. |
+| `config/email-triage.json` | Local additions for the language-agnostic email triage (extra ATS, hard/soft marketing domains). Private; the public example is `config/email-triage.example.json`. |
 | `state/queue.tsv` | Pending roles: `company␉role␉url␉cv-archetype␉ats␉key`. |
 | `state/queue.done` / `queue.retry` / `queue-human.tsv` | Completion, retry, human-assist queues. |
 | `state/logs/runs.jsonl` | Structured per-task result: `{ts,company,role,outcome,rc,reason}`. |
@@ -346,7 +347,11 @@ contains a non-canonical fact wording fails before it can be submitted.
 - **Prepare:** `REVIEW=1 run_queue.sh` — builds docs + gates, records PREPARED; never submits/emails. Safe.
 - **Run Submissions:** `run_queue.sh` — **submits**. Requires the `APPROVE_RUN_QUEUE` approval token
   (the two-step modal: acknowledge + Confirm); refused otherwise. Every decision is logged to `state/approvals.log`.
-- **Reconcile:** `gmail_reconcile.py` (read-only).
+- **Reconcile:** `gmail_reconcile.py` (read-only). It also annotates the Gmail
+  review queue with a language-agnostic job-related triage hint
+  (`tools/email_triage.py`: ATS/company domains, application ids, meeting links,
+  system senders). Review-only; it never changes a status. The review modal has a
+  **triage: job-related** filter.
 - **Regenerate archetype CVs:** `build_archetypes.py`. Safe.
 - Runs are detached and logged to `state/logs/dashboard-action.log`.
 

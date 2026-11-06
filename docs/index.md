@@ -32,7 +32,7 @@ description: Jobsquirrel is an open, self-hosted job-application agent: it finds
   <div class="js-card"><div class="js-ico">🎯</div><h3>Target</h3><p>A per-role CV and letter, grounded in your private knowledge graph, mirroring the advert without inventing anything.</p></div>
   <div class="js-card"><div class="js-ico">🛡️</div><h3>Gate</h3><p>Alignment, evidence, ATS coverage, identity and no-AI-slop gates. Nothing is uploaded until they pass.</p></div>
   <div class="js-card"><div class="js-ico">🤖</div><h3>Apply</h3><p>Drives the employer's own ATS through a real Camoufox browser, then records the exact files and hashes.</p></div>
-  <div class="js-card"><div class="js-ico">📬</div><h3>Track</h3><p>Reconciles Gmail, surfaces interviews and verification links, and keeps one source of truth for every role.</p></div>
+  <div class="js-card"><div class="js-ico">📬</div><h3>Track</h3><p>Reconciles Gmail, surfaces interviews and verification links, triages job mail the classifier missed, and keeps one source of truth for every role.</p></div>
   <div class="js-card"><div class="js-ico">🕵️</div><h3>Warn</h3><p>Flags recruitment scams — remote-access interviews, wallet drains, task scams, money mules, reshipping — before you engage.</p></div>
 </div>
 

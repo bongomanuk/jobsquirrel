@@ -80,8 +80,9 @@ sorts the queue file itself by seniority.
   `SUBMITTED` row without one), `jd_guard.py` (a role needs a saved job ad before
   it is queued).
 - **Record**: `register.py`, `record_submission.py`, `outcomes.py`.
-- **Email**: `gmail_readonly.py`, `gmail_reconcile.py`, `gmail_calendar_auth.py`,
-  `gmail_send.py`, `discover.py`, `email_opportunities.py`, `email_verify.py`.
+- **Email**: `gmail_readonly.py`, `gmail_reconcile.py`, `email_triage.py`
+  (language-agnostic review hints), `gmail_calendar_auth.py`, `gmail_send.py`,
+  `discover.py`, `email_opportunities.py`, `email_verify.py`.
 - **Browser**: `camoufox_server.py`, `camoufox_browser.py`, `camoufox_test.py`.
 - **Run**: `run_queue.sh` (parallel queue), `run_linkedin.sh` (serialized LinkedIn),
   `agent_run.sh` (whichever agent CLI you have), `reconcile_loop.sh`,
