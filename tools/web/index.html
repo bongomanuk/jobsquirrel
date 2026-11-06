@@ -4,16 +4,67 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Jobsquirrel</title>
+<script>try{var t=localStorage.getItem("ui.theme")||(matchMedia("(prefers-color-scheme: light)").matches?"light":"dark");document.documentElement.dataset.theme=t;}catch(e){}</script>
 <link rel="stylesheet" href="/app.css?v={{ASSET}}">
 </head>
 <body data-session-token="{{TOKEN}}" data-act="closed">
+<svg class="sprite" aria-hidden="true" focusable="false">
+<symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/></symbol>
+<symbol id="i-graph" viewBox="0 0 24 24"><circle cx="6" cy="7" r="2.3"/><circle cx="18" cy="6" r="2.3"/><circle cx="12" cy="17.5" r="2.3"/><path d="M8.1 7.6l7.7-1.2M7.6 9l3.4 6.6M16.4 8.2l-3.1 7"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/></symbol>
+<symbol id="i-log" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></symbol>
+<symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
+<symbol id="i-tag" viewBox="0 0 24 24"><path d="M20.5 12.5l-8 8L3 11V4h7z"/><circle cx="7.5" cy="8.5" r="1.2"/></symbol>
+<symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></symbol>
+<symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3L3 10.5l6.5 2.5L12 20z"/><path d="M21 3l-9.5 9.5"/></symbol>
+<symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-13.7-5.7L4 7"/><path d="M20 3v4h-4"/><path d="M4 13a8 8 0 0 0 13.7 5.7L20 17"/><path d="M4 21v-4h4"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".9" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-11.7 7.1L4 21l1.9-5.3A8 8 0 1 1 21 12z"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-3.6-3.6"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></symbol>
+<symbol id="i-map" viewBox="0 0 24 24"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c3 3.5 3 14 0 18M12 3c-3 3.5-3 14 0 18"/></symbol>
+<symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z"/><path d="M18.5 16.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></symbol>
+<symbol id="i-doc" viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M10 12h6M10 16h6"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+<symbol id="i-door" viewBox="0 0 24 24"><path d="M5 21V4h10v17M15 21h4"/><circle cx="12" cy="12" r=".9" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 3h6l-1 6 3 3H7l3-3z"/><path d="M12 12v9"/></symbol>
+<symbol id="i-archive" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v12h14V8M10 12h4"/></symbol>
+<symbol id="i-repeat" viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></symbol>
+<symbol id="i-hand" viewBox="0 0 24 24"><path d="M8 12V5.2a1.6 1.6 0 0 1 3.2 0V11M11.2 11V4.2a1.6 1.6 0 0 1 3.2 0V11M14.4 11V6.2a1.6 1.6 0 0 1 3.2 0V15a5 5 0 0 1-5 5h-1a6 6 0 0 1-5-3l-2-3.1a1.7 1.7 0 0 1 2.8-1.9L8 13.5"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M15 9V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h4"/></symbol>
+<symbol id="i-thread" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="12" r="2"/><path d="M6 7v10M8 5.5h4a4 4 0 0 1 4 4v.5M8 18.5h4a4 4 0 0 0 4-4v-.5"/></symbol>
+<symbol id="i-flask" viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4A2 2 0 0 0 19 18l-5-9V3"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+<symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.5 3a5 5 0 0 0-4.6 7L3 17v4h4l7-6.9A5 5 0 0 0 21 10l-3 1-2-2z"/></symbol>
+<symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></symbol>
+<symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+<symbol id="i-squirrel" viewBox="0 0 64 64"><ellipse cx="36" cy="57.5" rx="14.5" ry="3" fill="#000" opacity=".16"/><g class="sq-tail"><path d="M27 55c-11 1-19-6-20-15-1-8 4-14 10-15 4-.7 7 1 6 4-1 3-5 4-5 8 0 6 5 9 11 9z" fill="#c98a52"/><path d="M25 52c-7 0-12-5-12-10 0-5 3-8 7-9" fill="none" stroke="#a4632f" stroke-width="1.2" opacity=".45"/></g><path d="M31 52c-4-2-6-7-6-12 0-7 4-12 10-12s10 5 10 12c0 6-3 11-8 12z" fill="#c98a52"/><path d="M34 51c-2-2-3-5-3-9 0-5 2-8 5-8s5 3 5 8c0 4-1 7-3 9z" fill="#f0e2cd"/><circle cx="38" cy="22" r="10" fill="#c98a52"/><path d="M31 14l-2-7 6 5z" fill="#a4632f"/><path d="M43 13l4-6-1 7z" fill="#a4632f"/><ellipse cx="46.5" cy="26" rx="4.6" ry="3.4" fill="#f0e2cd"/><circle cx="50.5" cy="25" r="1.15" fill="#3a2a1e"/><circle cx="41.4" cy="20.8" r="1.7" fill="#2b2118"/><circle cx="41.6" cy="20.8" r="4.7" fill="#f7f3ea" opacity=".14"/><circle cx="41.6" cy="20.8" r="4.7" fill="none" stroke="#e8c98d" stroke-width="1.3"/><path d="M46.3 20.8h2.2" stroke="#e8c98d" stroke-width="1.3"/><path d="M48.4 21.4l1.8 3.1" stroke="#e8c98d" stroke-width="1.1"/><path d="M30 40c3 2 6 3 9 3s6-1 9-3c1 6-2 10-9 10s-10-4-9-10z" fill="#6f7d5c"/><path d="M39 40v9" stroke="#5b664c" stroke-width="1"/><circle cx="36.6" cy="43" r=".9" fill="#efe7d6"/><circle cx="41.4" cy="43" r=".9" fill="#efe7d6"/><ellipse cx="48" cy="38.5" rx="3.1" ry="2.2" fill="#a4632f"/><g class="sq-beer"><rect x="45.4" y="31.4" width="7.2" height="7.8" rx="1.2" fill="#d9a45f"/><rect x="45.4" y="31.4" width="7.2" height="2.4" rx="1.2" fill="#f4ecd9"/><path d="M52.6 33.4h1.6a1.6 1.6 0 0 1 0 3.2h-1.6" fill="none" stroke="#b57442" stroke-width="1.2"/></g><ellipse cx="49" cy="35.8" rx="2.4" ry="2.7" fill="#c08a4e"/><path d="M46.4 34.4a2.6 2.2 0 0 1 5.2 0z" fill="#6b4a2a"/><path d="M49 32.2v1.1" stroke="#6b4a2a" stroke-width="1.2"/><g class="sq-leg a"><ellipse cx="31" cy="54" rx="4.2" ry="2.4" fill="#a4632f"/></g><g class="sq-leg b"><ellipse cx="39.5" cy="55" rx="4.6" ry="2.6" fill="#a4632f"/></g></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z"/></symbol>
+<symbol id="i-square" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5"/></symbol>
+<symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+<symbol id="i-loader" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9"/></symbol>
+<symbol id="i-robot" viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="11" rx="2.5"/><path d="M12 8V5"/><circle cx="12" cy="4" r="1.4"/><path d="M9.5 13h.01M14.5 13h.01M9 16h6"/></symbol>
+<symbol id="i-flag" viewBox="0 0 24 24"><path d="M6 3v18"/><path d="M6 4h12l-2.2 4L18 12H6"/></symbol>
+<symbol id="i-list" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+<symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4 20h16"/></symbol>
+</svg>
 <header class="top">
-  <div class="brand" id="brand-home" role="link" tabindex="0" title="Back to the job grid"><span class="mascot">🐿️</span><h1>Jobsquirrel</h1>
+  <div class="brand" id="brand-home" role="link" tabindex="0" title="Back to the job grid"><svg class="mascot" role="button" tabindex="0" aria-label="Call the squirrels" title="Click to call the squirrels"><use href="#i-squirrel"></use></svg><h1>Jobsquirrel</h1>
     <span id="health" class="pill unknown" role="button" tabindex="0" title="Open health and instance details">health…</span></div>
   <div class="actions">
-    <button id="a-applications" title="The application grid">📋 Applications</button>
-    <button id="a-knowledge" title="Open the knowledge graph">🕸️ Knowledge</button>
-    <button id="a-settings" title="Settings, logs and about">⚙ Settings</button>
+    <button id="theme-toggle" title="Switch to light mode" aria-label="Switch theme">
+      <svg class="ic" aria-hidden="true"><use href="#i-sun"></use></svg></button>
+    <button id="a-applications" title="The application grid"><svg class="ic" aria-hidden="true"><use href="#i-grid"></use></svg> Applications</button>
+    <button id="a-knowledge" title="Open the knowledge graph"><svg class="ic" aria-hidden="true"><use href="#i-graph"></use></svg> Knowledge</button>
+    <button id="a-settings" title="Settings, logs and about"><svg class="ic" aria-hidden="true"><use href="#i-settings"></use></svg> Settings</button>
   </div>
 </header>
 
@@ -23,22 +74,20 @@
     <div class="edge" data-edge="top"><div class="edge-panels" data-edge="top"></div><div class="splitter edge-split" data-edge="top" title="Drag to resize"></div></div>
     <div class="scroll">
       <main>
-        <details id="sg" class="stategraph">
-          <summary>
-            <span class="sg-headline" title="Click a state to filter the grid; click it again to expand its sub-states"><b>Application states</b> <span class="muted">how roles move from queued to offer</span></span>
-            <span class="sg-live">
-              <span class="livestrip" id="live"><span class="muted">idle, no run active</span></span>
-              <button id="live-log" class="small hide" title="Show the live log of the running task">📜 Live log</button>
-              <span id="runctl" class="runctl hide">
-                <button id="btn-pause" title="Finish the current task, then start nothing new">⏸ Pause</button>
-                <button id="btn-stop" class="risky" title="Stop now: no new tasks, terminate the in-flight work">⏹ Stop</button>
-              </span>
-            </span>
-            <span class="metrics" id="metrics"></span>
-          </summary>
-          <div id="sg-body" class="sg-body"></div>
-        </details>
         <div class="gridcard">
+        <div class="gridhead">
+          <button id="sg-toggle" class="sg-toggle" type="button" aria-expanded="false" title="Show the application-state map">▸</button>
+          <span class="metrics" id="metrics"></span>
+          <span class="sg-live">
+            <span class="livestrip" id="live"><span class="muted">idle, no run active</span></span>
+            <button id="live-log" class="small hide" title="Show the live log of the running task"><svg class="ic" aria-hidden="true"><use href="#i-log"></use></svg> Live log</button>
+            <span id="runctl" class="runctl hide">
+              <button id="btn-pause" title="Finish the current task, then start nothing new"><svg class="ic" aria-hidden="true"><use href="#i-pause"></use></svg> Pause</button>
+              <button id="btn-stop" class="risky" title="Stop now: no new tasks, terminate the in-flight work"><svg class="ic" aria-hidden="true"><use href="#i-stop"></use></svg> Stop</button>
+            </span>
+          </span>
+        </div>
+        <div id="sg-body" class="sg-body hide"></div>
         <div class="toolbar grid-toolbar">
           <input id="q" placeholder="search company / role / ATS / notes…" style="flex:1;max-width:300px">
           <details id="filters" class="filters">
@@ -53,6 +102,14 @@
                 <option value="human">human-assist</option><option value="retry">retry</option><option value="finished">finished</option></select>
               <select id="fgroup" title="Show only the roles in a group (campaign), regardless of status">
                 <option value="">any group</option></select>
+              <select id="fseniority" title="Filter by seniority grade (read from the role title and the ad)">
+                <option value="">any level</option>
+                <option value="intern">intern</option><option value="junior">junior</option>
+                <option value="mid">mid</option><option value="senior">senior</option>
+                <option value="staff">staff</option><option value="principal">principal</option>
+                <option value="lead">lead</option><option value="manager">manager</option>
+                <option value="director">director</option><option value="vp">VP</option>
+                <option value="c-level">C-level</option></select>
               <select id="ftype" title="Filter by engagement type (read from the job ad, or set per row in the drawer)">
                 <option value="">any type</option>
                 <option value="full-time">full-time</option><option value="part-time">part-time</option>
@@ -79,18 +136,18 @@
                 <option value="on-site">on-site</option>
                 <option value="unknown">unknown</option></select>
               <label class="row mini" id="faction-wrap" title="Only rows that need a reply or other follow-up">
-                <input type="checkbox" id="faction"> ⚑ needs a reply/follow-up <span id="fact-count" class="muted"></span></label>
+                <input type="checkbox" id="faction"> <svg class="ic" aria-hidden="true"><use href="#i-flag"></use></svg> needs a reply/follow-up <span id="fact-count" class="muted"></span></label>
               <button id="fclear" class="small" type="button">Clear filters</button>
             </div>
           </details>
           <button id="export">Export CSV</button>
-          <button id="grouping" title="Group rows by bucket (default) or show one flat sorted list. Clicking a column header switches to the flat view">☰ Grouped</button>
-          <button id="groups" title="Create, rename or delete groups (campaigns)">🏷 Groups</button>
-          <button id="a-gmail-review" title="Emails that could not be confidently classified or matched; review and mark Done">📬 Review <b id="review-count">0</b></button>
-          <button id="a-prepare-shown" title="Generate documents for the rows currently shown (expanded groups). Runs the agent per role, a few minutes each. Nothing is submitted. You will be asked to confirm.">⚡ Prepare</button>
-          <button id="a-submit-shown" class="risky" title="Submit the PREPARED rows currently shown, with the documents already generated. Sends applications. You will be asked to confirm.">🚀 Submit</button>
-          <button id="a-match" title="Recompute the CV-to-job match for the rows currently shown. Instant, no agent. You will be asked to confirm.">↻ Match</button>
-          <button id="legend" title="What the columns, marks and statuses mean">ⓘ Legend</button>
+          <button id="grouping" title="Group rows by bucket (default) or show one flat sorted list. Clicking a column header switches to the flat view"><svg class="ic" aria-hidden="true"><use href="#i-list"></use></svg> Grouped</button>
+          <button id="groups" title="Create, rename or delete groups (campaigns)"><svg class="ic" aria-hidden="true"><use href="#i-tag"></use></svg> Groups</button>
+          <button id="a-gmail-review" title="Emails that could not be confidently classified or matched; review and mark Done"><svg class="ic" aria-hidden="true"><use href="#i-mail"></use></svg> Review <b id="review-count">0</b></button>
+          <button id="a-prepare-shown" title="Generate documents for the rows currently shown (expanded groups). Runs the agent per role, a few minutes each. Nothing is submitted. You will be asked to confirm."><svg class="ic" aria-hidden="true"><use href="#i-bolt"></use></svg> Prepare</button>
+          <button id="a-submit-shown" class="risky" title="Submit the PREPARED rows currently shown, with the documents already generated. Sends applications. You will be asked to confirm."><svg class="ic" aria-hidden="true"><use href="#i-send"></use></svg> Submit</button>
+          <button id="a-match" title="Recompute the CV-to-job match for the rows currently shown. Instant, no agent. You will be asked to confirm."><svg class="ic" aria-hidden="true"><use href="#i-refresh"></use></svg> Match</button>
+          <button id="legend" title="What the columns, marks and statuses mean"><svg class="ic" aria-hidden="true"><use href="#i-info"></use></svg> Legend</button>
         </div>
         <div class="gridwrap">
           <table id="grid">
@@ -98,8 +155,9 @@
           <th data-s="date" data-col="date" title="When this register row was last updated (YYYY-MM-DD)">Date</th>
           <th data-s="company" data-col="company" title="Employer / recruiter name">Company</th>
           <th data-s="role" data-col="role" title="Job title">Role</th>
+          <th data-s="seniority_rank" data-col="level" title="Seniority grade read from the role title, then the ad: Intern, Junior, Mid, Senior, Staff, Principal, Lead, Manager, Director, VP, C-level. Click to sort">Level</th>
           <th data-s="ats" data-col="ats" title="Applicant-tracking system the application was submitted through (Ashby, Teamtailor, LinkedIn, …)">ATS</th>
-          <th data-s="status" data-col="status" title="Current application status. See ⓘ Legend for each value">Status</th>
+          <th data-s="status" data-col="status" title="Current application status. See the Legend for each value">Status</th>
           <th data-s="match" data-col="match" title="CV-to-job fit: how much of the ad's ATS keyword list the tailored CV covers. A red ✗ means the pre-submit alignment gate FAILED">Fit</th>
           <th data-s="salary_eur" data-col="salary" title="Estimated annual pay in EUR from the ad (hourly/day rates are annualised). Click to sort.">Pay</th>
           <th data-s="work_model" data-col="work" title="Work model detected from the ad (remote / hybrid / on-site). Click to sort.">Work</th>
@@ -118,8 +176,8 @@
   <div class="edge" data-edge="right"><div class="splitter edge-split" data-edge="right" title="Drag to resize"></div><div class="edge-panels" data-edge="right"></div></div>
 </div>
 
-<button class="dock-tab" id="agent-tab" data-panel="agent" title="Open agent console">💬 Agent</button>
-<button class="dock-tab" id="detail-tab" data-panel="detail" title="Open detail" hidden>🔎 Detail</button>
+<button class="dock-tab" id="agent-tab" data-panel="agent" title="Open agent console"><svg class="ic" aria-hidden="true"><use href="#i-chat"></use></svg> Agent</button>
+<button class="dock-tab" id="detail-tab" data-panel="detail" title="Open detail" hidden><svg class="ic" aria-hidden="true"><use href="#i-search"></use></svg> Detail</button>
 
 <div class="dockzone" id="zone-left"></div>
 <div class="dockzone" id="zone-right"></div>
@@ -129,17 +187,17 @@
 <aside class="panel" id="dock" data-panel="agent" aria-label="Agent console">
   <div class="dock-head">
     <span class="dock-grip dock-drag" data-panel="agent" title="Drag to dock (left / top / bottom / right)">⠿</span>
-    <span class="dock-title dock-drag" data-panel="agent" title="Drag me to dock this panel">💬 Agent Console</span>
+    <span class="dock-title dock-drag" data-panel="agent" title="Drag me to dock this panel"><svg class="ic" aria-hidden="true"><use href="#i-chat"></use></svg> Agent Console</span>
     <span style="flex:1"></span>
-    <button class="panel-close small" data-panel="agent" title="Collapse">✕</button>
+    <button class="panel-close small" data-panel="agent" title="Collapse"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button>
   </div>
   <div class="panes" id="panes">
     <section class="pane pane-chat">
       <div class="pane-h">Chat <span id="agent-name" class="muted">…</span>
         <select id="chat-model" class="mini" title="Model for chat, role chats and queue/API runs"></select>
         <span style="flex:1"></span>
-        <button id="chat-stop" class="small risky hide" title="Stop the current turn (keeps the transcript)">⏹ Stop</button>
-        <button id="chat-new" class="small" title="Clear the agent chat history and start fresh">🗑 Clear</button>
+        <button id="chat-stop" class="small risky hide" title="Stop the current turn (keeps the transcript)"><svg class="ic" aria-hidden="true"><use href="#i-stop"></use></svg> Stop</button>
+        <button id="chat-new" class="small" title="Clear the agent chat history and start fresh"><svg class="ic" aria-hidden="true"><use href="#i-trash"></use></svg> Clear</button>
       </div>
       <div id="chat" class="term grow">ask the agent anything…</div>
       <div class="row chat-in">
@@ -174,7 +232,7 @@
     <span class="dock-grip dock-drag" data-panel="detail" title="Drag to dock (left / top / bottom / right)">⠿</span>
     <b id="d-title" class="dock-title dock-drag" data-panel="detail" style="font-weight:700">detail</b>
     <span style="flex:1"></span>
-    <button class="panel-close small" data-panel="detail" title="Close">✕</button>
+    <button class="panel-close small" data-panel="detail" title="Close"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button>
   </div>
   <div class="tabs2" id="dtabs"></div>
   <div id="d-body" class="d-body muted">select a row…</div>
@@ -190,7 +248,7 @@
     <input id="kg-q" placeholder="Search the graph" style="flex:0 1 220px"
       onkeydown="if(event.key==='Enter')App.kgSearch(this.value)">
     <button id="kg-search-btn" class="kg-btn" onclick="App.kgSearch($('#kg-q').value)">Search</button>
-    <button id="kg-semantic" class="kg-btn" onclick="App.kgSemantic($('#kg-q').value)" title="Natural-language semantic search over the graph embeddings">✨ Semantic</button>
+    <button id="kg-semantic" class="kg-btn" onclick="App.kgSemantic($('#kg-q').value)" title="Natural-language semantic search over the graph embeddings"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"></use></svg> Semantic</button>
     <button id="kg-tab-types" class="kg-btn" onclick="App.graphTypes()">Topics</button>
     <button id="kg-tab-comm" class="kg-btn" onclick="App.graphTop()">Communities</button>
     <button id="kg-all" class="kg-btn" onclick="App.graphAll()" style="display:none">All</button>
@@ -201,11 +259,11 @@
       <option value="3">3 hops</option>
     </select>
     <div class="kg-modes" role="tablist" aria-label="View">
-      <button id="kg-mode-map" class="on" onclick="App.setKGMode('map')" title="Drill down through communities and topics">🕸️ Map</button>
-      <button id="kg-mode-uni" onclick="App.setKGMode('universe')" title="Fly through the entire graph as a 3D universe">🌌 Universe</button>
+      <button id="kg-mode-map" class="on" onclick="App.setKGMode('map')" title="Drill down through communities and topics"><svg class="ic" aria-hidden="true"><use href="#i-map"></use></svg> Map</button>
+      <button id="kg-mode-uni" onclick="App.setKGMode('universe')" title="Fly through the entire graph as a 3D universe"><svg class="ic" aria-hidden="true"><use href="#i-globe"></use></svg> Universe</button>
     </div>
-    <button class="kg-btn kg-icon" onclick="App.openAsk()" title="Ask the knowledge graph a question; answers cite the graph">🧠</button>
-    <button class="kg-btn kg-icon" onclick="App.openEnrich()" title="Find grounded gaps in the graph and add the ones you approve">✨</button>
+    <button class="kg-btn kg-icon" onclick="App.openAsk()" title="Ask the knowledge graph a question; answers cite the graph"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"></use></svg></button>
+    <button class="kg-btn kg-icon" onclick="App.openEnrich()" title="Find grounded gaps in the graph and add the ones you approve"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"></use></svg></button>
     <button class="kg-btn" onclick="App.rebuildKB()" title="Full re-index of the knowledge graph. Can take 20 to 30+ minutes">Rebuild</button>
   </div>
   <div id="kg-results" class="kg-results hide"></div>
@@ -253,13 +311,13 @@
 </section>
 
 <div id="roleev" class="modal hide"><div class="modal-box" style="width:min(980px,94vw);height:min(780px,92vh);display:flex;flex-direction:column">
-  <div class="row"><b style="flex:1">🧠 Graph evidence for this role</b><button class="small" onclick="App.closeRoleEvidence()">✕</button></div>
+  <div class="row"><b style="flex:1"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"></use></svg> Graph evidence for this role</b><button class="small" onclick="App.closeRoleEvidence()"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button></div>
   <div id="roleev-head" class="muted mini" style="margin:4px 0 8px"></div>
   <div id="roleev-body" class="grow" style="overflow:auto"></div>
 </div></div>
 
 <div id="ask" class="modal hide"><div class="modal-box" style="width:min(900px,94vw);height:min(760px,92vh);display:flex;flex-direction:column">
-  <div class="row"><b style="flex:1">🧠 Ask the knowledge graph</b><button class="small" onclick="App.closeAsk()">✕</button></div>
+  <div class="row"><b style="flex:1"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"></use></svg> Ask the knowledge graph</b><button class="small" onclick="App.closeAsk()"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button></div>
   <p class="muted mini" style="margin:4px 0 8px">Questions are answered by GraphRAG with citations from your documents. Local is precise; Global is for themes; Semantic is fast vector retrieval; Drift is the deep pass.</p>
   <div class="row" style="gap:6px">
     <input id="ask-q" placeholder="What evidence do I have for scaling engineering teams?" style="flex:1" onkeydown="if(event.key==='Enter')App.askGraph()">
@@ -270,7 +328,7 @@
 </div></div>
 
 <div id="nodeedit" class="modal hide"><div class="modal-box" style="width:min(760px,94vw)">
-  <div class="row"><b style="flex:1">Edit node</b><button class="small" onclick="App.closeNodeEdit()">✕</button></div>
+  <div class="row"><b style="flex:1">Edit node</b><button class="small" onclick="App.closeNodeEdit()"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button></div>
   <div id="nodeedit-title" class="muted mini" style="margin:4px 0 8px"></div>
   <div id="nodeedit-subgraph" class="muted mini" style="margin-bottom:8px"></div>
   <label class="muted mini">Description</label>
@@ -284,14 +342,14 @@
 </div></div>
 
 <div id="enrich" class="modal hide"><div class="modal-box" style="width:min(980px,96vw);height:min(780px,92vh);display:flex;flex-direction:column">
-  <div class="row"><b style="flex:1">✨ Graph enrichment</b><button class="small" onclick="App.closeEnrich()">✕</button></div>
+  <div class="row"><b style="flex:1"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"></use></svg> Graph enrichment</b><button class="small" onclick="App.closeEnrich()"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button></div>
   <p class="muted mini" style="margin:4px 0 8px">Grounded gaps found in your own documents. Nothing is added until you tick it and press <b>Add selected</b>.</p>
   <div id="enrich-body" class="grow" style="overflow:auto"></div>
   <div class="row" style="margin-top:8px"><span id="enrich-msg" class="muted mini" style="flex:1"></span><button class="small" onclick="App.enrichAll(true)">Select all</button><button class="small" onclick="App.enrichAll(false)">Clear</button><button class="risky" onclick="App.enrichApply()">Add selected</button></div>
 </div></div>
 
 <div id="cfg" class="modal hide"><div class="modal-box" style="width:min(1040px,96vw);height:min(760px,92vh);display:flex;flex-direction:column">
-  <div class="row"><b style="flex:1">Settings</b><button class="small" onclick="window.cfgClose()">✕</button></div>
+  <div class="row"><b style="flex:1">Settings</b><button class="small" onclick="window.cfgClose()"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button></div>
   <div class="settings">
     <nav class="set-nav">
       <a data-s="accounts" onclick="App.settings('accounts')">Accounts</a>
@@ -328,7 +386,7 @@
 </div></div>
 
 <div id="upd" class="modal hide"><div class="modal-box" style="width:min(720px,94vw)">
-  <div class="row"><b style="flex:1" id="upd-title">Software update</b><button onclick="window.updClose()">✕</button></div>
+  <div class="row"><b style="flex:1" id="upd-title">Software update</b><button onclick="window.updClose()"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button></div>
   <p id="upd-lead" class="muted"></p>
   <div id="upd-notes" class="md" style="max-height:46vh;overflow:auto"></div>
   <div class="row" style="justify-content:flex-end;margin-top:14px">
@@ -360,7 +418,7 @@
 </div></div>
 
 <div id="evid" class="modal hide"><div class="modal-box">
-  <div class="row"><b style="flex:1">Add evidence for a skill</b><button onclick="evidClose()">✕</button></div>
+  <div class="row"><b style="flex:1">Add evidence for a skill</b><button onclick="evidClose()"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button></div>
   <p class="muted mini">Record where you <i>actually</i> have this skill. It's saved to the knowledge base
     and will show up in future tailored CVs (rebuild the graph to apply it now).</p>
   <div class="row"><span class="muted" style="min-width:86px">Skill</span><input id="evid-skill" style="flex:1"></div>
@@ -372,7 +430,7 @@
 </div></div>
 
 <div id="reviewm" class="modal hide" style="z-index:10040"><div class="modal-box" style="width:min(900px,96vw);max-height:90vh;display:flex;flex-direction:column">
-  <div class="row"><b style="flex:1">Gmail review <span id="reviewm-count" class="muted"></span></b><button class="small" onclick="reviewClose()">✕</button></div>
+  <div class="row"><b style="flex:1">Gmail review <span id="reviewm-count" class="muted"></span></b><button class="small" onclick="reviewClose()"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button></div>
   <p class="muted mini">Emails the reconciler could not confidently classify or match. Open the mail, decide, then mark Done. Turning this off in Settings stops new items being captured.</p>
   <div class="row" style="margin:4px 0"><span class="muted">Show</span>
     <select id="review-filter" class="mini">
@@ -388,14 +446,14 @@
 </div></div>
 
 <div id="draftm" class="modal hide"><div class="modal-box" style="width:min(820px,96vw);display:flex;flex-direction:column;max-height:92vh">
-  <div class="row"><b style="flex:1" id="draftm-title">Draft reply</b><button class="small" onclick="draftClose()">✕</button></div>
+  <div class="row"><b style="flex:1" id="draftm-title">Draft reply</b><button class="small" onclick="draftClose()"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button></div>
   <div class="row" style="margin-top:6px"><span class="muted" style="min-width:70px">To</span><input id="dr-to" style="flex:1" placeholder="recipient@example.com"></div>
   <div class="row"><span class="muted" style="min-width:70px">Cc</span><input id="dr-cc" style="flex:1"></div>
   <div class="row"><span class="muted" style="min-width:70px">Subject</span><input id="dr-subject" style="flex:1"></div>
   <div class="row"><span class="muted" style="min-width:70px">Attach</span><input id="dr-attach" style="flex:1" placeholder="comma-separated paths, e.g. documents/applications/Your_Name_CV_x.docx"></div>
-  <div id="draft-error" class="hide" style="margin:6px 0;font-size:13px;color:#ffb4b4"></div>
+  <div id="draft-error" class="hide" style="margin:6px 0;font-size:13px;color:#e2b8b8"></div>
   <textarea id="dr-body" style="min-height:34vh;margin-top:8px" placeholder="Write the reply…"></textarea>
-  <label class="row mini" style="margin-top:8px"><input type="checkbox" id="dr-clear" checked> clear the ⚑ action flag after sending</label>
+  <label class="row mini" style="margin-top:8px"><input type="checkbox" id="dr-clear" checked> clear the follow-up flag after sending</label>
   <div class="row" style="justify-content:flex-end;margin-top:10px">
     <button onclick="draftClose()">Cancel</button>
     <button onclick="App.draftSave(false)">Save draft</button>
@@ -403,17 +461,17 @@
 </div></div>
 
 <div id="peras" class="modal hide"><div class="modal-box" style="width:min(720px,94vw)">
-  <div class="row"><b style="flex:1">Preparing documents</b><span id="peras-spin" class="spin">🥜</span></div>
+  <div class="row"><b style="flex:1">Preparing documents</b><span id="peras-spin" class="spin"><svg class="ic" aria-hidden="true"><use href="#i-loader"></use></svg></span></div>
   <p class="muted">Generating the tailored CV and cover letter, then running the gates. <b>Nothing is submitted.</b>
     This takes a few minutes and runs in the background.</p>
   <div id="peras-body" class="term" style="max-height:40vh">starting…</div>
   <div class="row" style="justify-content:flex-end;margin-top:12px">
     <button onclick="perasClose()">Hide</button>
-    <button id="peras-stop" class="risky">⏹ Stop</button></div>
+    <button id="peras-stop" class="risky"><svg class="ic" aria-hidden="true"><use href="#i-stop"></use></svg> Stop</button></div>
 </div></div>
 
 <div id="legend-modal" class="modal hide"><div class="modal-box" style="width:min(760px,94vw)">
-  <div class="row"><b style="flex:1">Views, columns and marks</b><button onclick="window.legendClose()">✕</button></div>
+  <div class="row"><b style="flex:1">Views, columns and marks</b><button onclick="window.legendClose()"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button></div>
   <div class="legend">
     <div class="legend-col">
       <h4>Views</h4>
@@ -424,11 +482,12 @@
         <dt>Date</dt><dd>When the register row was last updated.</dd>
         <dt>ATS</dt><dd>The applicant-tracking system the application went through.</dd>
         <dt>Status</dt><dd>Where the application currently stands (list below).</dd>
-        <dt>⚑ action</dt><dd>A reply or follow-up is needed (e.g. answer an interview email, complete an assessment). Tick the box under Filters to show only those; set or clear the flag in the row's drawer or from the right-click menu.</dd>
+        <dt>Follow-up flag</dt><dd>A reply or follow-up is needed (e.g. answer an interview email, complete an assessment). Tick the box under Filters to show only those; set or clear the flag in the row's drawer or from the right-click menu.</dd>
         <dt>Application states</dt><dd>The collapsible graph above the grid is the pipeline: each state shows how many live roles are in it, and clicking a state filters the grid to that status (Clear filters resets). CLOSED can follow any state.</dd>
-        <dt>Sorting</dt><dd>Click a column header to sort the whole list (the grid switches to a flat view); click again to reverse. <b>☰ Grouped</b> in the toolbar returns to the bucket sections.</dd>
-        <dt>Right-click a row</dt><dd>Opens the row menu: open details/documents/the ad, prepare, submit prepared, recompute match, draft a reply, add to a group (campaign) or create one, manage groups from the 🏷 Groups button, set status, close the role (status CLOSED), flag a follow-up, pin to the top, re-queue, hand to you, or copy the company/role/link/key. <b>📌</b> = pinned.</dd>
-        <dt>Fit</dt><dd>How much of the ad's ATS keyword list the tailored CV covers. <b>align✗</b> = the pre-submit alignment gate failed. Click to sort.</dd>
+        <dt>Sorting</dt><dd>Click a column header to sort the whole list (the grid switches to a flat view); click again to reverse. <b><svg class="ic" aria-hidden="true"><use href="#i-list"></use></svg> Grouped</b> in the toolbar returns to the bucket sections.</dd>
+        <dt>Right-click a row</dt><dd>Opens the row menu: open details/documents/the ad, prepare, submit prepared, recompute match, draft a reply, add to a group (campaign) or create one, manage groups from the <svg class="ic" aria-hidden="true"><use href="#i-tag"></use></svg> Groups button, set status, close the role (status CLOSED), flag a follow-up, pin to the top, re-queue, hand to you, or copy the company/role/link/key. <b><svg class="ic" aria-hidden="true"><use href="#i-pin"></use></svg></b> = pinned.</dd>
+        <dt>Level</dt><dd>Seniority grade read from the role title (then the ad): Intern, Junior, Mid, Senior, Staff, Principal, Lead, Manager, Director, VP, C-level. Click the header to sort, or use <b>Level</b> in Filters to narrow the grid.</dd>
+    <dt>Fit</dt><dd>How much of the ad's ATS keyword list the tailored CV covers. <b>align✗</b> = the pre-submit alignment gate failed. Click to sort.</dd>
         <dt>Pay</dt><dd>Estimated annual pay in EUR from the ad (hourly/day rates annualised at 1,600h/220d; approximate FX). Hover for the source text. <span class="muted">-</span> means no figure in the ad. Set one in the row's Summary. Click to sort.</dd>
         <dt>Work</dt><dd>Remote / hybrid / on-site detected from the ad. Set an override in the row's Summary. Click to sort.</dd>
         <dt>Queue</dt><dd>Where the role sits in the apply queue (list below).</dd>
@@ -448,7 +507,7 @@
 </div></div>
 
 <div id="groupsm" class="modal hide"><div class="modal-box" style="width:min(620px,94vw)">
-  <div class="row"><b style="flex:1">Groups</b><button onclick="groupsClose()">✕</button></div>
+  <div class="row"><b style="flex:1">Groups</b><button onclick="groupsClose()"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button></div>
   <p class="muted mini" style="margin:0 0 10px">Groups are campaigns that cross status. Right-click a role → Groups to add it. Deleting a group removes its memberships, not the roles.</p>
   <div class="row" style="margin:8px 0">
     <input id="group-new" placeholder="New group name…" style="flex:1"
@@ -460,11 +519,12 @@
 
 <div id="docv" class="modal hide"><div class="modal-box" style="width:min(900px,94vw)">
   <div class="row"><b id="docv-title" style="flex:1">document</b><a id="docv-raw" href="#" target="_blank" class="mini muted">open raw</a>
-    <button onclick="docClose()">✕</button></div>
+    <button onclick="docClose()"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button></div>
   <div id="docv-body" class="d-body grow"></div>
 </div></div>
 
 <script>window.__bootfail = '';</script>
+<script type="module" src="/critters.js?v={{ASSET}}"></script>
 <script src="/app.js?v={{ASSET}}" onerror="window.__bootfail='app.js failed to load';(function(){try{var n=+(sessionStorage.getItem('js-boot-retry')||0);if(n<2){sessionStorage.setItem('js-boot-retry',String(n+1));setTimeout(function(){location.reload()},1200)}}catch(e){}})()"></script>
 <script>
   // Recover only from a genuine boot failure (app.js failed to load), never

@@ -1,6 +1,6 @@
 # Run modes
 
-<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+<div align="center"><sub><a href="../README.md">Jobsquirrel</a> · <a href="README.md">Docs</a></sub></div>
 
 
 The pipeline can be run several ways. **The agent should explain these to the

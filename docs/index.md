@@ -4,7 +4,7 @@ description: Jobsquirrel is an open, self-hosted job-application agent: it finds
 
 <div class="js-hero">
   <div>
-    <h1>🐿️ Jobsquirrel</h1>
+    <h1>Jobsquirrel</h1>
     <p><strong>An open, self-hosted job-application agent: hand it your CV (resume) and it finds, tailors, gates and applies to jobs for you.</strong></p>
     <p>Honest, targeted and auditable: with a real knowledge graph, hard gates before anything is sent, and a scam detector that knows the difference between a recruiter and a wallet drain.</p>
     <div class="js-badges">
@@ -28,12 +28,12 @@ description: Jobsquirrel is an open, self-hosted job-application agent: it finds
 ## What it does
 
 <div class="js-cards">
-  <div class="js-card"><div class="js-ico">🔎</div><h3>Discover</h3><p>Reads LinkedIn job alerts and recruiter mail, dedupes against the register, and queues the roles worth doing.</p></div>
-  <div class="js-card"><div class="js-ico">🎯</div><h3>Target</h3><p>A per-role CV and letter, grounded in your private knowledge graph, mirroring the advert without inventing anything.</p></div>
-  <div class="js-card"><div class="js-ico">🛡️</div><h3>Gate</h3><p>Alignment, evidence, ATS coverage, identity and no-AI-slop gates. Nothing is uploaded until they pass.</p></div>
-  <div class="js-card"><div class="js-ico">🤖</div><h3>Apply</h3><p>Drives the employer's own ATS through a real Camoufox browser, then records the exact files and hashes.</p></div>
-  <div class="js-card"><div class="js-ico">📬</div><h3>Track</h3><p>Reconciles Gmail, surfaces interviews and verification links, triages job mail the classifier missed, and keeps one source of truth for every role.</p></div>
-  <div class="js-card"><div class="js-ico">🕵️</div><h3>Warn</h3><p>Flags recruitment scams before you engage: remote-access interviews, wallet drains, task scams, money mules and reshipping.</p></div>
+  <div class="js-card"><div class="js-ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-3.6-3.6"/></svg></div><h3>Discover</h3><p>Reads LinkedIn job alerts and recruiter mail, dedupes against the register, and queues the roles worth doing.</p></div>
+  <div class="js-card"><div class="js-ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg></div><h3>Target</h3><p>A per-role CV and letter, grounded in your private knowledge graph, mirroring the advert without inventing anything.</p></div>
+  <div class="js-card"><div class="js-ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg></div><h3>Gate</h3><p>Alignment, evidence, ATS coverage, identity and no-AI-slop gates. Nothing is uploaded until they pass.</p></div>
+  <div class="js-card"><div class="js-ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="8" width="14" height="11" rx="2.5"/><path d="M12 8V5"/><circle cx="12" cy="4" r="1.4"/><path d="M9.5 13h.01M14.5 13h.01M9 16h6"/></svg></div><h3>Apply</h3><p>Drives the employer's own ATS through a real Camoufox browser, then records the exact files and hashes.</p></div>
+  <div class="js-card"><div class="js-ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></div><h3>Track</h3><p>Reconciles Gmail, surfaces interviews and verification links, triages job mail the classifier missed, and keeps one source of truth for every role.</p></div>
+  <div class="js-card"><div class="js-ico"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-3.6-3.6M11 8v3"/></svg></div><h3>Warn</h3><p>Flags recruitment scams before you engage: remote-access interviews, wallet drains, task scams, money mules and reshipping.</p></div>
 </div>
 
 !!! tip "Everything is local"
@@ -89,7 +89,7 @@ description: Jobsquirrel is an open, self-hosted job-application agent: it finds
 
 <div align="center" markdown>
 
-**If it helps, give it a star** ⭐: it helps other people find it.
+**If it helps, give it a star**: it helps other people find it.
 
 [GitHub](https://github.com/bongomanuk/jobsquirrel) · [Releases](https://github.com/bongomanuk/jobsquirrel/releases) · [Report an issue](https://github.com/bongomanuk/jobsquirrel/issues)
 

@@ -1762,6 +1762,44 @@ def _replied_since_invite(notes):
     return sent > 0 and (invite == 0 or sent >= invite)
 
 
+
+# Seniority grading: title first (predictable, no model), then the ad's own
+# wording. The order matters: "Senior Manager" is a manager, not a senior IC.
+_SENIORITY = (
+    ("c-level", "C-level", 10, r"\b(chief|cto|cio|cfo|coo|cpo|cmo|co-?founder|owner)\b"),
+    ("vp", "VP", 9, r"\b(vice[ -]?president|vp|svp|evp|v\.p\.)\b"),
+    ("director", "Director", 8, r"\b(director|head of)\b"),
+    ("manager", "Manager", 7, r"\b(manager|management|mgr)\b"),
+    ("lead", "Lead", 6, r"\blead\b"),
+    ("principal", "Principal", 5, r"\bprincipal\b"),
+    ("staff", "Staff", 4, r"\bstaff\b"),
+    ("senior", "Senior", 3, r"\b(senior|sr\.?)\b"),
+    ("junior", "Junior", 1, r"\b(junior|graduate|entry[ -]level|trainee)\b"),
+    ("intern", "Intern", 0, r"\bintern(ship)?\b"),
+)
+
+
+def seniority_of(title, jd_text=""):
+    """(key, label, rank) for a role title, falling back to the ad's wording.
+
+    Word boundaries matter: "director" contains "cto" and used to be graded
+    C-level. The first matching rule wins, so a "Senior Manager" is a manager.
+    """
+    t = " " + (title or "").lower() + " "
+    for key, label, rank, pattern in _SENIORITY:
+        if re.search(pattern, t):
+            return key, label, rank
+    low = (jd_text or "").lower()
+    if low:
+        if re.search(r"\b(head of|director of)\b", low):
+            return "director", "Director", 8
+        if re.search(r"\breport(s|ing)? to the (cto|ceo)\b", low):
+            return "lead", "Lead", 6
+        if re.search(r"\bsenior (engineer|developer|specialist)\b", low):
+            return "senior", "Senior", 3
+    return "mid", "Mid", 2
+
+
 def _substate(status, notes="", action="", label=""):
     """The human sub-state inside a coarse register status.
 
@@ -2009,12 +2047,14 @@ def grid():
         employment = ((r.get("employment") or "").strip().lower()
                       or _employment_from_jd(jd_key) or _employment_from_notes(notes))
         sub = _substate(status, notes, r.get("action", ""), label)
+        sen = seniority_of(role, _read(os.path.join(STATE, "job-descriptions", jd_key + ".md"))[:4000])
         if status == "INTERVIEW":
             hint = sub[2]
         out.append({"date": r.get("date", ""), "company": co, "role": role, "ats": r.get("ats", ""),
                     "status": status, "label": label, "interview_at": interview_at, "key": key,
                     "substate": sub[0], "substate_label": sub[1], "substate_hint": sub[2],
                     "employment": employment,
+                    "seniority": sen[0], "seniority_label": sen[1], "seniority_rank": sen[2],
                     "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, ""),
                     "spec": jd_key in specs, "jd_key": jd_key, "applied": ck in subm,
                     "match": cov, "alignment": align, "running": ck in running,
@@ -2063,10 +2103,12 @@ def grid():
         else:
             stg = "QUEUED"
         sub = _substate(stg, "", "", stg)
+        sen = seniority_of(role, _read(jd)[:4000])
         out.append({"date": qdate, "company": co, "role": role, "ats": r.get("ats", ""),
                     "status": stg, "label": stg, "interview_at": "", "key": key,
                     "substate": sub[0], "substate_label": sub[1], "substate_hint": sub[2],
                     "employment": r.get("employment", "") or _employment_from_jd(key),
+                    "seniority": sen[0], "seniority_label": sen[1], "seniority_rank": sen[2],
                     "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, "pending"),
                     "spec": key in specs, "jd_key": key, "applied": ck in subm,
                     "match": cov, "alignment": m.get("alignment", ""), "running": ck in running,
@@ -2179,13 +2221,16 @@ def read_task_log(name):
 
 def _web_build():
     """Restart + static-frontend fingerprint, so an open tab reloads itself."""
-    try:
-        static = "|".join(
-            f"{st.st_mtime_ns}:{st.st_size}"
-            for st in (os.stat(os.path.join(WEB, f)) for f in ("index.html", "app.css", "app.js"))
-        )
-    except OSError:
-        static = ""
+    files = ("index.html", "app.css", "app.js", "critters.js", "graph3d.js",
+             "graph-universe.js", "vendor/three.module.min.js")
+    parts = []
+    for name in files:
+        try:
+            st = os.stat(os.path.join(WEB, name))
+            parts.append(f"{name}:{st.st_mtime_ns}:{st.st_size}")
+        except OSError:
+            continue
+    static = "|".join(parts)
     return f"{BOOT_ID}|{static}"
 
 
@@ -4219,20 +4264,64 @@ def submit_roles(keys, approval_token=""):
 
 
 
+def _ats_keywords_for(key):
+    """Make sure a role has an ATS keyword file, taking it from the saved ad.
+
+    A missing keyword file used to make "recompute match" a silent no-op: there
+    was nothing to score against, so the Fit column stayed blank. Extraction is
+    deterministic and local (no agent, no model), so it is safe to run here.
+    """
+    ats = os.path.join(STATE, "ats", key + ".txt")
+    if _present(ats):
+        return ats
+    jd = os.path.join(STATE, "job-descriptions", key + ".md")
+    if not _present(jd):
+        jdk = _jd_key_for(key, key)
+        jd = os.path.join(STATE, "job-descriptions", jdk + ".md")
+        if not _present(jd):
+            return ""
+    try:
+        subprocess.run([sys.executable, os.path.join(ROOT, "tools", "ats_keywords.py"),
+                        "--jd", jd, "--out", ats], cwd=ROOT,
+                       capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return ats if _present(ats) else ""
+
+
 def recompute_match(keys=None):
+    """Recompute the CV-to-job fit for named roles, or clear every cache.
+
+    Clearing a cache is not a recompute. The Fit column comes from the tailored
+    documents, and the alignment mark from match_score(), so both are computed
+    here and the caller gets an honest per-role answer.
+    """
     keys = [str(k).strip() for k in (keys or []) if str(k).strip()]
-    if keys:
-        for k in keys:
-            _COV.pop(k, None)
-            _MATCH_CACHE.pop(k, None)
-        msg = f"recomputing match for {len(keys)} role(s)"
-    else:
+    if not keys:
         _COV.clear()
         _MATCH_CACHE.clear()
-        msg = "recomputing match for all roles"
+        globals()["_cov_dirty"] = True
+        _save_cov()
+        return {"ok": "match caches cleared for every role"}
+    done, skipped = 0, []
+    for k in keys:
+        _COV.pop(k, None)
+        _MATCH_CACHE.pop(k, None)
+        if not _ats_keywords_for(k):
+            skipped.append(k)
+            continue
+        match_score(k, cache=False)
+        done += 1
     globals()["_cov_dirty"] = True
     _save_cov()
-    return {"ok": msg}
+    if not done:
+        return {"error": (f"nothing to score for {len(skipped)} role(s): no saved job ad, "
+                          "so no ATS keywords; save the ad first"),
+                "skipped": skipped}
+    msg = f"match recomputed for {done} role(s)"
+    if skipped:
+        msg += f"; {len(skipped)} skipped (no saved job ad or ATS keywords)"
+    return {"ok": msg, "skipped": skipped}
 
 
 def start_action(command, approval_token=""):
@@ -4973,6 +5062,7 @@ class H(BaseHTTPRequestHandler):
         static = {"/": ("index.html", "text/html; charset=utf-8"),
                   "/app.css": ("app.css", "text/css; charset=utf-8"),
                   "/app.js": ("app.js", "application/javascript; charset=utf-8"),
+                  "/critters.js": ("critters.js", "application/javascript; charset=utf-8"),
                   "/graph3d.js": ("graph3d.js", "application/javascript; charset=utf-8"),
                   "/graph-universe.js": ("graph-universe.js", "application/javascript; charset=utf-8"),
                   "/vendor/three.module.min.js": ("vendor/three.module.min.js",

@@ -1,6 +1,6 @@
 # Jobsquirrel: Product & Web Interface Specification
 
-<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+<div align="center"><sub><a href="../README.md">Jobsquirrel</a> · <a href="README.md">Docs</a></sub></div>
 
 
 Status: living document · Owner: repo owner · Applies to this repository.
@@ -54,7 +54,7 @@ Components:
 
 | Path | Contents |
 |---|---|
-| `state/applications.csv` | Canonical register: `date,company,role,ats,status,letter,notes,employment,action,key,apply_url`. One row per role. `key` is the role's single identity (the queue row's last column, also what `queue.done` stores); rows written before it existed fall back to `company|role`. `action` is a short **human to-do** (reply/assessment/booking) surfaced as ⚑ in the grid and filterable. A passive waiting phrase ("await a reply") is dropped: the status and sub-state already say that, and recording a sent reply clears the flag. |
+| `state/applications.csv` | Canonical register: `date,company,role,ats,status,letter,notes,employment,action,key,apply_url`. One row per role. `key` is the role's single identity (the queue row's last column, also what `queue.done` stores); rows written before it existed fall back to `company|role`. `action` is a short **human to-do** (reply/assessment/booking) surfaced as a flag in the grid and filterable. A passive waiting phrase ("await a reply") is dropped: the status and sub-state already say that, and recording a sent reply clears the flag. |
 | `state/submissions.csv` | Provenance ledger: paths + sha256 + snapshot dir + evidence + confidence (`verified`/`forced`/`inferred`). |
 | `state/role-groups.json` | Named groups (campaigns): `{groups:{id:{name,color}},roles:{key:[id]}}`, independent of status. |
 | `state/shelved.json` | Operator shelf: `{key:{at,note}}`. A view overlay only; the register status and artifacts are unchanged. |
@@ -86,7 +86,7 @@ Components:
 
 `QUEUED | SUBMITTED | IN_PROGRESS | INTERVIEW | OFFER | REJECTED | BLOCKED | MANUAL | PREPARED | CLOSED`.
 
-- **Follow-up flags** (`action` in the register; ⚑ in the grid, a toolbar filter, and editable
+- **Follow-up flags** (`action` in the register; a flag in the grid, a toolbar filter, and editable
   in the row drawer). Each row also lists its **drafted replies** (write one, or ask the agent; then
   review and send with approval). Reconcile sets an action on an interview invite (`Reply to <sender>: <subject>`) and
   clears it on a rejection; anything manual (assessment, booking) can be flagged/cleared in the UI.
@@ -165,7 +165,7 @@ Components:
    labour-trafficking red flags, recovery scams, chat-only interviews, unrealistic
    pay, early ID/bank details, pressure and free-mailbox senders. A **HIGH** signal blocks `prepare_role.py`
    (exit 3; `--allow-scam` overrides after human verification), and the signal is
-   stored in `state/scam/<key>.json`, shown as a ⚠ marker on the grid and a red/amber
+   stored in `state/scam/<key>.json`, shown as a scam marker on the grid and a red/amber
    banner in the role drawer and the Gmail review. The hard rule: never download or
    install software for an interview, never join a chat-only interview, never share a
    wallet/seed phrase/private key, never pay a fee or move money. See `docs/SCAMS.md`.
@@ -194,34 +194,38 @@ and stops at any CAPTCHA/2FA rather than working around it.
 ### 9.2 Shell (single-grid IA)
 The whole app is **one master data grid**: one canonical row per application, so the
 same record is never duplicated across separate pages.
-- **Header:** mascot 🐿️ · health pill (`/api/health`; click it to open Settings → About with
-  the full check list, version and instance details) · three destinations: **📋 Applications**,
-  **🕸️ Knowledge** and **⚙ Settings**. Version, build/update status, logs and the
+- **Header:** squirrel mark · health pill (`/api/health`; click it to open Settings → About with
+  the full check list, version and instance details) · three destinations: **Applications**,
+  **Knowledge** and **Settings**. Version, build/update status, logs and the
   About/credits live in Settings. The broad Prepare / Run Submissions actions are
   not in the header; the grid card's action bar has scoped **Prepare** and **Submit**, and
   a `PREPARED` row's drawer has **Submit this application**.
 - **Grid card:** the grid, its search/filter/view controls and its actions are one bordered
   card. The action bar sits directly above the table (not floating at the top of the page) with
-  consistently sized buttons: **Export CSV**, **☰ Grouped**, **🏷 Groups**, **📬 Review**,
-  **⚡ Prepare** (generate documents for the rows currently shown; review-only),
-  **🚀 Submit** (submit the prepared rows in this view; approval-gated), **↻ Match** (recompute
+  consistently sized buttons: **Export CSV**, **Grouped**, **Groups**, **Review**,
+  **Prepare** (generate documents for the rows currently shown; review-only),
+  **Submit** (submit the prepared rows in this view; approval-gated), **Match** (recompute
   fit) and **ⓘ Legend**. Prepare, Submit, Match and Export CSV each show a plain-language
-  confirmation dialog with the scope and effect before they run.
-- **Application states header:** the section carries the bucket filter chips
+  confirmation dialog with the scope and effect before they run. **Match** recomputes coverage and
+  alignment for the rows it is given, takes ATS keywords from the saved ad when a role has none, and
+  says plainly when there is nothing to score.
+- **Application states header:** the first row of the grid itself carries the bucket filter chips
   (**Active · Focus · Probably scams · Shelved · Needs you · Prepared · Ongoing · To apply · Done · All**)
   with live counts, plus the live-tail line (`/api/live`) and the run controls. Click a chip to filter the
-  grid to that bucket; the active chip is highlighted. There is no separate metric strip, and the section
-  sits directly above the grid card.
-- **Process control:** while a run is active the Application states header shows **⏸ Pause** (workers
-  finish the current task then wait) and **⏹ Stop** (no new tasks; terminate the in-flight action).
+  grid to that bucket; the active chip is highlighted. A small chevron at the left edge folds the state
+  map out and back (remembered per browser); there is no separate title bar, no metric strip and no
+  card around the grid.
+- **Process control:** while a run is active the Application states header shows **Pause** (workers
+  finish the current task then wait) and **Stop** (no new tasks; terminate the in-flight action).
   Backend: `POST /api/action/pause` + `/api/action/stop` (`state/queue.pause` / `state/queue.stop`).
 
 ### 9.3 Master grid (the one table)
-Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files · Job ad**
+Columns: **Date · Company · Role · Level · ATS · Status · Fit · Pay · Work · Queue · Files · Job ad**
 (every header/cell/chip has a hover tooltip; **ⓘ Legend** explains them all).
 - Search / filter / sort: **click any column header** to sort the whole list (the grid switches to a flat
-  view so the order is not hidden inside collapsed groups), click again to reverse, and **☰ Grouped** in
+  view so the order is not hidden inside collapsed groups), click again to reverse, and **Grouped** in
   the toolbar returns to the bucket sections. The active sort carries an arrow. **Export CSV**.
+- **Level** = seniority read from the role title (word-boundary rules, so a Director is not mistaken for a C-level and a Senior Manager is a manager), falling back to the ad's own wording. Click the header to sort by grade; the **Level** filter narrows the grid independently of the buckets.
 - **Match** = ATS-keyword coverage % of the CV (computed for every role that has a saved ad;
   shown with an `align✗` badge when the alignment gate failed).
 - **Queue** = `pending | human | retry | done`; **Files** = provenance recorded (✓/-);
@@ -230,31 +234,31 @@ Columns: **Date · Company · Role · ATS · Status · Match · Queue · Files �
   revisions. It fetches the grid only when state changes and refreshes the live strip only when logs or
   actions change. Polling remains a fallback (10s grid, 5s live) and pauses while the tab is hidden;
   an active run keeps the 3s/2.5s cadence. Scroll, sort and filters are preserved across updates.
-  and floats **in-flight** rows (🥜) and **QUEUED** rows (queued but not yet in the register) to the top.
-- **Application states graph** above the grid (collapsed by default): a clickable diagram of
-  QUEUED → DRAFTING → PREPARED → SUBMITTED → IN_PROGRESS → INTERVIEW → OFFER, with BLOCKED/MANUAL
-  branches and REJECTED/CLOSED terminals. Each node shows its live count and a
-  one-line annotation; clicking a node expands its sub-states and filters the grid to that status,
-  and clicking a sub-state filters further. **SCAMS** and **SHELVED** are side nodes that filter
-  their buckets. The open/closed state is remembered.
+  and floats **in-flight** rows (spinner) and **QUEUED** rows (queued but not yet in the register) to the top.
+- **Application states map** folds out from the grid header (collapsed by default): a clickable
+  diagram of QUEUED → DRAFTING → PREPARED → SUBMITTED → IN_PROGRESS → INTERVIEW → OFFER, with
+  BLOCKED/MANUAL branches and REJECTED/CLOSED terminals. Each node shows its live count and a
+  one-line annotation; clicking a node expands its sub-states as a flat list and filters the grid to
+  that status, and clicking a sub-state filters further. **SCAMS** and **SHELVED** are side nodes that
+  filter their buckets. The open/closed state is remembered.
 - **Columns:** right-click any column header to choose which columns are visible. The choice is
   saved per browser. Drag a divider to resize a column; double-click it to reset that column.
 - **Right-click a row** for the full action menu: open details / documents / the ad / the apply page,
   discuss the role, prepare documents, submit prepared (approval-gated), recompute the match, draft a
   reply with the agent, set the status, flag or clear a follow-up, **pin to the top**, re-queue, hand to a human, unblock/remove from the queue, and copy the company, role,
   URL or key. Keyboard: arrows move, Escape closes.
-- **🏷 Groups** in the toolbar opens the group manager: create a campaign, rename or delete one.
+- **Groups** in the toolbar opens the group manager: create a campaign, rename or delete one.
   Deleting a group removes its memberships, not the roles. Right-click a row → Groups to add or
   remove that role.
 - **Shelved** is a view overlay, not a status: right-click a row → **Shelve for later** keeps its
   status, notes, documents and provenance unchanged and moves it to the **Shelved** bucket and
   the **SHELVED** node in the state graph. The node sits next to **SCAMS** but is independent of
   it. Unshelve from the same menu.
-- The menu is **state-aware**: it opens with the company, role, status chip, fit, ⚑ flag and interview
+- The menu is **state-aware**: it opens with the company, role, status chip, fit, follow-up flag and interview
   time, and only offers actions that apply (no submit unless `PREPARED`, no reply draft on a closed
   role, no queue action on a prepared one, "Reopen as" instead of "Set status" on a rejected/closed
   one). Items that cannot apply are omitted rather than greyed out.
-- **Pin** sorts a role first inside its group (📌).
+- **Pin** sorts a role first inside its group (pin).
 
 ### 9.4 Detail drawer (right-hand)
 Clicking a row opens a drawer with a single tab strip that never wraps:
@@ -265,7 +269,7 @@ Clicking a row opens a drawer with a single tab strip that never wraps:
   work model and pay override behind one **Save changes**. **Match** shows alignment, coverage,
   missing skills and keyword tools. **History and notes** is a collapsible section with past
   updates and the editable notes.
-- **Chat**: a chat box scoped to this role. The first turn carries the row, status, ⚑ action,
+- **Chat**: a chat box scoped to this role. The first turn carries the row, status, follow-up action,
   notes, the saved job ad and CV pack; each role keeps its own agent session and transcript
   (`state/logs/role-chat/<key>.log`), with Stop and Clear. Tool calls stay collapsed like the main console.
 - **Files**: CV/letter paths + sha256 (click to copy), confidence, evidence, snapshot, screenshots.
@@ -274,7 +278,7 @@ Clicking a row opens a drawer with a single tab strip that never wraps:
 - **Docs**: the **rendered** tailored CV (inline preview) and cover letter, with buttons to
   open either in the viewer and to open the CV PDF; the raw content pack is behind a toggle.
 
-### 9.5 Settings panel (⚙ Settings)
+### 9.5 Settings panel
 - Sections: **Accounts** (status + Gmail/Calendar authorisation), **Secrets** (the encrypted
   store: agent keys, GraphRAG, Google OAuth, per-site logins and custom entries, masked),
   **AI & agent** (which agent CLI + model picker + API-token env, and the GraphRAG LLM settings),
@@ -480,7 +484,7 @@ interface contract.
 - Dark, high-contrast; amber accent; colour-coded status chips; squirrel mascot animates; empty-state-safe.
 - **Software update:** the header shows the running **version**; when `/api/update`
   (GitHub `releases/latest` vs the `VERSION` file, cached 1h) reports a newer
-  release, an **⬆ update** pill appears. Clicking it shows the release notes with
+  release, an **update** pill appears. Clicking it shows the release notes with
   **Update now** (`git pull --ff-only`, approval-gated): restart to apply.
 - Degrades to an empty state with no local data.
 - **One notification surface:** toasts replace in place (never stack), and the

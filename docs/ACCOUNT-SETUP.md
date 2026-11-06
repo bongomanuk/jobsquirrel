@@ -1,6 +1,6 @@
 # Account setup
 
-<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+<div align="center"><sub><a href="../README.md">Jobsquirrel</a> · <a href="README.md">Docs</a></sub></div>
 
 
 The pipeline needs a few accounts and credentials. **None are required to read
@@ -171,7 +171,7 @@ also receive an invitation email.
 
 ## 4. LinkedIn (optional, Easy Apply only)
 
-> ⚠️ **Terms-of-service risk.** LinkedIn's User Agreement prohibits automated
+> **Terms-of-service risk.** LinkedIn's User Agreement prohibits automated
 > access and activity. Driving Easy Apply with a browser bot, however human-paced
 >, **may breach those terms and can get your account restricted or banned.**
 > This is **opt-in** and does nothing unless you set it up; if you use it, you

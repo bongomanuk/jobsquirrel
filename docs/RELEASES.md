@@ -1,6 +1,6 @@
 # Releases
 
-<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+<div align="center"><sub><a href="../README.md">Jobsquirrel</a> · <a href="README.md">Docs</a></sub></div>
 
 
 ## Privacy (release notes are public)

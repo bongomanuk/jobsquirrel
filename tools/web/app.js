@@ -3,6 +3,9 @@ const TOKEN = document.body.dataset.sessionToken;
 const $ = (s) => document.querySelector(s);
 const esc = (s) => (s == null ? '' : String(s).replace(/[—–]/g, '-')).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const plain = (s) => String(s == null ? '' : s).replace(/[—–]/g, '-');
+// Icons are an inline SVG sprite in index.html: no emoji anywhere in the UI.
+const ic = (n, cls = '') => `<svg class="ic${cls ? ' ' + cls : ''}" aria-hidden="true"><use href="#i-${n}"></use></svg>`;
+const icIcon = (n) => ic(n);
 const STATUS_HELP = {
   QUEUED: 'In the apply queue: nothing done yet; applied when you run the queue',
   DRAFTING: 'In progress: the ad/keywords are saved but no finished documents yet',
@@ -27,7 +30,7 @@ function scamBox(sc) {
   if (!sc || !['high', 'medium'].includes(sc.level)) return '';
   const level = SCAM_LEVELS.includes(sc.level) ? sc.level : 'medium';
   const sigs = (sc.signals || []).filter(x => x.level === sc.level).slice(0, 5);
-  return `<div class="scambox ${esc(level)}"><b>⚠ Scam check: ${esc(level.toUpperCase())}</b>` +
+  return `<div class="scambox ${esc(level)}"><b>${ic('flag')} Scam check: ${esc(level.toUpperCase())}</b>` +
     (sigs.length ? `<ul>${sigs.map(x => `<li><b>${esc(x.key)}</b>: ${esc(x.why)} <span class="muted">${esc(x.advice)}</span></li>`).join('')}</ul>` : '') +
     `<div class="muted mini">${esc(SCAM_RULE)}</div></div>`;
 }
@@ -124,7 +127,7 @@ let GROUPS = { groups: [], roles: {} };                 // named role groups (ca
 let COLLAPSED = { ongoing: true, pipeline: true, done: true, prepared: false, focus_unknown: true };   // default to the actionable top of the list
 let BUCKET_BEFORE_SEARCH = null;
 const PENDING = new Set();
-const NUT = '<span class="spin" title="working…">🥜</span> ';
+const NUT = `<span class="spin" title="working…">${ic('loader')}</span> `;
 function starting(label, keys) {
   LIVE_RUNNING = true;
   $('#peras').classList.add('hide');      // background work lives in Activity, not a blocking modal
@@ -163,12 +166,12 @@ function warn(text, title, okLabel, risky = true) {
 const LONG = {
   rebuild: 'Rebuilding the knowledge graph re-indexes **every** source document with the LLM.\n\n' +
     '- It can take **20-30+ minutes** (longer for a big corpus).\n- It uses API tokens/quota.\n' +
-    '- It runs in the background: press **⏹ Stop** in the Activity monitor to cancel.\n\nStart the rebuild?',
+    '- It runs in the background: press **Stop** in the Activity monitor to cancel.\n\nStart the rebuild?',
   update: 'An incremental graph update only processes the new/changed sources, so it is usually much faster ' +
     'than a rebuild: but it still calls the LLM and can take several minutes. Continue?',
   prepareMany: (n) => `Generating documents for the **${n}** roles currently shown (expanded groups) runs the agent once per role, so it can take ` +
     `a while and use API tokens.\n\n- Roughly a few minutes **per role**.\n- Nothing is submitted.\n` +
-    `- You can **⏹ Stop** it from the Activity monitor.\n\nContinue?`,
+    `- You can **Stop** it from the Activity monitor.\n\nContinue?`,
   prepareOne: 'Generating documents for one role runs the agent for a few minutes (GraphRAG + CV + letter + gates). ' +
     'It runs in the background: nothing is submitted. Continue?',
 };
@@ -663,7 +666,7 @@ const App = {
     const covered = (d.keywords || []).filter(k => (d.matched || {})[k] && d.matched[k].length);
     const gaps = d.gaps || [];
     head.innerHTML = `<b>${d.coverage || 0}% keyword coverage</b> · ${covered.length} matched · ${gaps.length} gaps · ${(d.evidence || []).length} strong evidence cards`;
-    const chips = (k, ok) => `<span class="kg-tag" style="border-color:${ok ? 'rgba(34,197,94,.5)' : 'rgba(239,68,68,.5)'};color:${ok ? '#bbf7d0' : '#fecaca'}">${esc(k)}</span>`;
+    const chips = (k, ok) => `<span class="kg-tag" style="border-color:${ok ? 'rgba(34,197,94,.5)' : 'rgba(239,68,68,.5)'};color:${ok ? '#b9d8c4' : '#e2b8b8'}">${esc(k)}</span>`;
     body.innerHTML = `<div class="muted mini" style="margin:4px 0 6px">Matched requirements</div><div class="row" style="flex-wrap:wrap;gap:4px">${covered.map(k => chips(k, true)).join('') || '<span class="muted mini">none</span>'}</div>
       <div class="muted mini" style="margin:10px 0 6px">Gaps: not evidenced in the graph</div><div class="row" style="flex-wrap:wrap;gap:4px">${gaps.map(k => chips(k, false)).join('') || '<span class="muted mini">none</span>'}</div>
       <h4 style="margin:14px 0 4px">Strongest grounded evidence</h4>` +
@@ -1103,9 +1106,9 @@ const App = {
       `- Instant: no agent, no model tokens.\n- Updates the **Fit** column for this view.\n\nContinue?`,
       'Recompute match', 'Recompute', false);
     if (!ok) return;
-    await busyBtn(el, '⏳ recomputing match…', async () => {
+    await busyBtn(el, 'Recomputing match…', async () => {
       const d = await api('/api/match/recompute', { keys: VIEW });
-      toast(d.error ? d.error : 'match recomputed for the rows shown', !!d.error);
+      toast(d.error ? d.error : d.ok, !!d.error);
       if (!d.error) loadGrid();
     });
   },
@@ -1113,9 +1116,9 @@ const App = {
     const ok = await warn('Recompute the CV-job fit for this role.\n\n- Instant: no agent, no model tokens.\n- Updates the **Fit** column.\n\nContinue?',
       'Recompute match', 'Recompute', false);
     if (!ok) return;
-    await busyBtn(el, '⏳ recomputing…', async () => {
+    await busyBtn(el, 'Recomputing…', async () => {
       const d = await api('/api/match/recompute', { keys: [key] });
-      toast(d.error ? d.error : 'match recomputed', !!d.error);
+      toast(d.error ? d.error : d.ok, !!d.error);
       if (!d.error) { await loadGrid(); if (CUR) openDetail(CUR); }
     });
   },
@@ -1392,7 +1395,7 @@ try { SG_EXPANDED = localStorage.getItem('sg.expanded') || ''; } catch (e) {}
 
 function renderStateGraph() {
   const box = document.getElementById('sg-body');
-  if (!box) return;
+  if (!box || box.classList.contains('hide')) return;   // collapsed: nothing to draw
   const counts = {};
   GRID.forEach(r => { counts[r.status] = (counts[r.status] || 0) + 1; });
   const scamCount = GRID.filter(r => r.scam && ['high', 'medium'].includes(r.scam.level)).length;
@@ -1413,8 +1416,9 @@ function renderStateGraph() {
   const sideExp = SG_SIDE.some(n => n.s === expanded) ? subsFor(expanded) : null;
   const mainRows = mainExp ? mainExp.length + 1 : 0;
   const sideRows = sideExp ? sideExp.length + 1 : 0;
-  const sideY = mainExp ? 92 + mainRows * 30 + 24 : 155;
-  const sideStackH = sideRows ? sideRows * 30 + 24 : 0;
+  const ROW = 24;                                  // sub-state row pitch
+  const sideY = mainExp ? 92 + mainRows * ROW + 24 : 140;
+  const sideStackH = sideRows ? sideRows * ROW + 24 : 0;
   const svgH = sideY + 56 + sideStackH + 20;
   const busY = sideY - 20;
   const short = (v, n = 30) => { v = String(v || ''); return v.length > n ? v.slice(0, n - 1) + '…' : v; };
@@ -1444,20 +1448,26 @@ function renderStateGraph() {
   const child = (x, y, w, label, count, cls, attrs, hint) =>
     `<g class="${cls}" ${attrs} role="button" tabindex="0" aria-label="${esc(label)}">` +
     `<title>${esc(hint || label)}</title>` +
-    `<rect class="sg-subrect" x="${x}" y="${y}" width="${w}" height="26" rx="6"/>` +
-    `<text class="sg-subtext" x="${x + 8}" y="${y + 17}">${esc(short(label))}</text>` +
-    `<text class="sg-subcount" x="${x + w - 8}" y="${y + 17}" text-anchor="end">${count}</text></g>`;
+    `<rect class="sg-subrect" x="${x}" y="${y - 4}" width="${w}" height="24"/>` +
+    `<text class="sg-subtext" x="${x + 9}" y="${y + 12}">${esc(short(label))}</text>` +
+    `<text class="sg-subcount" x="${x + w - 9}" y="${y + 12}" text-anchor="end">${count}</text></g>`;
   const stack = (n, parentBottom, startY, subs) => {
-    const w = 190;
+    const w = 190, step = 24;
     const x = Math.max(14, Math.min(n.x - 10, 1220 - w - 14));
     const cx = n.x + SG_W / 2;
+    const rows = subs.length + 1;
+    const top = startY - 4;
     let h = `<path class="sg-edge-path" d="M${cx},${parentBottom} L${cx},${startY}"/>`;
-    h += `<path class="sg-edge-path" d="M${cx},${startY} L${cx},${startY + subs.length * 30 + 26}"/>`;
+    h += `<path class="sg-edge-path" d="M${cx},${startY} L${cx},${top + rows * step + 4}"/>`;
+    h += `<rect class="sg-subwrap" x="${x}" y="${top}" width="${w}" height="${rows * step + 4}" rx="8"/>`;
+    for (let i = 1; i < rows; i++) {
+      h += `<path class="sg-subsep" d="M${x + 1},${top + i * step} H${x + w - 1}"/>`;
+    }
     h += child(x, startY, w, `All ${n.s}`, counts[n.s] || 0, 'sg-subnode sg-suball',
       `data-status="${n.s}"`, `Show all ${n.s} roles`);
     subs.forEach((s, i) => {
       const val = n.s + ':' + s.key;
-      h += child(x, startY + (i + 1) * 30, w, s.label, s.n,
+      h += child(x, startY + (i + 1) * step, w, s.label, s.n,
         'sg-subnode' + (fs === val ? ' on' : ''), `data-sub="${esc(val)}"`, s.hint);
     });
     return h;
@@ -1469,7 +1479,7 @@ function renderStateGraph() {
   staticEdges.push([85, 82, 85, sideY - 2, 'scam check']);
   const drops = [610, 785, 960].map(x => {
     const start = (mainExp && Math.abs(x - (SG_MAIN.find(n => n.s === expanded).x + SG_W / 2)) < 2)
-      ? 92 + mainRows * 30 : 82;
+      ? 92 + mainRows * ROW : 82;
     return `M${x},${start} L${x},${busY}`;
   }).join(' ');
   const paths = `<path class="sg-edge-path dashed" d="${drops} M610,${busY} L960,${busY} L960,${sideY - 2}" marker-end="url(#sg-arrow)"/>` +
@@ -1491,15 +1501,21 @@ function renderStateGraph() {
 }
 
 (() => {
-  const sg = document.getElementById('sg');
-  if (!sg) return;
-  try { sg.open = localStorage.getItem('sg.open') === '1'; } catch (e) {}
-  sg.addEventListener('toggle', () => {
-    try { localStorage.setItem('sg.open', sg.open ? '1' : '0'); } catch (e) {}
-    if (sg.open) renderStateGraph();
-  });
+  const toggle = document.getElementById('sg-toggle');
   const body = document.getElementById('sg-body');
   if (!body) return;
+  const setOpen = (on) => {
+    body.classList.toggle('hide', !on);
+    try { localStorage.setItem('sg.open', on ? '1' : '0'); } catch (e) {}
+    if (toggle) {
+      toggle.textContent = on ? '▾' : '▸';
+      toggle.setAttribute('aria-expanded', on ? 'true' : 'false');
+      toggle.title = on ? 'Hide the application-state map' : 'Show the application-state map';
+    }
+    if (on) renderStateGraph();
+  };
+  if (toggle) toggle.addEventListener('click', () => setOpen(body.classList.contains('hide')));
+  setOpen(localStorage.getItem('sg.open') === '1');
   body.addEventListener('click', (e) => {
     const child = e.target.closest('.sg-subnode');
     if (child) {
@@ -1570,7 +1586,7 @@ function renderGroupFilter() {
 function groupTagsHTML(r) {
   return (r.groups || []).map(id => {
     const g = groupById(id); if (!g) return '';
-    return `<span class="gtag" style="--gc:${esc(g.color || '#7aa2f7')}"` +
+    return `<span class="gtag" style="--gc:${esc(g.color || '#9db4dd')}"` +
       ` onclick="event.stopPropagation();App.groupFilter('${esc(id)}')"` +
       ` title="Group: ${esc(g.name)}: click to show this group">${esc(g.name)}</span>`;
   }).join('');
@@ -1589,7 +1605,7 @@ function renderGroupList() {
     return;
   }
   el.innerHTML = gs.map(g => `<div class="group-row">` +
-    `<span class="gtag" style="--gc:${esc(g.color || '#7aa2f7')}">${esc(g.name)}</span>` +
+    `<span class="gtag" style="--gc:${esc(g.color || '#9db4dd')}">${esc(g.name)}</span>` +
     `<span class="muted mini">${g.count || 0} role${g.count === 1 ? '' : 's'}</span>` +
     `<span style="flex:1"></span>` +
     `<button class="small" onclick="App.renameGroup('${esc(g.id)}')">Rename</button>` +
@@ -1633,7 +1649,7 @@ function subLineHTML(r) {
 }
 
 function clearFilterInputs() {
-  ['fstatus', 'fqueue', 'ftype', 'fpay', 'ffit', 'fwork', 'fgroup', 'fsubstate'].forEach(id => {
+  ['fstatus', 'fqueue', 'ftype', 'fseniority', 'fpay', 'ffit', 'fwork', 'fgroup', 'fsubstate'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const fa = document.getElementById('faction'); if (fa) fa.checked = false;
@@ -1644,6 +1660,7 @@ function clearFilterInputs() {
 function renderRows() {
   const q = $('#q').value.toLowerCase(), st = $('#fstatus').value, qq = $('#fqueue').value;
   const ft = $('#ftype') ? $('#ftype').value : '';
+  const lv = ($('#fseniority') || {}).value || '';
   const fa = $('#faction') && $('#faction').checked;
   const mp = parseInt(($('#fpay') || {}).value || '0', 10) || 0;
   const mf = parseInt(($('#ffit') || {}).value || '0', 10) || 0;
@@ -1655,11 +1672,12 @@ function renderRows() {
   const disp = (r) => r.label || r.status;               // INTERVIEW rows show SCHEDULED when an interview is still ahead
   const statusMatch = (r) => !st || (st === 'INTERVIEW' ? ['INTERVIEW', 'SCHEDULED', 'INVITED'].includes(disp(r)) : disp(r) === st);
   const typeMatch = (r) => !ft || (ft === '__none' ? !r.employment : (r.employment || '') === ft);
+  const levelMatch = (r) => !lv || r.seniority === lv;
   const actMatch = (r) => !fa || !!r.action;
   const payMatch = (r) => !mp || (r.salary_eur != null && r.salary_eur >= mp);
   const fitMatch = (r) => !mf || (r.match != null && r.match >= mf);
   const workMatch = (r) => !wm || (r.work_model || 'unknown') === wm;
-  const filt = (r) => statusMatch(r) && typeMatch(r) && actMatch(r) && payMatch(r) && fitMatch(r) && workMatch(r) &&
+  const filt = (r) => statusMatch(r) && typeMatch(r) && levelMatch(r) && actMatch(r) && payMatch(r) && fitMatch(r) && workMatch(r) &&
     (!fg || (r.groups || []).includes(fg)) &&
     (!fs || (r.status + ':' + r.substate) === fs) &&
     (!qq || r.queue === qq) &&
@@ -1700,7 +1718,7 @@ function renderRows() {
   });
   const mbadge = (r) => r.match == null ? '<span class="muted"' + T('No score: this role has no saved job ad (ATS keywords) and/or no CV to compare') + '>-</span>'
     : `<span class="badge ${r.match >= 70 ? 'good' : r.match >= 40 ? 'mid' : 'bad'}"${T("CV-to-job fit: this % of the ad's ATS keywords are covered by the tailored CV")}>${r.match}%</span>`
-      + (r.alignment === 'FAIL' ? ' <span class="badge bad"' + T('Pre-submit alignment gate FAILED for this role: open the row to see why') + '>✗</span>' : '');
+      + (r.alignment === 'FAIL' ? '<span class="align-fail"' + T('Pre-submit alignment gate FAILED for this role: open the row to see why') + '>✗</span>' : '');
   const payBadge = (r) => r.salary_eur == null
     ? (r.salary_override && r.salary_raw
         ? `<span class="badge bad"${T('Could not parse the salary override: ' + r.salary_raw + ': edit it in the row’s Summary')}>?</span>`
@@ -1713,6 +1731,12 @@ function renderRows() {
     const cls = w === 'remote' ? 'wm-remote' : w === 'hybrid' ? 'wm-hybrid' : 'wm-onsite';
     return `<span class="badge ${cls}"${T('Work model ' + (r.work_override ? '(manual override)' : 'detected from the ad') + ': ' + (r.work_label || w))}>${esc(r.work_label || w)}</span>`;
   };
+  const levelBadge = (r) => {
+    if (!r.seniority_label) return '<span class="muted">-</span>';
+    const band = r.seniority_rank >= 9 ? 'exec' : r.seniority_rank >= 7 ? 'mgr'
+      : r.seniority_rank >= 3 ? 'senior' : r.seniority_rank >= 2 ? 'mid' : 'low';
+    return `<span class="lvl ${band}"${T('Seniority grade read from the title and the ad: ' + r.seniority_label)}>${esc(r.seniority_label)}</span>`;
+  };
   const rowHTML = (r) => {
     const i = GRID.indexOf(r);
     const sel = (CUR && (r.key === CUR.key || (r.company === CUR.company && r.role === CUR.role))
@@ -1720,8 +1744,9 @@ function renderRows() {
     const gtags = groupTagsHTML(r);
     return `<tr class="click${sel}" onclick="App.open(${i})" oncontextmenu="return App.rowMenu(event, ${i})">` +
       `<td data-col="date" class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet: queued, not applied')}>${r.date ? esc(shortDate(r.date)) : '-'}</td>` +
-      `<td data-col="company"${T(r.company + '  ·  employer / recruiter')}>${r.running ? `<a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="event.stopPropagation();App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show the live log"><span title="working">🥜</span></a> ` : (PENDING.has(r.key) ? '<span title="Queued: waiting to start">🥜</span> ' : '')}${r.pinned ? `<span class="pinned"${T('Pinned to the top of its group')}>📌</span> ` : ''}${r.shelved ? `<span class="shelved"${T('Shelved: original status kept')}>🗄</span> ` : ''}${r.scam && ['high', 'medium'].includes(r.scam.level) ? `<span class="scamflag ${esc(r.scam.level)}"${T('Scam check: ' + r.scam.level.toUpperCase() + ': open the role for the signals')}>⚠</span> ` : ''}${r.action ? `<span class="actflag"${T(r.action)}>⚑</span> ` : ''}${esc(r.company)}</td>` +
+      `<td data-col="company"${T(r.company + '  ·  employer / recruiter')}>${r.running ? `<a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="event.stopPropagation();App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show the live log"><span class="spin" title="working">${ic('loader')}</span></a> ` : (PENDING.has(r.key) ? `<span class="spin" title="Queued: waiting to start">${ic('loader')}</span> ` : '')}${r.pinned ? `<span class="pinned"${T('Pinned to the top of its group')}>${ic('pin')}</span> ` : ''}${r.shelved ? `<span class="shelved"${T('Shelved: original status kept')}>${ic('archive')}</span> ` : ''}${r.scam && ['high', 'medium'].includes(r.scam.level) ? `<span class="scamflag ${esc(r.scam.level)}"${T('Scam check: ' + r.scam.level.toUpperCase() + ': open the role for the signals')}>${ic('flag')}</span> ` : ''}${r.action ? `<span class="actflag"${T(r.action)}>${ic('flag')}</span> ` : ''}${esc(r.company)}</td>` +
       `<td data-col="role"${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}${gtags ? `<div class="gtags">${gtags}</div>` : ''}</td>` +
+      `<td data-col="level">${levelBadge(r)}</td>` +
       `<td data-col="ats" class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
       `<td data-col="status">${chip(r.label || r.status)}${subLineHTML(r) || (r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : '')}</td><td data-col="match">${mbadge(r)}</td>` +
       `<td data-col="salary">${payBadge(r)}</td><td data-col="work">${workBadge(r)}</td>` +
@@ -1737,7 +1762,7 @@ function renderRows() {
     <button class="small" type="button" onclick="App.bucket('all')">Show all</button></td></tr>`;
   let html = '';
   let rendered = [];
-  const advanced = !!(st || qq || ft || fa || mp || mf || wm || q || fg || fs);
+  const advanced = !!(st || qq || ft || lv || fa || mp || mf || wm || q || fg || fs);
   let groups = null;
   if (!fg && GROUPED && (BUCKET === 'active' || BUCKET === 'all')) {
     groups = BUCKET_GROUPS.filter(g => BUCKET === 'all' || g.k !== 'done')
@@ -1907,45 +1932,45 @@ App.rowMenu = (ev, i) => {
   }));
   if (groupItems.length) groupItems.push({ sep: true });
   groupItems.push({ icon: '＋', label: 'New group…', run: () => App.newGroupFor(r) });
-  groupItems.push({ icon: '⚙', label: 'Manage groups…', run: () => groupsOpen() });
+  groupItems.push({ icon: ic('settings'), label: 'Manage groups…', run: () => groupsOpen() });
   if (myGroups.size) groupItems.push({ icon: '✕', label: 'Remove from all groups', run: () => App.clearGroups(r) });
   const STATUSES = closed
     ? ['IN_PROGRESS', 'PREPARED', 'SUBMITTED', 'BLOCKED', 'MANUAL']
     : ['PREPARED', 'SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER', 'REJECTED', 'BLOCKED', 'MANUAL', 'CLOSED'];
   const items = [
-    { icon: '📄', label: 'Open details', run: () => App.open(i) },
-    hasDocs ? { icon: '🗂', label: 'Documents', run: () => tab(6) } : null,
-    r.spec ? { icon: '📋', label: 'Job ad & keywords', run: () => tab(3) } : null,
-    { icon: '💬', label: 'Discuss this role', run: () => tab(1) },
-    r.url ? { icon: '🌐', label: 'Open apply page', run: () => window.open(r.url, '_blank', 'noopener') } : null,
-    r.running ? { icon: '🥜', label: 'Show live log', run: () => App.showTaskLogFor(r.company, r.role) } : null,
+    { icon: ic('doc'), label: 'Open details', run: () => App.open(i) },
+    hasDocs ? { icon: ic('folder'), label: 'Documents', run: () => tab(6) } : null,
+    r.spec ? { icon: ic('grid'), label: 'Job ad & keywords', run: () => tab(3) } : null,
+    { icon: ic('chat'), label: 'Discuss this role', run: () => tab(1) },
+    r.url ? { icon: ic('external'), label: 'Open apply page', run: () => window.open(r.url, '_blank', 'noopener') } : null,
+    r.running ? { icon: ic('loader'), label: 'Show live log', run: () => App.showTaskLogFor(r.company, r.role) } : null,
     { sep: true },
     (!applied || prepared) && !closed && !r.running
-      ? { icon: '⚡', label: hasDocs ? 'Re-prepare documents' : 'Prepare documents', hint: 'CV + letter + gates', run: () => App.prepareRoles([r.key]) }
+      ? { icon: ic('bolt'), label: hasDocs ? 'Re-prepare documents' : 'Prepare documents', hint: 'CV + letter + gates', run: () => App.prepareRoles([r.key]) }
       : null,
     prepared && !r.running
-      ? { icon: '🚀', label: 'Submit prepared', hint: 'sends it', danger: true, run: () => App.submitRoles([r.key]) }
+      ? { icon: ic('send'), label: 'Submit prepared', hint: 'sends it', danger: true, run: () => App.submitRoles([r.key]) }
       : null,
-    (r.spec || hasDocs) ? { icon: '↻', label: 'Recompute match', run: () => App.matchThis(r.key) } : null,
-    canWrite ? { icon: '🤖', label: 'Draft a reply with the agent', run: () => { App.open(i); App.draftAsk(); } } : null,
+    (r.spec || hasDocs) ? { icon: ic('refresh'), label: 'Recompute match', run: () => App.matchThis(r.key) } : null,
+    canWrite ? { icon: ic('robot'), label: 'Draft a reply with the agent', run: () => { App.open(i); App.draftAsk(); } } : null,
     { sep: true },
-    { icon: '🏷', label: closed ? 'Reopen as' : 'Set status', sub: STATUSES.map(x => ({
+    { icon: ic('tag'), label: closed ? 'Reopen as' : 'Set status', sub: STATUSES.map(x => ({
         label: (cur(x) ? '✓ ' : '') + x,
         run: () => App.setStatus(r, x) })) },
-    !closed ? { icon: '🚪', label: 'Close role', hint: 'status CLOSED', run: () => App.closeRole(r) } : null,
-    (!closed && !r.running) ? { icon: '⚑', label: r.action ? 'Update follow-up flag…' : 'Flag follow-up…', run: () => App.flagAction(r) } : null,
-    r.action ? { icon: '⚐', label: 'Clear follow-up flag', run: () => App.clearFlag(r) } : null,
-    { icon: '📌', label: r.pinned ? 'Unpin' : 'Pin to top', run: () => App.togglePin(r) },
-    { icon: '🗄', label: r.shelved ? 'Unshelve' : 'Shelve for later', run: () => App.toggleShelve(r) },
-    { icon: '🏷', label: 'Groups', sub: groupItems },
+    !closed ? { icon: ic('door'), label: 'Close role', hint: 'status CLOSED', run: () => App.closeRole(r) } : null,
+    (!closed && !r.running) ? { icon: ic('flag'), label: r.action ? 'Update follow-up flag…' : 'Flag follow-up…', run: () => App.flagAction(r) } : null,
+    r.action ? { icon: ic('flag'), label: 'Clear follow-up flag', run: () => App.clearFlag(r) } : null,
+    { icon: ic('pin'), label: r.pinned ? 'Unpin' : 'Pin to top', run: () => App.togglePin(r) },
+    { icon: ic('archive'), label: r.shelved ? 'Unshelve' : 'Shelve for later', run: () => App.toggleShelve(r) },
+    { icon: ic('tag'), label: 'Groups', sub: groupItems },
     ((!applied && !queued) || blocked) ? { sep: true } : null,
     (!applied && !prepared && !queued && !closed && !r.running)
-      ? { icon: '🔁', label: blocked ? 'Re-queue for another attempt' : 'Queue to apply', run: () => App.queueAct('retry', r.company, r.role) }
+      ? { icon: ic('repeat'), label: blocked ? 'Re-queue for another attempt' : 'Queue to apply', run: () => App.queueAct('retry', r.company, r.role) }
       : null,
-    blocked ? { icon: '🖐', label: 'Hand to me (autofill & finish)', danger: true, disabled: r.running, run: () => App.queueAct('human', r.company, r.role) } : null,
-    queued ? { icon: '🗑', label: 'Remove from queue', danger: true, run: () => App.queueAct('delete', r.company, r.role) } : null,
+    blocked ? { icon: ic('hand'), label: 'Hand to me (autofill & finish)', danger: true, disabled: r.running, run: () => App.queueAct('human', r.company, r.role) } : null,
+    queued ? { icon: ic('trash'), label: 'Remove from queue', danger: true, run: () => App.queueAct('delete', r.company, r.role) } : null,
     { sep: true },
-    { icon: '📑', label: 'Copy', sub: [
+    { icon: ic('copy'), label: 'Copy', sub: [
       { label: 'Company', run: () => copyText(r.company) },
       { label: 'Role', run: () => copyText(r.role) },
       r.url ? { label: 'Apply URL', run: () => copyText(r.url) } : null,
@@ -1964,7 +1989,7 @@ App.rowMenu = (ev, i) => {
   const head = `<div class="ctx-co">${esc(r.company)}</div>` +
     `<div class="ctx-role">${esc(r.role)}</div>` +
     `<div class="ctx-meta">${chip(r.label || r.status)}` +
-      `${r.action ? ' <span class="actflag">⚑</span>' : ''}${r.pinned ? ' <span title="pinned">📌</span>' : ''}` +
+      `${r.action ? ` <span class="actflag">${ic('flag')}</span>` : ''}${r.pinned ? ` <span title="pinned">${ic('pin')}</span>` : ''}` +
       `${r.match != null ? ' · ' + r.match + '% fit' : ''}` +
       `${r.employment ? ' · ' + esc(r.employment) : ''}` +
       `${r.interview_at ? ' · ' + esc(String(r.interview_at).slice(0, 16)) : ''}</div>` +
@@ -2091,7 +2116,7 @@ function sortIndicators() {
 function syncGroupingButton() {
   const b = $('#grouping');
   if (!b) return;
-  b.textContent = GROUPED ? '☰ Grouped' : '▤ Flat';
+  b.innerHTML = GROUPED ? ic('list') + ' Grouped' : ic('list') + ' Flat';
   b.classList.toggle('on', !GROUPED);
 }
 document.querySelectorAll('#grid th[data-s]').forEach(th => th.onclick = () => {
@@ -2106,8 +2131,8 @@ document.querySelectorAll('#grid th[data-s]').forEach(th => th.onclick = () => {
 });
 
 /* ---------- resizable columns ---------- */
-const COL_DEFAULTS = { date: 90, company: 195, role: 320, ats: 110, status: 160,
-                       match: 70, salary: 85, work: 95, queue: 90, files: 55, ad: 50 };
+const COL_DEFAULTS = { date: 90, company: 195, role: 300, level: 96, ats: 105, status: 160,
+                       match: 96, salary: 85, work: 95, queue: 90, files: 55, ad: 50 };
 function initGridCols() {
   const table = $('#grid'); if (!table) return;
   const ths = [...table.querySelectorAll('thead th')];
@@ -2180,7 +2205,7 @@ function initGridCols() {
   };
   ths.forEach((th, i) => {
     const k = cols[i];
-    th.title = (th.title ? th.title + ' ' : '') + 'Right-click to choose columns.';
+    th.title = (th.title ? th.title.replace(/\.$/, '') + '. ' : '') + 'Right-click to choose columns.';
     th.addEventListener('contextmenu', (ev) => columnMenu(ev));
     const h = document.createElement('span');
     h.className = 'col-resize';
@@ -2219,12 +2244,12 @@ function columnMenu(ev) {
     const label = th.textContent.trim() || key;
     const visible = th.style.display !== 'none';
     return {
-      icon: visible ? '☑' : '☐', label, keep: true,
+      icon: visible ? ic('check') : ic('square'), label, keep: true,
       run: (btn) => {
         const on = window.toggleGridColumn(key);
         if (on == null) return;
-        const ic = btn && btn.querySelector('.ctx-ico');
-        if (ic) ic.textContent = on ? '☑' : '☐';
+        const slot = btn && btn.querySelector('.ctx-ico');
+        if (slot) slot.innerHTML = on ? icIcon('check') : icIcon('square');
       }
     };
   });
@@ -2323,25 +2348,25 @@ function summary(r) {
         <div class="dstatus">${chip(r.label || r.status)}${r.hint ? `<span class="statehint">${esc(r.hint)}</span>` : ''}</div>
         <div class="stages">${stage('ad', 'Ad saved')}${stage('keywords', 'Keywords')}${stage('grounding', 'Grounded')}${stage('documents', 'Documents')}${stage('applied', 'Applied')}</div>
         <dl class="dmeta">${metaHTML}</dl>
-        ${r.running ? `<div class="working"><a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show what this run is doing"><span title="working">🥜</span> Being worked on. Show the live log.</a></div>` : ''}
+        ${r.running ? `<div class="working"><a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show what this run is doing"><span class="spin" title="working">${ic('loader')}</span> Being worked on. Show the live log.</a></div>` : ''}
       </div>
     </section>` +
     `<section class="dsec">
       <div class="dsec-h"><b>Actions</b></div>
       <div class="dsec-b"><div class="dbtnrow">
-        <button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>⚡ Prepare this role</button>
-        <button data-act onclick='App.roleEvidence(${JSON.stringify(r.key)})'>🧠 Graph evidence</button>
-        <button data-act onclick='App.matchThis(${JSON.stringify(r.key)}, this)'>↻ Recompute match</button>
-        ${r.status === 'PREPARED' ? `<button class="risky" data-act onclick='App.submitThis(${JSON.stringify(r.key)})' title="Submit this application now with the documents already prepared. Sends it and needs approval.">🚀 Submit this application</button>` : ''}
+        <button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>${ic('bolt')} Prepare this role</button>
+        <button data-act onclick='App.roleEvidence(${JSON.stringify(r.key)})'>${ic('sparkle')} Graph evidence</button>
+        <button data-act onclick='App.matchThis(${JSON.stringify(r.key)}, this)'>${ic('refresh')} Recompute match</button>
+        ${r.status === 'PREPARED' ? `<button class="risky" data-act onclick='App.submitThis(${JSON.stringify(r.key)})' title="Submit this application now with the documents already prepared. Sends it and needs approval.">${ic('send')} Submit this application</button>` : ''}
       </div></div>
     </section>` +
     `<details class="dsec">
       <summary><b>Drafted replies</b><span class="muted mini">review before sending</span></summary>
       <div class="dsec-b">
         <div class="dbtnrow">
-          <button class="small" onclick="App.draftAsk()" title="Ask the agent to read the latest email and save a draft for this role">🤖 Draft with agent</button>
+          <button class="small" onclick="App.draftAsk()" title="Ask the agent to read the latest email and save a draft for this role">${ic('robot')} Draft with agent</button>
           <button class="small" onclick="App.draftNew()">＋ New</button>
-          <button class="small" onclick="App.loadDrafts()" title="Refresh drafts">↻</button>
+          <button class="small" onclick="App.loadDrafts()" title="Refresh drafts">${ic('refresh')}</button>
         </div>
         <div id="dt-draft-list" class="muted mini">loading…</div>
       </div>
@@ -2363,11 +2388,11 @@ function summary(r) {
       <div class="dsec-b">
         ${kbGap ? '<div class="dnote warn">The grounding report flags requirements with no direct evidence. Check the missing skills before treating this as a fit.</div>' : ''}
         ${missing ? `<div class="dnote"><span class="muted mini">Missing skills. Click one to record where you have it.</span><div class="missk-wrap">${missing}</div></div>` : ''}
-        ${(m.evidenced || []).length ? `<div class="dform-foot"><span class="muted mini">${m.evidenced.length} skill(s) have evidence. Re-prepare to fold them into the CV.</span><button class="small" onclick='App.prepareThis(${JSON.stringify(r.key)})'>↻ Re-prepare</button></div>` : ''}
+        ${(m.evidenced || []).length ? `<div class="dform-foot"><span class="muted mini">${m.evidenced.length} skill(s) have evidence. Re-prepare to fold them into the CV.</span><button class="small" onclick='App.prepareThis(${JSON.stringify(r.key)})'>${ic('refresh')} Re-prepare</button></div>` : ''}
         <div class="dform-row"><input id="dt-addkw" placeholder="Add a requirement from the job ad"></div>
         <div class="dform-foot" style="justify-content:flex-start">
           <button class="small" onclick="App.addKeyword()">Add keyword</button>
-          <button class="small" onclick="App.refreshKeywords()" title="Re-extract keywords from the saved job ad">↻ Re-extract</button>
+          <button class="small" onclick="App.refreshKeywords()" title="Re-extract keywords from the saved job ad">${ic('refresh')} Re-extract</button>
         </div>
       </div>
     </section>` +
@@ -2385,10 +2410,10 @@ function summary(r) {
       <div class="dsec-b">
         ${r.url ? `<a class="mini" href="${esc(r.url)}" target="_blank">${esc(r.url.slice(0, 90))}</a>` : '<span class="muted mini">No apply URL recorded.</span>'}
         <div class="dbtnrow">
-          <button class="risky" onclick='App.queueAct("human",${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Opens a visible browser, pre-fills the form, then waits for you to solve the CAPTCHA or 2FA and press Submit">🖐 Autofill and finish</button>
-          <button onclick='App.queueAct("retry",${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Re-queue this role for another automated attempt">↻ Retry</button>
+          <button class="risky" onclick='App.queueAct("human",${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Opens a visible browser, pre-fills the form, then waits for you to solve the CAPTCHA or 2FA and press Submit">${ic('hand')} Autofill and finish</button>
+          <button onclick='App.queueAct("retry",${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Re-queue this role for another automated attempt">${ic('repeat')} Retry</button>
           <button onclick='App.queueAct("unblock",${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Clear the blocked status and re-queue">✓ Unblock</button>
-          ${r.url ? `<button onclick='App.openPage(${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Open the apply page in your own browser">🌐 Open page</button>` : ''}
+          ${r.url ? `<button onclick='App.openPage(${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Open the apply page in your own browser">${ic('external')} Open page</button>` : ''}
         </div>
       </div>
     </section>` : '');
@@ -2471,8 +2496,8 @@ function renderEvidence() {
   view.innerHTML =
     `<div class="evintro mini muted">Every line of the generated CV, scored against the job's `
     + `<b>${kws.length}</b> ATS requirement(s) and the knowledge base. `
-    + `<span style="color:#8ce99a">green</span> = evidence-backed · `
-    + `<span style="color:#ffd479">amber</span> = requirement not confirmed by the grounding · grey = supporting detail.</div>`
+    + `<span style="color:#a8c9b3">green</span> = evidence-backed · `
+    + `<span style="color:#dfca9a">amber</span> = requirement not confirmed by the grounding · grey = supporting detail.</div>`
     + (pack.profile ? evSec('Profile', evRow(pack.profile, kws, kbText, 'profile')) : '')
     + (exp ? evSec('Experience', exp) : '')
     + ((pack.skills || []).length ? evSec('Skills', list(pack.skills, 'skills')) : '')
@@ -2486,7 +2511,7 @@ function renderEvidence() {
   const bar = $('#evbar'), sum = $('#evsum');
   if (bar) bar.style.width = pct + '%';
   if (sum) sum.innerHTML = `<b>${covered.length}/${kws.length}</b> requirements named · `
-    + `<span style="color:#8ce99a">${g} backed</span> · <span style="color:#ffd479">${w} unconfirmed</span> · ${n} neutral`;
+    + `<span style="color:#a8c9b3">${g} backed</span> · <span style="color:#dfca9a">${w} unconfirmed</span> · ${n} neutral`;
 }
 function tailored() {
   const d = D.docs || {};
@@ -2523,7 +2548,7 @@ function tailored() {
       ${d.letter ? `<button onclick='viewDoc(${JSON.stringify(d.letter)},"Cover letter (Word)")'>Cover letter (Word)</button>` : ''}
       ${d.cv_pdf ? `<a class="mini" style="align-self:center" href="${raw(d.cv_pdf)}" target="_blank">open in a tab ↗</a>` : ''}</div>` +
     `<div class="evhead">
-      <button id="ev-toggle" class="small" title="Colour every line of the generated CV by the evidence behind it">◧ Evidence overlay</button>
+      <button id="ev-toggle" class="small" title="Colour every line of the generated CV by the evidence behind it">${ic('grid')} Evidence overlay</button>
       <span class="muted mini" id="evsum"></span>
     </div>
     <span class="evbar" title="share of the job's ATS requirements named somewhere in the CV"><i id="evbar"></i></span>
@@ -2663,7 +2688,7 @@ async function liveTick() {
   LIVE_RUNNING = busy || LIVE_RUNNING;                 // stay optimistic until confirmed idle
   document.querySelectorAll('#a-prepare,#a-submit,#a-reconcile,#a-prepare-shown,#a-submit-shown,#a-match,#d-body [data-act]')
     .forEach(b => { b.disabled = LIVE_RUNNING; });
-  const rc = $('#runctl'); if (rc) { rc.classList.toggle('hide', !LIVE_RUNNING); $('#btn-pause').textContent = d.paused ? '▶ Resume' : '⏸ Pause'; }
+  const rc = $('#runctl'); if (rc) { rc.classList.toggle('hide', !LIVE_RUNNING); $('#btn-pause').innerHTML = d.paused ? ic('play') + ' Resume' : ic('pause') + ' Pause'; }
   if (LIVE_RUNNING && !parts.length) $('#live').innerHTML = NUT + esc('● starting… (the run takes a few minutes: see the monitor)');
   if (busy) {
     IDLE_TICKS = 0; WAS_BUSY = true;
@@ -2685,7 +2710,7 @@ async function liveTick() {
   }
   if (!$('#peras').classList.contains('hide')) {         // background-run monitor
     const sm = a.summary || {};
-    let h = `<div class="act-h">${a.running ? '🥜' : '✓'} ${esc(aname || 'working…')} <span class="muted">${a.running ? 'running…' : 'finished'}</span></div>`;
+    let h = `<div class="act-h">${a.running ? ic('loader') : ic('check')} ${esc(aname || 'working…')} <span class="muted">${a.running ? 'running…' : 'finished'}</span></div>`;
     if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
     if ((sm.notable || []).length) h += '<ul class="act-list">' + sm.notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
     const ptasks = d.running_tasks || (d.running || []).map(x => ({ label: x, log: '' }));
@@ -2716,7 +2741,7 @@ async function liveTick() {
     const tech = [];
     let h = '';
     if (a.name && a.running) {
-      h += `<div class="act-h">🥜 ${esc(aname || 'working')} ` +
+      h += `<div class="act-h"><span class="spin">${ic('loader')}</span> ${esc(aname || 'working')} ` +
         `<span class="muted">running…</span></div>`;
       if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
       if ((sm.notable || []).length) h += '<ul class="act-list">' + sm.notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
@@ -2890,7 +2915,7 @@ function renderGmailReview() {
       <div class="muted mini">${esc(x.sender || '')} · ${esc(x.subject || '')}</div>
       <div>${esc(x.reason || '')}</div>
       ${x.triage && x.triage.job ? `<div class="muted mini" style="margin:3px 0"><b>Triage:</b> job-related · ${esc(x.triage.category || 'OTHER')} · ${esc((x.triage.reasons || []).join(', '))}</div>` : ''}
-      ${x.scam && ['high', 'medium'].includes(x.scam.level) ? `<div class="scambox ${esc(x.scam.level)}" style="margin:4px 0"><b>⚠ Scam check: ${esc(x.scam.level.toUpperCase())}</b> ` +
+      ${x.scam && ['high', 'medium'].includes(x.scam.level) ? `<div class="scambox ${esc(x.scam.level)}" style="margin:4px 0"><b>${ic('flag')} Scam check: ${esc(x.scam.level.toUpperCase())}</b> ` +
         `${(x.scam.signals || []).filter(s => s.level === x.scam.level).map(s => esc(s.advice)).join(' ')}<div class="muted mini">${esc(SCAM_RULE)}</div></div>` : ''}
       <div class="row" style="margin-top:6px"><a href="${mail}" target="_blank" rel="noopener">Open email ↗</a> ${links} ${codes}
         <span style="flex:1"></span>
@@ -3201,7 +3226,7 @@ function doneCard(d) {
 }
 function actionCard(a) {
   const sm = a.summary || {}, ov = a.overview || [];
-  let h = `<div class="c-user">${a.running ? '🥜 ' : ''}${esc(a.name)} <span class="muted">${a.running ? 'running…' : 'done'}</span></div>`;
+  let h = `<div class="c-user">${a.running ? `<span class="spin">${ic('loader')}</span> ` : ''}${esc(a.name)} <span class="muted">${a.running ? 'running…' : 'done'}</span></div>`;
   if (ov.length) {
     h += '<div class="act-h" style="margin-top:6px">Where we are</div>';
     h += '<ul class="act-list">' + ov.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
@@ -3261,32 +3286,32 @@ function toolInfo(s) {
   const looksPath = /[\/.]/.test(cmd) && !/^(read|write|edit|bash|shell)$/i.test(cmd);
   const py = first.match(/(?:python3?|\.venv[^ ]*\/python)\s+(?:tools\/)?([\w.-]+)\.py/);
   if (tool === 'task' || /(^|\s)(delegate\.py|tools\/delegate)\b/.test(first)) {
-    return { icon: '🧵', label: 'Handed work to a background task', detail: 'runs in Activity', activity: true };
+    return { icon: ic('thread'), label: 'Handed work to a background task', detail: 'runs in Activity', activity: true };
   }
-  if (tool === 'read') return { icon: '📄', label: 'Read ' + (looksPath && file ? file : 'a file'), detail: '' };
-  if (tool === 'write' || tool === 'edit') return { icon: '✏️', label: 'Updated ' + (looksPath && file ? file : 'a file'), detail: '' };
-  if (/^(git\s+(status|diff|log|show|branch))/.test(first)) return { icon: '🔎', label: 'Checked the repository', detail: '' };
-  if (/(^|\s)(pytest|py\.test|npm test|go test|cargo test|make test)/.test(first)) return { icon: '🧪', label: 'Ran tests', detail: '' };
+  if (tool === 'read') return { icon: ic('doc'), label: 'Read ' + (looksPath && file ? file : 'a file'), detail: '' };
+  if (tool === 'write' || tool === 'edit') return { icon: ic('doc'), label: 'Updated ' + (looksPath && file ? file : 'a file'), detail: '' };
+  if (/^(git\s+(status|diff|log|show|branch))/.test(first)) return { icon: ic('search'), label: 'Checked the repository', detail: '' };
+  if (/(^|\s)(pytest|py\.test|npm test|go test|cargo test|make test)/.test(first)) return { icon: ic('flask'), label: 'Ran tests', detail: '' };
   if (/\b(bash|sh)\s+tools\/run_queue\.sh/.test(first) || /(^|[;&]\s*)([A-Z_]+=\S+\s+)*bash\s+tools\/run_queue\.sh/.test(first))
-    return { icon: '🚀', label: 'Ran the application queue', detail: '' };
-  if (/\bpython3?\s+tools\/register\.py/.test(first)) return { icon: '⚙️', label: 'Checked the application register', detail: '' };
+    return { icon: ic('send'), label: 'Ran the application queue', detail: '' };
+  if (/\bpython3?\s+tools\/register\.py/.test(first)) return { icon: ic('settings'), label: 'Checked the application register', detail: '' };
   if (/\bsleep\b/.test(first) && /\b(tail|cat|grep|ls|wc)\b/.test(first))
-    return { icon: '⏳', label: 'Waited for the task and checked the logs', detail: '' };
-  if (/\bsleep\b/.test(first)) return { icon: '⏳', label: 'Waited for the task', detail: '' };
-  if (/\b(pgrep|ps|kill)\b/.test(first)) return { icon: '🔎', label: 'Checked running tasks', detail: '' };
-  if (tool === 'grep' || tool === 'glob' || /\b(rg|grep|glob)\b/.test(first)) return { icon: '🔎', label: 'Searched the code or logs', detail: '' };
-  if (/\b(find|ls|tree)\b/.test(first)) return { icon: '📁', label: 'Looked through the files', detail: '' };
-  if (/\b(cat|sed|head|tail|less|wc)\b/.test(first)) return { icon: '📄', label: 'Read files or logs', detail: '' };
+    return { icon: ic('clock'), label: 'Waited for the task and checked the logs', detail: '' };
+  if (/\bsleep\b/.test(first)) return { icon: ic('clock'), label: 'Waited for the task', detail: '' };
+  if (/\b(pgrep|ps|kill)\b/.test(first)) return { icon: ic('search'), label: 'Checked running tasks', detail: '' };
+  if (tool === 'grep' || tool === 'glob' || /\b(rg|grep|glob)\b/.test(first)) return { icon: ic('search'), label: 'Searched the code or logs', detail: '' };
+  if (/\b(find|ls|tree)\b/.test(first)) return { icon: ic('folder'), label: 'Looked through the files', detail: '' };
+  if (/\b(cat|sed|head|tail|less|wc)\b/.test(first)) return { icon: ic('doc'), label: 'Read files or logs', detail: '' };
   if (py) {
     const name = py[1].replace(/-/g, '_');
-    return { icon: '⚙️', label: FRIENDLY_TOOLS[name] || 'Ran a job-search tool', detail: '' };
+    return { icon: ic('settings'), label: FRIENDLY_TOOLS[name] || 'Ran a job-search tool', detail: '' };
   }
-  if (tool === 'websearch') return { icon: '🔎', label: 'Searched the web', detail: '' };
-  if (tool === 'webfetch') return { icon: '🌐', label: 'Read a web page', detail: '' };
-  if (tool === 'todowrite' || tool === 'todoread') return { icon: '🗒️', label: 'Planned the work', detail: '' };
-  if (/^(curl|wget)\b/.test(first)) return { icon: '🌐', label: 'Checked an online source', detail: '' };
-  if (/^python|^bash|^sh\b/.test(first)) return { icon: '⚙️', label: 'Ran a script', detail: '' };
-  return { icon: '🛠️', label: 'Worked on the task', detail: '' };
+  if (tool === 'websearch') return { icon: ic('search'), label: 'Searched the web', detail: '' };
+  if (tool === 'webfetch') return { icon: ic('globe'), label: 'Read a web page', detail: '' };
+  if (tool === 'todowrite' || tool === 'todoread') return { icon: ic('list'), label: 'Planned the work', detail: '' };
+  if (/^(curl|wget)\b/.test(first)) return { icon: ic('globe'), label: 'Checked an online source', detail: '' };
+  if (/^python|^bash|^sh\b/.test(first)) return { icon: ic('settings'), label: 'Ran a script', detail: '' };
+  return { icon: ic('wrench'), label: 'Worked on the task', detail: '' };
 }
 function toolSection(grp, start, prefix = '') {
   const infos = grp.map(toolInfo);
@@ -3337,7 +3362,7 @@ function renderChat() {
   }
   if (ACT) h += actionCard(ACT);
   if (DONE_CARDS.length) h += DONE_CARDS.map(doneCard).join('');
-  if (CHAT.running) h += `<div class="working"><span class="muted">▮ working…</span></div>`;
+  if (CHAT.running) h += `<div class="working"><span class="muted spin">${ic('loader')} working…</span></div>`;
   el.innerHTML = h;
   el.querySelectorAll('details[data-k]').forEach(d => { d.open = CHAT_OPEN.has(d.getAttribute('data-k')); });
   if (CHAT_STICK) el.scrollTop = el.scrollHeight;             // never yank the reader back down
@@ -3366,7 +3391,7 @@ function roleSegsHTML(segs, running) {
     else h += `<div class="md">${collapseCode(md(s.body))}</div>`;
     i++;
   }
-  if (running) h += `<div class="working"><span class="muted">▮ working…</span></div>`;
+  if (running) h += `<div class="working"><span class="muted spin">${ic('loader')} working…</span></div>`;
   return h;
 }
 function rolePoll() {
@@ -3377,8 +3402,8 @@ function discuss(r) {
   return `<div class="rolechat">
     <div class="row"><b>Chat about this role with the agent</b><span class="muted mini">it knows this row, its notes, the ad and your documents</span>
       <span style="flex:1"></span>
-      <button class="small" id="rc-stop" onclick="App.roleChatStop()">⏹ Stop</button>
-      <button class="small" onclick="App.roleChatNew()">🗑 Clear</button></div>
+      <button class="small" id="rc-stop" onclick="App.roleChatStop()">${ic('stop')} Stop</button>
+      <button class="small" onclick="App.roleChatNew()">${ic('trash')} Clear</button></div>
     <div id="rc-log" class="term role-log"><span class="muted">Ask anything about this role: e.g. “what should I say back?”, “what will they probe?”, “draft a follow-up”.</span></div>
     <div class="row chat-in"><input id="rc-in" placeholder="ask about this role…" onkeydown="if(event.key==='Enter')App.roleChatSend()" style="flex:1"><button onclick="App.roleChatSend()">Send</button></div>
   </div>`;
@@ -3407,7 +3432,7 @@ async function setData(b) {
       grounding and content packs, gate receipts) and, unless you untick it, <code>documents/</code> (rendered CVs,
       letters and the exact files you sent).</p>
     <div class="muted mini">${rows} <span class="pill">total ${fmtSize(total)}</span></div>
-    <p class="muted mini" style="margin-top:6px">⚠ A backup contains <b>your personal data</b>: CV, applications, and any Google client
+    <p class="muted mini" style="margin-top:6px">A backup contains <b>your personal data</b>: CV, applications, and any Google client
       secret stored in <code>config/google.json</code>. Keep it somewhere private and never commit it. The OAuth token lives outside
       the repo, so it is not in the zip. Agent transcripts (<code>state/logs/</code>), the mail cache and the GraphRAG index are
       deliberately left out.</p>
@@ -3520,7 +3545,7 @@ async function setAccounts(b) {
   const [d, g] = await Promise.all([api('/api/accounts'), api('/api/google')]);
   if (CF_SEC !== 'accounts') return;
   const sc = g.scopes || [];
-  const dot = (ok) => `<span class="pill" style="background:${ok ? '#1f6f43' : '#7a2e2e'}">${ok ? '✓' : '✗'}</span>`;
+  const dot = (ok) => `<span class="pill ${ok ? 'ok' : 'bad'}">${ic(ok ? 'check' : 'x')}</span>`;
   const scopeName = (s) => s.split('/').pop();
   b.innerHTML = `<p class="muted">Connect your accounts. Authorisation opens in your browser - finish it there, then re-check.
       Per-site logins: <b>${d.sites}</b> stored.</p>
@@ -3577,11 +3602,11 @@ const KGNS = 'http://www.w3.org/2000/svg';
 let KG = null;
 let KGMODE = 'map';
 const KG_COLORS = {
-  TECHNOLOGY: '#3b82f6', SKILL: '#22c55e', METRIC: '#f59e0b', PROJECT: '#a855f7',
-  PRODUCT: '#06b6d4', ORGANIZATION: '#ef4444', ROLE: '#eab308', PLATFORM: '#8b5cf6',
-  CERTIFICATION: '#14b8a6', EDUCATION: '#64748b', PERSON: '#f97316'
+  TECHNOLOGY: '#7f9ec8', SKILL: '#8fbb9f', METRIC: '#d3a45f', PROJECT: '#b3a3cf',
+  PRODUCT: '#8fb9c4', ORGANIZATION: '#cf9a9a', ROLE: '#eab308', PLATFORM: '#8b5cf6',
+  CERTIFICATION: '#8dbfb4', EDUCATION: '#64748b', PERSON: '#f97316'
 };
-const KG_LEVEL_COLORS = ['#f59e0b', '#3b82f6', '#22c55e', '#a855f7', '#06b6d4', '#ef4444', '#ec4899', '#14b8a6'];
+const KG_LEVEL_COLORS = ['#d3a45f', '#7f9ec8', '#8fbb9f', '#b3a3cf', '#8fb9c4', '#cf9a9a', '#ec4899', '#8dbfb4'];
 
 function kgColor(type) {
   if (KG_COLORS[type]) return KG_COLORS[type];
@@ -3736,7 +3761,7 @@ function kgSelect(id) {
   const sources = n.sources || [];
   const srcHtml = sources.length
     ? `<h4 style="margin:10px 0 2px">Sources (${sources.length})</h4><div class="kg-neigh">` +
-      sources.map(s => `<button data-src="${esc(s)}" onclick="App.openSource(this.dataset.src)">📄 ${esc(kgTrunc(s, 52))}</button>`).join('') + '</div>'
+      sources.map(s => `<button data-src="${esc(s)}" onclick="App.openSource(this.dataset.src)">${ic('doc')} ${esc(kgTrunc(s, 52))}</button>`).join('') + '</div>'
     : '';
   if (n.kind === 'community' || n.kind === 'type') {
     const isComm = n.kind === 'community';
@@ -3883,7 +3908,7 @@ async function setLogs(b) {
       <div class="logview">
         <div class="logview-h"><b id="log-title">Select a log</b><span id="log-meta" class="muted mini"></span>
           <span style="flex:1"></span>
-          <button id="log-refresh" class="small hide" onclick="App.logRefresh()">↻ Refresh</button></div>
+          <button id="log-refresh" class="small hide" onclick="App.logRefresh()">${ic('refresh')} Refresh</button></div>
         <pre id="log-body" class="doc logbody">Choose a log on the left to read it here.</pre>
       </div>
     </div>`;
@@ -3919,7 +3944,7 @@ function renderAbout() {
   const v = $('#about-ver'); if (v) v.textContent = 'v' + (UPD.current || '…');
   const st = $('#about-status');
   if (st) {
-    if (UPD.available) st.innerHTML = `<span class="pill upd">⬆ ${esc(UPD.latest)} available</span>`;
+    if (UPD.available) st.innerHTML = `<span class="pill upd">${ic('upload')} ${esc(UPD.latest)} available</span>`;
     else if (UPD.error) st.innerHTML = `<span class="muted mini">could not check · ${esc(UPD.error)}</span>`;
     else if (UPD.current) st.innerHTML = '<span class="pill PASS">✓ up to date</span>';
     else st.textContent = 'checking…';
@@ -3963,7 +3988,7 @@ function renderHealth(data) {
         ? `${pass} passed${warn ? ` · ${warn} warning${warn === 1 ? '' : 's'}` : ''}${fail ? ` · ${fail} failed` : ''}`
         : esc(data.detail || '')}</span>
       <span style="flex:1"></span>
-      <button class="small" onclick="App.refreshHealth()">↻ Re-check</button>
+      <button class="small" onclick="App.refreshHealth()">${ic('refresh')} Re-check</button>
     </div>
     <div class="hchecks">${checks.map(healthCheckRow).join('') || '<span class="muted mini">no checks returned</span>'}</div>
     ${reg.summary ? `<div class="muted mini" style="margin-top:6px">Register: ${esc(reg.summary)}</div>` : ''}`;
@@ -4167,6 +4192,20 @@ function setProfile(b) {
 }
 
 /* ---------- wiring ---------- */
+(() => {
+  const btn = $('#theme-toggle');
+  const apply = (t) => {
+    document.documentElement.dataset.theme = t;
+    if (btn) {
+      btn.innerHTML = t === 'light' ? ic('moon') : ic('sun');
+      btn.title = t === 'light' ? 'Switch to dark mode' : 'Switch to light mode';
+    }
+    try { localStorage.setItem('ui.theme', t); } catch (e) {}
+  };
+  apply(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
+  if (btn) btn.addEventListener('click', () => apply(
+    document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'));
+})();
 $('#a-applications').onclick = () => App.home();
 $('#a-knowledge').onclick = () => App.openKnowledge('map');
 const brandHome = $('#brand-home');
@@ -4266,7 +4305,7 @@ const fsubstate = $('#fsubstate');
 if (fsubstate) fsubstate.onchange = () => { if (fsubstate.value) BUCKET = 'all'; renderBuckets(); renderRows(); };
 const groupsBtn = $('#groups');
 if (groupsBtn) groupsBtn.onclick = () => groupsOpen();
-['#fpay', '#ffit', '#fwork'].forEach(sel => {
+['#fseniority', '#fpay', '#ffit', '#fwork'].forEach(sel => {
   const el = $(sel); if (!el) return;
   el.onchange = () => { renderRows(); };      // quality filters apply within the current bucket
 });
@@ -4382,10 +4421,6 @@ $('#upd-go').onclick = async () => {
     });
   }
 })();
-const sgSummary = document.querySelector('#sg summary');
-if (sgSummary) sgSummary.addEventListener('click', e => {
-  if (e.target.closest('#metrics, #live-log, #runctl')) e.preventDefault();
-});
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { gridTick(); liveTick(); } });
 function startEvents() {
   if (!window.EventSource) return;

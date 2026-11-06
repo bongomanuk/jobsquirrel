@@ -1,6 +1,6 @@
 # Writing the CV: two full pages, no padding
 
-<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+<div align="center"><sub><a href="../README.md">Jobsquirrel</a> · <a href="README.md">Docs</a></sub></div>
 
 
 The generated CV has one job: give a recruiter enough true, specific material to

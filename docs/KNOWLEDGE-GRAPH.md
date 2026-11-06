@@ -1,6 +1,6 @@
 # The knowledge graph workspace
 
-<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+<div align="center"><sub><a href="../README.md">Jobsquirrel</a> · <a href="README.md">Docs</a></sub></div>
 
 
 The **Knowledge** page is the visual layer over the GraphRAG index. It is not a

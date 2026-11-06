@@ -1,6 +1,6 @@
 # ATS recipes (how the browser drives each system)
 
-<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+<div align="center"><sub><a href="../README.md">Jobsquirrel</a> · <a href="README.md">Docs</a></sub></div>
 
 
 The browser CLI (`tools/camoufox_browser.py`) exposes: `status | nav | snap |

@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🕵️ The scam detector
+# The scam detector
 
 **A warning system, not a verdict.**
 
@@ -157,7 +157,7 @@ The mail scan looks at more than the body:
 | Document preparation | `prepare_role.py` | **Refuses a HIGH signal** (`PREP FAIL`, exit 3) |
 | Mail sync | `gmail_readonly.py --sync` | Prints `SCAM <LEVEL>` per message |
 | Mail reconcile | `gmail_reconcile.py` | Prints a **scam warnings** section, adds `scam` to the review item, and writes the worst warning per role to `state/scam-emails.json` |
-| Dashboard | `dashboard.py`, `tools/web/app.js` | ⚠ marker on the grid, a red/amber banner in the drawer and the Gmail review, and the **Probably scams** bucket |
+| Dashboard | `dashboard.py`, `tools/web/app.js` | scam marker on the grid, a red/amber banner in the drawer and the Gmail review, and the **Probably scams** bucket |
 
 The dashboard reads the advert scan and `state/scam-emails.json` and keeps the
 **worst** level per role, so the grid, the drawer and the bucket agree.

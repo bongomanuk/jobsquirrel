@@ -2,7 +2,7 @@
 
 <img src="docs/assets/animals/rowan-red-squirrel.jpg" alt="Rowan Ash, a red squirrel in a tweed waistcoat" width="150">
 
-# 🐿️ Jobsquirrel
+# Jobsquirrel
 
 **An open, self-hosted job-application agent. Give it your CV. It finds roles, tailors each application, gates every claim, applies through the employer's own site, and tracks the replies.**
 

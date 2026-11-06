@@ -1,6 +1,6 @@
 # Using it: typical prompts and monitoring
 
-<div align="center"><sub><a href="../README.md">🐿️ Jobsquirrel</a> · <a href="README.md">📚 Docs</a></sub></div>
+<div align="center"><sub><a href="../README.md">Jobsquirrel</a> · <a href="README.md">Docs</a></sub></div>
 
 
 You drive the whole thing by **talking to your agent in plain English**.
@@ -28,7 +28,7 @@ built-in procedures:
 | *"What's in the queue?"* | shows pending rows and the order they'll run |
 | *"Prepare documents for the top 5, don't send"* | `REVIEW=1 … run_queue.sh`: builds + gates, records `PREPARED` |
 | *"Show me only contract roles"* | the toolbar's **any type** filter (full-time / part-time / contract / consultant / freelance / internship / temporary / unknown); set a row's type in its drawer |
-| *"Submit the prepared ones"* | *🚀 Submit* (grid) or *Submit this application* (drawer) reuses the already-gated CV/letter and applies, with a two-step confirmation (`APPROVE_RUN_QUEUE`) |
+| *"Submit the prepared ones"* | *Submit* (grid) or *Submit this application* (drawer) reuses the already-gated CV/letter and applies, with a two-step confirmation (`APPROVE_RUN_QUEUE`) |
 | *"Run the pipeline"* / *"Apply to the queue"* | `PARALLEL=3 bash tools/run_queue.sh`, most senior first |
 | *"Use one fixed CV for these"* | `LIGHT=1 FIXED_CV=<path> … run_queue.sh` |
 | *"Apply to just this one: <url>"* | the per-role manual procedure (`AGENTS.md` §4) |
@@ -67,18 +67,18 @@ Everything is observable. Useful things to ask for, or run yourself:
     Status · **Match** (ATS-keyword coverage; `align✗` = the alignment gate failed) · Queue ·
     Files · Job ad, plus search / status / queue / group filters, sortable columns, CSV export
     and an **ⓘ Legend**. Right-click a row to add it to a named **group** (a campaign), or create
-    one; the **🏷 Groups** toolbar button opens the group manager to create, rename or delete
+    one; the **Groups** toolbar button opens the group manager to create, rename or delete
     groups. Groups are independent of status and survive renames and queue runs. Hover anything for
     what it means; click a row for the detail drawer
     (Summary · Chat · Files · Job ad · ATS · **Evidence** · Docs). The page uses one live event
     stream: the grid only rebuilds when state changes, the live strip updates when logs or actions
     change, and polling pauses while the tab is hidden.
   - **Groups / campaigns.** A group is a named campaign that crosses status. Create one with the
-    **🏷 Groups** toolbar button (or right-click a row → Groups → New group…). Add or remove a role
+    **Groups** toolbar button (or right-click a row → Groups → New group…). Add or remove a role
     from right-click → Groups; a tick marks membership. Filter with the **any group** dropdown; a
     group view shows every member regardless of status, but still applies the ordinary
     search/status/queue filters. Group tags appear under the role title, and clicking one filters
-    to that group. **🏷 Groups** also renames and deletes groups: deleting removes memberships, not
+    to that group. **Groups** also renames and deletes groups: deleting removes memberships, not
     roles. Groups live in `state/role-groups.json`, independent of the register, so status changes,
     renames and queue runs do not disturb them; CSV export includes a `groups` column.
   - **Evidence** shows how your knowledge graph was used for that role: the cited context pack
@@ -93,8 +93,8 @@ Everything is observable. Useful things to ask for, or run yourself:
     **Activity** pane, so the chat stays responsive. Activity leads with a short human summary;
     the raw commands and logs stay under a collapsed **Technical details** section, both in the
     pane and in the per-task log. The chat answers questions and quick checks directly and shows
-    a 🥜 spinner only while it is doing that.
-  - **Settings** (⚙ Settings): **Accounts** (credential status + Gmail/Calendar authorisation),
+    a spinner only while it is doing that.
+  - **Settings**: **Accounts** (credential status + Gmail/Calendar authorisation),
     **Secrets** (the encrypted store, with Replace saving on blur), **AI & agent**, **Knowledge base**
     (list / upload / delete source documents, rebuild the index), **GraphRAG** (browse entities,
     relationships, communities and documents), **Agent permissions**, **CAPTCHA**, **Profile & CV**
@@ -158,10 +158,12 @@ should I do next?”.
 - The **Status** cell shows the status chip and, underneath, the sub-state when it adds detail.
 - **Filters → any sub-state** narrows the grid to one sub-state; like a group, it crosses the
   bucket boundaries.
-- The **Application states** panel carries the bucket filter chips (Active, Focus, Probably scams,
+- The **top row of the grid** carries the bucket filter chips (Active, Focus, Probably scams,
   Shelved, Needs you, Prepared, Ongoing, To apply, Done, All) with live counts, plus the live status
   and run controls. Click a state to expand its sub-states and filter to it, then click a sub-state
-  to narrow further. There is no separate metric bar above the grid.
+  to narrow further. The small chevron at the left edge folds the state map out and back. There is no
+  separate metric bar, title bar or card around the grid.
+- **Level** is the seniority grade the pipeline reads from the title (Intern up to C-level). Click the **Level** header to sort by it, or pick a grade under **Filters → any level**. It works independently of the bucket chips, and the **Pay** header sorts by salary just as independently.
 - **Needs you** includes the sub-states that genuinely wait on you: assessments, follow-ups,
   CAPTCHA/2FA and other human walls, plus invites and offers.
 - **Shelved** is a view overlay, not a status. Right-click a row → **Shelve for later**; its
@@ -193,7 +195,7 @@ reply has been sent the row reads **replied: awaiting a reply** instead of askin
 ## Recruitment scams
 
 Every saved advert and every scanned message is checked for known scam signals. A
-⚠ marker on a grid row, or a red/amber banner in the role drawer or the Gmail review,
+scam marker on a grid row, or a red/amber banner in the role drawer or the Gmail review,
 means: **read it before you reply.**
 
 > **Never download or install software, join a chat-only interview, share a wallet,
@@ -255,7 +257,7 @@ are noise or rebuildable.
     python3 tools/backup.py list
     python3 tools/backup.py inspect backups/<file>.zip
 
-> ⚠️ The zip holds **your personal data**: CV, applications, and any Google
+> **Careful:** the zip holds **your personal data**: CV, applications, and any Google
 > client secret in `config/google.json`. Keep it private; `backups/` is
 > git-ignored for that reason.
 
