@@ -2537,7 +2537,15 @@ async function liveTick() {
     (d.tail || []).forEach(x => tech.push((x.k === 'phase' ? '[phase] ' : '') + (x.t || '')));
     if (!h) h = '<span class="muted">○ runner idle</span>';
     if (tech.length) h += `<details class="act-raw"><summary>Technical details · ${tech.length} lines</summary><pre>${esc(tech.join('\n'))}</pre></details>`;
+    // liveTick rebuilds this pane every 2.5s. Keep the reader's open/closed
+    // choice instead of snapping Technical details shut on the next poll.
+    const rawEl = $('#liveterm details.act-raw');
+    const rawOpen = !!(rawEl && rawEl.open);
     $('#liveterm').innerHTML = h;
+    if (rawOpen) {
+      const reopened = $('#liveterm details.act-raw');
+      if (reopened) reopened.open = true;
+    }
   }
   setTimeout(liveTick, 2500);
   permTick();
