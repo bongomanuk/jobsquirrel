@@ -310,6 +310,7 @@ function addCritter(opts) {
     nextAction: performance.now() + 2500, home: opts.x, target: opts.x,
     adventuring: false, look: { x: 0, y: 0 }, pose: '', poseUntil: 0,
     mode: 'travel', meetX: 0, drinkUntil: 0, clinkAt: 0, clink: false, fightUntil: 0, roll: 0, duel: false,
+    trickUntil: 0, social: false, tagUntil: 0, visitUntil: 0,
   };
   state.critters.push(c);
   return c;
@@ -421,6 +422,15 @@ function animate(c, dt) {
     c.neck.rotation.y = Math.sin(p * 2) * 0.3;
   }
   if (c.tongue) c.tongue.visible = c.faceUntil > now;
+  if (c.trickUntil > now) {
+    const k = 1 - (c.trickUntil - now) / 700;
+    c.root.rotation.z = k * Math.PI * 2;
+    c.root.position.y = FLOOR + Math.sin(k * Math.PI) * 26;
+    c.root.rotation.y += dt * 10;
+  } else if (!c.duel && c.trickUntil) {
+    c.trickUntil = 0;
+    c.root.rotation.z = 0;
+  }
   if (c.duel && c.sword) {
     const t = p * 3.2;
     c.sword.visible = true;
@@ -479,6 +489,13 @@ function frame() {
     const dx = state.pointer.x - res.x;
     const dy = state.pointer.y - FLOOR;
     res.look = { x: dx / 260, y: -dy / 300 };
+    const overBar = state.pointer.y > FLOOR - 10 && state.pointer.y < FLOOR + 90;
+    if (overBar && !res.social && Math.abs(dx) > 46) {
+      res.target = Math.max(-state.W / 2 + 70, Math.min(state.W / 2 - 260, state.pointer.x));
+      res.speed = 70;
+    } else if (!overBar && !res.social && Math.abs(res.x - res.home) > 3 && !res.adventuring) {
+      res.target = res.home;
+    }
     const near = Math.abs(dx) < 110 && state.pointer.y < FLOOR + 100;
     if (near && now > state.lastPoke + 1500) {
       state.lastPoke = now;
@@ -535,10 +552,20 @@ function frame() {
         const lead = state.resident;
         if (lead) {
           lead.beerOn = true;
+          lead.social = true;
           lead.drinkUntil = c.drinkUntil;
           lead.clinkAt = c.clinkAt;
         }
       }
+    }
+    if (c.mode === 'visit') {
+      const d = c.meetX - c.x;
+      if (Math.abs(d) > 2) c.x += Math.sign(d) * Math.min(Math.abs(d), 140 * dt);
+      else if (!c.visitUntil) {
+        c.visitUntil = now + 2600;
+        c.hopUntil = now + 420;
+      }
+      if (c.visitUntil && now > c.visitUntil) { c.mode = 'leave'; c.visitUntil = 0; }
     }
     if (c.mode === 'duel') {
       const d = c.meetX - c.x;
@@ -549,7 +576,7 @@ function frame() {
       }
       if (c.fightUntil && now > c.fightUntil) {
         c.duel = false;
-        if (c === state.resident) { c.mode = 'travel'; c.target = c.home; c.fightUntil = 0; }
+        if (c === state.resident) { c.mode = 'travel'; c.target = c.home; c.fightUntil = 0; c.social = false; }
         else c.mode = 'leave';
       }
     }
@@ -561,7 +588,7 @@ function frame() {
         c.roll = (Math.random() < 0.5 ? -1 : 1) * 9;
       }
       if (c.fightUntil && now > c.fightUntil) {
-        if (c === state.resident) { c.mode = 'travel'; c.target = c.home; c.fightUntil = 0; }
+        if (c === state.resident) { c.mode = 'travel'; c.target = c.home; c.fightUntil = 0; c.social = false; }
         else c.mode = 'leave';
       }
     }
@@ -574,6 +601,7 @@ function frame() {
         if (state.resident && state.resident.drinkUntil === c.drinkUntil) {
           state.resident.beerOn = false;
           state.resident.drinkUntil = 0;
+          state.resident.social = false;
         }
       }
     }
@@ -692,7 +720,7 @@ function makeResident() {
   c.target = home;
   c.nextAction = performance.now() + 2200;
   state.resident = c;
-  state.perches = [...document.querySelectorAll('header.top button, header.top .pill, header.top h1')];
+  state.perches = [...document.querySelectorAll('header.top button, header.top .pill')];
 }
 
 function pointerAt(ev) {
@@ -708,7 +736,8 @@ function petCheck(ev) {
   if (Math.abs(wx - c.x) < 26 && wy > FLOOR - 12 && wy < FLOOR + 56) {
     ev.preventDefault();
     ev.stopPropagation();
-    c.hopUntil = performance.now() + 420;
+    c.hopUntil = performance.now() + 700;
+    c.trickUntil = performance.now() + 700;
     c.nextAction = performance.now() + 4200;
     kickNut(c);
     setTimeout(() => kickNut(c), 150);
@@ -743,7 +772,16 @@ function run(kind) {
     f.meetX = (lead ? lead.x : 0) + 34;
     if (lead) { lead.mode = 'fight'; lead.meetX = (f.meetX || 0) - 34; }
   } else if (kind === 'chase') {
-    addCritter({ ...base, x: -w / 2 - 60, friend: true, speed: base.speed + 20 });
+    const f = addCritter({ ...base, x: -w / 2 - 60, friend: true, holdAt: 0 });
+    f.mode = 'visit';
+    f.meetX = (lead ? lead.x : 0) + 74;
+    if (lead) {
+      lead.social = true;
+      lead.tagUntil = performance.now() + 5200;
+      lead.target = (lead.home || 0) - 90;
+      setTimeout(() => { lead.target = (lead.home || 0) + 90; }, 900);
+      setTimeout(() => { lead.target = lead.home; lead.social = false; }, 4600);
+    }
   } else if (kind === 'wave') {
     if (lead) setTimeout(() => {
       if (!lead) return;
@@ -751,8 +789,10 @@ function run(kind) {
       lead.waveUntil = performance.now() + 2000;
       lead.target = lead.x;
     }, 1200);
-  } else if (kind === 'dive') {
-    addCritter({ ...base, x: -w / 2 - 60, friend: true, dive: true });
+  } else {
+    const f = addCritter({ ...base, x: -w / 2 - 60, friend: true, holdAt: 0 });
+    f.mode = 'visit';
+    f.meetX = (lead ? lead.x : 0) + 70;
   }
 }
 
@@ -762,7 +802,7 @@ function schedule() {
   const delay = 46000 + Math.random() * 70000;
   setTimeout(() => {
     const r = Math.random();
-    run(r < 0.1 ? 'dive' : r < 0.18 ? 'wave' : r < 0.3 ? 'chase' : r < 0.5 ? 'hold' : r < 0.64 ? 'duel' : r < 0.82 ? 'fight' : 'through');
+    run(r < 0.12 ? 'wave' : r < 0.3 ? 'chase' : r < 0.52 ? 'hold' : r < 0.68 ? 'duel' : r < 0.86 ? 'fight' : 'visit');
     schedule();
   }, delay);
 }
