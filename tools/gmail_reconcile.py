@@ -33,6 +33,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import register as R
 import gmail_readonly as G
 import scam_check
+import email_triage as ET
 
 STATE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "state")
 ACK_FILE = os.path.join(STATE, "gmail_reconcile_ack.txt")
@@ -617,6 +618,9 @@ def main():
     changes, unmatched, verifications, ambiguous, replies = [], [], [], [], []
     review = []
     scam_by_id, scam_warnings = {}, []
+    triage = ET.Triage([r for r in rows
+                        if (r.get("status") or "").upper() not in ("CLOSED", "REJECTED")])
+    triage_by_id, triage_suspects = {}, []
     fetched = 0
     for idx, m in enumerate(messages, 1):
         if idx % 100 == 0:
@@ -634,6 +638,11 @@ def main():
             continue
         company = match_company(f"{subject} {sender_display(sender)}", rows, body=plain, sender=sender)
         row = match_row(company, " ".join([subject, plain]), rows)
+        tr = triage.classify(subject, body, sender)
+        if category == "OTHER" and tr["job"]:
+            triage_by_id[str(m["id"])] = tr
+            triage_suspects.append((date, company or "", (row or {}).get("role", ""),
+                                    sender_display(sender), subject, tr, str(m["id"])))
         scam = scam_check.scan(plain, company or "", sender,
                                reply_to=hit.get("reply_to", ""), subject=subject,
                                links=scam_check.links_in(body),
@@ -729,6 +738,17 @@ def main():
         sc = scam_by_id.get(str(e.get("id")))
         if sc:
             e["scam"] = sc
+        tr = triage_by_id.get(str(e.get("id")))
+        if tr:
+            e["triage"] = tr
+    known_ids = {str(e.get("id")) for e in review}
+    for date, company, role, sender, subject, tr, mid in triage_suspects:
+        if mid in known_ids:
+            continue
+        review.append({"id": mid, "date": date, "category": "OTHER",
+                       "company": company, "role": role, "sender": sender,
+                       "subject": subject, "reason": "triage: job-related but not matched",
+                       "links": [], "codes": [], "triage": tr})
     save_review(review, live)
     def _bucket_warning(sc):
         """Only specific signals put a role in 'Probably scams'.
@@ -797,6 +817,15 @@ def main():
                 if sig["level"] == sc["level"]:
                     print(f"        {sig['key']}: {sig['advice']}")
         print(f"  RULE: {scam_check.HARD_RULE}")
+
+    if triage_suspects:
+        print("\n== triage suspects (job-related, regex said OTHER) ==")
+        for date, company, role, sender, subject, tr, _mid in triage_suspects[:40]:
+            print(f"  [{tr['category']}] {date[:16]}  {company[:24]:<24} {role[:28]:<28} "
+                  f"{sender[:26]:<26} {subject[:46]}")
+            print(f"        {', '.join(tr['reasons'])}")
+        if len(triage_suspects) > 40:
+            print(f"  … {len(triage_suspects) - 40} more in the review queue")
 
     print("\n== proposed register changes ==")
     if not changes:

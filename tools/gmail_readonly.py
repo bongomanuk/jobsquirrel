@@ -31,6 +31,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 import google_config as GC          # noqa: E402  (paths are configurable: config/google.json)
 import scam_check                    # noqa: E402
+import email_triage as ET            # noqa: E402
 
 CONFIG_DIR, CREDENTIALS, TOKEN = GC.paths()
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly",
@@ -294,6 +295,9 @@ def sync(query, apply_changes):
             for sig in sc["signals"]:
                 if sig["level"] == sc["level"]:
                     print(f"      {sig['key']}: {sig['advice']}")
+        tr = ET.triage(subject, body, sender)
+        if category == "OTHER" and tr["job"]:
+            print(f"    TRIAGE: job-related ({tr['category']}) — {', '.join(tr['reasons'])}")
         for l in links:
             print(f"    LINK: {l}")
         for c in codes:

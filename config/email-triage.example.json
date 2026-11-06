@@ -1,0 +1,6 @@
+{
+  "_comment": "Local additions for tools/email_triage.py. Copy to config/email-triage.json. Keep this file public-safe; put personal or local domains only in the private copy.",
+  "ats_domains": [],
+  "hard_marketing": [],
+  "soft_marketing": []
+}

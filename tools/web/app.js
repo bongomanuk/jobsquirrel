@@ -2675,7 +2675,9 @@ function suggText(s) {
 function renderGmailReview() {
   const el = $('#reviewm-list'); if (!el) return;
   const f = ($('#review-filter') && $('#review-filter').value) || '';
-  const items = f ? REVIEW_ITEMS.filter(x => String(x.category || '') === f) : REVIEW_ITEMS;
+  const items = f === 'TRIAGE'
+    ? REVIEW_ITEMS.filter(x => x.triage && x.triage.job)
+    : (f ? REVIEW_ITEMS.filter(x => String(x.category || '') === f) : REVIEW_ITEMS);
   el.innerHTML = items.length ? items.map(x => {
     const mail = 'https://mail.google.com/mail/u/0/#all/' + encodeURIComponent(x.id || '');
     const links = (x.links || []).slice(0, 2).map(l =>
@@ -2688,6 +2690,7 @@ function renderGmailReview() {
         ${x.company ? ` · <b>${esc(x.company)}</b>` : ''}${x.role ? ` — ${esc(x.role)}` : ''}</div>
       <div class="muted mini">${esc(x.sender || '')} · ${esc(x.subject || '')}</div>
       <div>${esc(x.reason || '')}</div>
+      ${x.triage && x.triage.job ? `<div class="muted mini" style="margin:3px 0"><b>Triage:</b> job-related · ${esc(x.triage.category || 'OTHER')} · ${esc((x.triage.reasons || []).join(', '))}</div>` : ''}
       ${x.scam && ['high', 'medium'].includes(x.scam.level) ? `<div class="scambox ${esc(x.scam.level)}" style="margin:4px 0"><b>⚠ Scam check: ${esc(x.scam.level.toUpperCase())}</b> ` +
         `${(x.scam.signals || []).filter(s => s.level === x.scam.level).map(s => esc(s.advice)).join(' ')}<div class="muted mini">${esc(SCAM_RULE)}</div></div>` : ''}
       <div class="row" style="margin-top:6px"><a href="${mail}" target="_blank" rel="noopener">Open email ↗</a> ${links} ${codes}

@@ -83,3 +83,8 @@ state/
 
 # MkDocs build output
 site/
+
+# local triage additions (personal domains; the example is public)
+config/email-triage.json
+# local promotion drafts
+promotion/
