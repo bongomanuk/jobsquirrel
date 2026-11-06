@@ -1,4 +1,6 @@
 site_name: Jobsquirrel
+site_author: Peter Hollas
+copyright: Made by <a href="https://hollas.net">Peter Hollas</a> · <a href="https://hollas.net">hollas.net</a>
 site_description: An open, self-hosted job-application agent that finds, tailors, gates and applies to jobs for you.
 site_url: https://bongomanuk.github.io/jobsquirrel/
 repo_url: https://github.com/bongomanuk/jobsquirrel

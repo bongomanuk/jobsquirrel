@@ -2068,6 +2068,49 @@ def task_logs():
         return []
 
 
+def task_log_items(limit=80):
+    """Task logs with the metadata the Settings log browser needs.
+
+    Newest first. Running names come from the queue worker, the same source the
+    standalone /logs page uses. A name that has both a live .log and a packed
+    .log.gz is reported once, from the live file.
+    """
+    running = {}
+    if WQ:
+        try:
+            for k in WQ.live_tasks():
+                co, _, role = k.partition("|")
+                running[f"{co}-{role}".translate(str.maketrans(" /|", "___"))] = True
+        except Exception:
+            pass
+    found = {}
+    try:
+        files = os.listdir(LOGS)
+    except OSError:
+        return []
+    for f in files:
+        if f.endswith(".log.gz"):
+            name, path = f[:-7], os.path.join(LOGS, f)
+            if os.path.exists(os.path.join(LOGS, name + ".log")):
+                continue
+        elif f.endswith(".log"):
+            name, path = f[:-4], os.path.join(LOGS, f)
+        else:
+            continue
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        found[name] = {"name": name, "size": st.st_size,
+                       "age": max(0, int(time.time() - st.st_mtime)),
+                       "running": name in running}
+    try:
+        limit = max(1, min(int(limit), 500))
+    except (TypeError, ValueError):
+        limit = 80
+    return sorted(found.values(), key=lambda x: (x["age"], x["name"]))[:limit]
+
+
 def read_task_log(name):
     name = os.path.basename(name)[:120]
     path = os.path.join(LOGS, name + ".log")
@@ -4857,6 +4900,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(runs())
         if p == "/api/tasks":
             return self._json(task_logs())
+        if p == "/api/logs":
+            return self._json(task_log_items(qs.get("limit", ["80"])[0]))
         if p == "/api/log":
             return self._json(read_task_log(qs.get("task", [""])[0]))
         if p == "/api/live":

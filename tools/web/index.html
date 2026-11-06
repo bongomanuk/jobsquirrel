@@ -9,14 +9,11 @@
 <body data-session-token="{{TOKEN}}" data-act="closed">
 <header class="top">
   <div class="brand" id="brand-home" role="link" tabindex="0" title="Back to the job grid"><span class="mascot">🐿️</span><h1>Jobsquirrel</h1>
-    <span id="health" class="pill unknown">health…</span><span class="pill">v<span id="ver">…</span></span>
-    <button id="updpill" class="pill upd hide" title="A new version is available">⬆ update</button>
-    <span class="pill" title="UI build marker">WebUI v6</span>
-    <a class="pill" id="logs-link" href="/logs" target="_blank" title="Live task logs (opens in a new tab; works without the dashboard script)">📜 Logs</a></div>
+    <span id="health" class="pill unknown">health…</span></div>
   <div class="actions">
     <button id="a-applications" title="The application grid">📋 Applications</button>
     <button id="a-knowledge" title="Open the knowledge graph">🕸️ Knowledge</button>
-    <button id="a-config" title="Edit profile / CV / archetypes">⚙ Config</button>
+    <button id="a-settings" title="Settings, logs and about">⚙ Settings</button>
   </div>
 </header>
 
@@ -307,7 +304,9 @@
       <a data-s="perms" onclick="App.settings('perms')">Agent permissions</a>
       <a data-s="captcha" onclick="App.settings('captcha')">CAPTCHA</a>
       <a data-s="profile" onclick="App.settings('profile')">Profile &amp; CV</a>
+      <a data-s="logs" onclick="App.settings('logs')">Logs</a>
       <a data-s="data" onclick="App.settings('data')">Backup &amp; data</a>
+      <a data-s="about" onclick="App.settings('about')">About</a>
     </nav>
     <div id="set-body" class="set-body"><span class="muted">loading…</span></div>
   </div>

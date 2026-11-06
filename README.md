@@ -547,6 +547,10 @@ interviewed — awaiting outcome).
 - See **[DISCLAIMER.md](DISCLAIMER.md)** for the full acceptable-use and
   liability statement. It is **not legal advice**.
 
+## Credits
+
+Built by [Peter Hollas](https://hollas.net) · [hollas.net](https://hollas.net).
+
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE). Adapt and build on it freely.

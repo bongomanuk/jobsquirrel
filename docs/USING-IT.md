@@ -92,11 +92,14 @@ Everything is observable. Useful things to ask for, or run yourself:
     the raw commands and logs stay under a collapsed **Technical details** section, both in the
     pane and in the per-task log. The chat answers questions and quick checks directly and shows
     a 🥜 spinner only while it is doing that.
-  - **Settings** (⚙ Config): **Accounts** (credential status + Gmail/Calendar authorisation),
-    **Knowledge base** (list / upload / delete source documents, rebuild the index), **GraphRAG**
-    (browse entities, relationships, communities and documents), and **Profile & CV** (edit
-    `profile.md` / `cv.json` / `archetypes.json`, regenerate the archetype CVs).
-  - The header has three destinations: **Applications**, **Knowledge** and **Config**. The
+  - **Settings** (⚙ Settings): **Accounts** (credential status + Gmail/Calendar authorisation),
+    **Secrets** (the encrypted store, with Replace saving on blur), **AI & agent**, **Knowledge base**
+    (list / upload / delete source documents, rebuild the index), **GraphRAG** (browse entities,
+    relationships, communities and documents), **Agent permissions**, **CAPTCHA**, **Profile & CV**
+    (edit `profile.md` / `cv.json` / `archetypes.json`, regenerate the archetype CVs), **Logs**
+    (browse and tail task logs, or open the standalone page) and **About** (version, build/update
+    status, release notes and credits). Every field saves on change; there are no save buttons.
+  - The header has three destinations: **Applications**, **Knowledge** and **Settings**. The
     page-level actions are scoped to the grid: **Prepare shown** (REVIEW=1, no submits),
     **Submit prepared** and **Review**. A `PREPARED` row's drawer has **Submit this application**.
     Submitting uses the documents already generated — no re-generation — and needs a two-step

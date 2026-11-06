@@ -194,10 +194,11 @@ and stops at any CAPTCHA/2FA rather than working around it.
 ### 9.2 Shell (single-grid IA)
 The whole app is **one master data grid** — one canonical row per application, so the
 same record is never duplicated across separate pages.
-- **Header:** mascot 🐿️ · health pill (`/api/health`) · build marker · three destinations:
-  **📋 Applications**, **🕸️ Knowledge**, **⚙ Config**. The broad Prepare / Run Submissions
-  actions are not in the header; the grid toolbar has scoped **Prepare shown** and
-  **Submit prepared**, and a `PREPARED` row's drawer has **Submit this application**.
+- **Header:** mascot 🐿️ · health pill (`/api/health`) · three destinations:
+  **📋 Applications**, **🕸️ Knowledge** and **⚙ Settings**. Version, build/update status,
+  logs and the About/credits live in Settings. The broad Prepare / Run Submissions actions are
+  not in the header; the grid toolbar has scoped **Prepare shown** and **Submit prepared**, and
+  a `PREPARED` row's drawer has **Submit this application**.
 - **Strip:** metric pills (in process · interviews · blocked · human · offers · total · submissions)
   and a live-tail line (`/api/live`).
 - **Toolbar:** search (company/role/ATS), status filter, queue filter, **Export CSV**, row count,
@@ -257,13 +258,18 @@ Clicking a row opens a drawer with tabs:
 - **Documents** — the **rendered** tailored CV (inline preview) and cover letter, with buttons to
   open either in the viewer and to open the CV PDF; the raw content pack is behind a toggle.
 
-### 9.5 Settings panel (⚙ Config)
+### 9.5 Settings panel (⚙ Settings)
 - Sections: **Accounts** (status + Gmail/Calendar authorisation), **Secrets** (the encrypted
   store: agent keys, GraphRAG, Google OAuth, per-site logins and custom entries, masked),
   **AI & agent** (which agent CLI + model picker + API-token env, and the GraphRAG LLM settings),
   **Knowledge base** (list / upload / delete sources, rebuild the index), **GraphRAG** (a status card
   and launcher for the full-page Knowledge workspace), **Agent permissions**
-  (per-category allow/ask/deny), **Profile & CV** (edit files, regenerate), **Backup & data**.
+  (per-category allow/ask/deny), **CAPTCHA** (private build: provider, model, timeout, key),
+  **Profile & CV** (edit files, regenerate), **Logs** (browse and tail task logs, or open the
+  standalone page), **Backup & data**, and **About** (version, build/update status, release notes,
+  documentation/GitHub links and the credit).
+- Every field saves on change; Settings has no save buttons. The CAPTCHA pane, the AI/agent
+  pane and the secrets Replace field all write immediately and report the result in a toast.
 
 ### 9.5b Agent permission gate (agent-agnostic)
 - Policy in `config/agent-permissions.json`: `read_repo`/`write_repo` (default **allow**),

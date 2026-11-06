@@ -92,4 +92,6 @@ description: Jobsquirrel is an open, self-hosted job-application agent: it finds
 
 [GitHub](https://github.com/bongomanuk/jobsquirrel) · [Releases](https://github.com/bongomanuk/jobsquirrel/releases) · [Report an issue](https://github.com/bongomanuk/jobsquirrel/issues)
 
+Made by [Peter Hollas](https://hollas.net) · [hollas.net](https://hollas.net)
+
 </div>

@@ -278,6 +278,7 @@ const App = {
   settings: async (sec) => {
     CF_SEC = sec || CF_SEC || 'accounts';
     document.querySelectorAll('.set-nav a').forEach(a => a.classList.toggle('on', a.dataset.s === CF_SEC));
+    if (CF_SEC !== 'logs') stopLogs();
     const b = $('#set-body'); b.innerHTML = '<span class="muted">loading…</span>';
     if (CF_SEC === 'accounts') return setAccounts(b);
     if (CF_SEC === 'secrets') return setSecrets(b);
@@ -286,6 +287,8 @@ const App = {
     if (CF_SEC === 'graph') return setGraph(b);
     if (CF_SEC === 'perms') return setPerms(b);
     if (CF_SEC === 'captcha') return setCaptcha(b);
+    if (CF_SEC === 'logs') return setLogs(b);
+    if (CF_SEC === 'about') return setAbout(b);
     if (CF_SEC === 'data') return setData(b);
     return setProfile(b);
   },
@@ -316,14 +319,15 @@ const App = {
     if (!name || !val) return toast('name and value are required', true);
     return App.secretSave(section, name, val);
   },
-  secretEdit: (btn) => {
+  secretReveal: (btn) => {
     const row = btn.closest('[data-sec]'); if (!row) return;
     const inp = row.querySelector('[data-new]');
     if (!inp) return;
-    if (inp.style.display === 'none') {
-      inp.style.display = ''; inp.focus(); btn.textContent = 'Save'; return;
-    }
-    if (!inp.value) return toast('type a new value first', true);
+    inp.style.display = ''; inp.focus();
+  },
+  secretSaveRow: (inp) => {
+    const row = inp.closest('[data-sec]'); if (!row) return;
+    if (!inp.value) { inp.style.display = 'none'; return; }
     App.secretSave(row.dataset.sec, row.dataset.name, inp.value, row.dataset.user || '');
   },
   secretDel: async (btn) => {
@@ -407,8 +411,36 @@ const App = {
       clear_key: $('#captcha-clear') && $('#captcha-clear').checked
     });
     toast(d.ok || d.error, !!d.error);
-    if (!d.error) App.settings('captcha');
+    if (d.error) return;
+    const key = $('#captcha-key'); if (key) key.value = '';
+    const clear = $('#captcha-clear'); if (clear) clear.checked = false;
+    const pill = $('#captcha-on');
+    if (pill) { pill.textContent = (d.enabled === false) ? 'OFF' : 'ON'; }
+    const keyPill = $('#captcha-key-state');
+    if (keyPill) {
+      keyPill.textContent = d.key_set ? 'stored'
+        : (d.provider === 'vision' ? 'not needed' : 'not set');
+    }
   },
+  logPick: async (name) => {
+    if (!name) return;
+    clearTimeout(LOG_TIMER); LOG_TIMER = null;
+    LOG_NAME = name;
+    const item = LOG_ITEMS.find(x => x.name === name) || {};
+    LOG_RUNNING = !!item.running;
+    document.querySelectorAll('#log-list .logrow').forEach(el => el.classList.toggle('on', el.dataset.name === name));
+    const t = $('#log-title'); if (t) t.textContent = name;
+    const rf = $('#log-refresh'); if (rf) rf.classList.toggle('hide', !LOG_RUNNING);
+    await logRefresh();
+  },
+  logFilter: () => {
+    const q = (($('#log-q') || {}).value || '').trim().toLowerCase();
+    document.querySelectorAll('#log-list .logrow').forEach(el => {
+      el.classList.toggle('hide', !!q && !String(el.dataset.name || '').toLowerCase().includes(q));
+    });
+  },
+  checkUpdates: () => updateCheck(true),
+  updateNow: () => updateDialog(),
   aiAdd: () => {
     const k = $('#ai-env-k').value.trim(), v = $('#ai-env-v').value;
     if (!k) { toast('name the key first', true); return; }
@@ -3266,8 +3298,9 @@ function secretRowHTML(sec, r) {
     <code style="min-width:210px">${esc(r.name)}</code>
     ${r.username ? `<span class="muted mini" style="max-width:190px;overflow:hidden;text-overflow:ellipsis">${esc(r.username)}</span>` : ''}
     <span class="muted mini" data-mask>${r.set ? esc(r.value) : 'not set'}</span>
-    <input type="password" data-new autocomplete="new-password" placeholder="new value" style="flex:1;display:none">
-    <button class="small" onclick="App.secretEdit(this)">Replace</button>
+    <input type="password" data-new autocomplete="new-password" placeholder="new value — saves on blur" style="flex:1;display:none"
+      onchange="App.secretSaveRow(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">
+    <button class="small" onclick="App.secretReveal(this)">Replace</button>
     <button class="small" onclick="App.secretDel(this)" title="delete">✕</button>
   </div>`;
 }
@@ -3635,34 +3668,138 @@ async function setCaptcha(b) {
   if (CF_SEC !== 'captcha') return;
   if (!d || d.error) { b.innerHTML = `<span class="bad">${esc((d && d.error) || 'could not read CAPTCHA settings')}</span>`; return; }
   const on = d.enabled !== false;
+  const keyState = d.key_set ? 'stored' : (d.provider === 'vision' ? 'not needed' : 'not set');
   b.innerHTML = `<p class="muted">Private build only. When enabled, the browser solves a reCAPTCHA visually
       with the vision model above (or a solver service if one is selected), injects the token and continues the
       application. The vision provider needs no key. The public build never does this. Solving a CAPTCHA can
       breach a site's terms; use it only where you are authorised.</p>
     <div class="row" style="margin:10px 0"><label class="row" style="gap:6px">
-      <input type="checkbox" id="captcha-enabled" ${on ? 'checked' : ''}> Solve CAPTCHAs automatically</label>
-      <span class="pill">${on ? 'ON' : 'OFF'}</span></div>
+      <input type="checkbox" id="captcha-enabled" onchange="App.saveCaptcha()" ${on ? 'checked' : ''}> Solve CAPTCHAs automatically</label>
+      <span id="captcha-on" class="pill">${on ? 'ON' : 'OFF'}</span></div>
     <div class="row" style="margin:8px 0"><span class="muted" style="min-width:130px">Provider</span>
-      <select id="captcha-provider" style="min-width:220px">
+      <select id="captcha-provider" style="min-width:220px" onchange="App.saveCaptcha()">
         <option value="vision" ${d.provider === 'vision' ? 'selected' : ''}>Vision (agent model)</option>
         <option value="2captcha" ${d.provider === '2captcha' ? 'selected' : ''}>2Captcha</option>
         <option value="capsolver" ${d.provider === 'capsolver' ? 'selected' : ''}>CapSolver</option>
       </select>
       <span class="muted" style="min-width:100px;margin-left:10px">Timeout</span>
-      <input id="captcha-timeout" type="number" min="30" max="600" value="${esc(d.timeout || 180)}" style="max-width:90px"> s</div>
+      <input id="captcha-timeout" type="number" min="30" max="600" value="${esc(d.timeout || 180)}" style="max-width:90px" onchange="App.saveCaptcha()"> s</div>
     <div class="row" style="margin:8px 0"><span class="muted" style="min-width:130px">Vision model</span>
       <input id="captcha-model" style="flex:1" value="${esc(d.model || 'opencode-go/deepseek-v4.1-flash')}"
-        placeholder="opencode-go/deepseek-v4.1-flash">
+        placeholder="opencode-go/deepseek-v4.1-flash" onchange="App.saveCaptcha()">
       <span class="pill">${d.provider === 'vision' ? 'no key' : 'optional'}</span></div>
     <div class="row" style="margin:8px 0"><span class="muted" style="min-width:130px">API key</span>
       <input id="captcha-key" type="password" autocomplete="new-password" style="flex:1"
-        placeholder="${d.key_set ? '•••• stored — leave blank to keep' : 'only for 2Captcha / CapSolver'}">
-      <span class="pill">${d.key_set ? 'stored' : 'not needed for vision'}</span></div>
-    <div class="row" style="margin:8px 0"><label class="mini"><input type="checkbox" id="captcha-clear"> clear the stored key</label></div>
-    <div class="row" style="margin:10px 0"><button onclick="App.saveCaptcha()">Save CAPTCHA settings</button>
-      <span class="muted mini">${d.key_name ? `Key name: <code>${esc(d.key_name)}</code> · stored in the encrypted secrets store.` : 'Vision needs no key.'}</span></div>
+        placeholder="${d.key_set ? '•••• stored — leave blank to keep' : 'only for 2Captcha / CapSolver'}"
+        onchange="App.saveCaptcha()">
+      <span id="captcha-key-state" class="pill">${keyState}</span></div>
+    <div class="row" style="margin:8px 0"><label class="mini"><input type="checkbox" id="captcha-clear" onchange="App.saveCaptcha()"> clear the stored key</label></div>
+    <div class="row" style="margin:10px 0">
+      <span class="muted mini">Changes save automatically.${d.key_name ? ` Key name: <code>${esc(d.key_name)}</code> · stored in the encrypted secrets store.` : ' Vision needs no key.'}</span></div>
     <p class="muted mini">If solving fails, the role is recorded BLOCKED. The queue prompt only tells the agent to solve
       when this setting is on.</p>`;
+}
+
+/* ---------- Settings: logs ---------- */
+let LOG_NAME = '', LOG_RUNNING = false, LOG_TIMER = null, LOG_ITEMS = [];
+function stopLogs() {
+  clearTimeout(LOG_TIMER);
+  LOG_TIMER = null; LOG_NAME = ''; LOG_RUNNING = false;
+}
+function fmtAge(s) {
+  if (s == null) return '—';
+  if (s < 90) return s + 's ago';
+  if (s < 5400) return Math.round(s / 60) + 'm ago';
+  if (s < 172800) return (s / 3600).toFixed(1) + 'h ago';
+  return Math.round(s / 86400) + 'd ago';
+}
+async function setLogs(b) {
+  const d = await api('/api/logs');
+  if (CF_SEC !== 'logs') return;
+  LOG_ITEMS = Array.isArray(d) ? d : [];
+  const rows = LOG_ITEMS.length ? LOG_ITEMS.map(x => `<button class="logrow" data-name="${esc(x.name)}"
+      onclick="App.logPick(this.dataset.name)" title="${esc(x.name)}">
+      <span class="lname">${x.running ? '● ' : ''}${esc(x.name)}</span>
+      <span class="lmeta muted">${fmtSize(x.size)} · ${fmtAge(x.age)}</span></button>`).join('')
+    : '<span class="muted mini" style="display:block;padding:10px">no task logs yet</span>';
+  b.innerHTML = `<p class="muted">Every task the pipeline runs writes a log here. Pick one to read it;
+      a running task refreshes itself. The standalone page is still available if you prefer it in its own tab.</p>
+    <div class="row" style="margin:8px 0">
+      <input id="log-q" placeholder="filter by task name…" style="flex:1;max-width:320px" oninput="App.logFilter()">
+      <button class="small" onclick="App.settings('logs')">Refresh list</button>
+      <a class="pill" href="/logs" target="_blank" rel="noopener" title="Open the standalone logs page">Full logs page ↗</a>
+    </div>
+    <div class="logspane">
+      <div id="log-list" class="loglist">${rows}</div>
+      <div class="logview">
+        <div class="logview-h"><b id="log-title">Select a log</b><span id="log-meta" class="muted mini"></span>
+          <span style="flex:1"></span>
+          <button id="log-refresh" class="small hide" onclick="App.logRefresh()">↻ Refresh</button></div>
+        <pre id="log-body" class="doc logbody">Choose a log on the left to read it here.</pre>
+      </div>
+    </div>`;
+  if (LOG_NAME) App.logPick(LOG_NAME);
+}
+async function logRefresh() {
+  if (!LOG_NAME) return;
+  const name = LOG_NAME;
+  const d = await api('/api/log?task=' + encodeURIComponent(name));
+  if (LOG_NAME !== name) return;
+  const body = $('#log-body'); if (!body) return;
+  const lines = (d && d.curated) || [];
+  const raw = (d && d.raw) || [];
+  const text = raw.length ? raw : lines.map(x => (x.k === 'phase' ? '[phase] ' : '') + (x.t || ''));
+  const stick = body.scrollHeight - body.scrollTop - body.clientHeight < 60;
+  body.textContent = text.length ? text.join('\n') : ((d && d.error) || 'No output yet.');
+  if (stick) body.scrollTop = body.scrollHeight;
+  const meta = $('#log-meta');
+  if (meta) meta.textContent = [
+    d && d.size != null ? fmtSize(d.size) : '',
+    d && d.age != null ? 'updated ' + fmtAge(d.age) : '',
+    LOG_RUNNING ? 'running' : 'finished'
+  ].filter(Boolean).join(' · ');
+  clearTimeout(LOG_TIMER); LOG_TIMER = null;
+  if (LOG_RUNNING) LOG_TIMER = setTimeout(logRefresh, 2500);
+}
+
+/* ---------- Settings: about ---------- */
+function renderAbout() {
+  const v = $('#about-ver'); if (v) v.textContent = 'v' + (UPD.current || '…');
+  const st = $('#about-status');
+  if (st) {
+    if (UPD.available) st.innerHTML = `<span class="pill upd">⬆ ${esc(UPD.latest)} available</span>`;
+    else if (UPD.error) st.innerHTML = `<span class="muted mini">could not check · ${esc(UPD.error)}</span>`;
+    else if (UPD.current) st.innerHTML = '<span class="pill PASS">✓ up to date</span>';
+    else st.textContent = 'checking…';
+  }
+  const go = $('#about-update'); if (go) go.classList.toggle('hide', !UPD.available);
+  const rel = $('#about-release');
+  if (rel) { rel.href = UPD.url || '#'; rel.classList.toggle('hide', !UPD.available); }
+  const nm = $('#about-updname'); if (nm) nm.textContent = UPD.available ? (UPD.name || '') : '';
+}
+function setAbout(b) {
+  b.innerHTML = `<p class="muted">Jobsquirrel is an open, self-hosted job-application agent: it finds roles,
+      tailors a CV and cover letter for each one, gates them for accuracy, applies through the employer's own
+      ATS and tracks the replies. Everything runs on your machine.</p>
+    <div class="about-card">
+      <span class="k">Version</span><span class="v" id="about-ver">v${esc(UPD.current || '…')}</span>
+      <span class="k">Web interface</span><span class="v">WebUI v6</span>
+      <span class="k">Updates</span><span class="v" id="about-status">checking…</span>
+    </div>
+    <div class="row" style="margin:10px 0">
+      <button onclick="App.checkUpdates()">Check for updates</button>
+      <button id="about-update" class="risky${UPD.available ? '' : ' hide'}" onclick="App.updateNow()">Update now</button>
+      <a id="about-release" class="mini muted${UPD.available ? '' : ' hide'}" href="${esc(UPD.url || '#')}"
+        target="_blank" rel="noopener">release notes ↗</a>
+    </div>
+    <div id="about-updname" class="muted mini"></div>
+    <div class="row" style="margin:12px 0">
+      <a class="pill" href="https://bongomanuk.github.io/jobsquirrel/" target="_blank" rel="noopener">Documentation ↗</a>
+      <a class="pill" href="https://github.com/bongomanuk/jobsquirrel" target="_blank" rel="noopener">GitHub ↗</a>
+    </div>
+    <div class="about-credit">Created by <a href="https://hollas.net" target="_blank" rel="noopener">Peter Hollas</a>
+      · <a href="https://hollas.net" target="_blank" rel="noopener">hollas.net</a></div>`;
+  renderAbout();
 }
 
 async function setPerms(b) {
@@ -3798,8 +3935,8 @@ if (brandHome) {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); App.home(); }
   };
 }
-$('#a-config').onclick = () => { $('#cfg').classList.remove('hide'); App.settings(CF_SEC); };
-window.cfgClose = () => $('#cfg').classList.add('hide');
+$('#a-settings').onclick = () => { $('#cfg').classList.remove('hide'); App.settings(CF_SEC); };
+window.cfgClose = () => { stopLogs(); $('#cfg').classList.add('hide'); };
 window.legendClose = () => $('#legend-modal').classList.add('hide');
 $('#legend').onclick = () => {
   $('#legend-views').innerHTML = BUCKETS.map(b => `<dt>${esc(b.label)}</dt><dd>${esc(b.hint)}</dd>`).join('');
@@ -3828,7 +3965,6 @@ if ($('#chat-model')) $('#chat-model').onchange = async (e) => {
   toast(d.error ? d.error : `model: ${val || '(agent default)'} — applies to chat, role chats and queue/API runs`, !!d.error);
   if (d.error) loadChatModel(true);
 };
-$('#updpill').onclick = () => updateDialog();
 $('#btn-stop').onclick = () => App.stop();
 window.evidClose = () => $('#evid').classList.add('hide');
 $('#evid-save').onclick = () => App.saveEvidence();
@@ -3944,14 +4080,13 @@ window.App = App;
 async function healthPill() { const s = await api('/api/health'); const h = $('#health');
   h.textContent = 'health: ' + (s.v || '?'); h.className = 'pill ' + (s.v || 'unknown'); h.title = s.detail || ''; setTimeout(healthPill, 60000); }
 /* ---------- software updates ---------- */
-let UPD = {};
+let UPD = {}, UPD_TIMER = null;
 async function updateCheck(refresh) {
   const d = await api('/api/update' + (refresh ? '?refresh=1' : ''));
   UPD = d || {};
-  if ($('#ver')) $('#ver').textContent = d.current || '?';
-  const pill = $('#updpill');
-  if (pill) { pill.classList.toggle('hide', !d.available); if (d.available) pill.textContent = `⬆ ${d.latest}`; }
-  setTimeout(updateCheck, 6 * 3600 * 1000);                        // re-check every 6h
+  renderAbout();
+  clearTimeout(UPD_TIMER);
+  UPD_TIMER = setTimeout(() => updateCheck(), 6 * 3600 * 1000);    // re-check every 6h
 }
 window.updClose = () => $('#upd').classList.add('hide');
 function updateDialog() {
