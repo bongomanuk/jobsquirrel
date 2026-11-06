@@ -571,6 +571,7 @@ const App = {
   },
   openKnowledge: async (mode) => {
     const page = $('#knowledge'); if (!page) return;
+    stopLogs();
     const cfg = $('#cfg'); if (cfg) cfg.classList.add('hide');
     page.classList.remove('hide');
     document.body.classList.add('knowledge-open');
@@ -747,6 +748,7 @@ const App = {
   home: () => {
     const page = $('#knowledge');
     if (page && !page.classList.contains('hide')) App.closeKnowledge();
+    stopLogs();
     const cfg = $('#cfg'); if (cfg) cfg.classList.add('hide');
     const detail = $('#detail');
     if (detail && !detail.hasAttribute('hidden')) {
@@ -3742,6 +3744,7 @@ async function setLogs(b) {
 }
 async function logRefresh() {
   if (!LOG_NAME) return;
+  if (CF_SEC !== 'logs' || !$('#log-body')) { stopLogs(); return; }
   const name = LOG_NAME;
   const d = await api('/api/log?task=' + encodeURIComponent(name));
   if (LOG_NAME !== name) return;
