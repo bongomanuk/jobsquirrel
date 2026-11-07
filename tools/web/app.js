@@ -278,6 +278,58 @@ function assetVer() {
   return m ? '?v=' + m[1] : '';
 }
 
+let KG_HIST = { stack: [], at: -1, replay: false };
+
+function kgButtons() {
+  const b = $('#kg-back'), f = $('#kg-fwd');
+  if (b) b.disabled = KG_HIST.at <= 0;
+  if (f) f.disabled = KG_HIST.at >= KG_HIST.stack.length - 1;
+}
+
+function kgRecord(entry) {
+  if (KG_HIST.replay) return;
+  entry.t = Date.now();
+  const last = KG_HIST.stack[KG_HIST.at];
+  if (last && last.kind === entry.kind && JSON.stringify({ ...last, t: 0 }) === JSON.stringify({ ...entry, t: 0 })) return;
+  // a mode switch that immediately loads the topic list is one navigation
+  if (last && last.kind === 'mode' && entry.kind === 'types' && entry.t - last.t < 800) {
+    return;
+  }
+  KG_HIST.stack = KG_HIST.stack.slice(0, KG_HIST.at + 1);
+  KG_HIST.stack.push(entry);
+  if (KG_HIST.stack.length > 60) KG_HIST.stack.shift();
+  KG_HIST.at = KG_HIST.stack.length - 1;
+  kgButtons();
+}
+
+async function kgGo(d) {
+  const next = KG_HIST.at + d;
+  if (next < 0 || next >= KG_HIST.stack.length) return;
+  KG_HIST.at = next;
+  const e = KG_HIST.stack[next];
+  KG_HIST.replay = true;
+  try {
+    if (e.kind === 'mode') await App.setKGMode(e.mode);
+    else if (e.kind === 'types') await App.graphTypes();
+    else if (e.kind === 'type') await App.graphTypeEntities(e.type);
+    else if (e.kind === 'community') await App.graphCommunity(e.id);
+    else if (e.kind === 'search') { if ($('#kg-q')) $('#kg-q').value = e.q || ''; await App.graphSearch(e.q); }
+    else if (e.kind === 'usearch') { await App.setKGMode('universe'); App.universeSearch(e.q); }
+  } finally {
+    KG_HIST.replay = false;
+    kgButtons();
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if (!e.altKey || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+  const page = $('#knowledge');
+  if (!page || page.classList.contains('hide')) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName)) return;
+  e.preventDefault();
+  kgGo(e.key === 'ArrowLeft' ? -1 : 1);
+});
+
 const App = {
   async run(command) {
     if (command === 'submit_queue') {
@@ -626,8 +678,11 @@ const App = {
     if (wantUni) await App.setKGMode('universe');
     else { App.setKGMode('map'); if (!KG) App.graphTypes(); }
   },
+  kgBack: () => kgGo(-1),
+  kgFwd: () => kgGo(1),
   setKGMode: async (mode) => {
     const page = $('#knowledge'); if (!page) return;
+    kgRecord({ kind: 'mode', mode: mode === 'universe' ? 'universe' : 'map' });
     KGMODE = mode === 'universe' ? 'universe' : 'map';
     page.classList.toggle('uni-mode', KGMODE === 'universe');
     const bm = $('#kg-mode-map'), bu = $('#kg-mode-uni');
@@ -801,9 +856,10 @@ const App = {
   },
   openUniverse: async () => { await App.openKnowledge('universe'); },
   closeUniverse: () => { App.setKGMode('map'); },
-  universeSearch: (q) => { if (window.__uni) window.__uni.search(q); },
+  universeSearch: (q) => { if (!KG_HIST.replay) kgRecord({ kind: 'usearch', q: q || '' }); if (window.__uni) window.__uni.search(q); },
   universeReset: () => { if (window.__uni) window.__uni.reset(); },
   graphTypes: async () => {
+    kgRecord({ kind: 'types' });
     const msg = $('#kg-msg'); if (msg) msg.textContent = 'reading topics…';
     const d = await api('/api/graph/types?limit=24');
     if (!d || d.error) { if (msg) msg.textContent = (d && d.error) || 'could not read the topics'; return; }
@@ -818,6 +874,7 @@ const App = {
     if (msg) msg.textContent = `${d.nodes.length} topics · ${d.links.length} links between topics`;
   },
   graphTypeEntities: async (type) => {
+    if (!KG_HIST.replay) kgRecord({ kind: 'type', type });
     const msg = $('#kg-msg'); if (msg) msg.textContent = 'reading entities…';
     const d = await api('/api/graph/type?type=' + encodeURIComponent(type) + '&limit=90');
     if (!d || d.error) { if (msg) msg.textContent = (d && d.error) || 'could not read that topic'; return; }
@@ -968,6 +1025,7 @@ const App = {
   },
   graphAll: () => App.graphOverview(KG ? KG.parent : null, 60),
   graphCommunity: async (id) => {
+    if (!KG_HIST.replay) kgRecord({ kind: 'community', id: String(id) });
     const msg = $('#kg-msg'); if (msg) msg.textContent = 'reading community…';
     const d = await api('/api/graph/community?id=' + encodeURIComponent(id) + '&limit=90');
     if (!d || d.error) { if (msg) msg.textContent = (d && d.error) || 'could not read the community'; return; }
@@ -995,6 +1053,7 @@ const App = {
     if (msg) msg.textContent = `${d.nodes.length} entities · ${d.links.length} relationships · ego network`;
   },
   graphSearch: async (q) => {
+    if (!KG_HIST.replay) kgRecord({ kind: 'search', q: q || '' });
     q = (q || '').trim();
     if (!q) return App.graphTop();
     const box = $('#kg-results');
@@ -4573,6 +4632,7 @@ function startEvents() {
   };
 }
 App.setMascot(App.crittersOn());
+kgButtons();
 initPanels(); initGridCols(); syncGroupingButton(); loadGroups(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel(); startEvents();
 if (location.hash === '#knowledge') setTimeout(() => App.openKnowledge('map'), 400);
 if (location.hash === '#universe') setTimeout(() => App.openKnowledge('universe'), 400);

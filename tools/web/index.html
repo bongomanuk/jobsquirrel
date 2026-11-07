@@ -259,7 +259,9 @@
       <option value="3">3 hops</option>
     </select>
     <div class="kg-modes" role="tablist" aria-label="View">
-      <button id="kg-mode-map" class="on" onclick="App.setKGMode('map')" title="Drill down through communities and topics"><svg class="ic" aria-hidden="true"><use href="#i-map"></use></svg> Map</button>
+      <button id="kg-back" class="kg-btn kg-icon" disabled onclick="App.kgBack()" title="Back (Alt+Left)">←</button>
+        <button id="kg-fwd" class="kg-btn kg-icon" disabled onclick="App.kgFwd()" title="Forward (Alt+Right)">→</button>
+        <button id="kg-mode-map" class="on" onclick="App.setKGMode('map')" title="Drill down through communities and topics"><svg class="ic" aria-hidden="true"><use href="#i-map"></use></svg> Map</button>
       <button id="kg-mode-uni" onclick="App.setKGMode('universe')" title="Fly through the entire graph as a 3D universe"><svg class="ic" aria-hidden="true"><use href="#i-globe"></use></svg> Universe</button>
     </div>
     <button class="kg-btn kg-icon" onclick="App.openAsk()" title="Ask the knowledge graph a question; answers cite the graph"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"></use></svg></button>

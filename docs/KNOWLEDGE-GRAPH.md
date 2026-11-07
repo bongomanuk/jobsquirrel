@@ -316,3 +316,22 @@ python3 tools/graph_attach_orphans.py --apply
   hundreds to thousands of entities. Use the Map for small graphs.
 - The 3D scene needs WebGL. Without it, the page shows a readable fallback and
   the rest of the dashboard still works.
+
+## Duplicates
+
+GraphRAG can extract the same thing twice, or split an employer into its legal
+entities ("Anaplan", "Anaplan UK Ltd", "Anaplan Singapore Pte Ltd"). After a
+rebuild, run:
+
+```bash
+python3 tools/graph_dedupe.py            # list the merges
+python3 tools/graph_dedupe.py --apply    # merge them in the index
+```
+
+It merges titles that normalise to the same string within a type, and
+organisation variants that reduce to an existing organisation once legal
+suffixes (Ltd, Pte Ltd, AB, ...) and office qualifiers (UK, Singapore, APAC,
+HQ, ...) are stripped. Aliases are recorded in the surviving entity, text
+units are unioned, relationships are rewritten and duplicate edges summed.
+Symbols such as C, C# and C++ are never merged. A timestamped backup is
+written under `state/backups/` first.

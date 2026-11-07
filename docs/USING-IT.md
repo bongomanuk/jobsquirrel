@@ -153,6 +153,8 @@ On top of each status the dashboard derives a **sub-state** from the role's note
 follow-up flag. The sub-state is the human answer to “what is actually happening, and what
 should I do next?”.
 
+- **Knowledge graph navigation:** the arrows in the Knowledge toolbar go back and
+  forward through graph views (Alt+Left / Alt+Right).
 - **Columns:** right-click a column header to show or hide columns. The choice is remembered.
   Drag a divider to resize a column; double-click it to reset that column.
 - The **Status** cell shows the status chip and, underneath, the sub-state when it adds detail.
