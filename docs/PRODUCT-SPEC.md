@@ -256,7 +256,10 @@ Columns: **Date · Company · Role · Level · ATS · Status · Fit · Pay · Wo
   you select text normally, and a control or link inside a row keeps its own click. Selection is held by role identity
   (company + role), not by row key: preparing a role changes its key or moves it between groups, and
   it stays selected instead of quietly vanishing from the count. Only a role removed from the
-  register leaves the selection.
+  register leaves the selection. A queued role whose title matches an earlier application at the same
+  employer is marked **repost** (the old role, status and date in its tooltip); that is information,
+  not a block: the queue applies to it again and the register keeps the new submission, with the
+  earlier history in its notes.
 - **Right-click a row** for the full action menu: open details / documents / the ad / the apply page,
   discuss the role, prepare documents, submit prepared (approval-gated), recompute the match, draft a
   reply with the agent, set the status, flag or clear a follow-up, **pin to the top**, re-queue, hand to a human, unblock/remove from the queue, and copy the company, role,
@@ -443,7 +446,7 @@ and `info` as waiting on the candidate, alongside flagged actions, invites and o
 | `BLOCKED` | CAPTCHA · login / 2FA · email application · recruiter lead · site problem · missing information · blocked |
 | `MANUAL` | email application · recruiter lead · verification · needs you |
 | `REJECTED` | after application · after interview |
-| `CLOSED` | withdrawn · expired / gone · duplicate · not eligible · filled · closed |
+| `CLOSED` | withdrawn · expired / gone · not eligible · filled · closed |
 
 ### 9.9c Knowledge workspace (top-bar **Knowledge**)
 

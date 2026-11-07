@@ -1969,6 +1969,25 @@ def _worst_scam(*items):
     return best
 
 
+REPOST_STATUSES = {"SUBMITTED", "IN_PROGRESS", "INTERVIEW", "OFFER", "REJECTED"}
+_ROLE_STOP = {"the", "a", "an", "of", "and", "for", "to", "with"}
+
+
+def _role_tokens(value):
+    return {t for t in re.split(r"[^a-z0-9]+", str(value or "").lower())
+            if t and t not in _ROLE_STOP}
+
+
+def _same_role(a, b):
+    """A repost keeps the same title; only punctuation and filler differ.
+
+    Deliberately strict: "Senior AI Engineer" and "AI Engineer" are different
+    roles, not a repost, while "X - Y" and "X, Y" are the same posting again.
+    """
+    wa, wb = _role_tokens(a), _role_tokens(b)
+    return bool(wa) and wa == wb
+
+
 def grid():
     """One row per application: register ⋈ queue ⋈ in-flight running tasks ⋈ provenance."""
     apps = _rows(os.path.join(STATE, "applications.csv"))
@@ -1992,6 +2011,25 @@ def grid():
                for r in _rows(os.path.join(STATE, "submissions.csv")) if r.get("cv_file")}
     subm_url = {(r["company"].lower(), r["role"].lower()): r.get("apply_url", "")
                 for r in _rows(os.path.join(STATE, "submissions.csv")) if r.get("apply_url")}
+    # A reposted role is allowed to be applied to again. Mark it, do not block it:
+    # remember roles this employer has already been applied to, so a queued repost
+    # can say so in the grid.
+    prior = {}
+    for r in apps:
+        st = (r.get("status") or "").upper()
+        if st in REPOST_STATUSES or (r["company"].lower(), r["role"].lower()) in subm:
+            prior.setdefault(_company_token(r["company"]), []).append(
+                (r["role"], st, r.get("date", "")))
+
+    def repost_for(co, role):
+        want = str(role or "").strip().lower()
+        for prole, pst, pdate in prior.get(_company_token(co), []):
+            if str(prole).strip().lower() == want:
+                continue                      # the same row, not a repost
+            if _same_role(prole, role):
+                return {"role": prole, "status": pst, "date": pdate}
+        return None
+
     specs = set(stateio.stems(os.path.join(STATE, "job-descriptions"), ".md"))
 
     def _keyset(folder, ext):
@@ -2074,6 +2112,7 @@ def grid():
                     "shelved": key in shelved,
                     "shelved_at": (shelved.get(key) or {}).get("at", ""),
                     "groups": group_roles.get(key, []),
+                    "repost": repost_for(co, role),
                     **_pay_work_fields(jd_key, notes, status, cov, target),
                     "hint": hint})
     # queued but not yet in the register — show the work that's waiting / in flight
@@ -2123,6 +2162,7 @@ def grid():
                     "shelved": key in shelved,
                     "shelved_at": (shelved.get(key) or {}).get("at", ""),
                     "groups": group_roles.get(key, []),
+                    "repost": repost_for(co, role),
                     **_pay_work_fields(key, "", stg, cov, target),
                     "hint": _hint(stg, "")})
     _save_cov(); _save_emp(); _save_meta()

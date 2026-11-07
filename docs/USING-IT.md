@@ -76,8 +76,10 @@ Everything is observable. Useful things to ask for, or run yourself:
     with Ctrl/Cmd-click or Shift-click (Ctrl/Cmd+A for the whole view, Escape to clear) and
     right-click any of them: the menu is the single-row menu applied to all selected roles, including
     adding all of them to one of your groups in a click. Selecting by role, not by row, so a role
-    stays selected when preparing it changes its status. The Activity pane lists every role in a
-    running batch (running, done and waiting), not only the few in flight. Hover anything for
+    stays selected when preparing it changes its status. A reposted role is tagged **repost** in the
+    grid (hover for the earlier application) and is still applied to; a repost is never a reason to
+    close it. The Activity pane lists every role in a running batch (running, done and waiting), not
+    only the few in flight. Hover anything for
     what it means; click a row for the detail drawer
     (Summary · Chat · Files · Job ad · ATS · **Evidence** · Docs). The page uses one live event
     stream: the grid only rebuilds when state changes, the live strip updates when logs or actions
@@ -199,7 +201,7 @@ should I do next?”.
 | `BLOCKED` | CAPTCHA · login / 2FA · email application · recruiter lead · site problem · missing information · blocked | A wall; the ones that need you appear under **Needs you**. |
 | `MANUAL` | email application · recruiter lead · verification · needs you | A human step the pipeline will not take. |
 | `REJECTED` | after application · after interview | Not selected; no action. |
-| `CLOSED` | withdrawn · expired / gone · duplicate · not eligible · filled · closed | No further action. |
+| `CLOSED` | withdrawn · expired / gone · not eligible · filled · closed | No further action. |
 
 Sub-states are derived from the notes and follow-up flag the pipeline and the reconciler
 already write, so they need no extra bookkeeping. Correcting a note (or setting/clearing the

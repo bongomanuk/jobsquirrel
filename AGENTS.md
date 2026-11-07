@@ -83,8 +83,16 @@ reports a clean config.
    approval-gated the same way (answer the dashboard prompt, set
    `APPROVE_CALENDAR_WRITE=1`, or answer y); reading the calendar and importing an
    `.ics` with `--dry-run` need no approval.
-5. **Stop on CAPTCHA / 2FA / bot checks.** Do not evade. Record `BLOCKED` (or
-   `MANUAL`) with what you tried and move on.
+5. **CAPTCHA / 2FA / bot checks.** This private build can solve a CAPTCHA when
+   **Settings → CAPTCHA** is on (it is on by default). The default provider is
+   `vision`: `python3 tools/captcha_solver.py --solve --server <server>` clicks
+   the checkbox, captures the grid, asks `opencode-go/deepseek-v4.1-flash` which
+   squares match, clicks them and verifies: no solver key. A 2Captcha/CapSolver
+   key is an optional fallback. Run it at most twice, wait for the token, then
+   submit once. If the setting is off or the solve fails, do **not** evade:
+   record `BLOCKED` (or `MANUAL`) with the exact challenge and what you tried,
+   and move on. Never solve a 2FA prompt, an email code or a login checkpoint.
+   Surface those to the human.
 5b. **Recruitment scams.** Never download or install software for an interview,
    never join a chat-only interview, never share a wallet/seed phrase/private key,
    never pay a fee and never move money. A HIGH signal from
@@ -280,6 +288,11 @@ After adding rows, `python3 tools/prioritise_queue.py` and then run.
 ## 4. Per-role procedure (this is what each queued job runs)
 
 Given a role (company, role, apply URL, chosen archetype):
+
+A repost is not a blocker. If the same title was applied to before (a repost, or
+an earlier application that was rejected), the runner marks it `REPOST` and the
+role is prepared/applied again; the grid tags it **repost**. Never record
+`CLOSED` merely because a role looks like a duplicate.
 
 ```bash
 key=<slug-for-this-role>                 # e.g. company-role

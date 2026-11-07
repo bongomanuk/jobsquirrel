@@ -460,6 +460,8 @@ tr.grp .grp-n .countlink:hover{color:var(--accent)}
 .cl-kws{grid-column:2;margin-top:2px}
 mark.kw{background:#2a3d4c;color:#c8dcea;border-radius:3px;padding:0 2px}
 .etag{font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:0 5px;margin-left:4px;vertical-align:1px}
+.etag.repost{color:var(--accent);border-color:rgba(245,158,11,.5)}
+.repostnote{margin:4px 0 0}
 
 /* settings */
 .settings{display:grid;grid-template-columns:190px 1fr;gap:16px;flex:1;min-height:0;margin-top:12px}

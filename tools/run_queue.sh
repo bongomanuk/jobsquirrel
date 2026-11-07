@@ -165,7 +165,8 @@ FIRST, before anything else: read config/profile.md and apply it - identity (nam
 This is a LIGHT run: be fast and cheap. Do NOT run GraphRAG, do NOT write a CV or letter, do NOT run alignment/document gates (the runner already gated $FIXED_CV, so recording it as SUBMITTED needs no --force).
 
 Steps:
-0. DUPLICATE GUARD: the queue runner already checked the register for this company and role before starting. Do not re-read state/applications.csv or call register.py --show. If you happen to see an obvious duplicate, record CLOSED and STOP; otherwise continue.
+0. DUPLICATE GUARD: the queue runner already checked the register for this company and role before starting. Do not re-read state/applications.csv or call register.py --show. A repost or an earlier application does NOT block a new one: apply/prepare it as normal and note the repost. Never record CLOSED just because the role looks like a duplicate.
+${REPOST_NOTE:-}
 0b. ELIGIBILITY GATE (mandatory): apply ONLY if the role is compatible with the eligibility rules in config/profile.md (based-in location, accepted work models, languages, work authorisation, exclusions). If the role is excluded, or requires work authorisation / a language / an on-site location the candidate does not have, record CLOSED with the reason and STOP - do not fill or submit. If the location/work model is unclear or excluded, record CLOSED/BLOCKED per those rules and STOP (no application). Only if eligible, continue.
 1. Open the apply URL. If it is a LinkedIn job page, find the employer's own Apply link / real ATS (Greenhouse/Lever/Ashby/Workday/Teamtailor/own site) and apply there; prefer it over LinkedIn Easy Apply.
 2. Fill the form with the identity and standard answers from config/profile.md: work authorisation as stated there; salary/pay if asked as stated there; EEO / diversity questions answered truthfully as specified in profile.md - do NOT decline or pick "prefer not to say" unless profile.md says so. Upload $FIXED_CV as the CV. Skip optional cover-letter/portfolio fields.
@@ -196,7 +197,8 @@ SUBMIT-PREPARED RUN: these files were generated, written and gated in an earlier
 FIRST, before anything else: read config/profile.md and apply it - identity (name, email, phone, location, links), work authorisation, languages, availability, pay/rate, eligibility/exclusions, accuracy rules and the standard diversity/EEO answers. Use those exact values wherever a form asks; never invent or substitute personal data.
 
 Steps:
-0. DUPLICATE GUARD: the queue runner already checked the register for this company and role before starting. Do not re-read state/applications.csv or call register.py --show. If you happen to see an obvious duplicate, record CLOSED and STOP; otherwise continue.
+0. DUPLICATE GUARD: the queue runner already checked the register for this company and role before starting. Do not re-read state/applications.csv or call register.py --show. A repost or an earlier application does NOT block a new one: apply/prepare it as normal and note the repost. Never record CLOSED just because the role looks like a duplicate.
+${REPOST_NOTE:-}
 0b. ELIGIBILITY CHECK (quick): confirm from profile.md that the role's location/work model, languages and authorisation still fit. If it is clearly excluded (or the posting is no longer live and cannot be found), record CLOSED with the reason and STOP. Do not redo any analysis beyond that.
 1. PRE-SUBMIT GATE (the only gate to run): \`python3 tools/check_documents.py --letter documents/applications/${CV_PREFIX}_Motivation_$key.docx --cv documents/applications/${CV_PREFIX}_CV_$key.docx --company "<Company>" --jd state/job-descriptions/$key.md --ats-keywords state/ats/$key.txt --engagement $ENGAGEMENT --record\` - it must print RESULT: PASS (it re-stamps the receipt for the exact files you upload). If it FAILS, STOP: do not submit; record BLOCKED with the gate's reason.
 2. Apply via the Camoufox browser: fill fields with profile.md values, upload the prepared CV (and the prepared letter where a letter field exists), answer questions honestly, submit. Verify a success/thank-you page.
@@ -222,7 +224,8 @@ CV to upload: $cv
 FIRST, before anything else: read config/profile.md and apply it - identity (name, email, phone, location, links), work authorisation, languages, availability, pay/rate, eligibility/exclusions, accuracy rules and the standard diversity/EEO answers. Use those exact values wherever a form asks; never invent or substitute personal data. Use config/cv.json as the source of truth for the candidate's experience, and config/archetypes.json for the CV archetypes described below. Use the real company name you resolve in the gate/record calls.
 ${REVIEW_MSG:-}
 Steps:
-0. DUPLICATE GUARD: the queue runner already checked the register for this company and role before starting. Do not re-read state/applications.csv or call register.py --show. If you happen to see an obvious duplicate, record CLOSED and STOP; otherwise continue.
+0. DUPLICATE GUARD: the queue runner already checked the register for this company and role before starting. Do not re-read state/applications.csv or call register.py --show. A repost or an earlier application does NOT block a new one: apply/prepare it as normal and note the repost. Never record CLOSED just because the role looks like a duplicate.
+${REPOST_NOTE:-}
 0b. ONLINE ELIGIBILITY GATE (mandatory, before any letter or application):
    - Determine the role's LOCATION and work model (on-site / hybrid / remote) from the posting or a web search.
    - APPLY ONLY IF the role is compatible with the eligibility rules in config/profile.md: based-in location, accepted work models (on-site/hybrid, remote, relocation), work authorisation, and languages.
@@ -256,11 +259,11 @@ EOF
 }
 
 is_duplicate() {
-  # Conservative guard: skip a queue row whose company already has a live
-  # (SUBMITTED/INTERVIEW/IN_PROGRESS) register row for the same or a renamed
-  # variant of the role, so we never send a duplicate application.
+  # A repost is information, not a wall. Return the earlier application whose
+  # title is the same posting (punctuation and filler may differ), so the prompt
+  # can say "you applied before, apply again". Never used to skip a role.
   python3 - "$1" "$2" <<'PYDUP'
-import csv, sys, re
+import csv, re, sys
 company, role = sys.argv[1], sys.argv[2]
 stop = {"the", "a", "an", "of", "and", "for", "to", "with"}
 def toks(s):
@@ -273,15 +276,14 @@ except Exception:
 for r in rows:
     if r.get("company", "").strip().lower() != company.strip().lower():
         continue
-    if r.get("status") not in ("SUBMITTED", "INTERVIEW", "IN_PROGRESS"):
+    if r.get("status") not in ("SUBMITTED", "INTERVIEW", "IN_PROGRESS", "REJECTED"):
         continue
     have = toks(r.get("role", ""))
-    if not want or not have:
+    if not want or not have or want != have:
         continue
-    inter = len(want & have)
-    if want == have or (inter >= 3 and inter == min(len(want), len(have))):
-        print(r["role"])
-        sys.exit(0)
+    when = " ".join(x for x in (r.get("status", ""), r.get("date", "")) if x)
+    print(f'{r["role"]} ({when})'.strip())
+    sys.exit(0)
 sys.exit(1)
 PYDUP
 }
@@ -317,10 +319,11 @@ sys.exit(0 if isinstance(d,dict) and sys.argv[2] in d else 1)' "${ROOT:-.}/state
     return 0
   fi
   dup="$(is_duplicate "$company" "$role")"
+  REPOST_NOTE=""
   if [ -n "$dup" ]; then
-    echo "SKIP-DUPLICATE $(date +%H:%M:%S) $company | $role (already $dup)" >> "$LOGS/run_queue.out"
-    echo "${key:-$company|$role}" >> "$DONE"
-    return 0
+    # A repost or a second application is allowed: mark it, never skip it.
+    echo "REPOST $(date +%H:%M:%S) $company | $role (earlier application: $dup; applying again)" >> "$LOGS/run_queue.out"
+    REPOST_NOTE="REPOST: this role matches an earlier application ($dup). Reapplying is allowed and expected. Do not record CLOSED because it looks like a duplicate. Proceed with the normal task and add the note \"reapplied to a repost of $dup\" when you record it."
   fi
   log="$LOGS/$(echo "$company-$role" | tr ' /|' '___').log"
   echo "START $(date +%H:%M:%S) $company | $role" >> "$LOGS/run_queue.out"
