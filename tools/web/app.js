@@ -2155,8 +2155,11 @@ App.rowMenu = (ev, i) => {
 
     // Groups: one click puts every selected role in the group (or takes them
     // all out when they are already all in). The tick shows the common state.
+    // GROUPS.roles is the freshest membership list (loadGroups refreshes it),
+    // so the submenu is right even when the grid has not re-rendered yet.
+    const memberOf = (x) => (GROUPS.roles && Array.isArray(GROUPS.roles[x.key])) ? GROUPS.roles[x.key] : (x.groups || []);
     const groupItems = (GROUPS.groups || []).map(g => {
-      const inside = rows.filter(x => (x.groups || []).includes(g.id)).length;
+      const inside = rows.filter(x => memberOf(x).includes(g.id)).length;
       const all = inside === n;
       return {
         label: (all ? '✓ ' : inside ? '◐ ' : '') + g.name,
@@ -2169,7 +2172,7 @@ App.rowMenu = (ev, i) => {
     if (groupItems.length) groupItems.push({ sep: true });
     groupItems.push({ icon: '＋', label: `New group with all ${n}…`, run: () => App.bulkNewGroup(rows) });
     groupItems.push({ icon: ic('settings'), label: 'Manage groups…', run: () => groupsOpen() });
-    if (rows.some(x => (x.groups || []).length)) {
+    if (rows.some(x => memberOf(x).length)) {
       groupItems.push({ icon: '✕', label: 'Remove from all groups', run: () => App.bulkClearGroups(rows) });
     }
 
@@ -2398,7 +2401,8 @@ App.bulkNewGroup = async (rows) => {
 App.bulkClearGroups = async (rows) => {
   if (!rows.length) return;
   if (!confirm(`Remove these ${rows.length} role${rows.length === 1 ? '' : 's'} from every group?`)) return;
-  for (const x of rows) for (const id of (x.groups || [])) await api('/api/groups', { op: 'assign', key: x.key, group: id, on: false });
+  const ids = (x) => (GROUPS.roles && Array.isArray(GROUPS.roles[x.key])) ? GROUPS.roles[x.key] : (x.groups || []);
+  for (const x of rows) for (const id of ids(x)) await api('/api/groups', { op: 'assign', key: x.key, group: id, on: false });
   await loadGroups(); await loadGrid();
   toast('removed from all groups');
 };
