@@ -149,3 +149,12 @@ forbidden variant. Add a rule when a fact must not drift; the public template is
 A page that ends at 95-100% looks cramped and risks spilling to a third page
 after a small edit. 85-95% is the sweet spot: full, with room to breathe. Below
 70%, the white space at the bottom is the first thing a reader notices.
+
+## No repeated phrases
+
+A cover letter must not repeat a phrase of four or more words, and must not
+repeat the same logistics (notice period, relocation, availability). The
+pre-submit gate fails on it. `render_letter.py` now checks the `opening` and
+`fit` prose before rendering and refuses with the exact repeated phrase, so
+the agent rewrites the sentence instead of producing a document the gate will
+reject.

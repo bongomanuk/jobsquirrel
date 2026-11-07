@@ -19,6 +19,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 import cv_builder as B
+import check_documents
 
 
 def main() -> int:
@@ -35,6 +36,16 @@ def main() -> int:
         if not str(role.get(field) or "").strip():
             print(f"LETTER FAIL: missing {field}", file=sys.stderr)
             return 2
+    # Reject a repeated phrase before rendering: the gate would fail the
+    # document anyway, and the agent should fix the prose, not the file.
+    errs, warns = [], []
+    check_documents.check_duplication(
+        ["", "", "", "", str(role.get("opening") or ""), str(role.get("fit") or "")],
+        errs, warns)
+    if errs:
+        print("LETTER FAIL: " + "; ".join(errs), file=sys.stderr)
+        print("Reword the repeated phrase(s) in opening/fit, then render again.", file=sys.stderr)
+        return 2
     B.OUT = args.out
     B.render_motivation(role)
     path = os.path.join(args.out, f"{B.CV_PREFIX}_Motivation_{args.key}.docx")
