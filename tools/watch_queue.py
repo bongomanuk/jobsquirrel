@@ -361,8 +361,20 @@ def live_tasks():
         # "Blocker: ...") do not break detection.
         co = re.search(r"Company(?:/tag)?:\s*([^\n]+)", c)
         ro = re.search(r"\bRole:\s*([^\n]+)", c)
-        if co and ro:
-            live.add(f"{co.group(1).strip()}|{ro.group(1).strip()}")
+        if not (co and ro):
+            continue
+        company, role = co.group(1).strip(), ro.group(1).strip()
+        # A finished agent process can stay alive for hours after its task ends.
+        # Only count a worker whose log is still being written: a task that has
+        # been quiet for five minutes is not "working now".
+        name = f"{company}-{role}".translate(str.maketrans(" /|", "___"))
+        try:
+            age = time.time() - os.path.getmtime(os.path.join(ROOT, "state", "logs", name + ".log"))
+        except OSError:
+            age = None
+        if age is not None and age > 300:
+            continue
+        live.add(f"{company}|{role}")
     return live
 
 
