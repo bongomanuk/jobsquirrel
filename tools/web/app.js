@@ -1136,7 +1136,6 @@ const App = {
     if (document.body.dataset.act !== 'open') document.querySelector('#act-toggle')?.click();
   },
   openRawLog: () => {
-    document.title = 'rawlog-open';
     const el = $('#rawlog-body');
     if (!el) return;
     try { RAW_SIZE = +(localStorage.getItem('rawlog.size') || 12) || 12; } catch (e) { RAW_SIZE = 12; }
@@ -1160,19 +1159,20 @@ const App = {
     try { localStorage.setItem('rawlog.wrap', el.classList.contains('wrap') ? '1' : '0'); } catch (e) {}
   },
   rawlogLoad: async () => {
-    document.title = 'rawlog-load';
     const el = $('#rawlog-body');
     if (!el || $('#rawlog').classList.contains('hide')) { RAW_TIMER = null; return; }
     let d = null;
     try { d = await api('/api/live'); } catch (e) { d = null; }
-    if (d) {
-      const lines = [...((d.action && d.action.log) || [])];
-      (d.tail || []).forEach(x => { if (x && x.t) lines.push(x.t); });
-      if (lines.length) {
-        const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 40;
-        el.textContent = lines.slice(-1500).join('\n');
-        if (atBottom) el.scrollTop = el.scrollHeight;
-      }
+    const lines = d ? [...((d.action && d.action.log) || [])] : [];
+    if (d) (d.tail || []).forEach(x => { if (x && x.t) lines.push(x.t); });
+    if (lines.length) {
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 40;
+      el.textContent = lines.slice(-1500).join('\n');
+      if (atBottom) el.scrollTop = el.scrollHeight;
+    } else if (!el.textContent.trim()) {
+      // Never leave the dialog looking broken: say why there is nothing yet.
+      el.textContent = (d && d.error) ? 'Could not load the log: ' + d.error
+        : 'No output yet for this task. The log appears here as soon as the task writes something.';
     }
     RAW_TIMER = setTimeout(App.rawlogLoad, 1500);
   },
