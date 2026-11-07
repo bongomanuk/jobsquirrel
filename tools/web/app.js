@@ -2111,7 +2111,7 @@ App.rowClick = (ev, i) => {
     paintSel();
     return;
   }
-  SEL.clear(); SEL_ANCHOR = r.key; paintSel();
+  SEL.clear(); SEL.add(r.key); SEL_ANCHOR = r.key; paintSel();
   App.open(i);
 };
 
