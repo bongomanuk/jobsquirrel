@@ -24,6 +24,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import stateio
 import sensitive as SENS
+import canonical
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -309,6 +310,10 @@ def main() -> int:
         pack += ("\n\n## Supplementary skill evidence (operator-provided; grounded)\n"
                  "Attribute each of these to the named employer/project; use them when the role asks.\n\n"
                  + evidence)
+
+    # Apply the canonical-fact wording to everything the agent will read, so a
+    # stale or over-stated phrasing in the generated graph cannot reach a CV.
+    pack = canonical.normalize(pack)
 
     header = f"<!-- GraphRAG {args.method} context; index: kb/graphrag. Grounding only. -->\n"
     if args.out:
