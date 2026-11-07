@@ -47,11 +47,11 @@ const BUCKETS = [
   { k: 'focus', label: 'Focus', hint: 'Roles that pay at least your target and fit at least 70%; also shows high-fit roles with no pay figure' },
   { k: 'needs', label: 'Needs you', hint: 'Replies, interviews to book, assessments, offers or manual steps' },
   { k: 'scams', label: 'Probably scams', hint: 'A HIGH or MEDIUM scam signal on the advert or a message. Verify the employer before replying or applying' },
-  { k: 'prepared', label: 'Prepared', hint: 'Documents generated and gated. Review or submit' },
-  { k: 'ongoing', label: 'Ongoing', hint: 'Submitted, in progress or interviewing. Waiting on the employer' },
-  { k: 'pipeline', label: 'To apply', hint: 'Queued or drafting: nothing sent yet' },
-  { k: 'done', label: 'Done', hint: 'Rejected or closed. Finished, no action' },
-  { k: 'shelved', label: 'Shelved', hint: 'Parked for later. The original status is unchanged' },
+  { k: 'prepared', chip: false, label: 'Prepared', hint: 'Documents generated and gated. Review or submit' },
+  { k: 'ongoing', chip: false, label: 'Ongoing', hint: 'Submitted, in progress or interviewing. Waiting on the employer' },
+  { k: 'pipeline', chip: false, label: 'To apply', hint: 'Queued or drafting: nothing sent yet' },
+  { k: 'done', chip: false, label: 'Done', hint: 'Rejected or closed. Finished, no action' },
+  { k: 'shelved', chip: false, label: 'Shelved', hint: 'Parked for later. The original status is unchanged' },
   { k: 'all', label: 'All', hint: 'Every row, including finished ones' },
 ];
 const BUCKET_GROUPS = [
@@ -1427,7 +1427,7 @@ function bucketCounts() {
 function renderBuckets() {
   const el = $('#metrics'); if (!el) return;
   const c = bucketCounts();
-  el.innerHTML = BUCKETS.map(b =>
+  el.innerHTML = BUCKETS.filter(b => b.chip !== false).map(b =>
     `<button type="button" class="metric bucket ${b.k === BUCKET ? 'on' : ''}${((b.k === 'needs' && c.needs) || (b.k === 'scams' && c.scams)) ? ' hot' : ''}" data-bucket="${b.k}"${T(b.hint)}><b>${c[b.k] || 0}</b>${esc(b.label)}</button>`
   ).join('');
   el.querySelectorAll('.bucket').forEach(b => b.onclick = e => {
