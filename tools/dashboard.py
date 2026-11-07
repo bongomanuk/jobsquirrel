@@ -4303,9 +4303,12 @@ def prepare_roles(keys):
     if not rows:
         return {"error": "couldn't resolve those roles to a company/role"}
     tmp, tmp_done = _queue_only_roles(rows)
+    # Document preparation is the parallel case (one agent per role). Submissions
+    # stay at one worker: several browsers on one ATS account fight each other.
     _spawn(f"prepare {len(rows)} role(s) (review)",
            ["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
-           {"REVIEW": "1", "PARALLEL": "1", "QUEUE": tmp, "DONE": tmp_done})
+           {"REVIEW": "1", "PARALLEL": os.environ.get("PREPARE_PARALLEL", "3"),
+            "QUEUE": tmp, "DONE": tmp_done})
     return {"ok": f"generating documents for {len(rows)} role(s) — watch the Activity pane (nothing is submitted)"}
 
 
