@@ -2251,8 +2251,11 @@ def _graph_index_build():
             pid = int(d.split("/")[2])
             if pid == me:
                 continue
-            cmd = open(os.path.join(d, "cmdline"), "rb").read().replace(b"\0", b" ").decode("utf-8", "ignore")
-            if "graphrag" not in cmd or " index" not in cmd:
+            raw = open(os.path.join(d, "cmdline"), "rb").read()
+            args = [a.decode("utf-8", "ignore") for a in raw.split(b"\0") if a]
+            # The real process is `<venv>/python .venv-graphrag/bin/graphrag index ...`.
+            # A shell that merely mentions those words is not a running build.
+            if len(args) < 3 or not args[1].endswith("bin/graphrag") or args[2] != "index":
                 continue
             if os.path.realpath(os.readlink(os.path.join(d, "cwd"))) != os.path.realpath(ROOT):
                 continue
