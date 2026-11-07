@@ -251,6 +251,8 @@ body[data-act="closed"] #tasklog{display:none}
   border-radius:10px;padding:8px 12px;font:700 12px var(--sans);cursor:pointer;align-items:center;gap:6px;
   box-shadow:0 6px 18px rgba(0,0,0,.4);transition:border-color .15s}
 .dock-tab:hover{border-color:var(--accent)}
+.dock-tab.busy::after{content:'';width:7px;height:7px;border-radius:50%;background:var(--accent);margin-left:5px;animation:tabpulse 1s ease-in-out infinite}
+@keyframes tabpulse{0%,100%{opacity:.25}50%{opacity:1}}
 .dock-tab:not([hidden]){display:flex}
 .dock-tab[data-edge="left"]{left:0;border-radius:0 10px 10px 0}
 .dock-tab[data-edge="right"]{right:0;border-radius:10px 0 0 10px}

@@ -2825,9 +2825,16 @@ async function liveTick() {
     ACT = a.name && (a.running || (a.log || []).length || hasSummary) ? a : null;
     renderChat();
   }
-  $('#act-sum').textContent = a.running ? ('● ' + aname)
-    : (d.active ? '● runner active'
-       : (delegated.length ? `● ${delegated.length} subagent${delegated.length === 1 ? '' : 's'}` : 'idle'));
+  const busyNow = !!(a.running || (d.running_tasks || []).length || delegated.length || LIVE_RUNNING);
+  const sumEl = $('#act-sum');
+  if (sumEl) {
+    sumEl.innerHTML = busyNow
+      ? `<span class="spin">${ic('loader')}</span> ${esc(a.running ? (aname || 'working')
+          : ((d.running_tasks || [])[0] || {}).label || (delegated[0] && delegated[0].title) || 'working')}`
+      : (d.active ? 'runner active' : 'idle');
+  }
+  const tab = $('#agent-tab');
+  if (tab) tab.classList.toggle('busy', busyNow);
   if (document.body.dataset.act === 'open') {
     const tech = [];
     let h = '';
