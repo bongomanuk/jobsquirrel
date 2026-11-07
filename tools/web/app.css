@@ -23,7 +23,9 @@ header.top{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:
 .ic{width:15px;height:15px;flex:0 0 auto;stroke:currentColor;fill:none;stroke-width:1.7;
   stroke-linecap:round;stroke-linejoin:round;vertical-align:-2px}
 .ic.lg{width:18px;height:18px;vertical-align:-3px}
-.mascot-slot{width:34px;height:34px;flex:0 0 auto}
+.mascot-slot{width:34px;height:34px;flex:0 0 auto;display:grid;place-items:center}
+.mascot-static{width:30px;height:30px;overflow:visible}
+.mascot-slot[data-live="1"] .mascot-static{display:none}
 svg .sq-beer{opacity:0}
 /* 3D critters: one transparent canvas over the top bar */
 #critter-canvas{position:fixed;left:0;top:0;pointer-events:none;z-index:70;display:none}

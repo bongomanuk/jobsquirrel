@@ -1123,9 +1123,14 @@ const App = {
     });
   },
   crittersOn: () => { try { return localStorage.getItem('ui.critters') !== '0'; } catch (e) { return true; } },
+  setMascot: (live) => {
+    const slot = document.querySelector('.mascot-slot');
+    if (slot) slot.dataset.live = live ? '1' : '0';
+  },
   toggleCritters: (on) => {
     try { localStorage.setItem('ui.critters', on ? '1' : '0'); } catch (e) {}
     window.dispatchEvent(new CustomEvent('critters-toggle', { detail: { off: !on } }));
+    App.setMascot(on);
     toast(on ? 'squirrel animation on' : 'squirrel animation off', false);
   },
   stop: async () => { const d = await api('/api/action/stop', {}); toast(d.ok || d.error, !!d.error); },
@@ -4463,6 +4468,7 @@ function startEvents() {
     }, 200);
   };
 }
+App.setMascot(App.crittersOn());
 initPanels(); initGridCols(); syncGroupingButton(); loadGroups(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel(); startEvents();
 if (location.hash === '#knowledge') setTimeout(() => App.openKnowledge('map'), 400);
 if (location.hash === '#universe') setTimeout(() => App.openKnowledge('universe'), 400);
