@@ -2091,6 +2091,16 @@ function copyText(text) {
     () => toast('copy failed', true));
 }
 
+// Ctrl/Cmd/Shift click is a row-selection gesture, so it must not turn into a
+// text selection of the cells between the clicks. Keep links and controls
+// working (a Ctrl-click on the live-log link still opens it normally).
+App.rowDown = (ev) => {
+  if (!(ev.ctrlKey || ev.metaKey || ev.shiftKey)) return;
+  if (ev.target && ev.target.closest && ev.target.closest('a,button,input,select,textarea,label')) return;
+  ev.preventDefault();
+  try { window.getSelection()?.removeAllRanges(); } catch (e) {}
+};
+
 App.rowClick = (ev, i) => {
   const r = GRID[i]; if (!r) return;
   const id = selId(r);
@@ -3637,6 +3647,8 @@ function initPanels() {
   $('#detail-tab').onclick = () => setPanel('detail', { open: true });
   const actTab = $('#activity-tab'); if (actTab) actTab.onclick = () => setPanel('activity', { open: true });
   const stTab = $('#states-tab'); if (stTab) stTab.onclick = () => setPanel('states', { open: true });
+  const rowsEl = document.getElementById('rows');
+  if (rowsEl) rowsEl.addEventListener('mousedown', (ev) => App.rowDown(ev));
   document.querySelectorAll('.panel-close').forEach(b => b.onclick = () => setPanel(b.dataset.panel, { open: false }));
   layoutPanels();
   if (window.__paintStates) window.__paintStates();

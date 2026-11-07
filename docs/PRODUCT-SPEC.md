@@ -251,7 +251,9 @@ Columns: **Date · Company · Role · Level · ATS · Status · Fit · Pay · Wo
   role to a group** (or take them all out), queue, hand to you, remove from the queue, and copy
   companies, roles, URLs or keys. Items that only make sense for one role are marked *this row*;
   everything else reports how many it will affect and acts on all of them at once. Right-clicking a
-  row outside the selection starts a new selection on that row. Selection is held by role identity
+  row outside the selection starts a new selection on that row. Ctrl/Cmd/Shift-click never selects
+  the cell text, so a range of rows cannot leave a blue text smear behind; a plain click still lets
+  you select text normally, and a control or link inside a row keeps its own click. Selection is held by role identity
   (company + role), not by row key: preparing a role changes its key or moves it between groups, and
   it stays selected instead of quietly vanishing from the count. Only a role removed from the
   register leaves the selection.
