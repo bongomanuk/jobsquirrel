@@ -2899,7 +2899,7 @@ async function liveTick() {
     const tech = [];
     let h = '<div class="act-actions"><button class="small" onclick="App.run(\'reconcile_apply\',\'Reconcile mail\')" ' +
       'title="Read Gmail, match replies to roles and write the status changes">Reconcile mail</button></div>';
-    const localFresh = LOCAL_ACT && (Date.now() - LOCAL_ACT.at < 15 * 60000);
+    const localFresh = LOCAL_ACT && !LOCAL_ACT.done && (Date.now() - LOCAL_ACT.at < 15 * 60000);
     if (localFresh && !(a.name && a.running)) {
       h += `<div class="act-h">${LOCAL_ACT.done ? ic('flag') : ic('play')} ${esc(LOCAL_ACT.label)} ` +
         `<span class="muted">${LOCAL_ACT.done ? 'finished' : 'starting…'}</span></div>`;
@@ -2911,16 +2911,8 @@ async function liveTick() {
     if (a.name && a.running) {
       h += `<div class="act-h"><span class="spin">${ic('loader')}</span> ${esc(aname || 'working')} ` +
         `<span class="muted">running…</span></div>`;
-      if (sm.headline) h += `<div class="act-sum">${esc(sm.headline)}</div>`;
-      if ((sm.notable || []).length) h += '<ul class="act-list">' + sm.notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
-      if ((a.overview || []).length) {
-        h += '<div class="act-h" style="margin-top:6px">Where we are</div>' +
-          '<ul class="act-list">' + a.overview.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
-      }
       tech.push(...(a.log || []));
     } else if (a.name && a.finished) {
-      // Idle: the pane is only for work happening now. History lives in the
-      // Agent chat, so nothing about the last action is shown here.
       h += '<span class="muted">○ No task running right now. History is in the Agent chat.</span>';
     }
     const tasks = d.running_tasks || (d.running || []).map(x => ({ label: x, log: '' }));
