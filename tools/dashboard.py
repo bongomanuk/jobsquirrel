@@ -2242,6 +2242,37 @@ def _web_build():
     return f"{BOOT_ID}|{static}"
 
 
+
+def _graph_index_build():
+    """A graphrag index build running in this repo, as an Activity task."""
+    me = os.getpid()
+    for d in glob.glob("/proc/[0-9]*"):
+        try:
+            pid = int(d.split("/")[2])
+            if pid == me:
+                continue
+            cmd = open(os.path.join(d, "cmdline"), "rb").read().replace(b"\0", b" ").decode("utf-8", "ignore")
+            if "graphrag" not in cmd or " index" not in cmd:
+                continue
+            if os.path.realpath(os.readlink(os.path.join(d, "cwd"))) != os.path.realpath(ROOT):
+                continue
+        except (OSError, ValueError):
+            continue
+        logs = sorted(glob.glob(os.path.join(LOGS, "kg-rebuild-*.log")),
+                      key=lambda f: os.path.getmtime(f))
+        if not logs:
+            return None
+        path = logs[-1]
+        try:
+            st = os.stat(path)
+            age, size = int(time.time() - st.st_mtime), st.st_size
+        except OSError:
+            age, size = None, 0
+        return {"label": "Rebuilding the knowledge graph",
+                "log": os.path.basename(path)[:-4], "age": age, "size": size}
+    return None
+
+
 def live():
     _act_load()
     active = bool(WQ and WQ.runner_active())
@@ -2302,8 +2333,9 @@ def live():
         except OSError:
             age, size = None, 0
         return {"label": k.replace("|", " — "), "log": name, "age": age, "size": size}
+    gbuild = _graph_index_build()
     return {"active": active, "running": [k.replace("|", " — ") for k in running],
-            "running_tasks": [_running_task(k) for k in running] +
+            "running_tasks": ([gbuild] if gbuild else []) + [_running_task(k) for k in running] +
                              [{"label": d["title"], "log": d["log"], "age": d["age"],
                                "size": d["size"]} for d in delegated],
             "delegated": delegated,
