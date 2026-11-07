@@ -285,8 +285,13 @@ const App = {
       if (!ok) return;
     }
     starting(command);
+    noteAction(command, []);
     const d = await api('/api/action/run', { command, approval_token: command === 'submit_queue' ? 'APPROVE_RUN_QUEUE' : '' });
-    toast(d.ok || d.error, !!d.error); if (!d.error) { openDock(true); } else { LIVE_RUNNING = false; liveTick(); }
+    toast(d.ok || d.error, !!d.error);
+    if (d.error) {
+      LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now(), done: true };
+      PENDING.clear(); LIVE_RUNNING = false; liveTick();
+    } else { openDock(true); App.showActivity(); }
   },
   cf: async (target) => {
     document.querySelectorAll('#cf-tabs a').forEach(a => a.classList.toggle('on', a.dataset.t === target));
@@ -1191,7 +1196,12 @@ const App = {
   rebuildKB: async () => {
     if (!await warn(LONG.rebuild, 'This may take a while', 'Start rebuild')) return;
     starting('rebuilding the knowledge graph');
-    const d = await api('/api/kb/rebuild', {}); toast(d.ok || d.error, !!d.error); if (!d.error) openDock(true); else { LIVE_RUNNING = false; $('#peras').classList.add('hide'); }
+    noteAction('Rebuilding the knowledge graph', []);
+    const d = await api('/api/kb/rebuild', {}); toast(d.ok || d.error, !!d.error);
+    if (d.error) {
+      LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now(), done: true };
+      LIVE_RUNNING = false; $('#peras').classList.add('hide'); liveTick();
+    } else { openDock(true); App.showActivity(); }
   },
   saveRow: async () => {
     const d = await api('/api/register/row', {
