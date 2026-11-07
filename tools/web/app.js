@@ -128,6 +128,17 @@ let COLLAPSED = { ongoing: true, pipeline: true, done: true, prepared: false, fo
 let BUCKET_BEFORE_SEARCH = null;
 const PENDING = new Set();
 const NUT = `<span class="spin" title="working…">${ic('loader')}</span> `;
+function noteAction(label, keys) {
+  const names = (keys || []).map(k => {
+    const r = GRID.find(x => x.key === k);
+    return r ? `${r.company} — ${r.role}` : k;
+  });
+  LOCAL_ACT = { label, names, at: Date.now() };
+  openDock(true);
+  App.showActivity();
+  liveTick();
+}
+
 function starting(label, keys) {
   LIVE_RUNNING = true;
   $('#peras').classList.add('hide');      // background work lives in Activity, not a blocking modal
@@ -1079,9 +1090,11 @@ const App = {
     if (n && !await warn(n > 1 ? LONG.prepareMany(n) : LONG.prepareOne,
       'Prepare documents', 'Prepare', false)) return;
     starting('preparing documents', keys);
+    noteAction('Preparing documents', keys);
     const d = await api('/api/prepare', { keys });
     toast(d.error ? d.error : `preparing ${n} role(s) in the background: watch Activity`, !!d.error);
-    if (!d.error) { openDock(true); App.showActivity(); } else { PENDING.clear(); LIVE_RUNNING = false; liveTick(); }
+    if (d.error) { LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now() }; liveTick(); PENDING.clear(); LIVE_RUNNING = false; }
+    else { openDock(true); App.showActivity(); }
   },
   prepareThis: (key) => App.prepareRoles([key]),
   prepareShown: () => App.prepareRoles(VISIBLE),
@@ -1092,9 +1105,11 @@ const App = {
     if (!await approve(`Submit ${n} prepared application(s)${where}: this SENDS them through the employer's site and is irreversible.`,
       `POST /api/submit { "keys": [${n} role key(s)], "approval_token": "APPROVE_RUN_QUEUE" }`)) return;
     starting('submitting applications', keys);
+    noteAction('Submitting prepared documents', keys);
     const d = await api('/api/submit', { keys, approval_token: 'APPROVE_RUN_QUEUE' });
     toast(d.error ? d.error : `submitting ${n} application(s) in the background: watch Activity`, !!d.error);
-    if (!d.error) { openDock(true); App.showActivity(); } else { PENDING.clear(); LIVE_RUNNING = false; liveTick(); }
+    if (d.error) { LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now() }; liveTick(); PENDING.clear(); LIVE_RUNNING = false; }
+    else { openDock(true); App.showActivity(); }
   },
   submitThis: (key) => App.submitRoles([key], 'this role'),
   submitPrepared: () => App.submitRoles(GRID.filter(r => r.status === 'PREPARED' && VIEW.includes(r.key)).map(r => r.key), 'the current view'),
@@ -2752,6 +2767,14 @@ async function liveTick() {
   if (document.body.dataset.act === 'open') {
     const tech = [];
     let h = '';
+    const localFresh = LOCAL_ACT && (Date.now() - LOCAL_ACT.at < 15 * 60000);
+    if (localFresh && !(a.name && a.running)) {
+      h += `<div class="act-h">▶ ${esc(LOCAL_ACT.label)} <span class="muted">starting…</span></div>`;
+      if (LOCAL_ACT.names.length)
+        h += '<ul class="act-list">' + LOCAL_ACT.names.map(n => `<li>${esc(n)}</li>`).join('') + '</ul>';
+      h += `<div class="mini muted">requested just now; the runner picks it up in a few seconds</div>`;
+    }
+    if (LOCAL_ACT && a.name && a.running) LOCAL_ACT = null;
     if (a.name && a.running) {
       h += `<div class="act-h"><span class="spin">${ic('loader')}</span> ${esc(aname || 'working')} ` +
         `<span class="muted">running…</span></div>`;
@@ -3226,7 +3249,7 @@ document.addEventListener('toggle', e => {
 }, true);
 let CHAT_STICK = true;                                        // follow new output only if the reader is at the bottom
 function chatAtBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 60; }
-let ACT = null, ACT_SIG = '', ACT_IGNORE = '', LAST_ACT_NAME = '';   // last dashboard action, shown in the chat
+let ACT = null, ACT_SIG = '', ACT_IGNORE = '', LAST_ACT_NAME = '', LOCAL_ACT = null;   // last dashboard action, shown in the chat
 let DELEGATED_SEEN = null;                              // subagent ids already announced
 let DELEGATED_DONE_SEEN = null;                         // finished subagent ids already shown
 let DONE_CARDS = [];                                    // finished subagent results, shown in the chat
