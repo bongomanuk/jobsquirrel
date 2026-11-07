@@ -4504,6 +4504,7 @@ if (groupsBtn) groupsBtn.onclick = () => groupsOpen();
 });
 $('#fclear').onclick = () => App.clearFilters();
 $('#a-prepare-shown').onclick = () => App.prepareShown();
+$('#btn-reconcile').onclick = () => App.run('reconcile_apply', 'Reconcile mail');
 $('#a-submit-shown').onclick = () => App.submitPrepared();
 $('#a-match').onclick = () => App.matchShown($('#a-match'));
 $('#grouping').onclick = () => {
