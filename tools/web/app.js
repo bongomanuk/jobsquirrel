@@ -45,8 +45,8 @@ const QUEUE_HELP = {
 const BUCKETS = [
   { k: 'active', label: 'Active', hint: 'Everything not finished: probable scams + needs you + prepared + ongoing + to apply' },
   { k: 'focus', label: 'Focus', hint: 'Roles that pay at least your target and fit at least 70%; also shows high-fit roles with no pay figure' },
-  { k: 'scams', label: 'Probably scams', hint: 'A HIGH or MEDIUM scam signal on the advert or a message. Verify the employer before replying or applying' },
   { k: 'needs', label: 'Needs you', hint: 'Replies, interviews to book, assessments, offers or manual steps' },
+  { k: 'scams', label: 'Probably scams', hint: 'A HIGH or MEDIUM scam signal on the advert or a message. Verify the employer before replying or applying' },
   { k: 'prepared', label: 'Prepared', hint: 'Documents generated and gated. Review or submit' },
   { k: 'ongoing', label: 'Ongoing', hint: 'Submitted, in progress or interviewing. Waiting on the employer' },
   { k: 'pipeline', label: 'To apply', hint: 'Queued, drafting, blocked or with no result yet' },
@@ -55,8 +55,8 @@ const BUCKETS = [
   { k: 'all', label: 'All', hint: 'Every row, including finished ones' },
 ];
 const BUCKET_GROUPS = [
-  { k: 'scams', title: 'Probably scams', desc: 'verify the employer before replying or applying' },
   { k: 'needs', title: 'Needs you', desc: 'reply, book a time, complete an assessment, or clear a manual step' },
+  { k: 'scams', title: 'Probably scams', desc: 'verify the employer before replying or applying' },
   { k: 'prepared', title: 'Prepared', desc: 'documents ready. Review or submit' },
   { k: 'ongoing', title: 'Ongoing', desc: 'waiting on the employer' },
   { k: 'pipeline', title: 'To apply', desc: 'queued, drafting, or blocked before applying' },
