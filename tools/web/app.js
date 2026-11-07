@@ -2919,11 +2919,14 @@ async function liveTick() {
       }
       tech.push(...(a.log || []));
     } else if (a.name && a.finished) {
+      // Idle: one quiet line, with the last result folded away. Register counts
+      // and old output are not "activity" and must not fill the pane.
       h += `<div class="act-h">✓ Last action: ${esc(aname || 'last action')} ` +
         `<span class="muted">finished</span></div>`;
-      if ((a.overview || []).length) {
-        h += '<div class="act-h" style="margin-top:6px">What changed</div>' +
-          '<ul class="act-list">' + a.overview.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
+      const lastBits = [...(a.overview || []), ...((sm.notable || []))];
+      if (lastBits.length) {
+        h += '<details class="act-raw"><summary>Last result · ' + lastBits.length + ' lines</summary>' +
+          '<ul class="act-list">' + lastBits.map(x => `<li>${esc(x)}</li>`).join('') + '</ul></details>';
       }
       tech.push(...(a.log || []));
     }
