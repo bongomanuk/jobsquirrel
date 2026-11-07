@@ -166,6 +166,10 @@ should I do next?”.
 - **Level** is the seniority grade the pipeline reads from the title (Intern up to C-level). Click the **Level** header to sort by it, or pick a grade under **Filters → any level**. It works independently of the bucket chips, and the **Pay** header sorts by salary just as independently.
 - **Needs you** includes the sub-states that genuinely wait on you: assessments, follow-ups,
   CAPTCHA/2FA and other human walls, plus invites and offers.
+- **Shelved** takes a role out of the process: it disappears from the status and
+  bucket views (and the queue runner skips it) while its register status, notes,
+  documents and provenance are unchanged. It stays visible under the Shelved
+  bucket until you unshelve it.
 - **Shelved** is a view overlay, not a status. Right-click a row → **Shelve for later**; its
   status, notes, documents and provenance stay unchanged, and it moves to the **Shelved** bucket
   at the bottom of the grid and the **SHELVED** node in the state graph. Unshelve from the same menu. The node sits next to

@@ -217,6 +217,17 @@ def main() -> int:
         print(f"PREP FAIL: no job description at {jd_path}", file=sys.stderr)
         return 2
     jd_text = open(jd_path, encoding="utf-8").read()
+    shelved_path = os.path.join(ROOT, "state", "shelved.json")
+    try:
+        with open(shelved_path, encoding="utf-8") as fh:
+            shelved_now = json.load(fh)
+    except (OSError, ValueError):
+        shelved_now = {}
+    if isinstance(shelved_now, dict) and key in shelved_now:
+        print(f"PREP SKIP: {key} is shelved (unshelve it in the dashboard first)",
+              file=sys.stderr)
+        return 3
+
     # A scam advert must not become a tailored application. This runs before any
     # model/embedding work, so a HIGH signal fails fast and cheap.
     scan = scam_check.scan(jd_text, args.company, scam_check.sender_from_text(jd_text))

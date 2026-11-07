@@ -1683,7 +1683,8 @@ function renderRows() {
   const payMatch = (r) => !mp || (r.salary_eur != null && r.salary_eur >= mp);
   const fitMatch = (r) => !mf || (r.match != null && r.match >= mf);
   const workMatch = (r) => !wm || (r.work_model || 'unknown') === wm;
-  const filt = (r) => statusMatch(r) && typeMatch(r) && levelMatch(r) && actMatch(r) && payMatch(r) && fitMatch(r) && workMatch(r) &&
+  const filt = (r) => (!r.shelved || BUCKET === 'shelved' || (BUCKET === 'all' && !st && !fs)) &&
+    statusMatch(r) && typeMatch(r) && levelMatch(r) && actMatch(r) && payMatch(r) && fitMatch(r) && workMatch(r) &&
     (!fg || (r.groups || []).includes(fg)) &&
     (!fs || (r.status + ':' + r.substate) === fs) &&
     (!qq || r.queue === qq) &&

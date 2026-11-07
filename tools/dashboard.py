@@ -2114,6 +2114,8 @@ def grid():
                     "match": cov, "alignment": m.get("alignment", ""), "running": ck in running,
                     "notes": "", "letter": "", "action": "", "url": r.get("url", ""), "stages": st,
                     "pinned": bool((flags.get(key) or {}).get("pinned")),
+                    "shelved": key in shelved,
+                    "shelved_at": (shelved.get(key) or {}).get("at", ""),
                     "groups": group_roles.get(key, []),
                     **_pay_work_fields(key, "", stg, cov, target),
                     "hint": _hint(stg, "")})

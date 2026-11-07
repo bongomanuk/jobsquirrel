@@ -10,6 +10,11 @@
 #         AGENT=claude PARALLEL=3 bash tools/run_queue.sh
 # Queue format (TAB-separated): company  role  url  cv  ats  key
 set -u
+
+# If this shell exits early (a completed pool, a crash, Ctrl-C), take any
+# still-running worker with it. Timeout alone does not guarantee the agent
+# process dies, and an orphaned worker used to keep the dashboard "running".
+trap 'for _p in $(jobs -p); do kill "$_p" 2>/dev/null; done' EXIT
 ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT" || exit 1   # the prompts, the duplicate guard and the agent all use repo-relative paths
 
@@ -37,6 +42,8 @@ LIGHT="${LIGHT:-0}"                 # 1 = cheap run: one fixed CV, no per-role C
 FIXED_CV="${FIXED_CV:-}"            # CV file to upload when LIGHT=1
 REVIEW="${REVIEW:-0}"               # 1 = prepare documents only (gate PASS, record PREPARED, do NOT submit)
 PREPARED="${PREPARED:-0}"           # 1 = submit documents that a REVIEW pass already generated (no re-generation)
+CAPTCHA_ON=0                        # private build: on unless Settings -> CAPTCHA disables it
+if python3 "$ROOT/tools/captcha_solver.py" --enabled >/dev/null 2>&1; then CAPTCHA_ON=1; fi
 ELIGIBILITY_OVERRIDE="${ELIGIBILITY_OVERRIDE:-}"
 PROFILE="${PROFILE:-$ROOT/config/profile.md}"   # identity / eligibility config
 # The coding agent that applies to each role: opencode | claude | any command.
@@ -130,7 +137,12 @@ fi
 
 build_prompt() {
   local company="$1"; role="$2"; url="$3"; cv="$4"; ats="$5"; key="$6"; server="$7"
-  local REVIEW_MSG="" OUTCOMES="SUBMITTED|BLOCKED|CLOSED"
+  local REVIEW_MSG="" OUTCOMES="SUBMITTED|BLOCKED|CLOSED" CAPTCHA_RULE=""
+  if [ "${CAPTCHA_ON:-0}" = "1" ]; then
+    CAPTCHA_RULE="If a CAPTCHA / \"verify you are human\" / anti-bot challenge appears: run \`python3 tools/captcha_solver.py --solve --server $server\`. If it reports ok, wait ~3s and submit once if the page has not moved (never submit while the token is empty). If it fails, record \`python3 tools/register.py --set --company \"$company\" --role \"$role\" --status BLOCKED --notes \"captcha: <solver error>\"\` and return STATUS BLOCKED. At most two solver attempts."
+  else
+    CAPTCHA_RULE="If a CAPTCHA / \"verify you are human\" / anti-bot challenge appears: do NOT solve or evade it. Record \`python3 tools/register.py --set --company \"$company\" --role \"$role\" --status BLOCKED --notes \"captcha: <exact challenge>\"\` and return STATUS BLOCKED."
+  fi
   if [ "${REVIEW:-0}" = "1" ]; then
     OUTCOMES="PREPARED|BLOCKED|CLOSED"
     REVIEW_MSG="REVIEW MODE (do NOT submit): produce the aligned, grounded, targeted CV and cover letter (steps 0c-2), run the alignment gate and the pre-submit gate (with --record, so a gate receipt is written) until both print RESULT: PASS, and save every artifact (state/job-descriptions/$key.md, state/ats/$key.txt, state/kb-context/$key.md, state/cv-content/$key.json, documents/applications/${CV_PREFIX}_CV_$key.docx, documents/applications/${CV_PREFIX}_Motivation_$key.docx). Then record the row as PREPARED (NOT SUBMITTED) with the file paths: \`python3 tools/register.py --set --company \"$company\" --role \"$role\" --status PREPARED --notes \"review: <cv path> | <letter path>\"\`. Do NOT open the browser, do NOT upload, do NOT submit anything. Finish with the STATUS line described at the end, with PREPARED as the outcome."
@@ -152,7 +164,7 @@ Steps:
 0b. ELIGIBILITY GATE (mandatory): apply ONLY if the role is compatible with the eligibility rules in config/profile.md (based-in location, accepted work models, languages, work authorisation, exclusions). If the role is excluded, or requires work authorisation / a language / an on-site location the candidate does not have, record CLOSED with the reason and STOP - do not fill or submit. If the location/work model is unclear or excluded, record CLOSED/BLOCKED per those rules and STOP (no application). Only if eligible, continue.
 1. Open the apply URL. If it is a LinkedIn job page, find the employer's own Apply link / real ATS (Greenhouse/Lever/Ashby/Workday/Teamtailor/own site) and apply there; prefer it over LinkedIn Easy Apply.
 2. Fill the form with the identity and standard answers from config/profile.md: work authorisation as stated there; salary/pay if asked as stated there; EEO / diversity questions answered truthfully as specified in profile.md - do NOT decline or pick "prefer not to say" unless profile.md says so. Upload $FIXED_CV as the CV. Skip optional cover-letter/portfolio fields.
-3. If a CAPTCHA / "verify you are human" / anti-bot challenge appears: do NOT evade and do NOT wait for a human. Record it and stop: \`python3 tools/register.py --set --company "$company" --role "$role" --status BLOCKED --notes "captcha: <exact challenge>"\`, then return STATUS BLOCKED.
+3. ${CAPTCHA_RULE}
 4. Submit, then CONFIRM before recording anything - a submit click alone is NOT proof:
    - Confirm the success/thank-you page (e.g. "application received", "Thanks for applying"); note its EXACT text and URL.
    - EMAIL VERIFICATION (mandatory): wait ~45s and read the candidate's Gmail (the account config/profile.md is set up for) for an ATS/employer verification message. Some ATS (Teamtailor, join.com, Workday, etc.) require a "Complete the application" link before the application counts. Find it with \`.venv/bin/python tools/email_verify.py --query 'newer_than:2h (from:teamtailor-mail.com OR from:join.com OR "Complete the application" OR "Security code for your application" OR "verify your email" OR "Activate your account")'\` and COMPLETE it: open the verify link in THIS pipeline browser (\`python3 tools/camoufox_browser.py --server $server nav '<LINK>'\`), or type the emailed security code into the code field and resubmit. Also open any account-activation link the employer sends (Workday etc.).
@@ -185,7 +197,7 @@ Steps:
 2. Apply via the Camoufox browser: fill fields with profile.md values, upload the prepared CV (and the prepared letter where a letter field exists), answer questions honestly, submit. Verify a success/thank-you page.
    Multi-step forms (Workday etc): the footer button is [data-automation-id="pageFooterNextButton"] (Save and Continue). If a save is rejected, read the Error-* text and fix exactly the field it names (usually a custom dropdown - use \`pick\`).
 2b. EMAIL VERIFICATION (mandatory): after submit, wait ~45s, then read the candidate's Gmail (\`.venv/bin/python tools/email_verify.py --query 'newer_than:2h (from:teamtailor-mail.com OR from:join.com OR "Complete the application" OR "Security code for your application" OR "verify your email" OR "Activate your account")'\`) and COMPLETE it in THIS browser. Do NOT record SUBMITTED until a real confirmation is seen. If verification remains pending, record BLOCKED.
-2c. BLOCKER RECOVERY: re-read the page and retry once; on a login wall use `python3 tools/accounts.py --get <site-host>` (the secrets store); if the apply URL is dead, resolve the employer's own ATS. Never evade a genuine CAPTCHA/anti-bot wall - record BLOCKED with what you tried.
+2c. BLOCKER RECOVERY: re-read the page and retry once; on a login wall use \`python3 tools/accounts.py --get <site-host>\` (the secrets store); if the apply URL is dead, resolve the employer's own ATS. ${CAPTCHA_RULE}
 3. On success: \`python3 tools/record_submission.py --company "<Company>" --role "$role" --ats "$ats" --url "$url" --key $key --cv documents/applications/${CV_PREFIX}_CV_$key.docx --letter documents/applications/${CV_PREFIX}_Motivation_$key.docx --status SUBMITTED --evidence "<the exact thank-you text or the confirmation email>"\`. The evidence MUST be real - never "confirmed"/"ok"/a placeholder.
 
 Return exactly one line: STATUS <Company> | $role | SUBMITTED|BLOCKED|CLOSED | <reason> | CV: documents/applications/${CV_PREFIX}_CV_$key.docx | letter: documents/applications/${CV_PREFIX}_Motivation_$key.docx
@@ -230,7 +242,7 @@ Steps:
    - Cloudflare / "just a moment" / slow interstitial: wait 10-20s and retry up to 3 times before concluding.
    - Expired ATS session: reload, re-open the apply URL, and re-enter the form.
    - Email verification required: complete it (step 4b).
-   A genuine CAPTCHA / "verify you are human" / anti-bot challenge must NOT be solved or evaded - that is a real BLOCKED.
+   ${CAPTCHA_RULE}
 5. On success: \`python3 tools/record_submission.py --company "<Company>" --role "$role" --ats "$ats" --url "$url" --key $key --cv documents/applications/${CV_PREFIX}_CV_$key.docx --letter documents/applications/${CV_PREFIX}_Motivation_$key.docx --status SUBMITTED --evidence "<confirmation>"\`.
 If, after step 4c, a genuine blocker remains (an unsolvable CAPTCHA/anti-bot challenge, or a login wall with no stored credentials), record it with the workarounds you tried: \`python3 tools/register.py --set --company "<Company>" --role "$role" --status BLOCKED --notes "blocker: <exact>; tried: <workarounds>"\` and stop. Never fabricate a submission.
 
@@ -292,6 +304,13 @@ run_task() {
   [ -z "${company:-}" ] && return 0
   case "$company" in \#*) return 0 ;; esac
   if grep -qxF "$company|$role" "$DONE" 2>/dev/null || { [ -n "${key:-}" ] && grep -qxF "$key" "$DONE" 2>/dev/null; }; then return 0; fi
+  if [ -n "${key:-}" ] && python3 -c 'import json,sys
+try: d=json.load(open(sys.argv[1]))
+except Exception: d={}
+sys.exit(0 if isinstance(d,dict) and sys.argv[2] in d else 1)' "${ROOT:-.}/state/shelved.json" "$key"; then
+    echo "SKIP-SHELVED $(date +%H:%M:%S) $company | $role" >> "$LOGS/run_queue.out"
+    return 0
+  fi
   dup="$(is_duplicate "$company" "$role")"
   if [ -n "$dup" ]; then
     echo "SKIP-DUPLICATE $(date +%H:%M:%S) $company | $role (already $dup)" >> "$LOGS/run_queue.out"
@@ -309,7 +328,7 @@ run_task() {
 
 REVIEW RUN ENDS HERE. Do NOT open the browser, do NOT upload, do NOT run record_submission.py and do NOT set SUBMITTED. The finalise command (with --record-prepared) has already recorded PREPARED on PASS. Return exactly one line: STATUS $company | $role | PREPARED|BLOCKED|CLOSED | <reason> | CV: documents/applications/${CV_PREFIX}_CV_$key.docx | letter: documents/applications/${CV_PREFIX}_Motivation_$key.docx"
   fi
-  "$TIMEOUT_CMD" "$TASK_TIMEOUT" bash "$ROOT/tools/agent_run.sh" "$prompt" >"$log" 2>&1 </dev/null
+  "$TIMEOUT_CMD" -k 30s "$TASK_TIMEOUT" bash "$ROOT/tools/agent_run.sh" "$prompt" >"$log" 2>&1 </dev/null
   rc=$?
   # The outcome is the third |-separated field of the agent's last STATUS line:
   # "STATUS <Company> | <role> | BLOCKED | <reason> | CV: ...". (Taking the last
@@ -319,7 +338,11 @@ REVIEW RUN ENDS HERE. Do NOT open the browser, do NOT upload, do NOT run record_
   # never really ran). Infra failures must NOT be committed to $DONE or they are
   # lost: the task stays pending for a later run and is re-queued for the retry pass.
   reason=""; hard=0; size=$(wc -c < "$log" 2>/dev/null || echo 0)
-  if grep -qiE 'rate limit exceeded|budget exceeded|quota exceeded|too many requests|usage limit reached|hit your (usage )?limit|credit balance is too low|rate_limit_error' "$log" 2>/dev/null; then
+  # A STATUS line is the task's own outcome. Earlier transient errors that were
+  # retried and then succeeded must not be mistaken for an infrastructure stop.
+  if [ -n "$outcome" ]; then
+    :
+  elif grep -qiE 'rate limit exceeded|budget exceeded|quota exceeded|too many requests|usage limit reached|hit your (usage )?limit|credit balance is too low|rate_limit_error' "$log" 2>/dev/null; then
     reason="model budget/rate limit"; hard=1
   elif grep -qiE 'invalid api key|please run /login|failed to authenticate|oauth (token|session) (has )?expired' "$log" 2>/dev/null; then
     reason="agent not signed in"; hard=1
@@ -517,7 +540,8 @@ if ! python3 "$ROOT/tools/register.py" --audit > "$LOGS/audit.out" 2>&1; then
     grep '^FAIL' "$LOGS/audit.out"; } | tee -a "$LOGS/run_queue.out" >&2
 fi
 
-# Tell the Agent pane what this run did.
+# Tell the Agent pane what this run did. A detached runner otherwise just
+# disappears when the badge clears, leaving the operator to dig through logs.
 if [ -s "$SUMMARY_FILE" ]; then
   python3 "$ROOT/tools/notify_agent.py" --queue "$QUEUE" --summary "$SUMMARY_FILE" \
     --parallel "$PARALLEL" >> "$LOGS/run_queue.out" 2>&1 || true
