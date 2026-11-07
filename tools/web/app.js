@@ -3062,6 +3062,10 @@ async function liveTick() {
     lb.title = LIVE_TASKS.length ? 'Show the live log: ' + LIVE_TASKS[0].label : 'No running task';
   }
   const a = d.action || {};
+  // A finished action must never leave a row spinner behind. The three-tick
+  // rule below is for a run that ends while the page is open; this clears a
+  // stale marker immediately after a tab has been in the background.
+  if (a.finished && PENDING.size) { PENDING.clear(); renderRows(); }
   const anameRaw = (a.name || '').replace(/^action=/, '').replace(/\s*\(.*\)\s*$/, '');
   const aname = ACT_LABEL[anameRaw] || anameRaw;
   const delegated = d.delegated || [];
@@ -3635,6 +3639,21 @@ function initActSplit() {
     el.addEventListener('pointermove', move); el.addEventListener('pointerup', up);
   });
 }
+// Returning to a background tab should not keep a stale "working" marker or a
+// grid from ten minutes ago. Catch up immediately, throttled so normal clicking
+// does not reload the grid.
+let LAST_CATCHUP = 0;
+function catchUp() {
+  const now = Date.now();
+  if (now - LAST_CATCHUP < 5000) return;
+  LAST_CATCHUP = now;
+  liveTick();
+  loadGrid();
+  if (CUR && !document.querySelector('#detail').hidden) openDetail(CUR);
+}
+window.addEventListener('focus', catchUp);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) catchUp(); });
+
 function initPanels() {
   // migrate pre-v6 keys so upgrading doesn't reset the panel layout
   if (localStorage.getItem('agent.open') === null && localStorage.getItem('dock.open') !== null)
