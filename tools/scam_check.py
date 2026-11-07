@@ -312,6 +312,16 @@ def _system_sender(sender):
                                              "do-not-reply", "donotreply", "postmaster"))
 
 
+def sender_from_text(text):
+    """The From address in a saved advert or lead brief, if one is recorded."""
+    t = text or ""
+    m = re.search(r"<([^<>\s]+@[^<>\s]+)>", t)
+    if m:
+        return m.group(1).strip()
+    m = re.search(r"\bfrom\b[^\n]{0,200}?([\w.+-]+@[\w.-]+\.[a-z]{2,})", t, re.I)
+    return m.group(1).strip() if m else ""
+
+
 def scan(text, company="", sender="", reply_to="", subject="", links=None,
          attachments=None, company_domain=""):
     """Return {level, signals, rule} for an advert or a message.
@@ -461,8 +471,26 @@ def main() -> int:
     ap.add_argument("--company", default="")
     ap.add_argument("--sender", default="")
     ap.add_argument("--key", default="", help="save the scan to state/scam/<key>.json")
+    ap.add_argument("--backfill", action="store_true",
+                    help="rescan every saved job description with the sender recorded in it")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
+
+    if args.backfill:
+        jd_dir = ROOT / "state" / "job-descriptions"
+        n = 0
+        for path in sorted(jd_dir.glob("*.md")):
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            sender = sender_from_text(text)
+            if not sender:
+                continue
+            result = scan(text, "", sender)
+            save(path.stem, result)
+            if result["level"] != "clear":
+                print(f"{path.stem}: {result['level'].upper()} — " + summary(result))
+            n += 1
+        print(f"scanned {n} saved job description(s) with a recorded sender")
+        return 0
 
     if args.jd:
         text = Path(args.jd).read_text(encoding="utf-8", errors="ignore")
@@ -472,7 +500,8 @@ def main() -> int:
         text = args.text
     if not text:
         ap.error("give --text, --jd or --email")
-    result = scan(text, args.company, args.sender)
+    sender = args.sender or sender_from_text(text) if args.jd else args.sender
+    result = scan(text, args.company, sender)
     if args.key:
         save(args.key, result)
     if args.json:

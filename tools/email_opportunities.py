@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gmail_readonly as G
 import gmail_reconcile as R
 import register as REG
+import scam_check
 
 ATS = re.compile(r"no-?reply|noreply|donotreply|jobs-noreply|job alert|newsletter|"
                  r"linkedin|teamtailor-mail|greenhouse|ashbyhq|lever\.co|myworkday|"
@@ -101,12 +102,17 @@ def main() -> int:
             )
             with open(os.path.join(REG.JD_DIR, f"{key}.md"), "w", encoding="utf-8") as fh:
                 fh.write(brief)
+            scan = scam_check.scan(brief, f["company"], f["sender"], subject=f["subject"])
+            scam_check.save(key, scan)
             REG.upsert(f["company"], f["role"], "MANUAL",
                        day=time.strftime("%Y-%m-%d"), ats="Agency",
                        notes=(f"external (Gmail) lead {f['id']}: {f['subject']} — "
                               f"no advert supplied; lead brief saved to "
                               f"state/job-descriptions/{key}.md; reply to request the "
-                              f"full spec before preparing documents. {f['note']}"))
+                              f"full spec before preparing documents. "
+                              + (f"SCAM {scan['level'].upper()}: " + scam_check.summary(scan) + " "
+                                 if scan["level"] != "clear" else "")
+                              + f"{f['note']}"))
         print(f"recorded {len(found)} external lead(s) as MANUAL (no spec yet)")
     else:
         print("(dry run — re-run with --apply to record these)")

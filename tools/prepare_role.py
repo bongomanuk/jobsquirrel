@@ -219,7 +219,7 @@ def main() -> int:
     jd_text = open(jd_path, encoding="utf-8").read()
     # A scam advert must not become a tailored application. This runs before any
     # model/embedding work, so a HIGH signal fails fast and cheap.
-    scan = scam_check.scan(jd_text, args.company, "")
+    scan = scam_check.scan(jd_text, args.company, scam_check.sender_from_text(jd_text))
     scam_check.save(key, scan)
     if scan["level"] == "high" and not args.allow_scam:
         print("PREP FAIL: HIGH scam signal — " + scam_check.summary(scan), file=sys.stderr)

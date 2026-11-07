@@ -44,6 +44,15 @@ app" and "share your seed phrase" are the same scam with a different wrapper.
 | Chat-only interview | Untraceable contact | The whole process runs on Telegram/WhatsApp/Signal |
 | Credential phishing | Your email or ATS login | A lookalike domain, a shortened or IP link, an unexpected login page |
 
+## Free-mail senders
+
+A lead that arrives from a free mailbox (gmail.com, outlook.com, ...) is a
+MEDIUM signal even when the message contains no advert. The scan reads the
+sender recorded in the saved lead brief, so `email_opportunities.py` and
+`prepare_role.py` flag it automatically, and `scam_check.py --backfill`
+rescans older saved descriptions. The grid shows a scam marker and the role's
+drawer explains the signal.
+
 ## Signals
 
 Each signal has a stable `key` (shown in the scan JSON and the dashboard), a

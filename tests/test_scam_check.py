@@ -190,3 +190,11 @@ def test_starter_kit_fee_is_high():
     r = S.scan("There is a starter kit fee of 99 EUR.")
     assert r["level"] == "high"
     assert "pay-to-work" in {s["key"] for s in r["signals"]}
+
+
+def test_sender_from_text_reads_a_lead_brief_header():
+    brief = ("# LarryLawrence Hiringsearch11 — VP, R&D\n"
+             "Source: Gmail message 1a1409f4 from LarryLawrence <larry@gmail.com>\n"
+             "Spec status: lead brief\n---\nbody")
+    assert S.sender_from_text(brief) == "larry@gmail.com"
+    assert S.sender_from_text("no sender recorded") == ""
