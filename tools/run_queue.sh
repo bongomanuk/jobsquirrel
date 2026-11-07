@@ -143,9 +143,14 @@ build_prompt() {
   else
     CAPTCHA_RULE="If a CAPTCHA / \"verify you are human\" / anti-bot challenge appears: do NOT solve or evade it. Record \`python3 tools/register.py --set --company \"$company\" --role \"$role\" --status BLOCKED --notes \"captcha: <exact challenge>\"\` and return STATUS BLOCKED."
   fi
+  local INTRO="You are applying to ONE job on behalf of the candidate described in config/profile.md. Repo: $ROOT (cwd). Do not touch other jobs."
+  local BROWSER_LINE="  Browser: run every command as \`python3 tools/camoufox_browser.py --server $server <cmd>\` (nav/snap/click/fill/type/select/pick/fillmap/press/check/upload/value/eval/wait). Prefix \`$TIMEOUT_CMD 30\`. Re-snap before using refs; prefer CSS selectors with \`fill '<sel>' '<text>'\`. To cut tokens, BATCH form fields with \`fillmap '<json steps>'\` (steps: [{\"selector\":\"#x\",\"value\":\"...\",\"op\":\"fill|check|select|upload|press\"}]) instead of one call per field."
   if [ "${REVIEW:-0}" = "1" ]; then
     OUTCOMES="PREPARED|BLOCKED|CLOSED"
+    INTRO="You are PREPARING documents for ONE job (REVIEW, no submission). Repo: $ROOT (cwd). Do not touch other jobs."
+    BROWSER_LINE=""
     REVIEW_MSG="REVIEW MODE (do NOT submit): produce the aligned, grounded, targeted CV and cover letter (steps 0c-2), run the alignment gate and the pre-submit gate (with --record, so a gate receipt is written) until both print RESULT: PASS, and save every artifact (state/job-descriptions/$key.md, state/ats/$key.txt, state/kb-context/$key.md, state/cv-content/$key.json, documents/applications/${CV_PREFIX}_CV_$key.docx, documents/applications/${CV_PREFIX}_Motivation_$key.docx). Then record the row as PREPARED (NOT SUBMITTED) with the file paths: \`python3 tools/register.py --set --company \"$company\" --role \"$role\" --status PREPARED --notes \"review: <cv path> | <letter path>\"\`. Do NOT open the browser, do NOT upload, do NOT submit anything. Finish with the STATUS line described at the end, with PREPARED as the outcome."
+    REVIEW_MSG="${REVIEW_MSG} The Browser line and steps 4, 4b, 4c and 5 below DO NOT APPLY: ignore them completely. Nothing is uploaded and no form is opened."
   fi
   if [ "${LIGHT:-0}" = "1" ]; then
     cat <<EOF
@@ -205,7 +210,7 @@ EOF
     return
   fi
   cat <<EOF
-You are applying to ONE job on behalf of the candidate described in config/profile.md. Repo: $ROOT (cwd). Do not touch other jobs.
+$INTRO
 Company/tag: $company
 Role: $role
 ATS: $ats
