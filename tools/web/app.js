@@ -2913,7 +2913,11 @@ async function liveTick() {
         `<span class="muted">running…</span></div>`;
       tech.push(...(a.log || []));
     } else if (a.name && a.finished) {
-      h += '<span class="muted">○ No task running right now. History is in the Agent chat.</span>';
+      // Report the outcome of the task that just finished, and nothing older.
+      const bits = [...((sm.notable || [])), sm.headline || ''].filter(Boolean);
+      const outcome = bits.find(x => /^\s*STATUS\s/i.test(x)) || sm.headline || '';
+      h += `<div class="act-h">${ic('check')} ${esc(aname || 'task')} <span class="muted">finished</span></div>`;
+      if (outcome) h += `<div class="mini">${esc(outcome.slice(0, 500))}</div>`;
     }
     const tasks = d.running_tasks || (d.running || []).map(x => ({ label: x, log: '' }));
     if (tasks.length) {
