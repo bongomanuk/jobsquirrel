@@ -3931,7 +3931,37 @@ def action_log(n=100):
             txt = ANSI.sub("", fh.read())
     except OSError:
         txt = ""
-    return txt.splitlines()[-int(n or 100):]
+    lines = txt.splitlines()
+    # A queue run writes its human lines (START / STATUS / DONE) to run_queue.out,
+    # not to the action log, so the Activity pane used to show "no output" for a
+    # prepare or submit that had in fact finished.
+    t0 = _ACT.get("t0") or 0
+    name = _ACT.get("name", "")
+    if t0 and re.search(r"prepare|submit|apply|run", name, re.I):
+        try:
+            q = os.path.join(LOGS, "run_queue.out")
+            if os.path.getmtime(q) >= t0 - 10:
+                ql = ANSI.sub("", _read(q, cap=200_000)).splitlines()[-400:]
+                # keep only the window for THIS run: start at the first START
+                # whose clock time is at or after the action start.
+                lt = time.localtime(t0)
+                tstart = lt.tm_hour * 3600 + lt.tm_min * 60 + lt.tm_sec
+                window, started = [], False
+                for q_line in ql:
+                    m = re.match(r"START\s+(\d\d):(\d\d):(\d\d)", q_line)
+                    if m and not started:
+                        sec = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+                        # the run's own START, allowing for the few seconds between
+                        # the action being spawned and the queue script starting
+                        if 0 <= sec - tstart <= 900:
+                            started = True
+                    if started:
+                        window.append(q_line)
+                if window:
+                    lines = [l for l in lines if l.strip()] + window
+        except OSError:
+            pass
+    return lines[-int(n or 100):]
 
 
 LOG_CAP_BYTES = 2_000_000     # an append-only log is history after this much
