@@ -21,6 +21,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 import cv_builder as B
 import register as REG
+import letter_need
 
 
 def run(cmd):
@@ -41,6 +42,8 @@ def main() -> int:
     ap.add_argument("--record-prepared", action="store_true")
     ap.add_argument("--skip-cv", action="store_true")
     ap.add_argument("--skip-letter", action="store_true")
+    ap.add_argument("--letter-mode", choices=("auto", "yes", "no"), default="auto",
+                    help="auto: follow the advert; yes: force a cover letter; no: CV only")
     args = ap.parse_args()
 
     key = args.key
@@ -51,25 +54,51 @@ def main() -> int:
     cv = os.path.join(ROOT, "documents", "applications", f"{B.CV_PREFIX}_CV_{key}.docx")
     letter = os.path.join(ROOT, "documents", "applications", f"{B.CV_PREFIX}_Motivation_{key}.docx")
 
-    if not args.skip_letter and not os.path.exists(letter_json):
+    # The advert decides. Most roles do not ask for a cover letter: render the CV
+    # only, gate the CV only, and record that in the notes. --letter-mode yes is
+    # for an application form that turns out to require one.
+    jd_text = ""
+    try:
+        jd_text = open(jd, encoding="utf-8", errors="ignore").read()
+    except OSError:
+        pass
+    if args.letter_mode == "auto":
+        need_letter, letter_why = letter_need.required(jd_text)
+    else:
+        need_letter, letter_why = args.letter_mode == "yes", "forced by --letter-mode"
+    if args.skip_letter:
+        need_letter = False
+    # Keep the recorded decision in step with the renderer: a letter forced by
+    # the application form is "required" for the submit run that follows.
+    try:
+        os.makedirs(os.path.dirname(letter_json), exist_ok=True)
+        with open(os.path.join(os.path.dirname(letter_json), key + ".need"), "w", encoding="utf-8") as fh:
+            fh.write(("required: " if need_letter else "optional: ") + letter_why + "\n")
+    except OSError:
+        pass
+    if need_letter and not os.path.exists(letter_json):
         print(f"FINALISE FAIL: missing letter brief {letter_json}", file=sys.stderr)
         return 2
+    if not need_letter and os.path.exists(letter_json):
+        print(f"FINALISE: cover letter not required ({letter_why}); CV only")
     if not args.skip_cv:
         rc, _ = run([sys.executable, "tools/cv_target.py", "--key", key,
                      "--content", content, "--require-fill"])
         if rc:
             print("FINALISE FAIL: cv_target did not pass the fill check", file=sys.stderr)
             return rc
-    if not args.skip_letter:
+    if need_letter:
         rc, _ = run([sys.executable, "tools/render_letter.py", "--key", key,
                      "--json", letter_json])
         if rc:
             print("FINALISE FAIL: letter render failed", file=sys.stderr)
             return rc
 
-    rc, out = run([sys.executable, "tools/check_documents.py", "--letter", letter,
-                   "--cv", cv, "--company", args.company, "--jd", jd,
-                   "--ats-keywords", ats, "--engagement", args.engagement, "--record"])
+    gate = [sys.executable, "tools/check_documents.py", "--cv", cv, "--company", args.company,
+            "--jd", jd, "--ats-keywords", ats, "--engagement", args.engagement, "--record"]
+    if need_letter:
+        gate[2:2] = ["--letter", letter]
+    rc, out = run(gate)
     if rc or "RESULT: PASS" not in out:
         print("FINALISE FAIL: pre-submit gate did not pass", file=sys.stderr)
         return rc or 2
@@ -80,15 +109,16 @@ def main() -> int:
                                                          "IN_PROGRESS", "OFFER"):
             print(f"FINALISE: {row['status']} already recorded; not downgrading to PREPARED")
             return 0
+        note = f"review: {cv} | {letter}" if need_letter else f"review: {cv} (CV only; no cover letter required)"
         rc, _ = run([sys.executable, "tools/register.py", "--set",
                      "--company", args.company, "--role", args.role,
                      "--status", "PREPARED",
-                     "--notes", f"review: {cv} | {letter}"])
+                     "--notes", note])
         if rc:
             print("FINALISE FAIL: could not record PREPARED", file=sys.stderr)
             return rc
     state = "PREPARED" if args.record_prepared else "GATE PASS"
-    print(f"FINALISE PASS {args.company} | {args.role} | {state}")
+    print(f"FINALISE PASS {args.company} | {args.role} | {state} | letter={'yes' if need_letter else 'no'}")
     return 0
 
 

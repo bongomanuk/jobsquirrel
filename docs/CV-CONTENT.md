@@ -35,11 +35,18 @@ seed pack copied from the closest existing grounded pack. It writes
 The model then edits only the parts that should change for the role: profile,
 tagline, skills, selected work and the role-specific bullet selection/order.
 The static roles, dates and evidenced achievements are already in the seed, so
-there is no reason to regenerate them. Write the letter prose to
-`state/letters/<key>.json`, then run `finalise_docs.py`: it renders the CV with
-the fill check, renders the letter, runs the pre-submit gate with `--record`
-and (in REVIEW) records PREPARED only on PASS. This cuts the slow model's
-output and the number of turns without skipping any grounding rule or gate.
+there is no reason to regenerate them.
+
+**A cover letter is the exception, not the rule.** `prepare_role.py` reads the
+advert and writes `state/letters/<key>.need` (`required:` or `optional:`, with
+the sentence it based that on). Most adverts do not ask for one. Only when the
+need says `required` write the letter prose to `state/letters/<key>.json`.
+`finalise_docs.py` renders the CV with the fill check, renders the letter only if
+required, gates the exact files (CV only, or CV + letter) with `--record` and
+(in REVIEW) records PREPARED only on PASS. If an application form turns out to
+demand a cover letter, rerun `finalise_docs.py --letter-mode yes`. This cuts the
+slow model's output and the number of turns without skipping any grounding rule
+or gate.
 
 
 ## No targeting tells

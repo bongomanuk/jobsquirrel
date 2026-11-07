@@ -154,7 +154,7 @@ build_prompt() {
     OUTCOMES="PREPARED|BLOCKED|CLOSED"
     INTRO="You are PREPARING documents for ONE job (REVIEW, no submission). Repo: $ROOT (cwd). Do not touch other jobs."
     BROWSER_LINE=""
-    REVIEW_MSG="REVIEW MODE (do NOT submit): produce the aligned, grounded, targeted CV and cover letter (steps 0c-2), run the alignment gate and the pre-submit gate (with --record, so a gate receipt is written) until both print RESULT: PASS, and save every artifact (state/job-descriptions/$key.md, state/ats/$key.txt, state/kb-context/$key.md, state/cv-content/$key.json, documents/applications/${CV_PREFIX}_CV_$key.docx, documents/applications/${CV_PREFIX}_Motivation_$key.docx). Then record the row as PREPARED (NOT SUBMITTED) with the file paths: \`python3 tools/register.py --set --company \"$company\" --role \"$role\" --status PREPARED --notes \"review: <cv path> | <letter path>\"\`. Do NOT open the browser, do NOT upload, do NOT submit anything. Finish with the STATUS line described at the end, with PREPARED as the outcome."
+    REVIEW_MSG="REVIEW MODE (do NOT submit): produce the aligned, grounded, targeted CV and, ONLY when state/letters/$key.need says the advert asks for one, a cover letter (steps 0c-2); run the alignment gate and the pre-submit gate (with --record, so a gate receipt is written) until both print RESULT: PASS; and save every artifact (state/job-descriptions/$key.md, state/ats/$key.txt, state/kb-context/$key.md, state/cv-content/$key.json, documents/applications/${CV_PREFIX}_CV_$key.docx and, only if required, documents/applications/${CV_PREFIX}_Motivation_$key.docx). Then record the row as PREPARED (NOT SUBMITTED) with the file paths: \`python3 tools/register.py --set --company \"$company\" --role \"$role\" --status PREPARED --notes \"review: <cv path> | <letter path or CV only>\"\`. Do NOT open the browser, do NOT upload, do NOT submit anything. Finish with the STATUS line described at the end, with PREPARED as the outcome."
     REVIEW_MSG="${REVIEW_MSG} The Browser line and steps 4, 4b, 4c and 5 below DO NOT APPLY: ignore them completely. Nothing is uploaded and no form is opened."
   fi
   if [ "${LIGHT:-0}" = "1" ]; then
@@ -193,7 +193,7 @@ Role: $role
 ATS: $ats
 Apply URL: $url
 CV to upload (ALREADY GENERATED - do NOT regenerate): documents/applications/${CV_PREFIX}_CV_$key.docx
-Cover letter (ALREADY GENERATED - do NOT regenerate): documents/applications/${CV_PREFIX}_Motivation_$key.docx
+$LETTER_LINE
   Browser: run every command as \`python3 tools/camoufox_browser.py --server $server <cmd>\` (nav/snap/click/fill/type/select/pick/fillmap/press/check/upload/value/eval/wait). Prefix \`$TIMEOUT_CMD 30\`. Refs renumber after every snap - re-snap before using refs; prefer CSS selectors with \`fill '<sel>' '<text>'\`. To cut tokens, BATCH form fields with \`fillmap '<json steps>'\` (steps: [{"selector":"#x","value":"...","op":"fill|check|select|upload|press"}]) instead of one call per field.
   Custom ATS widgets (Workday, Greenhouse/react-select, Ashby): options in a listbox/dropdown are NOT clickable via eval-dispatched events - use \`pick '<option text>' ['<opener selector>']\` (it scrolls virtualised lists and clicks with real input). Use \`press Enter '<sel>'\` to commit type-aheads, \`press Escape\` to close a popup. \`click\` retries with a forced click automatically when an overlay blocks it; add \`--force\` yourself if you already know something is in the way. CSS ids starting with a digit need \`[id="53683"]\`, not \`#53683\`.
 
@@ -205,14 +205,14 @@ Steps:
 0. DUPLICATE GUARD: the queue runner already checked the register for this company and role before starting. Do not re-read state/applications.csv or call register.py --show. A repost or an earlier application does NOT block a new one: apply/prepare it as normal and note the repost. Never record CLOSED just because the role looks like a duplicate.
 ${REPOST_NOTE:-}
 0b. ELIGIBILITY CHECK (quick): confirm from profile.md that the role's location/work model, languages and authorisation still fit. If it is clearly excluded (or the posting is no longer live and cannot be found), record CLOSED with the reason and STOP. Do not redo any analysis beyond that.
-1. PRE-SUBMIT GATE (the only gate to run): \`python3 tools/check_documents.py --letter documents/applications/${CV_PREFIX}_Motivation_$key.docx --cv documents/applications/${CV_PREFIX}_CV_$key.docx --company "<Company>" --jd state/job-descriptions/$key.md --ats-keywords state/ats/$key.txt --engagement $ENGAGEMENT --record\` - it must print RESULT: PASS (it re-stamps the receipt for the exact files you upload). If it FAILS, STOP: do not submit; record BLOCKED with the gate's reason.
-2. Apply via the Camoufox browser: fill fields with profile.md values, upload the prepared CV (and the prepared letter where a letter field exists), answer questions honestly, submit. Verify a success/thank-you page.
+1. PRE-SUBMIT GATE (the only gate to run): \`python3 tools/check_documents.py ${LETTER_GATE}--cv documents/applications/${CV_PREFIX}_CV_$key.docx --company "<Company>" --jd state/job-descriptions/$key.md --ats-keywords state/ats/$key.txt --engagement $ENGAGEMENT --record\` - it must print RESULT: PASS (it re-stamps the receipt for the exact files you upload). If it FAILS, STOP: do not submit; record BLOCKED with the gate's reason.
+2. Apply via the Camoufox browser: fill fields with profile.md values, upload the prepared CV $LETTER_UPLOAD, answer questions honestly, submit. Verify a success/thank-you page.
    Multi-step forms (Workday etc): the footer button is [data-automation-id="pageFooterNextButton"] (Save and Continue). If a save is rejected, read the Error-* text and fix exactly the field it names (usually a custom dropdown - use \`pick\`).
 2b. EMAIL VERIFICATION (mandatory): after submit, wait ~45s, then read the candidate's Gmail (\`.venv/bin/python tools/email_verify.py --query 'newer_than:2h (from:teamtailor-mail.com OR from:join.com OR "Complete the application" OR "Security code for your application" OR "verify your email" OR "Activate your account")'\`) and COMPLETE it in THIS browser. Do NOT record SUBMITTED until a real confirmation is seen. If verification remains pending, record BLOCKED.
 2c. BLOCKER RECOVERY: re-read the page and retry once; on a login wall use \`python3 tools/accounts.py --get <site-host>\` (the secrets store); if the apply URL is dead, resolve the employer's own ATS. ${CAPTCHA_RULE}
-3. On success: \`python3 tools/record_submission.py --company "<Company>" --role "$role" --ats "$ats" --url "$url" --key $key --cv documents/applications/${CV_PREFIX}_CV_$key.docx --letter documents/applications/${CV_PREFIX}_Motivation_$key.docx --status SUBMITTED --evidence "<the exact thank-you text or the confirmation email>"\`. The evidence MUST be real - never "confirmed"/"ok"/a placeholder.
+3. On success: \`python3 tools/record_submission.py --company "<Company>" --role "$role" --ats "$ats" --url "$url" --key $key --cv documents/applications/${CV_PREFIX}_CV_$key.docx ${LETTER_RECORD}--status SUBMITTED --evidence "<the exact thank-you text or the confirmation email>"\`. The evidence MUST be real - never "confirmed"/"ok"/a placeholder.
 
-Return exactly one line: STATUS <Company> | $role | SUBMITTED|BLOCKED|CLOSED | <reason> | CV: documents/applications/${CV_PREFIX}_CV_$key.docx | letter: documents/applications/${CV_PREFIX}_Motivation_$key.docx
+Return exactly one line: STATUS <Company> | $role | SUBMITTED|BLOCKED|CLOSED | <reason> | CV: documents/applications/${CV_PREFIX}_CV_$key.docx | $LETTER_STATUS
 EOF
     return
   fi
@@ -241,9 +241,10 @@ ${REPOST_NOTE:-}
 0c. DETERMINISTIC PREP (one command): \`python3 tools/prepare_role.py --key $key --company "$company" --role "$role"\`. It extracts ATS keywords, builds the GraphRAG context (reused when the JD hash is unchanged), classifies the role, verifies the archetype with check_alignment, and seeds state/cv-content/$key.json from the closest grounded pack. It prints PREP/CONTENT and writes state/briefs/$key.md. If it prints PREP FAIL: HIGH scam signal, record BLOCKED with the signal and STOP - never prepare or submit that role, never download or install software, never join a chat-only interview. If it fails alignment, record CLOSED/BLOCKED with its reason and STOP. If the archetype is clearly wrong, rerun with \`--cv <Archetype>\`; never submit a misaligned CV.
 1. READ ONCE: state/briefs/$key.md (full JD + grounded context + paths) and state/cv-content/$key.json. These are the grounding for the CV and letter.
 1b. TAILOR THE SEED PACK with the edit tool - do NOT rewrite the whole JSON. Every role, date and fact is already there. Rewrite only: profile (150-180 words, high-level summary, no tool names), tagline, skills (7-9 lines), selected_work (5-6 items), and the role-specific bullet selection/order/rephrasing. Keep EVERY role and ALL key achievements with their metrics and technologies; split compound bullets; add delivery/team bullets where evidenced; weave role terms in naturally - NO fabrication, NO AI-slop, NO keyword stuffing. Content budget 32-38 bullets: 6-8 for the two most recent/relevant roles, 4-6 middle, 2-3 earliest. If the seed pack is missing an evidenced achievement from the brief/KB, add it.
-1c. LETTER PROSE: write state/letters/$key.json with headline, title, engagement "$ENGAGEMENT", opening, fit (optional salutation/recipient), grounded in the brief/KB and config/profile.md. Keep employers and dates accurate, past roles in past tense, no embellishment or invented links. NEVER repeat a phrase of four or more words anywhere in the letter (opening + fit): the gate fails on repeated phrases and duplicated logistics (notice, relocation, availability). Do not reuse a sentence or its opening; vary the wording, and say a thing once.
-1d. FINALISE (render + measure + gate in ONE command): \`python3 tools/finalise_docs.py --key $key --company "$company" --role "$role" --jd state/job-descriptions/$key.md --ats state/ats/$key.txt --engagement $ENGAGEMENT\` and, in REVIEW mode only, add \`--record-prepared\`. It renders the CV with --require-fill, renders the letter, runs the pre-submit gate with --record, and (in REVIEW) records PREPARED only on PASS. If it reports THIN/FILL FAIL or gate FAIL, read the reason, fix the pack/letter and rerun; never bypass or hand-edit the rendered file. Make all edits in one pass; do not re-render after every small change.
-4. Apply via the Camoufox browser: fill fields, upload the targeted CV documents/applications/${CV_PREFIX}_CV_$key.docx (ATS-safe) and the letter, answer questions honestly using the identity and standard answers in config/profile.md (work authorisation etc.), submit. Verify a success/thank-you page.
+1c. COVER LETTER (only if required): read state/letters/$key.need, written by prepare_role. If it starts with "required:", write state/letters/$key.json with headline, title, engagement "$ENGAGEMENT", opening, fit (optional salutation/recipient), grounded in the brief/KB and config/profile.md. If it starts with "optional:", do NOT write a letter: the advert does not ask for one. Keep employers and dates accurate, past roles in past tense, no embellishment or invented links. NEVER repeat a phrase of four or more words anywhere in the letter (opening + fit): the gate fails on repeated phrases and duplicated logistics (notice, relocation, availability). Do not reuse a sentence or its opening; vary the wording, and say a thing once.
+1d. FINALISE (render + measure + gate in ONE command): \`python3 tools/finalise_docs.py --key $key --company "$company" --role "$role" --jd state/job-descriptions/$key.md --ats state/ats/$key.txt --engagement $ENGAGEMENT\` and, in REVIEW mode only, add \`--record-prepared\`. It renders the CV with --require-fill, renders the letter only when the advert requires one, runs the pre-submit gate with --record, and (in REVIEW) records PREPARED only on PASS. If it reports THIN/FILL FAIL or gate FAIL, read the reason, fix the pack/letter and rerun; never bypass or hand-edit the rendered file. Make all edits in one pass; do not re-render after every small change.
+4. Apply via the Camoufox browser: fill fields, upload the targeted CV documents/applications/${CV_PREFIX}_CV_$key.docx (ATS-safe) and the prepared letter if one exists, answer questions honestly using the identity and standard answers in config/profile.md (work authorisation etc.), submit. Verify a success/thank-you page.
+   If the form has a REQUIRED cover-letter upload and no letter was prepared, write state/letters/$key.json now (same rules), run \`python3 tools/finalise_docs.py --key $key --company "$company" --role "$role" --jd state/job-descriptions/$key.md --ats state/ats/$key.txt --engagement $ENGAGEMENT --letter-mode yes\` and upload the rendered letter. If the field is optional, leave it empty.
    Multi-step forms (Workday etc): the footer button is [data-automation-id="pageFooterNextButton"] (Save and Continue). If a save is rejected, read the Error-* text on the page and fix exactly the field it names (usually a custom dropdown - use \`pick\`). Never leave a required field blank hoping it is optional; optional sections are fine to leave empty.
 4b. EMAIL VERIFICATION (mandatory - do not skip): some ATS (Teamtailor, join.com, Workday, etc.) email a "Complete the application" link before the application counts. After submit, wait ~45s, then read the candidate's Gmail (\`.venv/bin/python tools/email_verify.py --query 'newer_than:2h (from:teamtailor-mail.com OR from:join.com OR "Complete the application" OR "Security code for your application" OR "verify your email" OR "Activate your account")'\`) and COMPLETE it: open the verify/activation link in THIS pipeline browser (\`python3 tools/camoufox_browser.py --server $server nav '<LINK>'\`), or enter any emailed security code into the code field and resubmit. Do NOT record SUBMITTED until a real confirmation is seen (final received/thank-you page text or URL, or a confirmation email). If a verification step remains pending, record BLOCKED, not SUBMITTED.
 4c. BLOCKER RECOVERY (mandatory - do NOT record BLOCKED until you have actually tried these and can say what you tried). Most "blocked" states have a legitimate workaround:
@@ -256,10 +257,10 @@ ${REPOST_NOTE:-}
    - Expired ATS session: reload, re-open the apply URL, and re-enter the form.
    - Email verification required: complete it (step 4b).
    ${CAPTCHA_RULE}
-5. On success: \`python3 tools/record_submission.py --company "<Company>" --role "$role" --ats "$ats" --url "$url" --key $key --cv documents/applications/${CV_PREFIX}_CV_$key.docx --letter documents/applications/${CV_PREFIX}_Motivation_$key.docx --status SUBMITTED --evidence "<confirmation>"\`.
+5. On success: \`python3 tools/record_submission.py --company "<Company>" --role "$role" --ats "$ats" --url "$url" --key $key --cv documents/applications/${CV_PREFIX}_CV_$key.docx --status SUBMITTED --evidence "<confirmation>"\`. Add \`--letter documents/applications/${CV_PREFIX}_Motivation_$key.docx\` to that command only if the letter exists; otherwise omit it.
 If, after step 4c, a genuine blocker remains (an unsolvable CAPTCHA/anti-bot challenge, or a login wall with no stored credentials), record it with the workarounds you tried: \`python3 tools/register.py --set --company "<Company>" --role "$role" --status BLOCKED --notes "blocker: <exact>; tried: <workarounds>"\` and stop. Never fabricate a submission.
 
-Return exactly one line: STATUS <Company> | $role | $OUTCOMES | <reason> | CV: documents/applications/${CV_PREFIX}_CV_$key.docx | letter: documents/applications/${CV_PREFIX}_Motivation_$key.docx
+Return exactly one line: STATUS <Company> | $role | $OUTCOMES | <reason> | CV: documents/applications/${CV_PREFIX}_CV_$key.docx | letter: <the letter path if one exists, otherwise 'none (not required)'>
 EOF
 }
 
@@ -331,6 +332,32 @@ sys.exit(0 if isinstance(d,dict) and sys.argv[2] in d else 1)' "${ROOT:-.}/state
     REPOST_NOTE="REPOST: this role matches an earlier application ($dup). Reapplying is allowed and expected. Do not record CLOSED because it looks like a duplicate. Proceed with the normal task and add the note \"reapplied to a repost of $dup\" when you record it."
   fi
   log="$LOGS/$(echo "$company-$role" | tr ' /|' '___').log"
+  # A cover letter exists only when the advert (or an application form) asked for
+  # one. Never assume it: most roles are CV only.
+  letter_rel="documents/applications/${CV_PREFIX}_Motivation_$key.docx"
+  letter_need_file="$ROOT/state/letters/${key}.need"
+  letter_ok=0
+  if [ -n "${key:-}" ] && [ -f "$ROOT/$letter_rel" ]; then
+    # The advert decides. An old rendered letter for a role that no longer asks
+    # for one is not uploaded; a forced letter (--letter-mode yes) records
+    # "required:" in the need file.
+    if [ ! -f "$letter_need_file" ] || ! grep -q '^optional:' "$letter_need_file"; then
+      letter_ok=1
+    fi
+  fi
+  if [ "$letter_ok" = "1" ]; then
+    LETTER_LINE="Cover letter (ALREADY GENERATED - do NOT regenerate): $letter_rel"
+    LETTER_GATE="--letter $letter_rel "
+    LETTER_RECORD="--letter $letter_rel "
+    LETTER_STATUS="letter: $letter_rel"
+    LETTER_UPLOAD="and the prepared letter where a letter field exists"
+  else
+    LETTER_LINE="Cover letter: NOT PREPARED. The advert did not ask for one, so do not write or upload one; if the form makes it mandatory, STOP and record BLOCKED with 'form requires a cover letter; none prepared'."
+    LETTER_GATE=""
+    LETTER_RECORD=""
+    LETTER_STATUS="letter: none (not required)"
+    LETTER_UPLOAD="(no cover letter: the advert did not ask for one)"
+  fi
   runlog "START $(date +%H:%M:%S) $company | $role"
   prompt="$(build_prompt "$company" "$role" "$url" "$cv" "$ats" "$key" "$server")"
   if [ "$REVIEW" = "1" ]; then
@@ -339,7 +366,7 @@ sys.exit(0 if isinstance(d,dict) and sys.argv[2] in d else 1)' "${ROOT:-.}/state
     prompt="$(printf '%s\n' "$prompt" | awk '/^4\. Apply via the Camoufox browser/{exit} {print}')"
     prompt="$prompt
 
-REVIEW RUN ENDS HERE. Do NOT open the browser, do NOT upload, do NOT run record_submission.py and do NOT set SUBMITTED. The finalise command (with --record-prepared) has already recorded PREPARED on PASS. Return exactly one line: STATUS $company | $role | PREPARED|BLOCKED|CLOSED | <reason> | CV: documents/applications/${CV_PREFIX}_CV_$key.docx | letter: documents/applications/${CV_PREFIX}_Motivation_$key.docx"
+REVIEW RUN ENDS HERE. Do NOT open the browser, do NOT upload, do NOT run record_submission.py and do NOT set SUBMITTED. The finalise command (with --record-prepared) has already recorded PREPARED on PASS. Return exactly one line: STATUS $company | $role | PREPARED|BLOCKED|CLOSED | <reason> | CV: documents/applications/${CV_PREFIX}_CV_$key.docx | letter: <the letter path if one exists, otherwise 'none (not required)'>"
   fi
   "$TIMEOUT_CMD" -k 30s "$TASK_TIMEOUT" bash "$ROOT/tools/agent_run.sh" "$prompt" >"$log" 2>&1 </dev/null
   rc=$?

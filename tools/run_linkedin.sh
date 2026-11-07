@@ -50,6 +50,10 @@ else
 fi
 CAMOUFOX_SERVER="${CAMOUFOX_SERVER:-http://127.0.0.1:9873}"
 CAMOUFOX_PORT="${CAMOUFOX_PORT:-9873}"
+# Private build: solve a CAPTCHA only when Settings -> CAPTCHA is on (default on)
+# and a solver key is stored. Otherwise the agent records BLOCKED and stops.
+CAPTCHA_ON=0
+if python3 "$ROOT/tools/captcha_solver.py" --enabled >/dev/null 2>&1; then CAPTCHA_ON=1; fi
 
 # CV/letter filename prefix: env CV_PREFIX, else First_Last from config/profile.md,
 # else "CV".
@@ -79,6 +83,12 @@ fi
 
 build_prompt() {
   local company="$1" role="$2" url="$3" cv="$4" ats="$5" key="$6"
+  local CAPTCHA_RULE=""
+  if [ "${CAPTCHA_ON:-0}" = "1" ]; then
+    CAPTCHA_RULE="If a CAPTCHA / \"verify you are human\" / checkpoint appears: run \`python3 tools/captcha_solver.py --solve --server $CAMOUFOX_SERVER\`. If it reports ok, wait ~3s and submit once if the page has not moved. If it fails, record BLOCKED with note \"captcha: <solver error>\" and stop. At most two solver attempts; never submit while the token is empty."
+  else
+    CAPTCHA_RULE="If a CAPTCHA / \"verify you are human\" / checkpoint appears: STOP, do NOT evade, record BLOCKED with note \"CAPTCHA/checkpoint\" and stop."
+  fi
   cat <<EOF
 You are applying to ONE job on behalf of the candidate described in config/profile.md. Repo: $ROOT (cwd). Do not touch other jobs.
 Company: $company
@@ -96,12 +106,12 @@ Steps:
 1. Open the job page, read the description, save it to state/job-descriptions/$key.md. Prefer the EMPLOYER'S OWN ATS: if the posting links to (or resolves to) an external apply URL (Greenhouse/Lever/Workday/Teamtailor/SmartRecruiters/own site), apply there instead of the in-page form.
 1b. DETERMINISTIC PREP: \`python3 tools/prepare_role.py --key $key --company "$company" --role "$role"\`. It extracts ATS keywords, builds the GraphRAG context (cached by JD hash), verifies the archetype with check_alignment and seeds state/cv-content/$key.json from the closest grounded pack; it writes state/briefs/$key.md. If alignment fails, record BLOCKED/CLOSED and STOP.
 1c. READ state/briefs/$key.md and state/cv-content/$key.json once. TAILOR THE SEED PACK with the edit tool - do not rewrite the whole JSON. Rewrite only profile (150-180 words, high-level, no tool names), tagline, skills (7-9 lines), selected_work (5-6) and the role-specific bullet selection/order/rephrasing. Keep EVERY role and ALL key achievements with metrics and technologies; 32-38 bullets; split compound bullets; no fabrication, no AI-slop, no keyword stuffing.
-1d. LETTER PROSE: write state/letters/$key.json (headline, title, engagement "$ENGAGEMENT", opening, fit) grounded in the brief/KB; keep employers/dates accurate and past roles past tense.
-1e. FINALISE: \`python3 tools/finalise_docs.py --key $key --company "$company" --role "$role" --jd state/job-descriptions/$key.md --ats state/ats/$key.txt --engagement $ENGAGEMENT\`. It renders the CV with --require-fill, renders the letter, and runs the pre-submit gate with --record. If it fails, fix the pack/letter and rerun; never bypass.
-3. Complete the application form, attach the targeted CV documents/applications/${CV_PREFIX}_CV_$key.docx, and paste the letter text into any message/cover-letter field. Fill the form using the identity and standard answers in config/profile.md.
-4. Submit and verify the confirmation. If a CAPTCHA / "verify you are human" / checkpoint appears: STOP, do NOT evade, record BLOCKED with note "CAPTCHA/checkpoint" and stop.
+1d. COVER LETTER (only if required): read state/letters/$key.need. If it starts with "required:", write state/letters/$key.json (headline, title, engagement "$ENGAGEMENT", opening, fit) grounded in the brief/KB; keep employers/dates accurate and past roles past tense. If it starts with "optional:", do NOT write one.
+1e. FINALISE: \`python3 tools/finalise_docs.py --key $key --company "$company" --role "$role" --jd state/job-descriptions/$key.md --ats state/ats/$key.txt --engagement $ENGAGEMENT\`. It renders the CV with --require-fill, renders the letter only when the advert requires one, and runs the pre-submit gate with --record. If it fails, fix the pack/letter and rerun; never bypass.
+3. Complete the application form, attach the targeted CV documents/applications/${CV_PREFIX}_CV_$key.docx, and paste the letter into any REQUIRED cover-letter field if a letter was prepared (if the advert did not ask for one, leave an optional field empty). Fill the form using the identity and standard answers in config/profile.md.
+4. Submit and verify the confirmation. ${CAPTCHA_RULE}
 4b. EMAIL VERIFICATION (mandatory): if the employer's ATS emails a "Complete the application" link or a security code, wait ~45s, read the candidate's Gmail (\`.venv/bin/python tools/email_verify.py --query 'from:teamtailor-mail.com OR "Complete the application" OR "Security code" newer_than:1h'\`) and complete it (open the verify link, or enter the code and resubmit) before recording SUBMITTED.
-5. Record: \`python3 tools/record_submission.py --company "$company" --role "$role" --ats "$ats" --url "$url" --cv documents/applications/${CV_PREFIX}_CV_$key.docx --letter documents/applications/${CV_PREFIX}_Motivation_$key.docx --status SUBMITTED --evidence "<exact confirmation text or URL>"\`.
+5. Record: \`python3 tools/record_submission.py --company "$company" --role "$role" --ats "$ats" --url "$url" --cv documents/applications/${CV_PREFIX}_CV_$key.docx --status SUBMITTED --evidence "<exact confirmation text or URL>"\`. Add \`--letter documents/applications/${CV_PREFIX}_Motivation_$key.docx\` only if that letter exists.
 
 Return exactly one line: STATUS <Company> | $role | SUBMITTED|BLOCKED|CLOSED | <reason>
 EOF

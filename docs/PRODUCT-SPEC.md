@@ -11,7 +11,7 @@ Status: living document · Owner: repo owner · Applies to this repository.
 
 Jobsquirrel is an open, self-hosted, **agent-driven job-application pipeline**. The
 human supplies a CV and a set of rules; an AI coding agent then discovers roles,
-tailors a CV and cover letter per role, gates them for accuracy and quality, submits
+tailors a CV per role (a cover letter only when the advert asks for one), gates them for accuracy and quality, submits
 applications through a real browser, tracks replies from the inbox, and keeps a single
 source of truth for every application and the exact files sent.
 
@@ -292,7 +292,7 @@ Clicking a row opens a drawer with a single tab strip that never wraps:
 - **Files**: CV/letter paths + sha256 (click to copy), confidence, evidence, snapshot, screenshots.
 - **Job ad · ATS · Evidence**: the ad text, keywords, and the GraphRAG context pack
   **plus the entities and source documents it cited** (resolved from the index).
-- **Docs**: the **rendered** tailored CV (inline preview) and cover letter, with buttons to
+- **Docs**: the **rendered** tailored CV (inline preview) and, when one was prepared, the cover letter, with buttons to
   open either in the viewer and to open the CV PDF; the raw content pack is behind a toggle.
 
 ### 9.5 Settings panel

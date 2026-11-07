@@ -217,14 +217,14 @@ python3 tools/prioritise_queue.py               # order most-senior-first
 ```bash
 REVIEW=1 PARALLEL=3 bash tools/run_queue.sh
 ```
-Builds the grounded, targeted CV + cover letter per role, runs the gates, saves
+Builds the grounded, targeted CV per role (plus a cover letter only when the advert asks), runs the gates, saves
 them under `documents/applications/`, and records `PREPARED`. **Nothing is sent.**
 
 **C. Apply, generated, role-targeted CVs (the default)**
 ```bash
 PARALLEL=3 bash tools/run_queue.sh
 ```
-Per-role generated CV + letter, gate, submit through the employer ATS, record.
+Per-role generated CV (letter only when required), gate, submit through the employer ATS, record.
 
 **D. Apply with one fixed CV** (fast/cheap; no per-role generation)
 ```bash
@@ -308,25 +308,28 @@ python3 tools/prepare_role.py --key <key> --company "<Company>" --role "<Role>"
 # (3) Read the brief and pack ONCE, then tailor the seed pack with `edit`:
 #     profile 150-180 words, tagline, skills, selected work and role bullets.
 #     Keep every role and every evidenced achievement; do not rewrite facts.
-#     Write the letter prose to state/letters/<key>.json (headline, title,
-#     engagement, opening, fit).
+#     prepare_role wrote state/letters/<key>.need from the advert. Only when it
+#     says "required:" write the letter prose to state/letters/<key>.json
+#     (headline, title, engagement, opening, fit). Most roles need no letter.
 python3 tools/finalise_docs.py --key <key> --company "<Company>" --role "<Role>" \
     --jd state/job-descriptions/<key>.md --ats state/ats/<key>.txt \
     [--engagement contract] [--record-prepared]   # --record-prepared in REVIEW only
 
-# finalise_docs renders the CV (--require-fill), renders the letter, runs the
-# pre-submit gate with --record, and records PREPARED in REVIEW. In an apply run
-# it writes the same gate receipt that record_submission.py requires.
+# finalise_docs renders the CV (--require-fill), renders the letter only when the
+# advert requires one, gates the exact files, and records PREPARED in REVIEW. In
+# an apply run it writes the same gate receipt that record_submission.py needs.
+# --letter-mode yes forces a letter when the application form demands one.
 
 # (4) Apply via Camoufox through the employer's own ATS
 python3 tools/camoufox_server.py --port 9872 &                       # once per session
 python3 tools/camoufox_browser.py --server http://127.0.0.1:9872 nav "<apply-url>"
 #   ... snap / fill / pick / upload / submit ... (recipes: docs/ATS-RECIPES.md)
 
-# (5) Record the exact files sent (snapshots + hashes) and upsert the register
+# (5) Record the exact files sent (snapshots + hashes) and upsert the register.
+#     Add --letter ONLY if that letter exists (the advert or form required one).
 python3 tools/record_submission.py --company "<Company>" --role "<Role>" --ats <ATS> \
     --url "<apply-url>" --cv documents/applications/<Prefix>_CV_<key>.docx \
-    --letter documents/applications/<Prefix>_Motivation_<key>.docx --status SUBMITTED \
+    [--letter documents/applications/<Prefix>_Motivation_<key>.docx] --status SUBMITTED \
     --evidence "<exact thank-you text / confirmation email>"
 ```
 
@@ -345,7 +348,7 @@ On any failure at (3): fix and re-run, never upload. On a wall at (4): record
   scale) and a team bullet (who you led or coached, how the work kept moving) wherever
   the record supports it - no padding, no invented outcomes. `cv_target.py` prints
   `CONTENT` and `FILL`; the pre-submit gate fails a thin PDF. See `docs/CV-CONTENT.md`.
-- **Letter**: name the company and role; in the candidate's voice; no shared or
+- **Letter (only when required)**: name the company and role; in the candidate's voice; no shared or
   AI-slop sentences; no duplicated logistics; only claims the CV supports.
 - **Grounding**: draw facts from `state/kb-context/<key>.md` (GraphRAG) +
   `config/cv.json` + `config/profile.md`. When the KB says a requirement isn't

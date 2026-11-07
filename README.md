@@ -21,7 +21,7 @@
 ## What it does
 
 - **Find** roles from job alerts, recruiter mail and the open web.
-- **Tailor** a CV and cover letter for each role, grounded in your own evidence.
+- **Tailor** a CV for each role, with a cover letter only when the advert asks, grounded in your own evidence.
 - **Gate** every document for accuracy, ATS fit and AI slop before anything is sent.
 - **Apply** through the employer's own ATS with a real browser, not a form-spam script.
 - **Track** replies, interviews and outcomes in one register.

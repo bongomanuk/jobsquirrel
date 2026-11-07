@@ -29,6 +29,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 import stateio
 import scam_check
+import letter_need
 
 JD_DIR = os.path.join(ROOT, "state", "job-descriptions")
 ATS_DIR = os.path.join(ROOT, "state", "ats")
@@ -323,11 +324,22 @@ def main() -> int:
         json.dump(data, fh, indent=2, ensure_ascii=False)
         fh.write("\n")
 
+    # Most adverts do not ask for a cover letter. Record the decision once, from
+    # the advert, so the agent and the renderer agree and no letter is written
+    # for a role that never wanted one.
+    letter_req, letter_why = letter_need.required(jd_text)
+    os.makedirs(LETTER_DIR, exist_ok=True)
+    need_path = os.path.join(LETTER_DIR, f"{key}.need")
+    with open(need_path, "w", encoding="utf-8") as fh:
+        fh.write(("required: " if letter_req else "optional: ") + letter_why + "\n")
+
     brief_path = os.path.join(BRIEF_DIR, f"{key}.md")
     with open(brief_path, "w", encoding="utf-8") as fh:
         fh.write(f"# {company or 'Company'} — {role or 'Role'}\n\n")
         fh.write(f"Archetype: {cv_key}\nCV: {cv_path}\nJD: {jd_path}\n")
-        fh.write(f"ATS: {ats_path}\nKB: {kb_path}\nContent: {content_path}\nBase: {source}\n\n")
+        fh.write(f"ATS: {ats_path}\nKB: {kb_path}\nContent: {content_path}\nBase: {source}\n")
+        fh.write(("Cover letter: required (" if letter_req else "Cover letter: not required (")
+                 + letter_why + ")\n\n")
         fh.write("## Job description\n\n" + jd_text.strip() + "\n\n")
         found = stateio.resolve(kb_path) or kb_path
         fh.write("## Grounded context\n\n" + stateio.read_text(found).strip() + "\n")
@@ -341,8 +353,11 @@ def main() -> int:
           f"skills={len(data.get('skills') or [])} selected={len(data.get('selected_work') or [])}")
     print(f"BRIEF {brief_path}")
     print(f"PACK  {content_path}")
-    print("NEXT edit the pack (profile, tagline, skills, selected work and role bullets), "
-          "then run cv_target --require-fill and the letter.")
+    print(("NEXT edit the pack (profile, tagline, skills, selected work and role bullets), "
+           "then run cv_target --require-fill and write the cover letter (the advert asks for one).")
+          if letter_req else
+          ("NEXT edit the pack (profile, tagline, skills, selected work and role bullets), "
+           "then run cv_target --require-fill; no cover letter (the advert does not ask for one)."))
     return 0
 
 
