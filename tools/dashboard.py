@@ -2351,6 +2351,7 @@ def live():
                        "finished": bool(act_name and not act_running),
                        "summary": summarize_action(act_name, act_lines, act_running),
                        "overview": action_overview(act_name, act_lines, act_running),
+                       "roles": _ACT.get("roles") or [],
                        "log": act_log}}
 
 
@@ -3950,7 +3951,7 @@ ACT_FILE = os.path.join(LOGS, "dashboard-activity.json")
 def _act_save():
     try:
         _ACT["pid"] = _ACT["proc"].pid if _ACT.get("proc") else _ACT.get("pid", 0)
-        json.dump({k: _ACT.get(k) for k in ("name", "offset", "t0", "pid")},
+        json.dump({k: _ACT.get(k) for k in ("name", "offset", "t0", "pid", "roles")},
                   open(ACT_FILE, "w"))
     except OSError:
         pass
@@ -3963,7 +3964,7 @@ def _act_load():
     try:
         with open(ACT_FILE, encoding="utf-8") as fh:
             d = json.load(fh)
-        for k in ("name", "offset", "t0", "pid"):
+        for k in ("name", "offset", "t0", "pid", "roles"):
             _ACT[k] = d.get(k, _ACT.get(k))
     except (OSError, ValueError):
         pass
@@ -4057,7 +4058,7 @@ def _cap_log(path):
     return True
 
 
-def _spawn(purpose, argv, env=None):
+def _spawn(purpose, argv, env=None, roles=None):
     """Run a command detached, logged to the activity pane (state/logs/dashboard-action.log)."""
     os.makedirs(LOGS, exist_ok=True)
     if _cap_log(os.path.join(LOGS, "dashboard-action.log")):
@@ -4068,7 +4069,8 @@ def _spawn(purpose, argv, env=None):
     logf.flush()
     proc = subprocess.Popen(argv, cwd=ROOT, env=agent_env(subagent=True, ROOT=ROOT, **(env or {})),
                             stdout=logf, stderr=subprocess.STDOUT, start_new_session=True)
-    _ACT.update(name=purpose, proc=proc, offset=logf.tell(), t0=time.time())
+    _ACT.update(name=purpose, proc=proc, offset=logf.tell(), t0=time.time(),
+                roles=list(roles or []))
     _act_save()
     return proc
 
@@ -4330,7 +4332,8 @@ def prepare_roles(keys):
     if sub:
         env["MODEL"] = sub
     _spawn(f"prepare {len(rows)} role(s) (review)",
-           ["bash", os.path.join(ROOT, "tools", "run_queue.sh")], env)
+           ["bash", os.path.join(ROOT, "tools", "run_queue.sh")], env,
+           roles=[{"company": r["company"], "role": r["role"], "key": r.get("key", "")} for r in rows])
     return {"ok": f"generating documents for {len(rows)} role(s) — watch the Activity pane (nothing is submitted)"}
 
 
@@ -4361,7 +4364,8 @@ def submit_roles(keys, approval_token=""):
         pass
     _spawn(f"submit {len(rows)} prepared role(s)",
            ["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
-           {"PARALLEL": "1", "QUEUE": tmp, "DONE": tmp_done, "PREPARED": "1"})
+           {"PARALLEL": "1", "QUEUE": tmp, "DONE": tmp_done, "PREPARED": "1"},
+           roles=[{"company": r["company"], "role": r["role"], "key": r.get("key", "")} for r in rows])
     return {"ok": f"submitting {len(rows)} application(s) — watch the Activity pane (this sends them)"}
 
 

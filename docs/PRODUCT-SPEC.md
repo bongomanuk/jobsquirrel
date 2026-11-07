@@ -251,7 +251,10 @@ Columns: **Date · Company · Role · Level · ATS · Status · Fit · Pay · Wo
   role to a group** (or take them all out), queue, hand to you, remove from the queue, and copy
   companies, roles, URLs or keys. Items that only make sense for one role are marked *this row*;
   everything else reports how many it will affect and acts on all of them at once. Right-clicking a
-  row outside the selection starts a new selection on that row.
+  row outside the selection starts a new selection on that row. Selection is held by role identity
+  (company + role), not by row key: preparing a role changes its key or moves it between groups, and
+  it stays selected instead of quietly vanishing from the count. Only a role removed from the
+  register leaves the selection.
 - **Right-click a row** for the full action menu: open details / documents / the ad / the apply page,
   discuss the role, prepare documents, submit prepared (approval-gated), recompute the match, draft a
   reply with the agent, set the status, flag or clear a follow-up, **pin to the top**, re-queue, hand to a human, unblock/remove from the queue, and copy the company, role,
@@ -508,9 +511,12 @@ interface contract.
   structured event stream (opencode `--format json`, Claude Code `stream-json`) with a
   plain-transcript fallback for any other `AGENT=` command. Action output is compressed to a
   headline + only the notable lines, with the full log behind a toggle. The pane shows **current**
-  activity. A finished action is a one-line "last action: <name>: finished" plus its summary, never
-  its transcript, and the header reads **idle** when nothing is running (the last action's name
-  survives a server restart, its log does not).
+  activity. A running scoped action lists **every role it covers**, with running / done / waiting
+  counts and the names, so a parallel batch never looks as if some roles disappeared; the server
+  sends the role list, and the task log fills in each role's state. A finished action is a one-line
+  "last action: <name>: finished" plus its summary, never its transcript, and the header reads
+  **idle** when nothing is running (the last action's name survives a server restart, its log does
+  not).
 - **Background subagents.** The chat agent hands long work to `tools/delegate.py`, which posts to
   `/api/delegate`; the dashboard spawns `agent_run.sh` detached, logs it to
   `state/logs/delegated-<id>.log`, and tracks it in `state/delegated/<id>.json`. Up to four run at

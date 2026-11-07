@@ -122,7 +122,8 @@ const md = (s) => {
   return t;
 };
 let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] }, CUR_PERM = null, PERM_BUSY = false, DRAFT_SENDING = false;
-let SEL = new Set(), SEL_ANCHOR = '';
+let SEL = new Set(), SEL_ANCHOR = '';              // selected roles, by company|role identity
+const selId = (r) => r ? String(r.company || '').trim().toLowerCase() + '|' + String(r.role || '').trim().toLowerCase() : '';
 let BUILD = '', LIVE_TASKS = [];
 let BUCKET = 'active', VISIBLE = [], VIEW = [];
 let GROUPS = { groups: [], roles: {} };                 // named role groups (campaigns), independent of status
@@ -133,7 +134,7 @@ const NUT = `<span class="spin" title="working…">${ic('loader')}</span> `;
 function noteAction(label, keys) {
   const names = (keys || []).map(k => {
     const r = GRID.find(x => x.key === k);
-    return r ? `${r.company} — ${r.role}` : k;
+    return r ? `${r.company}: ${r.role}` : k;
   });
   LOCAL_ACT = { label, names, at: Date.now(), done: false };
   openDock(true);
@@ -1897,7 +1898,7 @@ function renderRows() {
     const sel = (CUR && (r.key === CUR.key || (r.company === CUR.company && r.role === CUR.role))
       && PANELS.detail && PANELS.detail.open) ? ' sel' : '';
     const gtags = groupTagsHTML(r);
-    return `<tr class="click${sel}${SEL.has(r.key) ? ' multi' : ''}" data-key="${esc(r.key)}" onclick="App.rowClick(event, ${i})" oncontextmenu="return App.rowMenu(event, ${i})">` +
+    return `<tr class="click${sel}${SEL.has(selId(r)) ? ' multi' : ''}" data-key="${esc(r.key)}" data-id="${esc(selId(r))}" onclick="App.rowClick(event, ${i})" oncontextmenu="return App.rowMenu(event, ${i})">` +
       `<td data-col="date" class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet: queued, not applied')}>${r.date ? esc(shortDate(r.date)) : '-'}</td>` +
       `<td data-col="company"${T(r.company + '  ·  employer / recruiter')}>${r.running ? `<a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="event.stopPropagation();App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show the live log"><span class="spin" title="working">${ic('loader')}</span></a> ` : (PENDING.has(r.key) ? `<span class="spin" title="Queued: waiting to start">${ic('loader')}</span> ` : '')}${r.pinned ? `<span class="pinned"${T('Pinned to the top of its group')}>${ic('pin')}</span> ` : ''}${r.shelved ? `<span class="shelved"${T('Shelved: original status kept')}>${ic('archive')}</span> ` : ''}${r.scam && ['high', 'medium'].includes(r.scam.level) ? `<span class="scamflag ${esc(r.scam.level)}"${T('Scam check: ' + r.scam.level.toUpperCase() + ': open the role for the signals')}>${ic('flag')}</span> ` : ''}${r.action ? `<span class="actflag"${T(r.action)}>${ic('flag')}</span> ` : ''}${esc(r.company)}</td>` +
       `<td data-col="role"${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}${gtags ? `<div class="gtags">${gtags}</div>` : ''}</td>` +
@@ -1948,12 +1949,15 @@ function renderRows() {
     html = gr.map(rowHTML).join('') || empty(fg ? 'No roles in this group.' : 'No matching rows in this view.');
   }
   VISIBLE = rendered.map(r => r.key);
-  // Excel-style selection is keyed by role key, so drop keys that the current
-  // view no longer shows instead of acting on hidden roles later.
-  const shown = new Set(VISIBLE);
+  // Selection is stored by role identity (company + role), not by row key, and
+  // only a role that has left the register is dropped. Preparing a role can
+  // change its key (a queued row becomes a register row) or move it between
+  // buckets; the old code pruned those rows and the selection shrank without
+  // telling anyone.
+  const liveIds = new Set(GRID.map(selId));
   let dropped = false;
-  [...SEL].forEach(k => { if (!shown.has(k)) { SEL.delete(k); dropped = true; } });
-  if (dropped && !shown.has(SEL_ANCHOR)) SEL_ANCHOR = '';
+  [...SEL].forEach(id => { if (!liveIds.has(id)) { SEL.delete(id); dropped = true; } });
+  if (dropped && !liveIds.has(SEL_ANCHOR)) SEL_ANCHOR = '';
   $('#rows').innerHTML = html;
   paintSel();
   if (window.applyGridCols) window.applyGridCols();
@@ -2019,8 +2023,9 @@ document.addEventListener('keydown', (e) => {
   }
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'a') {
     e.preventDefault();
-    SEL = new Set(VISIBLE);
-    SEL_ANCHOR = VISIBLE[VISIBLE.length - 1] || '';
+    const ids = VISIBLE.map(k => { const x = GRID.find(y => y.key === k); return x ? selId(x) : k; });
+    SEL = new Set(ids);
+    SEL_ANCHOR = ids[ids.length - 1] || '';
     paintSel();
   }
 });
@@ -2094,30 +2099,31 @@ function copyText(text) {
 
 App.rowClick = (ev, i) => {
   const r = GRID[i]; if (!r) return;
-  const keys = VISIBLE || [];
+  const id = selId(r);
+  const ids = (VISIBLE || []).map(k => { const x = GRID.find(y => y.key === k); return x ? selId(x) : k; });
   if (ev.shiftKey) {
-    const from = keys.indexOf(SEL_ANCHOR || r.key), to = keys.indexOf(r.key);
+    const from = ids.indexOf(SEL_ANCHOR || id), to = ids.indexOf(id);
     if (from >= 0 && to >= 0) {
       if (!ev.ctrlKey && !ev.metaKey) SEL.clear();
       const [a, b] = from < to ? [from, to] : [to, from];
-      for (let k = a; k <= b; k++) SEL.add(keys[k]);
+      for (let k = a; k <= b; k++) SEL.add(ids[k]);
     }
     paintSel();
     return;
   }
   if (ev.ctrlKey || ev.metaKey) {
-    if (SEL.has(r.key)) SEL.delete(r.key); else SEL.add(r.key);
-    SEL_ANCHOR = r.key;
+    if (SEL.has(id)) SEL.delete(id); else SEL.add(id);
+    SEL_ANCHOR = id;
     paintSel();
     return;
   }
-  SEL.clear(); SEL.add(r.key); SEL_ANCHOR = r.key; paintSel();
+  SEL.clear(); SEL.add(id); SEL_ANCHOR = id; paintSel();
   App.open(i);
 };
 
 function paintSel() {
-  document.querySelectorAll('#rows tr[data-key]').forEach(tr => {
-    tr.classList.toggle('multi', SEL.has(tr.dataset.key));
+  document.querySelectorAll('#rows tr[data-id]').forEach(tr => {
+    tr.classList.toggle('multi', SEL.has(tr.dataset.id));
   });
   const el = document.getElementById('selcount');
   if (el) el.textContent = SEL.size ? `${SEL.size} selected` : '';
@@ -2128,9 +2134,9 @@ App.rowMenu = (ev, i) => {
   const r = GRID[i];
   if (!r) return;
   closeCtx();
-  if (!SEL.has(r.key)) { SEL.clear(); SEL.add(r.key); SEL_ANCHOR = r.key; paintSel(); }
+  if (!SEL.has(selId(r))) { SEL.clear(); SEL.add(selId(r)); SEL_ANCHOR = selId(r); paintSel(); }
   if (SEL.size > 1) {
-    const rows = [...SEL].map(k => GRID.find(x => x.key === k)).filter(Boolean);
+    const rows = [...SEL].map(id => GRID.find(x => selId(x) === id)).filter(Boolean);
     if (!rows.length) return;
     const n = rows.length;
     const stOf = (x) => (x.status || '').toUpperCase();
@@ -3170,6 +3176,7 @@ async function liveTick() {
   if (tab) tab.classList.toggle('busy', busyNow);
   if (document.body.dataset.act === 'open') {
     const tech = [];
+    const localNames = (LOCAL_ACT && (Date.now() - LOCAL_ACT.at < 6 * 3600e3)) ? (LOCAL_ACT.names || []) : [];
     let h = '<div class="act-actions"><button class="small" onclick="App.run(\'reconcile_apply\',\'Reconcile mail\')" ' +
       'title="Read Gmail, match replies to roles and write the status changes">Reconcile mail</button></div>';
     const localFresh = LOCAL_ACT && !LOCAL_ACT.done && (Date.now() - LOCAL_ACT.at < 15 * 60000);
@@ -3184,6 +3191,8 @@ async function liveTick() {
     if (a.name && a.running) {
       h += `<div class="act-h"><span class="spin">${ic('loader')}</span> ${esc(aname || 'working')} ` +
         `<span class="muted">running…</span></div>`;
+      const roster = runRoster(a, localNames);
+      if (roster) h += rosterHTML(roster);
       tech.push(...(a.log || []));
     } else if (a.name && a.finished) {
       // Report the outcome of the task that just finished, and nothing older.
@@ -3679,6 +3688,65 @@ function doneCard(d) {
     (d.result ? `<div class="c-status">${esc(d.result)}</div>` : '') +
     `<div class="mini muted">Background task finished. <a href="#" onclick="event.preventDefault();App.showActivity()">Activity</a></div></div>`;
 }
+const normLab = (s) => String(s || '').replace(/[\u2014\u2013]/g, '-').replace(/\s+/g, ' ').trim().toLowerCase();
+
+// Every role in the running action and where it is: waiting, running or done.
+// The server sends the role list; the log fills in the live state, so a long
+// parallel run reports all of its roles instead of only the three in flight.
+function runRoster(a, names) {
+  const log = ((a && a.log) || []).join('\n');
+  const roles = new Map();
+  const add = (company, role) => {
+    const id = normLab(String(company) + ' | ' + String(role));
+    if (!roles.has(id)) roles.set(id, { label: String(company).trim() + ': ' + String(role).trim(), state: 'waiting', status: '' });
+    return id;
+  };
+  ((a && a.roles) || []).forEach(r => add(r.company, r.role));
+  (names || []).forEach(n => {
+    const s = String(n), k = s.indexOf(': ');
+    if (k > 0) add(s.slice(0, k), s.slice(k + 2));
+  });
+  let m;
+  const reStart = /^START\s+\S+\s+(.+?)\s*\|\s*(.+?)\s*$/gm;
+  while ((m = reStart.exec(log))) roles.get(add(m[1], m[2])).state = 'running';
+  const reStatus = /^STATUS\s+(.+?)\s*\|\s*(.+?)\s*\|\s*([A-Z_]+)/gm;
+  while ((m = reStatus.exec(log))) {
+    const x = roles.get(add(m[1], m[2]));
+    x.state = 'done'; x.status = m[3];
+  }
+  const reSkip = /^SKIP-DUPLICATE\s+\S+\s+(.+?)\s*\|\s*(.+?)(?:\s+\(|$)/gm;
+  while ((m = reSkip.exec(log))) {
+    const x = roles.get(add(m[1], m[2]));
+    x.state = 'done'; x.status = 'SKIPPED (duplicate)';
+  }
+  if (!roles.size) return null;
+  const list = [...roles.values()];
+  return {
+    total: list.length,
+    running: list.filter(x => x.state === 'running'),
+    done: list.filter(x => x.state === 'done'),
+    waiting: list.filter(x => x.state === 'waiting'),
+  };
+}
+
+function rosterHTML(roster) {
+  if (!roster) return '';
+  const bits = [ `${roster.running.length} running`, `${roster.done.length} done`, `${roster.waiting.length} waiting` ]
+    .filter((x, i) => i === 0 || !x.startsWith('0 '));
+  let h = `<div class="mini">This run: <b>${roster.total}</b> role${roster.total === 1 ? '' : 's'} · ${bits.join(' · ')}</div>`;
+  if (roster.running.length) {
+    h += `<div class="mini muted">Running now: ${roster.running.map(x => esc(x.label)).join(' · ')}</div>`;
+  }
+  if (roster.done.length) {
+    h += `<div class="mini muted">Done: ${roster.done.map(x => esc(x.label) + (x.status ? ` (${esc(x.status)})` : '')).join(' · ')}</div>`;
+  }
+  if (roster.waiting.length) {
+    h += `<details class="act-raw"><summary>Waiting in this run · ${roster.waiting.length} role${roster.waiting.length === 1 ? '' : 's'}</summary>` +
+      `<ul class="act-list">${roster.waiting.map(x => `<li>${esc(x.label)}</li>`).join('')}</ul></details>`;
+  }
+  return h;
+}
+
 function actionCard(a) {
   const sm = a.summary || {}, ov = a.overview || [];
   let h = `<div class="c-user">${a.running ? `<span class="spin">${ic('loader')}</span> ` : ''}${esc(a.name)} <span class="muted">${a.running ? 'running…' : 'done'}</span></div>`;
@@ -3691,6 +3759,8 @@ function actionCard(a) {
   const notable = (sm.notable || []).filter(x => x !== sm.headline &&
     !(ov.length && /^==\s*(summary|proposed register changes)/i.test(x)));
   if (notable.length) h += '<ul class="act-list">' + notable.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
+  const roster = runRoster(a, null);
+  if (roster) h += rosterHTML(roster);
   const log = a.log || [];
   if (log.length) h += `<details class="act-raw" data-k="a:${esc(a.name)}"><summary>full output · ${log.length} lines</summary><pre>${esc(log.join('\n'))}</pre></details>`;
   return `<div class="c-act">${h}</div>`;

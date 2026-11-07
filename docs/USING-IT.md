@@ -71,7 +71,9 @@ Everything is observable. Useful things to ask for, or run yourself:
     groups. Groups are independent of status and survive renames and queue runs. Select several rows
     with Ctrl/Cmd-click or Shift-click (Ctrl/Cmd+A for the whole view, Escape to clear) and
     right-click any of them: the menu is the single-row menu applied to all selected roles, including
-    adding all of them to one of your groups in a click. Hover anything for
+    adding all of them to one of your groups in a click. Selecting by role, not by row, so a role
+    stays selected when preparing it changes its status. The Activity pane lists every role in a
+    running batch (running, done and waiting), not only the few in flight. Hover anything for
     what it means; click a row for the detail drawer
     (Summary · Chat · Files · Job ad · ATS · **Evidence** · Docs). The page uses one live event
     stream: the grid only rebuilds when state changes, the live strip updates when logs or actions

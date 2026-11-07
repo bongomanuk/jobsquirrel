@@ -151,16 +151,20 @@ def outcome(path):
     return ""
 
 
+# Phase labels come from the task log, which also contains the agent's prose and
+# the prompt. A bare word like "fill", "submit" or "apply" therefore used to
+# label a review-only run as if it were filling and submitting a form. Match the
+# browser commands themselves, never a sentence that mentions them.
 PHASES = [
     (r"record_submission", "Recording submission"),
     (r"RESULT:\s*PASS|check_documents", "Document gate"),
     (r"email_verify|security code|verification code|complete the application", "Email verification"),
-    (r"thanks page|thank-you|submitted|submit application|click.*submit|\bsubmit\b", "Submitting"),
-    (r"upload", "Uploading CV + cover letter"),
+    (r"thanks page|thank-you|submitted successfully|application submitted|click.*submit", "Submitting"),
+    (r"camoufox_browser[^\n]*\bupload\b|--upload|upload.*\.(?:docx|pdf)", "Uploading CV + cover letter"),
     (r"render_motivation|Motivation_|cv_builder|cover letter", "Writing cover letter"),
     (r"ats_keywords|job-descriptions", "Reading job description"),
-    (r"react-select|select__|combobox|fill |\.fill|select ", "Filling application form"),
-    (r"greenhouse|lever\.co|ashbyhq|myworkdayjobs|workday|teamtailor|smartrecruiters|jobylon|workable|easycruit|varbi|apply", "On employer application form"),
+    (r"camoufox_browser[^\n]*\b(?:fill|fillmap|pick|select|check|click)\b|react-select|select__|combobox", "Filling application form"),
+    (r"greenhouse|lever\.co|ashbyhq|myworkdayjobs|workday|teamtailor|smartrecruiters|jobylon|workable|easycruit|varbi", "On employer application form"),
     (r"WebSearch|web search|resolve|employer|company site|careers", "Researching employer / ATS"),
     (r"eligib|location|remote|work model|work auth", "Checking location eligibility"),
 ]
