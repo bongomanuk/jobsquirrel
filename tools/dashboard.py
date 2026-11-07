@@ -612,7 +612,10 @@ def draft_send(path, clear_action=False):
 def _queue_rows(path):
     out = []
     for ln in _lines(path):
-        p = (ln.split("\t") + [""] * 6)[:6]
+        raw = ln.split("\t")
+        if len(raw) < 2 or not raw[1].strip():
+            continue                      # a bare key (queue.retry) is not a role row
+        p = (raw + [""] * 6)[:6]
         # Some queues (queue-human.tsv) put a reason in the 6th column rather
         # than a key; never mistake that for the key -- derive the slug instead.
         key = p[5]
@@ -1830,6 +1833,9 @@ def _substate(status, notes="", action="", label=""):
     if st == "NO RESULT":
         return ("no-result", "no result", "A run finished without an ad, documents or a submission; re-prepare or remove it.")
     if st == "BLOCKED":
+        if has("gate", "pre-submit", "canonical", "echoes", "verbatim", "alignment"):
+            return ("gate", "gate failure",
+                    "The pre-submit gate refused the documents; fix them and re-prepare.")
         if has("captcha", "recaptcha", "bot check", "human check", "are you a robot"):
             return ("captcha", "CAPTCHA", "A CAPTCHA/bot check stopped the submission; solve it and retry.")
         if has("2fa", "two-factor", "login", "log in", "sign in", "sso", "verification code", "verify"):

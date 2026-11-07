@@ -49,7 +49,7 @@ const BUCKETS = [
   { k: 'scams', label: 'Probably scams', hint: 'A HIGH or MEDIUM scam signal on the advert or a message. Verify the employer before replying or applying' },
   { k: 'prepared', label: 'Prepared', hint: 'Documents generated and gated. Review or submit' },
   { k: 'ongoing', label: 'Ongoing', hint: 'Submitted, in progress or interviewing. Waiting on the employer' },
-  { k: 'pipeline', label: 'To apply', hint: 'Queued, drafting, blocked or with no result yet' },
+  { k: 'pipeline', label: 'To apply', hint: 'Queued or drafting: nothing sent yet' },
   { k: 'done', label: 'Done', hint: 'Rejected or closed. Finished, no action' },
   { k: 'shelved', label: 'Shelved', hint: 'Parked for later. The original status is unchanged' },
   { k: 'all', label: 'All', hint: 'Every row, including finished ones' },
@@ -59,7 +59,7 @@ const BUCKET_GROUPS = [
   { k: 'scams', title: 'Probably scams', desc: 'verify the employer before replying or applying' },
   { k: 'prepared', title: 'Prepared', desc: 'documents ready. Review or submit' },
   { k: 'ongoing', title: 'Ongoing', desc: 'waiting on the employer' },
-  { k: 'pipeline', title: 'To apply', desc: 'queued, drafting, or blocked before applying' },
+  { k: 'pipeline', title: 'To apply', desc: 'queued or drafting: nothing sent yet' },
   { k: 'done', title: 'Done', desc: 'rejected or closed. No action' },
   { k: 'shelved', title: 'Shelved', desc: 'parked for later. Original status kept' },
 ];
@@ -95,6 +95,7 @@ function bucketOf(r) {
   if (r.scam && ['high', 'medium'].includes(r.scam.level)) return 'scams';
   if (r.shelved) return 'shelved';
   if (s === 'CLOSED' || s === 'REJECTED') return 'done';
+  if (s === 'BLOCKED' || s === 'NO RESULT') return 'needs';
   if (r.action || NEEDS_STATUS.has(s) || r.substate === 'invited' || r.queue === 'human' ||
       NEEDS_SUBSTATES.has(r.substate)) return 'needs';
   if (['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW'].includes(s)) return 'ongoing';

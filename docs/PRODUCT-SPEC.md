@@ -210,7 +210,7 @@ same record is never duplicated across separate pages.
   alignment for the rows it is given, takes ATS keywords from the saved ad when a role has none, and
   says plainly when there is nothing to score.
 - **Application states header:** the first row of the grid itself carries the bucket filter chips
-  (**Active · Focus · Probably scams · Shelved · Needs you · Prepared · Ongoing · To apply · Done · All**)
+  (**Active · Focus · Needs you · Probably scams · Shelved · Prepared · Ongoing · To apply · Done · All**)
   with live counts, plus the live-tail line (`/api/live`) and the run controls. Click a chip to filter the
   grid to that bucket; the active chip is highlighted. A small chevron at the left edge folds the state
   map out and back (remembered per browser); there is no separate title bar, no metric strip and no
