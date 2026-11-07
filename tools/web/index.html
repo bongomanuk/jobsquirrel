@@ -72,7 +72,16 @@
   <div class="edge" data-edge="left"><div class="edge-panels" data-edge="left"></div><div class="splitter edge-split" data-edge="left" title="Drag to resize"></div></div>
   <div id="main">
     <div class="edge" data-edge="top"><div class="edge-panels" data-edge="top"></div><div class="splitter edge-split" data-edge="top" title="Drag to resize"></div></div>
-    <div class="scroll">
+    <div class="edge" data-edge="center">
+      <div class="center-empty muted">No panel in the centre. Drag one here.</div>
+      <div class="edge-panels" data-edge="center">
+        <aside class="panel" id="gridpanel" data-panel="grid" aria-label="Applications">
+          <div class="dock-head">
+            <span class="dock-grip dock-drag" data-panel="grid" title="Drag to dock (left / top / bottom / right / centre)">⠿</span>
+            <span class="dock-title dock-drag" data-panel="grid" title="Drag me to dock this panel"><svg class="ic" aria-hidden="true"><use href="#i-grid"></use></svg> Applications</span>
+            <span style="flex:1"></span>
+          </div>
+          <div class="scroll">
       <main>
         <div class="gridcard">
         <div class="gridhead">
@@ -87,7 +96,6 @@
             </span>
           </span>
         </div>
-        <div id="sg-body" class="sg-body hide"></div>
         <div class="toolbar grid-toolbar">
           <input id="q" placeholder="search company / role / ATS / notes…" style="flex:1;max-width:300px"><span id="selcount" class="muted mini"></span>
           <details id="filters" class="filters">
@@ -170,6 +178,9 @@
         </div>
         </div>
       </main>
+          </div>
+        </aside>
+      </div>
     </div>
     <div class="edge" data-edge="bottom"><div class="splitter edge-split" data-edge="bottom" title="Drag to resize"></div><div class="edge-panels" data-edge="bottom"></div></div>
   </div>
@@ -183,6 +194,7 @@
 <div class="dockzone" id="zone-right"></div>
 <div class="dockzone" id="zone-top"></div>
 <div class="dockzone" id="zone-bottom"></div>
+<div class="dockzone" id="zone-center"></div>
 
 <aside class="panel" id="dock" data-panel="agent" aria-label="Agent console">
   <div class="dock-head">
@@ -207,25 +219,42 @@
           title="↑ shows your previous prompts"><button id="chat-send">Send</button>
       </div>
     </section>
-    <div class="splitter split-inner" id="split-inner" title="Drag to resize"></div>
-    <section class="pane pane-act" id="pane-act">
-      <button class="pane-h act-toggle" id="act-toggle" title="Show/hide activity">
-        <span class="chev">▸</span>Activity<span id="act-sum" class="muted">idle</span></button>
-      <div id="liveterm" class="term grow act-body">idle.</div>
-      <div id="tasklog" class="tasklog hide">
-        <div class="row" style="margin:0 0 6px">
-          <b id="tasklog-title" style="font-size:12px">task</b>
-          <span id="tasklog-meta" class="muted mini"></span><span style="flex:1"></span>
-          <button id="tasklog-close" class="small" title="Back to the activity summary">← Activity</button>
-        </div>
-        <div id="tasklog-summary" class="tasklog-summary">loading…</div>
-        <details class="tasklog-raw">
-          <summary>Technical details <span id="tasklog-lines" class="muted mini"></span></summary>
-          <pre id="tasklog-body" class="tasklog-body">loading…</pre>
-        </details>
-      </div>
-    </section>
   </div>
+</aside>
+
+<button class="dock-tab" id="activity-tab" data-panel="activity" title="Open activity"><svg class="ic" aria-hidden="true"><use href="#i-bolt"></use></svg> Activity</button>
+<button class="dock-tab" id="states-tab" data-panel="states" title="Open the application states"><svg class="ic" aria-hidden="true"><use href="#i-grid"></use></svg> States</button>
+
+<aside class="panel" id="activity" data-panel="activity" aria-label="Activity">
+  <div class="dock-head">
+    <span class="dock-grip dock-drag" data-panel="activity" title="Drag to dock (left / top / bottom / right / centre)">⠿</span>
+    <span class="dock-title dock-drag" data-panel="activity" title="Drag me to dock this panel">Activity <span id="act-sum" class="muted">idle</span></span>
+    <span style="flex:1"></span>
+    <button class="panel-close small" data-panel="activity" title="Close"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button>
+  </div>
+  <div id="liveterm" class="term grow act-body">idle.</div>
+  <div id="tasklog" class="tasklog hide">
+    <div class="row" style="margin:0 0 6px">
+      <b id="tasklog-title" style="font-size:12px">task</b>
+      <span id="tasklog-meta" class="muted mini"></span><span style="flex:1"></span>
+      <button id="tasklog-close" class="small" title="Back to the activity summary">← Activity</button>
+    </div>
+    <div id="tasklog-summary" class="tasklog-summary">loading…</div>
+    <details class="tasklog-raw">
+      <summary>Technical details <span id="tasklog-lines" class="muted mini"></span></summary>
+      <pre id="tasklog-body" class="tasklog-body">loading…</pre>
+    </details>
+  </div>
+</aside>
+
+<aside class="panel" id="statespanel" data-panel="states" aria-label="Application states">
+  <div class="dock-head">
+    <span class="dock-grip dock-drag" data-panel="states" title="Drag to dock (left / top / bottom / right / centre)">⠿</span>
+    <b class="dock-title dock-drag" data-panel="states" title="Drag me to dock this panel">Application states</b>
+    <span style="flex:1"></span>
+    <button class="panel-close small" data-panel="states" title="Close"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button>
+  </div>
+  <div id="sg-body" class="sg-body"></div>
 </aside>
 
 <aside class="panel" id="detail" data-panel="detail" aria-label="Detail">

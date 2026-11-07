@@ -137,7 +137,6 @@ function noteAction(label, keys) {
     return r ? `${r.company}: ${r.role}` : k;
   });
   LOCAL_ACT = { label, names, at: Date.now(), done: false };
-  openDock(true);
   App.showActivity();
   liveTick();
 }
@@ -346,7 +345,7 @@ const App = {
     if (d.error) {
       LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now(), done: true };
       PENDING.clear(); LIVE_RUNNING = false; liveTick();
-    } else { openDock(true); App.showActivity(); }
+    } else { App.showActivity(); }
   },
   cf: async (target) => {
     document.querySelectorAll('#cf-tabs a').forEach(a => a.classList.toggle('on', a.dataset.t === target));
@@ -1133,9 +1132,7 @@ const App = {
     toast(d.ok || d.error, !!d.error);
     CHAT.running = false; setSpin(false); chatPoll();
   },
-  showActivity: () => {
-    if (document.body.dataset.act !== 'open') document.querySelector('#act-toggle')?.click();
-  },
+  showActivity: () => setPanel('activity', { open: true }),
   openRawLog: () => {
     const el = $('#rawlog-body');
     if (!el) return;
@@ -1218,7 +1215,7 @@ const App = {
     const d = await api('/api/prepare', { keys });
     toast(d.error ? d.error : `preparing ${n} role(s) in the background: watch Activity`, !!d.error);
     if (d.error) { LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now(), done: true }; liveTick(); PENDING.clear(); LIVE_RUNNING = false; }
-    else { openDock(true); App.showActivity(); }
+    else { App.showActivity(); }
   },
   prepareThis: (key) => App.prepareRoles([key]),
   prepareShown: () => App.prepareRoles(VISIBLE),
@@ -1233,7 +1230,7 @@ const App = {
     const d = await api('/api/submit', { keys, approval_token: 'APPROVE_RUN_QUEUE' });
     toast(d.error ? d.error : `submitting ${n} application(s) in the background: watch Activity`, !!d.error);
     if (d.error) { LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now(), done: true }; liveTick(); PENDING.clear(); LIVE_RUNNING = false; }
-    else { openDock(true); App.showActivity(); }
+    else { App.showActivity(); }
   },
   submitThis: (key) => App.submitRoles([key], 'this role'),
   submitPrepared: () => App.submitRoles(GRID.filter(r => r.status === 'PREPARED' && VIEW.includes(r.key)).map(r => r.key), 'the current view'),
@@ -1310,7 +1307,7 @@ const App = {
     if (!await warn(LONG.update, 'This may take a while', 'Start update')) return;
     starting('updating the knowledge graph');
     const d = await api('/api/action/run', { command: 'kb_update', approval_token: '' });
-    toast(d.ok || d.error, !!d.error); if (!d.error) { openDock(true); App.showActivity(); } else { LIVE_RUNNING = false; liveTick(); }
+    toast(d.ok || d.error, !!d.error); if (!d.error) { App.showActivity(); } else { LIVE_RUNNING = false; liveTick(); }
   },
   rebuildKB: async () => {
     if (!await warn(LONG.rebuild, 'This may take a while', 'Start rebuild')) return;
@@ -1320,7 +1317,7 @@ const App = {
     if (d.error) {
       LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now(), done: true };
       LIVE_RUNNING = false; $('#peras').classList.add('hide'); liveTick();
-    } else { openDock(true); App.showActivity(); }
+    } else { App.showActivity(); }
   },
   saveRow: async () => {
     const d = await api('/api/register/row', {
@@ -1550,7 +1547,7 @@ try { SG_EXPANDED = localStorage.getItem('sg.expanded') || ''; } catch (e) {}
 
 function renderStateGraph() {
   const box = document.getElementById('sg-body');
-  if (!box || box.classList.contains('hide')) return;   // collapsed: nothing to draw
+  if (!box || !PANELS.states.open) return;             // closed: nothing to draw
   const counts = {};
   GRID.forEach(r => { counts[r.status] = (counts[r.status] || 0) + 1; });
   const scamCount = GRID.filter(r => r.scam && ['high', 'medium'].includes(r.scam.level)).length;
@@ -1658,19 +1655,16 @@ function renderStateGraph() {
 (() => {
   const toggle = document.getElementById('sg-toggle');
   const body = document.getElementById('sg-body');
-  if (!body) return;
-  const setOpen = (on) => {
-    body.classList.toggle('hide', !on);
-    try { localStorage.setItem('sg.open', on ? '1' : '0'); } catch (e) {}
-    if (toggle) {
-      toggle.textContent = on ? '▾' : '▸';
-      toggle.setAttribute('aria-expanded', on ? 'true' : 'false');
-      toggle.title = on ? 'Hide the application-state map' : 'Show the application-state map';
-    }
+  if (!body || !toggle) return;
+  const paint = () => {
+    const on = PANELS.states.open;
+    toggle.textContent = on ? '▾' : '▸';
+    toggle.setAttribute('aria-expanded', on ? 'true' : 'false');
+    toggle.title = on ? 'Hide the application-state panel' : 'Show the application-state panel';
     if (on) renderStateGraph();
   };
-  if (toggle) toggle.addEventListener('click', () => setOpen(body.classList.contains('hide')));
-  setOpen(localStorage.getItem('sg.open') === '1');
+  window.__paintStates = paint;
+  toggle.addEventListener('click', () => { setPanel('states', { open: !PANELS.states.open }); paint(); });
   body.addEventListener('click', (e) => {
     const child = e.target.closest('.sg-subnode');
     if (child) {
@@ -3126,7 +3120,7 @@ async function liveTick() {
         const line = (sm.headline || sm.notable && sm.notable[0] || 'the run stopped without submitting').slice(0, 240);
         LOCAL_ACT = { label: line, names: [], at: Date.now(), done: true };
         if (!document.hidden) toast('run finished with a problem: ' + line, true);
-        openDock(true); App.showActivity(); liveTick();
+        App.showActivity(); liveTick();
       }
       // Say what actually finished. An update is not a job run, and reporting
       // it as one made the software-update flow look like the pipeline had
@@ -3416,13 +3410,28 @@ const EDGE_SIZE = {
   top: parseInt(localStorage.getItem('edge.top') || '300', 10),
   bottom: parseInt(localStorage.getItem('edge.bottom') || '300', 10),
 };
+// Migrate the old inline states fold-out and the activity toggle that lived
+// inside the agent console; both are panels now.
+try {
+  if (localStorage.getItem('states.open') === null && localStorage.getItem('sg.open') !== null)
+    localStorage.setItem('states.open', localStorage.getItem('sg.open'));
+  if (localStorage.getItem('activity.open') === null && localStorage.getItem('dock.actOpen') !== null)
+    localStorage.setItem('activity.open', localStorage.getItem('dock.actOpen'));
+} catch (e) {}
+
 const PANELS = {
+  // The grid is the main working surface, so it lives in the centre cell by
+  // default and can be dragged to any edge like every other panel. It is never
+  // closed: the other panels stack next to it.
+  grid: { pos: localStorage.getItem('grid.pos') || 'center', open: true, tab: null, fixed: true },
+  states: { pos: localStorage.getItem('states.pos') || 'center', open: localStorage.getItem('states.open') === '1', tab: '#states-tab' },
+  activity: { pos: localStorage.getItem('activity.pos') || 'left', open: localStorage.getItem('activity.open') === '1', tab: '#activity-tab' },
   agent: { pos: localStorage.getItem('agent.pos') || 'left', open: localStorage.getItem('agent.open') === '1', tab: '#agent-tab' },
   detail: { pos: localStorage.getItem('detail.pos') || 'right', open: false, tab: '#detail-tab' },
 };
 let actSize = parseInt(localStorage.getItem('dock.act') || '180', 10);
 const panelOf = (k) => document.querySelector(`.panel[data-panel="${k}"]`);
-const isVert = (edge) => edge === 'left' || edge === 'right';
+const isVert = (edge) => edge === 'left' || edge === 'right' || edge === 'center';
 
 function applyEdgeSizes() {
   const r = document.documentElement.style;
@@ -3433,22 +3442,34 @@ function applyEdgeSizes() {
   r.setProperty('--act-size', actSize + 'px');
 }
 function layoutPanels() {
+  if (PANELS.grid) PANELS.grid.open = true;         // the grid is never closable
   for (const k in PANELS) {
     const el = panelOf(k), p = PANELS[k];
+    if (!el) continue;
     el.hidden = !p.open;
     const cont = document.querySelector(`.edge-panels[data-edge="${p.pos}"]`);
-    if (el.parentElement !== cont) cont.appendChild(el);
+    // A panel newly dropped on an edge goes to the end of that stack; panels
+    // already there keep the order the user arranged.
+    if (cont && el.parentElement !== cont) cont.appendChild(el);
   }
   document.querySelectorAll('.edge-panels').forEach(reflowEdge);
-  document.querySelectorAll('.edge').forEach(edge =>
-    edge.classList.toggle('has', !!edge.querySelector('.panel:not([hidden])')));
+  document.querySelectorAll('.edge').forEach(edge => {
+    const has = !!edge.querySelector('.panel:not([hidden])');
+    edge.classList.toggle('has', has || edge.dataset.edge === 'center');
+    if (edge.dataset.edge === 'center') edge.classList.toggle('empty', !has);
+  });
+  document.body.dataset.act = PANELS.activity.open ? 'open' : 'closed';
   applyEdgeSizes();
-  // pullout tabs (offset when both sit on the same edge)
+  // pullout tabs, one per closed panel, offset along the edge when several
+  // panels are closed on the same side
   const openEdges = {};
   for (const k in PANELS) {
-    const t = document.querySelector(PANELS[k].tab); if (!t) continue;
+    const t = PANELS[k].tab ? document.querySelector(PANELS[k].tab) : null; if (!t) continue;
     t.hidden = PANELS[k].open; t.dataset.edge = PANELS[k].pos;
-    t.classList.toggle('stacked', !!openEdges[PANELS[k].pos]); openEdges[PANELS[k].pos] = true;
+    const i = openEdges[PANELS[k].pos] || 0;
+    t.classList.toggle('stacked', i > 0);
+    t.style.setProperty('--tab-i', String(i));
+    openEdges[PANELS[k].pos] = i + 1;
   }
 }
 function reflowEdge(cont) {
@@ -3489,12 +3510,16 @@ function initEdgeSplit(split) {
   });
 }
 function setPanel(key, props) {
+  if (!PANELS[key]) return;
+  if (key === 'grid' && props.open === false) props.open = true;
   if (key === 'detail' && props.open === false && ROLE_TIMER) { clearInterval(ROLE_TIMER); ROLE_TIMER = null; }
   Object.assign(PANELS[key], props);
   if (key === 'detail') renderRows();             // keep the row highlight in sync with the drawer
   localStorage.setItem(key + '.pos', PANELS[key].pos);
   localStorage.setItem(key + '.open', PANELS[key].open ? '1' : '0');
   layoutPanels();
+  if (key === 'states' && window.__paintStates) window.__paintStates();
+  if (key === 'activity' && PANELS.activity.open) liveTick();
 }
 function openDock(v) { setPanel('agent', { open: v }); if (v) api('/api/agent').then(d => $('#agent-name').textContent = d.agent || '?'); }
 
@@ -3544,11 +3569,7 @@ function openTaskLog(name, title) {
   $('#tasklog-body').textContent = 'loading…';
   $('#tasklog').classList.remove('hide');
   document.body.dataset.tasklog = 'open';
-  if (document.body.dataset.act !== 'open') {
-    document.body.dataset.act = 'open';
-    localStorage.setItem('dock.actOpen', '1');
-  }
-  openDock(true);
+  setPanel('activity', { open: true });
   taskLogPoll();
 }
 function closeTaskLog() {
@@ -3556,13 +3577,13 @@ function closeTaskLog() {
   TASKLOG = { name: '', title: '', timer: null };
   document.body.dataset.tasklog = 'closed';
   $('#tasklog').classList.add('hide');
-  if (document.body.dataset.act === 'open') liveTick();
+  if (PANELS.activity.open) liveTick();
 }
 function zoneAt(x, y) {
   const w = window.innerWidth, h = window.innerHeight, top = 56;
   const dl = x, dr = w - x, dt = y - top, db = h - y;
   const min = Math.min(dl, dr, dt, db);
-  if (min > Math.min(w, h) * 0.30) return null;      // dragged into the middle → no move
+  if (min > Math.min(w, h) * 0.30) return 'center';  // dragged into the middle → the centre cell
   if (min === dl) return 'left';
   if (min === dr) return 'right';
   if (min === dt) return 'top';
@@ -3605,17 +3626,16 @@ function initPanels() {
     localStorage.setItem('agent.open', localStorage.getItem('dock.open'));
   if (localStorage.getItem('agent.pos') === null && localStorage.getItem('dock.pos') !== null)
     localStorage.setItem('agent.pos', localStorage.getItem('dock.pos'));
-  document.body.dataset.act = localStorage.getItem('dock.actOpen') === '1' ? 'open' : 'closed';
   document.querySelectorAll('.dock-drag').forEach(initDockDrag);
   document.querySelectorAll('.edge-split').forEach(initEdgeSplit);
   initActSplit();
   $('#agent-tab').onclick = () => openDock(true);
   $('#detail-tab').onclick = () => setPanel('detail', { open: true });
-  document.querySelectorAll('.panel-close').forEach(b => b.onclick = () => {
-    if (b.dataset.panel === 'detail') setPanel('detail', { open: false });
-    else openDock(false);
-  });
+  const actTab = $('#activity-tab'); if (actTab) actTab.onclick = () => setPanel('activity', { open: true });
+  const stTab = $('#states-tab'); if (stTab) stTab.onclick = () => setPanel('states', { open: true });
+  document.querySelectorAll('.panel-close').forEach(b => b.onclick = () => setPanel(b.dataset.panel, { open: false }));
   layoutPanels();
+  if (window.__paintStates) window.__paintStates();
 }
 async function chatPoll() {
   const d = await api('/api/chat/stream?since=' + chatOffset);
@@ -4810,15 +4830,10 @@ $('#perm-save').onclick = () => permAnswer('deny', false, true);
 setInterval(() => permTick(), 2500);
 window.addEventListener('focus', () => permTick(true));
 document.addEventListener('visibilitychange', () => { if (!document.hidden) permTick(true); });
-$('#act-toggle').onclick = () => {
-  const open = document.body.dataset.act !== 'open';
-  document.body.dataset.act = open ? 'open' : 'closed';
-  localStorage.setItem('dock.actOpen', open ? '1' : '0');
-  if (!open) closeTaskLog();
-  if (open) liveTick();
-};
 $('#tasklog-close').onclick = () => closeTaskLog();
 $('#live-log').onclick = () => { const t = LIVE_TASKS[0]; if (t) openTaskLog(t.log, t.label); };
+const liveEl = $('#live');
+if (liveEl) { liveEl.title = 'Show the Activity panel'; liveEl.style.cursor = 'pointer'; liveEl.onclick = () => setPanel('activity', { open: true }); }
 $('#peras-body').addEventListener('click', (e) => {
   const a = e.target.closest('.runlink'); if (!a) return;
   e.preventDefault(); window.perasClose(); openTaskLog(a.dataset.task, a.dataset.title);

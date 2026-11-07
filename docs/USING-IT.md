@@ -62,6 +62,10 @@ Everything is observable. Useful things to ask for, or run yourself:
 - **Health**: `python3 tools/doctor.py` (`--json` for scripts) checks config, the
   knowledge base, the browser, the register and git before you start a run.
 - **Web UI**: `python3 tools/dashboard.py --open` (binds `127.0.0.1:8765`; `--port` to change).
+  Every view is a panel: drag **Applications**, **Application states**, **Activity**, the **Agent**
+  console or the **Detail** drawer by its grip into any edge or the centre, and panels dropped on
+  the same edge stack with a splitter between them. Want the grid on the right and Activity on the
+  left, or the states map across the bottom? Drag them there; the layout is remembered.
   A dependency-free dashboard over the register, queue, specs and provenance:
   - **One master grid** (no tabs): a row per application with Date · Company · Role · ATS ·
     Status · **Match** (ATS-keyword coverage; `align✗` = the alignment gate failed) · Queue ·

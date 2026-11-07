@@ -2,14 +2,15 @@
 """Agent-facing CLI for the Camoufox pipeline browser (Camoufox/Firefox only — no Chromium).
 
 The command surface the agent prompts use:
-  status | nav <url> | snap [path] | click <ref|selector> |
+  status | nav <url> | snap [path] | click <ref|selector> [--force] |
   fill <sel> <text> | type <sel> <text> | select <sel> <value> |
   pick <option text> [open-selector] | fillmap '<json steps>' | press <key> [sel] |
-  check <sel> | value <sel> | eval <js> | wait <ms> | upload <sel> <path> | headers
+  check <sel> | value <sel> | eval <js> | wait <ms> | upload <sel> <path> | drag <x1> <y1> <x2> <y2> | headers
 
 Custom ATS widgets (Workday, Greenhouse react-select, ...):
   - use `pick` to choose a listbox option: synthetic JS clicks are ignored.
   - use `press` for real key events (Enter commits type-aheads).
+  - `click` falls back to a forced click automatically when an overlay blocks it.
 
 All commands are forwarded to tools/camoufox_server.py over HTTP.
 
@@ -52,6 +53,7 @@ def main() -> int:
     ap.add_argument("--server", default=DEFAULT_SERVER)
     ap.add_argument("cmd", help="status|nav|snap|click|fill|type|select|pick|fillmap|press|check|value|eval|wait|upload|download|headers|dialog")
     ap.add_argument("args", nargs="*", help="command arguments")
+    ap.add_argument("--force", action="store_true", help="click: skip actionability checks")
     ns = ap.parse_args()
 
     cmd = ns.cmd.lower()
@@ -97,6 +99,11 @@ def main() -> int:
         payload["key"] = a[0]
         if len(a) > 1:
             payload["selector"] = a[1]
+    elif cmd == "mouse":
+        if len(a) < 2:
+            print("usage: mouse <x> <y>", file=sys.stderr)
+            return 1
+        payload["x"], payload["y"] = int(a[0]), int(a[1])
     elif cmd == "pick":
         if not a:
             print("usage: pick <option text> [open-selector]", file=sys.stderr)
@@ -142,6 +149,11 @@ def main() -> int:
         payload["match"], payload["src"] = a[0], a[1]
         if len(a) > 2:
             payload["placement"] = a[2]
+    elif cmd == "drag":
+        if len(a) < 4:
+            print("usage: drag <x1> <y1> <x2> <y2>", file=sys.stderr)
+            return 1
+        payload["x1"], payload["y1"], payload["x2"], payload["y2"] = (int(v) for v in a[:4])
     elif cmd == "wait":
         if not a:
             print("usage: wait <ms>", file=sys.stderr)

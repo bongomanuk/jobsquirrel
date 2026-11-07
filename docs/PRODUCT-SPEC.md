@@ -499,13 +499,19 @@ interface contract.
   release, an **update** pill appears. Clicking it shows the release notes with
   **Update now** (`git pull --ff-only`, approval-gated): restart to apply.
 - Degrades to an empty state with no local data.
-- **One notification surface:** toasts replace in place (never stack), and the
-  The scoped Prepare / Submit / Reconcile actions are disabled while a run is active.
-- **Agent console:** a dockable pullout: **left by default**, or top / bottom / right. **Drag the
-  console's header** to an edge (highlighted drop zones) to dock it; a small tab pulls it out when
-  collapsed. The console and its Chat / Activity panes are **resizable with drag splitters** (sizes
-  + dock position persist in `localStorage`), and the Activity pane is a **collapsible toggle**
-  (headline summary shown in its header). Chat replies render as Markdown with runs of tool calls
+- **One notification surface:** toasts replace in place (never stack), and the scoped Prepare /
+  Submit / Reconcile actions are disabled while a run is active.
+- **Every view is a dockable panel.** The **Applications** grid, the **Application states** map,
+  **Activity**, the **Agent console** and the role **Detail** drawer are five peer panels. Drag a
+  panel by its grip or title into the left, right, top or bottom edge, or into the **centre** cell
+  (highlighted drop zones, including the centre); the panel moves there. A panel dropped on an edge
+  that already has panels **stacks** with them, with a drag splitter between each pair, so the grid
+  can sit above Activity on the left, two panels can share the top, and the states map can live
+  full width along the bottom. The grid defaults to the centre and is never closed; when the centre
+  is empty it says so and invites a drop. Positions and open state persist in `localStorage`; a
+  closed panel leaves a pullout tab on its edge (tabs line up when several share a side), and its
+  header button or tab reopens it. The grid header's ▸ opens the states panel, the live strip opens
+  Activity, and the Agent tab opens the chat. Chat replies render as Markdown with runs of tool calls
   grouped into a single collapsed step block (and multi-line code fences collapsed), so only the
   assistant's prose stays in the body; a token/cost footer closes the turn. Driven by the agent's
   structured event stream (opencode `--format json`, Claude Code `stream-json`) with a
