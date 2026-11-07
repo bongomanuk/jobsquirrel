@@ -133,7 +133,7 @@ function noteAction(label, keys) {
     const r = GRID.find(x => x.key === k);
     return r ? `${r.company} — ${r.role}` : k;
   });
-  LOCAL_ACT = { label, names, at: Date.now() };
+  LOCAL_ACT = { label, names, at: Date.now(), done: false };
   openDock(true);
   App.showActivity();
   liveTick();
@@ -1093,7 +1093,7 @@ const App = {
     noteAction('Preparing documents', keys);
     const d = await api('/api/prepare', { keys });
     toast(d.error ? d.error : `preparing ${n} role(s) in the background: watch Activity`, !!d.error);
-    if (d.error) { LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now() }; liveTick(); PENDING.clear(); LIVE_RUNNING = false; }
+    if (d.error) { LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now(), done: true }; liveTick(); PENDING.clear(); LIVE_RUNNING = false; }
     else { openDock(true); App.showActivity(); }
   },
   prepareThis: (key) => App.prepareRoles([key]),
@@ -1108,7 +1108,7 @@ const App = {
     noteAction('Submitting prepared documents', keys);
     const d = await api('/api/submit', { keys, approval_token: 'APPROVE_RUN_QUEUE' });
     toast(d.error ? d.error : `submitting ${n} application(s) in the background: watch Activity`, !!d.error);
-    if (d.error) { LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now() }; liveTick(); PENDING.clear(); LIVE_RUNNING = false; }
+    if (d.error) { LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now(), done: true }; liveTick(); PENDING.clear(); LIVE_RUNNING = false; }
     else { openDock(true); App.showActivity(); }
   },
   submitThis: (key) => App.submitRoles([key], 'this role'),
@@ -2725,13 +2725,27 @@ async function liveTick() {
     if (WAS_BUSY) {                                    // something we were watching finished
       WAS_BUSY = false;
       const was = BUSY_NAME; BUSY_NAME = '';
+      let wasProblem = false;
       loadGrid();
       if (CUR && !$('#detail').hidden) openDetail(CUR);
+      const sm = a.summary || {};
+      const outcome = [sm.headline || '', ...(sm.notable || []),
+                       ...(a.log || []).slice(-20)].join(' \n ');
+      const bad = /blocked|fail|refused|not submitted|gate (fail|refus)/i.test(outcome);
+      if (bad) {
+        wasProblem = true;
+        const line = (sm.headline || sm.notable && sm.notable[0] || 'the run stopped without submitting').slice(0, 240);
+        LOCAL_ACT = { label: line, names: [], at: Date.now(), done: true };
+        if (!document.hidden) toast('run finished with a problem: ' + line, true);
+        openDock(true); App.showActivity(); liveTick();
+      }
       // Say what actually finished. An update is not a job run, and reporting
       // it as one made the software-update flow look like the pipeline had
       // applied to a role.
-      if (/^update\b/i.test(was)) toast('software updated: restart the dashboard to load the new code');
-      else toast(was === 'queue run' ? 'run finished: grid refreshed' : 'finished: grid refreshed');
+      if (!wasProblem) {
+        if (/^update\b/i.test(was)) toast('software updated: restart the dashboard to load the new code');
+        else toast(was === 'queue run' ? 'run finished: grid refreshed' : 'finished: grid refreshed');
+      }
     }
     PENDING.clear(); $('#peras').classList.add('hide'); renderRows();
   }
@@ -2769,10 +2783,11 @@ async function liveTick() {
     let h = '';
     const localFresh = LOCAL_ACT && (Date.now() - LOCAL_ACT.at < 15 * 60000);
     if (localFresh && !(a.name && a.running)) {
-      h += `<div class="act-h">▶ ${esc(LOCAL_ACT.label)} <span class="muted">starting…</span></div>`;
+      h += `<div class="act-h">${LOCAL_ACT.done ? ic('flag') : ic('play')} ${esc(LOCAL_ACT.label)} ` +
+        `<span class="muted">${LOCAL_ACT.done ? 'finished' : 'starting…'}</span></div>`;
       if (LOCAL_ACT.names.length)
         h += '<ul class="act-list">' + LOCAL_ACT.names.map(n => `<li>${esc(n)}</li>`).join('') + '</ul>';
-      h += `<div class="mini muted">requested just now; the runner picks it up in a few seconds</div>`;
+      h += `<div class="mini muted">${LOCAL_ACT.done ? 'see the role for the full reason' : 'requested just now; the runner picks it up in a few seconds'}</div>`;
     }
     if (LOCAL_ACT && a.name && a.running) LOCAL_ACT = null;
     if (a.name && a.running) {
