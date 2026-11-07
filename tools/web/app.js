@@ -331,14 +331,14 @@ document.addEventListener('keydown', (e) => {
 });
 
 const App = {
-  async run(command) {
+  async run(command, label) {
     if (command === 'submit_queue') {
       const ok = await approve('Run the apply queue: this SUBMITS applications and is irreversible.',
         'POST /api/action/run { "command": "submit_queue", "approval_token": "APPROVE_RUN_QUEUE" }');
       if (!ok) return;
     }
-    starting(command);
-    noteAction(command, []);
+    starting(label || command);
+    noteAction(label || command, []);
     const d = await api('/api/action/run', { command, approval_token: command === 'submit_queue' ? 'APPROVE_RUN_QUEUE' : '' });
     toast(d.ok || d.error, !!d.error);
     if (d.error) {
@@ -2778,7 +2778,8 @@ async function liveTick() {
     lb.title = LIVE_TASKS.length ? 'Show the live log: ' + LIVE_TASKS[0].label : 'No running task';
   }
   const a = d.action || {};
-  const aname = (a.name || '').replace(/^action=/, '').replace(/\s*\(.*\)\s*$/, '');
+  const anameRaw = (a.name || '').replace(/^action=/, '').replace(/\s*\(.*\)\s*$/, '');
+  const aname = ACT_LABEL[anameRaw] || anameRaw;
   const delegated = d.delegated || [];
   const dIds = new Set(delegated.map(x => x.id));
   if (DELEGATED_SEEN === null) {
@@ -2896,7 +2897,8 @@ async function liveTick() {
   if (tab) tab.classList.toggle('busy', busyNow);
   if (document.body.dataset.act === 'open') {
     const tech = [];
-    let h = '';
+    let h = '<div class="act-actions"><button class="small" onclick="App.run(\'reconcile_apply\',\'Reconcile mail\')" ' +
+      'title="Read Gmail, match replies to roles and write the status changes">Reconcile mail</button></div>';
     const localFresh = LOCAL_ACT && (Date.now() - LOCAL_ACT.at < 15 * 60000);
     if (localFresh && !(a.name && a.running)) {
       h += `<div class="act-h">${LOCAL_ACT.done ? ic('flag') : ic('play')} ${esc(LOCAL_ACT.label)} ` +
@@ -3389,7 +3391,12 @@ document.addEventListener('toggle', e => {
 let CHAT_STICK = true;                                        // follow new output only if the reader is at the bottom
 function chatAtBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 60; }
 let ACT = null, ACT_SIG = '', ACT_IGNORE = '', LAST_ACT_NAME = '', LOCAL_ACT = null;
-let RAW_TIMER = null, RAW_SIZE = 12;   // last dashboard action, shown in the chat
+let RAW_TIMER = null, RAW_SIZE = 12;
+const ACT_LABEL = {
+  reconcile_apply: 'Reconcile mail', reconcile: 'Reconcile mail (dry run)',
+  prepare: 'Prepare documents', submit_queue: 'Submit applications',
+  build_archetypes: 'Rebuild archetype CVs', kb_update: 'Update the knowledge base',
+};   // last dashboard action, shown in the chat
 let DELEGATED_SEEN = null;                              // subagent ids already announced
 let DELEGATED_DONE_SEEN = null;                         // finished subagent ids already shown
 let DONE_CARDS = [];                                    // finished subagent results, shown in the chat
