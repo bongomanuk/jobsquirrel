@@ -3194,6 +3194,10 @@ async function liveTick() {
       const outcome = bits.find(x => /^\s*STATUS\s/i.test(x)) || sm.headline || '';
       h += `<div class="act-h">${ic('check')} ${esc(aname || 'task')} <span class="muted">finished</span></div>`;
       if (outcome) h += `<div class="mini">${esc(outcome.slice(0, 500))}</div>`;
+      // A finished batch reports every role it touched, not just the last line:
+      // 8 selected roles should never shrink to one without an explanation.
+      const roster = runRoster(a, localNames);
+      if (roster) h += rosterHTML(roster);
     }
     const tasks = d.running_tasks || (d.running || []).map(x => ({ label: x, log: '' }));
     if (tasks.length) {
@@ -3729,7 +3733,10 @@ function runRoster(a, names) {
   let m;
   const reStart = /^START\s+\S+\s+(.+?)\s*\|\s*(.+?)\s*$/gm;
   while ((m = reStart.exec(log))) roles.get(add(m[1], m[2])).state = 'running';
-  const reStatus = /^STATUS\s+(.+?)\s*\|\s*(.+?)\s*\|\s*([A-Z_]+)/gm;
+  // The status token must be a whole word followed by a pipe or the end:
+  // without the lookahead, "| Streaming Delivery | PREPARED" parses as the
+  // role "Engineering Manager" and the status "S" of Streaming.
+  const reStatus = /^STATUS\s+(.+?)\s*\|\s*(.+?)\s*\|\s*([A-Z][A-Z_]*)\s*(?=\||$)/gm;
   while ((m = reStatus.exec(log))) {
     const x = roles.get(add(m[1], m[2]));
     x.state = 'done'; x.status = m[3];
@@ -3740,6 +3747,11 @@ function runRoster(a, names) {
     x.state = 'done'; x.status = 'SKIPPED (duplicate)';
   }
   if (!roles.size) return null;
+  // A finished action has nothing in flight: a role that started but never
+  // reported a STATUS is done with no result, not still running.
+  if (a && a.finished && !a.running) {
+    roles.forEach(x => { if (x.state === 'running') { x.state = 'done'; x.status = 'no result'; } });
+  }
   const list = [...roles.values()];
   return {
     total: list.length,
@@ -3751,8 +3763,9 @@ function runRoster(a, names) {
 
 function rosterHTML(roster) {
   if (!roster) return '';
-  const bits = [ `${roster.running.length} running`, `${roster.done.length} done`, `${roster.waiting.length} waiting` ]
-    .filter((x, i) => i === 0 || !x.startsWith('0 '));
+  let bits = [ `${roster.running.length} running`, `${roster.done.length} done`, `${roster.waiting.length} waiting` ]
+    .filter(x => !x.startsWith('0 '));
+  if (!bits.length) bits = ['nothing yet'];
   let h = `<div class="mini">This run: <b>${roster.total}</b> role${roster.total === 1 ? '' : 's'} · ${bits.join(' · ')}</div>`;
   if (roster.running.length) {
     h += `<div class="mini muted">Running now: ${roster.running.map(x => esc(x.label)).join(' · ')}</div>`;
