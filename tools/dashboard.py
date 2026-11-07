@@ -2916,9 +2916,16 @@ def load_agent_cfg():
         legacy = d.get("env") if isinstance(d.get("env"), dict) else {}
         env = {str(k): str(v) for k, v in legacy.items() if v is not None}
         env.update(_stored_agent_env())        # the store wins
-        return {"agent": agent, "model": model, "models": models, "env": env}
+        try:
+            parallel = int(d.get("parallel") or 3)
+        except (TypeError, ValueError):
+            parallel = 3
+        return {"agent": agent, "model": model, "models": models, "env": env,
+                "parallel": max(1, min(6, parallel)),
+                "subagent_model": str(d.get("subagent_model") or "").strip()[:200]}
     except (OSError, ValueError):
-        return {"agent": "", "model": "", "models": {}, "env": _stored_agent_env()}
+        return {"agent": "", "model": "", "models": {}, "env": _stored_agent_env(),
+                "parallel": 3, "subagent_model": ""}
 
 
 def save_agent_cfg(d):
@@ -2950,8 +2957,16 @@ def save_agent_cfg(d):
         except SS.SecretsError as exc:
             return {"agent": agent, "model": model, "models": models,
                     "env": _stored_agent_env(), "error": str(exc)}
+    # Subagent settings: worker count and an optional different model.
+    try:
+        parallel = int(d.get("parallel", prev.get("parallel", 3)) or 3)
+    except (TypeError, ValueError):
+        parallel = 3
+    parallel = max(1, min(6, parallel))
+    sub_model = str(d.get("subagent_model", prev.get("subagent_model", "")) or "").strip()[:200]
     # agent.json keeps the non-secret choice only; keys live in the store.
-    out = {"agent": agent, "model": model, "models": models}
+    out = {"agent": agent, "model": model, "models": models,
+           "parallel": parallel, "subagent_model": sub_model}
     os.makedirs(os.path.dirname(AGENT_CFG_FILE), exist_ok=True)
     fd = os.open(AGENT_CFG_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -3182,6 +3197,7 @@ def agent_config():
     except (OSError, subprocess.SubprocessError):
         pass
     return {"agent": cfg["agent"], "model": cfg["model"], "models": cfg.get("models", {}),
+            "parallel": cfg.get("parallel", 3), "subagent_model": cfg.get("subagent_model", ""),
             "env": {k: (v if re.search(r"BASE_URL$", k) else _mask(v)) for k, v in cfg["env"].items()},
             "env_keys": sorted(cfg["env"]), "detected": detected, "which": which,
             "config_path": AGENT_CFG_FILE, "secrets_path": SS.path(),
@@ -3254,7 +3270,7 @@ def save_graphrag_env(updates):
     return graphrag_env()
 
 
-def agent_env(**extra):
+def agent_env(subagent=False, **extra):
     env = dict(os.environ)
     env.update(extra)
     env.setdefault("OPENCODE_CONFIG_CONTENT", json.dumps(AGENT_PERMISSIONS))
@@ -3264,8 +3280,9 @@ def agent_env(**extra):
     cfg = load_agent_cfg()                        # user-configured agent/model/token
     if cfg.get("agent"):
         env["AGENT"] = cfg["agent"]               # the dashboard choice wins over a stray AGENT=1
-    if cfg.get("model"):
-        env["MODEL"] = cfg["model"]               # chat + role chats use the selected model
+    model = (cfg.get("subagent_model") if subagent else "") or cfg.get("model")
+    if model and not extra.get("MODEL"):
+        env["MODEL"] = model                      # subagents may use their own model
     for k, v in cfg.get("env", {}).items():
         env.setdefault(k, v)
     try:
@@ -4049,7 +4066,7 @@ def _spawn(purpose, argv, env=None):
     logf = open(os.path.join(LOGS, "dashboard-action.log"), "a", encoding="utf-8")
     logf.write(f"\n=== {time.strftime('%Y-%m-%dT%H:%M:%S')} {purpose} ===\n")
     logf.flush()
-    proc = subprocess.Popen(argv, cwd=ROOT, env=agent_env(ROOT=ROOT, **(env or {})),
+    proc = subprocess.Popen(argv, cwd=ROOT, env=agent_env(subagent=True, ROOT=ROOT, **(env or {})),
                             stdout=logf, stderr=subprocess.STDOUT, start_new_session=True)
     _ACT.update(name=purpose, proc=proc, offset=logf.tell(), t0=time.time())
     _act_save()
@@ -4199,7 +4216,7 @@ def delegate_start(prompt, title=""):
             lf.write(f"=== {time.strftime('%Y-%m-%dT%H:%M:%S')} subagent: {title} ===\n")
             lf.flush()
             proc = subprocess.Popen(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), wrapped],
-                                    cwd=ROOT, env=agent_env(), stdout=lf,
+                                    cwd=ROOT, env=agent_env(subagent=True), stdout=lf,
                                     stderr=subprocess.STDOUT, start_new_session=True)
         rec = {"id": sid, "title": title, "log": log, "pid": proc.pid,
                "started": time.time()}
@@ -4305,10 +4322,15 @@ def prepare_roles(keys):
     tmp, tmp_done = _queue_only_roles(rows)
     # Document preparation is the parallel case (one agent per role). Submissions
     # stay at one worker: several browsers on one ATS account fight each other.
+    cfg = load_agent_cfg()
+    env = {"REVIEW": "1",
+           "PARALLEL": os.environ.get("PREPARE_PARALLEL") or str(cfg.get("parallel", 3)),
+           "QUEUE": tmp, "DONE": tmp_done}
+    sub = cfg.get("subagent_model")
+    if sub:
+        env["MODEL"] = sub
     _spawn(f"prepare {len(rows)} role(s) (review)",
-           ["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
-           {"REVIEW": "1", "PARALLEL": os.environ.get("PREPARE_PARALLEL", "3"),
-            "QUEUE": tmp, "DONE": tmp_done})
+           ["bash", os.path.join(ROOT, "tools", "run_queue.sh")], env)
     return {"ok": f"generating documents for {len(rows)} role(s) — watch the Activity pane (nothing is submitted)"}
 
 

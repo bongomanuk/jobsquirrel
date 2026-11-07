@@ -584,6 +584,22 @@ const App = {
     const custom = $('#ai-model-custom');
     if (custom) custom.value = (cur && !list.includes(cur)) ? cur : '';
     sel.title = m.source ? `models from ${m.source}` : 'type a model id instead';
+    const sub = $('#ai-subagent-model');
+    if (sub) {
+      const keep = (a && a.subagent_model) || '';
+      sub.innerHTML = '<option value="">Same as main agent</option>' +
+        modelOptionsHTML(m.groups || [], keep, list);
+      sub.value = keep;
+      sub.title = m.source ? `models from ${m.source}` : 'model for subagents';
+    }
+  },
+  saveSubagents: async () => {
+    const n = Math.max(1, Math.min(6, parseInt((($('#ai-parallel') || {}).value || '3'), 10) || 3));
+    const sub = ((($('#ai-subagent-model') || {}).value || '')).trim();
+    const d = await api('/api/agent/config', { parallel: n, subagent_model: sub });
+    toast(d.error ? d.error : `subagents: up to ${n} at once, model ${sub || 'same as the main agent'}`, !!d.error);
+    if (!d.error) App.settings('ai');
+    return d;
   },
   saveAI: async (opts = {}) => {
     const has = (k) => Object.prototype.hasOwnProperty.call(opts, k);
@@ -4311,6 +4327,14 @@ async function setAI(b) {
       <input id="ai-model-custom" placeholder="or type a model id" style="flex:1"></div>
     <div class="muted mini">Pick <b>OpenCode</b> or <b>OpenRouter</b> here. The model list comes from the selected provider (OpenCode's list or OpenRouter's catalogue); anything else can be typed.
       Applies to chat, role chats and queue/API runs; <code>MODEL=...</code> overrides for one run.</div>
+    <div class="row" style="margin-top:8px"><b>Subagents</b>
+      <label class="mini" title="How many document-preparation workers may run at once (1-6)">at most
+        <input id="ai-parallel" type="number" min="1" max="6" value="${esc(String(a.parallel || 3))}" style="width:56px"> at once</label>
+      <span class="muted">model</span>
+      <select id="ai-subagent-model" style="min-width:220px"></select>
+      <button class="small" onclick="App.saveSubagents()">Save subagents</button>
+    </div>
+    <div class="muted mini">Used for document preparation and background tasks. Leave the model on “same as main agent” to share it. Submissions always run one at a time (one ATS session).</div>
     <div class="row" style="margin-top:8px"><b>OpenRouter</b>
       <input id="ai-or-key" type="password" autocomplete="new-password" placeholder="${orKey ? esc(orKey) + ' (blank = keep)' : 'sk-or-v1-…'}" style="flex:1" onchange="App.saveAI()">
       <button onclick="App.useOpenRouter()">Use OpenRouter</button>
