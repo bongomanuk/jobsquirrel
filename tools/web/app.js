@@ -3759,6 +3759,13 @@ function runRoster(a, names) {
   // The status token must be a whole word followed by a pipe or the end:
   // without that, "| Streaming Delivery | PREPARED" parses as the role
   // "Engineering Manager" and the status "S" of Streaming.
+  // A task killed by the runner never writes a STATUS line. Say so, or the
+  // role looks as if it were still running while the next one is already going.
+  const reInfra = /^INFRA-FAIL\s+\S+\s+(.+?)\s*\|\s*(.+?)\s*\(([^)]*)\)/gm;
+  while ((m = reInfra.exec(log))) {
+    const x = touch(m[1], m[2]); if (!x) continue;
+    x.state = 'done'; x.status = 'INFRA FAIL'; x.reason = m[3];
+  }
   const reStatus = /^STATUS\s+(.+?)\s*\|\s*(.+?)\s*\|\s*([A-Z][A-Z_]*)\s*(?:\|\s*(.*))?$/gm;
   while ((m = reStatus.exec(log))) {
     const x = touch(m[1], m[2]); if (!x) continue;
