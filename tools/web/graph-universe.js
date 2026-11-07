@@ -157,6 +157,9 @@ function layout(nodes) {
   // type-coloured "drift" islands so the map stays legible.
   let islands = [...groups.entries()].filter(([, v]) => v.length >= 5)
     .sort((a, b) => b[1].length - a[1].length);
+  // Removing unlinked nodes can empty a whole theme; an empty island has no
+  // dominant node, which used to throw while naming the cluster.
+  islands = islands.filter(([, v]) => v.length > 0);
   const rest = [...groups.entries()].filter(([, v]) => v.length < 5).flatMap(([, v]) => v);
   if (unlinked.length) islands.push(['unlinked', unlinked]);
   if (rest.length) {
@@ -172,6 +175,7 @@ function layout(nodes) {
   const golden = Math.PI * (3 - Math.sqrt(5));
 
   islands.forEach(([key, list], gi) => {
+    if (!list.length) return;
     // a large prime stride spreads the biggest islands across the sphere
     // instead of stacking them all at one pole
     const slot = (gi * 137) % Math.max(1, G);
