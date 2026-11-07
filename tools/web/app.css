@@ -381,6 +381,9 @@ tr.grp .grp-n .countlink:hover{color:var(--accent)}
 #grid th[data-s]{cursor:pointer}
 #grid tbody tr.click{cursor:pointer}
 #grid tbody tr.sel{background:rgba(96,165,250,.12);box-shadow:inset 3px 0 0 #60a5fa}
+#grid tbody tr.multi td{background:rgba(96,165,250,.09)}
+#grid tbody tr.multi.sel td{background:rgba(96,165,250,.16)}
+#selcount{white-space:nowrap}
 #grid tbody tr.sel:hover{background:rgba(96,165,250,.18)}
 #detail .tabs2{padding:0 6px}
 .d-body{padding:4px 14px 14px;overflow:auto;flex:1;display:flex;flex-direction:column;gap:0}

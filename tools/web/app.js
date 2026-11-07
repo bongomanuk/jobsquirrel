@@ -122,6 +122,7 @@ const md = (s) => {
   return t;
 };
 let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] }, CUR_PERM = null, PERM_BUSY = false, DRAFT_SENDING = false;
+let SEL = new Set(), SEL_ANCHOR = '';
 let BUILD = '', LIVE_TASKS = [];
 let BUCKET = 'active', VISIBLE = [], VIEW = [];
 let GROUPS = { groups: [], roles: {} };                 // named role groups (campaigns), independent of status
@@ -1135,6 +1136,7 @@ const App = {
     if (document.body.dataset.act !== 'open') document.querySelector('#act-toggle')?.click();
   },
   openRawLog: () => {
+    document.title = 'rawlog-open';
     const el = $('#rawlog-body');
     if (!el) return;
     try { RAW_SIZE = +(localStorage.getItem('rawlog.size') || 12) || 12; } catch (e) { RAW_SIZE = 12; }
@@ -1158,6 +1160,7 @@ const App = {
     try { localStorage.setItem('rawlog.wrap', el.classList.contains('wrap') ? '1' : '0'); } catch (e) {}
   },
   rawlogLoad: async () => {
+    document.title = 'rawlog-load';
     const el = $('#rawlog-body');
     if (!el || $('#rawlog').classList.contains('hide')) { RAW_TIMER = null; return; }
     let d = null;
@@ -1894,7 +1897,7 @@ function renderRows() {
     const sel = (CUR && (r.key === CUR.key || (r.company === CUR.company && r.role === CUR.role))
       && PANELS.detail && PANELS.detail.open) ? ' sel' : '';
     const gtags = groupTagsHTML(r);
-    return `<tr class="click${sel}" onclick="App.open(${i})" oncontextmenu="return App.rowMenu(event, ${i})">` +
+    return `<tr class="click${sel}${SEL.has(r.key) ? ' multi' : ''}" data-key="${esc(r.key)}" onclick="App.rowClick(event, ${i})" oncontextmenu="return App.rowMenu(event, ${i})">` +
       `<td data-col="date" class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet: queued, not applied')}>${r.date ? esc(shortDate(r.date)) : '-'}</td>` +
       `<td data-col="company"${T(r.company + '  ·  employer / recruiter')}>${r.running ? `<a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="event.stopPropagation();App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show the live log"><span class="spin" title="working">${ic('loader')}</span></a> ` : (PENDING.has(r.key) ? `<span class="spin" title="Queued: waiting to start">${ic('loader')}</span> ` : '')}${r.pinned ? `<span class="pinned"${T('Pinned to the top of its group')}>${ic('pin')}</span> ` : ''}${r.shelved ? `<span class="shelved"${T('Shelved: original status kept')}>${ic('archive')}</span> ` : ''}${r.scam && ['high', 'medium'].includes(r.scam.level) ? `<span class="scamflag ${esc(r.scam.level)}"${T('Scam check: ' + r.scam.level.toUpperCase() + ': open the role for the signals')}>${ic('flag')}</span> ` : ''}${r.action ? `<span class="actflag"${T(r.action)}>${ic('flag')}</span> ` : ''}${esc(r.company)}</td>` +
       `<td data-col="role"${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}${gtags ? `<div class="gtags">${gtags}</div>` : ''}</td>` +
@@ -1945,7 +1948,14 @@ function renderRows() {
     html = gr.map(rowHTML).join('') || empty(fg ? 'No roles in this group.' : 'No matching rows in this view.');
   }
   VISIBLE = rendered.map(r => r.key);
+  // Excel-style selection is keyed by role key, so drop keys that the current
+  // view no longer shows instead of acting on hidden roles later.
+  const shown = new Set(VISIBLE);
+  let dropped = false;
+  [...SEL].forEach(k => { if (!shown.has(k)) { SEL.delete(k); dropped = true; } });
+  if (dropped && !shown.has(SEL_ANCHOR)) SEL_ANCHOR = '';
   $('#rows').innerHTML = html;
+  paintSel();
   if (window.applyGridCols) window.applyGridCols();
   sortIndicators();
   renderStateGraph();
@@ -1994,6 +2004,27 @@ function closeCtx() {
 document.addEventListener('click', (e) => {
   if (CTX && ![...document.querySelectorAll('.ctxmenu')].some(el => el.contains(e.target))) closeCtx();
 });
+document.addEventListener('keydown', (e) => {
+  // Grid selection shortcuts, as in a spreadsheet: Ctrl/Cmd+A selects every
+  // visible row, Escape clears the selection.
+  const ae = document.activeElement;
+  const typing = ae && (/^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) || ae.isContentEditable);
+  if (typing || document.querySelector('.modal:not(.hide)')) return;
+  const grid = document.getElementById('grid');
+  if (!grid || grid.offsetParent === null) return;
+  if (e.key === 'Escape' && SEL.size) {
+    SEL.clear(); SEL_ANCHOR = ''; paintSel();
+    e.preventDefault();
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'a') {
+    e.preventDefault();
+    SEL = new Set(VISIBLE);
+    SEL_ANCHOR = VISIBLE[VISIBLE.length - 1] || '';
+    paintSel();
+  }
+});
+
 document.addEventListener('keydown', (e) => {
   if (!CTX) return;
   if (e.key === 'Escape') { closeCtx(); return; }
@@ -2061,11 +2092,66 @@ function copyText(text) {
     () => toast('copy failed', true));
 }
 
+App.rowClick = (ev, i) => {
+  const r = GRID[i]; if (!r) return;
+  const keys = VISIBLE || [];
+  if (ev.shiftKey) {
+    const from = keys.indexOf(SEL_ANCHOR || r.key), to = keys.indexOf(r.key);
+    if (from >= 0 && to >= 0) {
+      if (!ev.ctrlKey && !ev.metaKey) SEL.clear();
+      const [a, b] = from < to ? [from, to] : [to, from];
+      for (let k = a; k <= b; k++) SEL.add(keys[k]);
+    }
+    paintSel();
+    return;
+  }
+  if (ev.ctrlKey || ev.metaKey) {
+    if (SEL.has(r.key)) SEL.delete(r.key); else SEL.add(r.key);
+    SEL_ANCHOR = r.key;
+    paintSel();
+    return;
+  }
+  SEL.clear(); SEL_ANCHOR = r.key; paintSel();
+  App.open(i);
+};
+
+function paintSel() {
+  document.querySelectorAll('#rows tr[data-key]').forEach(tr => {
+    tr.classList.toggle('multi', SEL.has(tr.dataset.key));
+  });
+  const el = document.getElementById('selcount');
+  if (el) el.textContent = SEL.size ? `${SEL.size} selected` : '';
+}
+
 App.rowMenu = (ev, i) => {
   ev.preventDefault(); ev.stopPropagation();
   const r = GRID[i];
   if (!r) return;
   closeCtx();
+  if (!SEL.has(r.key)) { SEL.clear(); SEL.add(r.key); SEL_ANCHOR = r.key; paintSel(); }
+  if (SEL.size > 1) {
+    const rows = [...SEL].map(k => GRID.find(x => x.key === k)).filter(Boolean);
+    const preparedRows = rows.filter(x => (x.status || '').toUpperCase() === 'PREPARED');
+    const mitems = [
+      { icon: ic('bolt'), label: `Prepare documents (${rows.length})`, run: () => App.prepareRoles(rows.map(x => x.key)) },
+      preparedRows.length ? { icon: ic('send'), label: `Submit prepared (${preparedRows.length})`, danger: true,
+        run: () => App.submitRoles(preparedRows.map(x => x.key)) } : null,
+      { sep: true },
+      { icon: ic('archive'), label: 'Shelve for later', run: () => App.bulk(rows, x => App.toggleShelve(x)) },
+      { icon: ic('pin'), label: 'Pin to top', run: () => App.bulk(rows, x => App.togglePin(x)) },
+      { sep: true },
+      { icon: ic('copy'), label: 'Copy keys', run: () => copyText([...SEL].join('\n')) },
+    ].filter(Boolean);
+    const el = ctxMenuEl(mitems, `<b>${rows.length} roles selected</b> <span class="muted mini">Ctrl/Shift to add</span>`);
+    el.style.left = '0px'; el.style.top = '0px';
+    document.body.appendChild(el);
+    const w = el.offsetWidth, h = el.offsetHeight;
+    el.style.left = Math.max(6, Math.min(ev.clientX || 40, innerWidth - w - 8)) + 'px';
+    el.style.top = Math.max(6, Math.min(ev.clientY || 40, innerHeight - h - 8)) + 'px';
+    CTX = el;
+    el.querySelector('.ctx-item:not(.disabled)')?.focus();
+    return;
+  }
   const tab = (n) => { DTAB = n; App.open(i); };
   const cur = (s) => (r.status || '').toUpperCase() === s;
   const st = (r.status || '').toUpperCase();

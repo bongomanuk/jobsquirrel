@@ -243,6 +243,11 @@ Columns: **Date · Company · Role · Level · ATS · Status · Fit · Pay · Wo
   filter their buckets. The open/closed state is remembered.
 - **Columns:** right-click any column header to choose which columns are visible. The choice is
   saved per browser. Drag a divider to resize a column; double-click it to reset that column.
+- **Multi-select, spreadsheet style.** Click a row to open it; **Ctrl/Cmd-click** adds or removes a
+  row, **Shift-click** extends from the last clicked row, **Ctrl/Cmd+A** selects every row in the
+  current view and **Escape** clears. The toolbar shows *N selected*. Right-click any selected row
+  for a bulk menu that acts on the whole selection (prepare, submit the prepared ones, shelve, pin,
+  copy keys). Right-clicking a row outside the selection starts a new selection on that row.
 - **Right-click a row** for the full action menu: open details / documents / the ad / the apply page,
   discuss the role, prepare documents, submit prepared (approval-gated), recompute the match, draft a
   reply with the agent, set the status, flag or clear a follow-up, **pin to the top**, re-queue, hand to a human, unblock/remove from the queue, and copy the company, role,

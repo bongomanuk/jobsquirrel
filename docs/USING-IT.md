@@ -68,7 +68,9 @@ Everything is observable. Useful things to ask for, or run yourself:
     Files · Job ad, plus search / status / queue / group filters, sortable columns, CSV export
     and an **ⓘ Legend**. Right-click a row to add it to a named **group** (a campaign), or create
     one; the **Groups** toolbar button opens the group manager to create, rename or delete
-    groups. Groups are independent of status and survive renames and queue runs. Hover anything for
+    groups. Groups are independent of status and survive renames and queue runs. Select several rows
+    with Ctrl/Cmd-click or Shift-click (Ctrl/Cmd+A for the whole view, Escape to clear) and
+    right-click any of them for a bulk menu. Hover anything for
     what it means; click a row for the detail drawer
     (Summary · Chat · Files · Job ad · ATS · **Evidence** · Docs). The page uses one live event
     stream: the grid only rebuilds when state changes, the live strip updates when logs or actions
