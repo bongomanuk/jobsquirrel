@@ -60,3 +60,26 @@ def test_log_items_are_newest_first_and_limited(tmp_path, monkeypatch):
 
     assert [x["name"] for x in D.task_log_items()] == ["new", "middle", "old"]
     assert [x["name"] for x in D.task_log_items(limit=1)] == ["new"]
+
+
+def test_action_log_reports_only_the_latest_action(tmp_path, monkeypatch):
+    """Successive actions share one log; a capped or restarted slice must not
+    leak an older action's START/STATUS lines into the Activity report."""
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "dashboard-action.log").write_text(
+        "=== 2026-01-01T10:00:00 prepare 1 role(s) (review) ===" + "\n"
+        "START 10:00:01 Old Co | Old Role" + "\n"
+        "STATUS Old Co | Old Role | PREPARED | old" + "\n"
+        "=== 2026-01-01T10:10:00 submit 3 prepared role(s) ===" + "\n"
+        "START 10:10:01 New Co | New Role" + "\n"
+        "STATUS New Co | New Role | CLOSED | posting gone" + "\n",
+        encoding="utf-8")
+    monkeypatch.setattr(D, "LOGS", str(logs))
+    monkeypatch.setitem(D._ACT, "offset", 0)
+    monkeypatch.setitem(D._ACT, "t0", 0)
+    monkeypatch.setitem(D._ACT, "name", "")
+    lines = D.action_log(100)
+    text = "\n".join(lines)
+    assert "New Co" in text
+    assert "Old Co" not in text

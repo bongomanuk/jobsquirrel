@@ -3204,11 +3204,11 @@ async function liveTick() {
       const bits = [...((sm.notable || [])), sm.headline || ''].filter(Boolean);
       const outcome = bits.find(x => /^\s*STATUS\s/i.test(x)) || sm.headline || '';
       h += `<div class="act-h">${ic('check')} ${esc(aname || 'task')} <span class="muted">finished</span></div>`;
-      if (outcome) h += `<div class="mini">${esc(outcome.slice(0, 500))}</div>`;
-      // A finished batch reports every role it touched, not just the last line:
-      // 8 selected roles should never shrink to one without an explanation.
+      // A finished batch reports every role it touched, with each outcome and
+      // reason. Only fall back to the last STATUS line when there is no roster.
       const roster = runRoster(a, localNames);
       if (roster) h += rosterHTML(roster);
+      else if (outcome) h += `<div class="mini">${esc(outcome.slice(0, 500))}</div>`;
     }
     const tasks = d.running_tasks || (d.running || []).map(x => ({ label: x, log: '' }));
     if (tasks.length) {
@@ -3728,42 +3728,62 @@ function doneCard(d) {
 const normLab = (s) => String(s || '').replace(/[\u2014\u2013]/g, '-').replace(/\s+/g, ' ').trim().toLowerCase();
 
 // Every role in the running action and where it is: waiting, running or done.
-// The server sends the role list; the log fills in the live state, so a long
-// parallel run reports all of its roles instead of only the three in flight.
+// The server sends the role list, so the pane can only ever report this action:
+// lines for any other role in a shared log are ignored.
 function runRoster(a, names) {
   const log = ((a && a.log) || []).join('\n');
+  const declared = ((a && a.roles) || []).map(r => [r.company, r.role]);
+  const only = declared.length > 0;
   const roles = new Map();
   const add = (company, role) => {
     const id = normLab(String(company) + ' | ' + String(role));
-    if (!roles.has(id)) roles.set(id, { label: String(company).trim() + ': ' + String(role).trim(), state: 'waiting', status: '' });
+    if (!roles.has(id)) {
+      roles.set(id, { label: String(company).trim() + ': ' + String(role).trim(),
+        state: 'waiting', status: '', reason: '' });
+    }
     return id;
   };
-  ((a && a.roles) || []).forEach(r => add(r.company, r.role));
-  (names || []).forEach(n => {
+  declared.forEach(([company, role]) => add(company, role));
+  if (!only) (names || []).forEach(n => {
     const s = String(n), k = s.indexOf(': ');
     if (k > 0) add(s.slice(0, k), s.slice(k + 2));
   });
+  const touch = (company, role) => {
+    const id = normLab(String(company) + ' | ' + String(role));
+    if (only && !roles.has(id)) return null;      // not part of this action
+    return roles.get(add(company, role));
+  };
   let m;
   const reStart = /^START\s+\S+\s+(.+?)\s*\|\s*(.+?)\s*$/gm;
-  while ((m = reStart.exec(log))) roles.get(add(m[1], m[2])).state = 'running';
+  while ((m = reStart.exec(log))) { const x = touch(m[1], m[2]); if (x) x.state = 'running'; }
   // The status token must be a whole word followed by a pipe or the end:
-  // without the lookahead, "| Streaming Delivery | PREPARED" parses as the
-  // role "Engineering Manager" and the status "S" of Streaming.
-  const reStatus = /^STATUS\s+(.+?)\s*\|\s*(.+?)\s*\|\s*([A-Z][A-Z_]*)\s*(?=\||$)/gm;
+  // without that, "| Streaming Delivery | PREPARED" parses as the role
+  // "Engineering Manager" and the status "S" of Streaming.
+  const reStatus = /^STATUS\s+(.+?)\s*\|\s*(.+?)\s*\|\s*([A-Z][A-Z_]*)\s*(?:\|\s*(.*))?$/gm;
   while ((m = reStatus.exec(log))) {
-    const x = roles.get(add(m[1], m[2]));
+    const x = touch(m[1], m[2]); if (!x) continue;
     x.state = 'done'; x.status = m[3];
+    x.reason = String(m[4] || '').replace(/\s*\|\s*(?:CV|letter):[\s\S]*$/i, '').trim();
   }
-  const reSkip = /^SKIP-DUPLICATE\s+\S+\s+(.+?)\s*\|\s*(.+?)(?:\s+\(|$)/gm;
+  const reSkip = /^SKIP-DUPLICATE\s+\S+\s+(.+?)\s*\|\s*(.+?)(?:\s+\((.*)\))?$/gm;
   while ((m = reSkip.exec(log))) {
-    const x = roles.get(add(m[1], m[2]));
-    x.state = 'done'; x.status = 'SKIPPED (duplicate)';
+    const x = touch(m[1], m[2]); if (!x) continue;
+    x.state = 'done'; x.status = 'SKIPPED'; x.reason = m[3] || 'already applied';
   }
   if (!roles.size) return null;
   // A finished action has nothing in flight: a role that started but never
-  // reported a STATUS is done with no result, not still running.
+  // reported a STATUS is done, not still running. When the log has no outcome
+  // for it (an old action, or a run interrupted by a restart), take the current
+  // register status so the report still says what happened to the role.
   if (a && a.finished && !a.running) {
-    roles.forEach(x => { if (x.state === 'running') { x.state = 'done'; x.status = 'no result'; } });
+    roles.forEach((x, id) => {
+      if (x.state !== 'waiting' && x.state !== 'running') return;
+      const g = (typeof GRID !== 'undefined' ? GRID : []).find(row => normLab(row.company + ' | ' + row.role) === id);
+      const wasRunning = x.state === 'running';
+      x.state = 'done';
+      x.status = g ? (g.status || 'NO RESULT') : (wasRunning ? 'NO RESULT' : (x.status || 'NO RESULT'));
+      if (g && !x.reason) x.reason = g.hint || '';
+    });
   }
   const list = [...roles.values()];
   return {
@@ -3776,15 +3796,27 @@ function runRoster(a, names) {
 
 function rosterHTML(roster) {
   if (!roster) return '';
-  let bits = [ `${roster.running.length} running`, `${roster.done.length} done`, `${roster.waiting.length} waiting` ]
-    .filter(x => !x.startsWith('0 '));
-  if (!bits.length) bits = ['nothing yet'];
-  let h = `<div class="mini">This run: <b>${roster.total}</b> role${roster.total === 1 ? '' : 's'} · ${bits.join(' · ')}</div>`;
+  const counts = new Map();
+  roster.done.forEach(x => {
+    const s = String(x.status || 'no result').toUpperCase();
+    counts.set(s, (counts.get(s) || 0) + 1);
+  });
+  const bits = [];
+  if (roster.running.length) bits.push(`${roster.running.length} running`);
+  [...counts].forEach(([s, n]) => bits.push(`${n} ${s.toLowerCase()}`));
+  if (roster.waiting.length) bits.push(`${roster.waiting.length} waiting`);
+  const head = bits.length ? bits.join(' · ') : 'nothing yet';
+  let h = `<div class="mini">This run: <b>${roster.total}</b> role${roster.total === 1 ? '' : 's'} · ${head}</div>`;
   if (roster.running.length) {
     h += `<div class="mini muted">Running now: ${roster.running.map(x => esc(x.label)).join(' · ')}</div>`;
   }
   if (roster.done.length) {
-    h += `<div class="mini muted">Done: ${roster.done.map(x => esc(x.label) + (x.status ? ` (${esc(x.status)})` : '')).join(' · ')}</div>`;
+    const open = roster.done.length <= 12 ? ' open' : '';
+    h += `<details class="act-raw"${open}><summary>Outcomes · ${roster.done.length} role${roster.done.length === 1 ? '' : 's'}</summary>` +
+      '<ul class="act-list">' + roster.done.map(x =>
+        `<li><b>${esc(x.label)}</b> · ${esc(x.status || 'NO RESULT')}` +
+        (x.reason ? `: ${esc(x.reason.slice(0, 240))}` : '') + '</li>').join('') +
+      '</ul></details>';
   }
   if (roster.waiting.length) {
     h += `<details class="act-raw"><summary>Waiting in this run · ${roster.waiting.length} role${roster.waiting.length === 1 ? '' : 's'}</summary>` +

@@ -4029,35 +4029,14 @@ def action_log(n=100):
     except OSError:
         txt = ""
     lines = txt.splitlines()
-    # A queue run writes its human lines (START / STATUS / DONE) to run_queue.out,
-    # not to the action log, so the Activity pane used to show "no output" for a
-    # prepare or submit that had in fact finished.
-    t0 = _ACT.get("t0") or 0
-    name = _ACT.get("name", "")
-    if t0 and re.search(r"prepare|submit|apply|run", name, re.I):
-        try:
-            q = os.path.join(LOGS, "run_queue.out")
-            if os.path.getmtime(q) >= t0 - 10:
-                ql = ANSI.sub("", _read(q, cap=200_000)).splitlines()[-400:]
-                # keep only the window for THIS run: start at the first START
-                # whose clock time is at or after the action start.
-                lt = time.localtime(t0)
-                tstart = lt.tm_hour * 3600 + lt.tm_min * 60 + lt.tm_sec
-                window, started = [], False
-                for q_line in ql:
-                    m = re.match(r"START\s+(\d\d):(\d\d):(\d\d)", q_line)
-                    if m and not started:
-                        sec = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
-                        # the run's own START, allowing for the few seconds between
-                        # the action being spawned and the queue script starting
-                        if 0 <= sec - tstart <= 900:
-                            started = True
-                    if started:
-                        window.append(q_line)
-                if window:
-                    lines = [l for l in lines if l.strip()] + window
-        except OSError:
-            pass
+    # Successive actions share this file and it is capped by size, so after a
+    # roll the slice can start before the current action. Keep only the section
+    # after its last header; every run writes its own START/STATUS/DONE lines to
+    # stdout now, so nothing has to be reconstructed from run_queue.out.
+    for i in range(len(lines) - 1, -1, -1):
+        if re.match(r"^=== \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d ", lines[i]):
+            lines = lines[i + 1:]
+            break
     return lines[-int(n or 100):]
 
 
@@ -4358,6 +4337,10 @@ def _queue_only_roles(rows):
 
 def prepare_roles(keys):
     """Run a REVIEW pass (generate + gate documents, never submit) over the given roles."""
+    if action_alive():
+        return {"error": "another run is active; wait for it to finish"}
+    if WQ and WQ.runner_active():
+        return {"error": "a queue run is already active"}
     rows = _resolve_roles(keys)
     if not rows:
         return {"error": "couldn't resolve those roles to a company/role"}
@@ -4386,6 +4369,8 @@ def submit_roles(keys, approval_token=""):
     rows = _resolve_roles(keys)
     if not rows:
         return {"error": "couldn't resolve those roles to a company/role"}
+    if action_alive():
+        return {"error": "another run is active; wait for it to finish"}
     if WQ and WQ.runner_active():
         return {"error": "a queue run is already active"}
     sys.path.insert(0, os.path.join(ROOT, "tools"))

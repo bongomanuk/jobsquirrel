@@ -522,10 +522,14 @@ interface contract.
   structured event stream (opencode `--format json`, Claude Code `stream-json`) with a
   plain-transcript fallback for any other `AGENT=` command. Action output is compressed to a
   headline + only the notable lines, with the full log behind a toggle. The pane shows **current**
-  activity. A running scoped action lists **every role it covers**, with running / done / waiting
-  counts and the names, so a parallel batch never looks as if some roles disappeared; the server
-  sends the role list, and the task log fills in each role's state. A finished action is a one-line
-  "last action: <name>: finished" plus its summary, never its transcript, and the header reads
+  activity. A running scoped action lists **exactly the roles it covers**, with running / done /
+  waiting counts, so a parallel batch never looks as if some roles disappeared. A finished action
+  replaces that with the outcome counts (for example "2 submitted · 1 closed") and every role with
+  its status and the reason it ended that way; it never shows one stale STATUS line and never
+  borrows lines from another run. The report comes from the action's own log: the queue writes its
+  START/STATUS/DONE lines to stdout, and the dashboard refuses a second scoped run while one is
+  active, so two runs cannot mix. A finished action card is also kept in the chat, never its
+  transcript, and the header reads
   **idle** when nothing is running (the last action's name survives a server restart, its log does
   not).
 - **Background subagents.** The chat agent hands long work to `tools/delegate.py`, which posts to

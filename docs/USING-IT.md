@@ -79,7 +79,8 @@ Everything is observable. Useful things to ask for, or run yourself:
     stays selected when preparing it changes its status. A reposted role is tagged **repost** in the
     grid (hover for the earlier application) and is still applied to; a repost is never a reason to
     close it. The Activity pane lists every role in a running batch (running, done and waiting), not
-    only the few in flight. Hover anything for
+    only the few in flight; when it finishes it shows the outcome counts and each role's status and
+    reason. Hover anything for
     what it means; click a row for the detail drawer
     (Summary · Chat · Files · Job ad · ATS · **Evidence** · Docs). The page uses one live event
     stream: the grid only rebuilds when state changes, the live strip updates when logs or actions

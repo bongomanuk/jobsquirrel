@@ -33,6 +33,11 @@ PATH="$PATH:$ROOT/tools/compat"; export PATH
 QUEUE="${QUEUE:-$ROOT/state/queue.tsv}"
 DONE="${DONE:-$ROOT/state/queue.done}"
 LOGS="$ROOT/state/logs"
+
+# Human progress goes to the shared run log AND to stdout. A dashboard action
+# captures its own stdout, so its Activity pane shows exactly this run, never a
+# time-window guess at run_queue.out that can pick up a concurrent or later run.
+runlog() { printf '%s\n' "$*" >> "$LOGS/run_queue.out"; printf '%s\n' "$*"; }
 SUMMARY_FILE="${SUMMARY_FILE:-$LOGS/run-summary-$$.md}"
 : > "$SUMMARY_FILE"
 PARALLEL="${PARALLEL:-5}"
@@ -108,7 +113,7 @@ fi
 ensure_server() {
   local url="$1" port="$2"
   curl -s -m 3 "$url/health" >/dev/null 2>&1 && return 0
-  echo "starting camoufox server on port $port ..." >> "$LOGS/run_queue.out"
+  runlog "starting camoufox server on port $port ..."
   # The project venv may not have camoufox (it can live in the system/user
   # site-packages), so start the server with an interpreter that can import it.
   local py=""
@@ -131,7 +136,7 @@ ensure_server() {
 # A review run never opens the browser, so it does not need (or wait for) one.
 if [ "$REVIEW" != "1" ]; then
   for _u in "${SERVERS[@]}"; do
-    ensure_server "$_u" "${_u##*:}" || echo "WARN: camoufox server $_u did not come up" >> "$LOGS/run_queue.out"
+    ensure_server "$_u" "${_u##*:}" || runlog "WARN: camoufox server $_u did not come up"
   done
 fi
 
@@ -315,18 +320,18 @@ run_task() {
 try: d=json.load(open(sys.argv[1]))
 except Exception: d={}
 sys.exit(0 if isinstance(d,dict) and sys.argv[2] in d else 1)' "${ROOT:-.}/state/shelved.json" "$key"; then
-    echo "SKIP-SHELVED $(date +%H:%M:%S) $company | $role" >> "$LOGS/run_queue.out"
+    runlog "SKIP-SHELVED $(date +%H:%M:%S) $company | $role"
     return 0
   fi
   dup="$(is_duplicate "$company" "$role")"
   REPOST_NOTE=""
   if [ -n "$dup" ]; then
     # A repost or a second application is allowed: mark it, never skip it.
-    echo "REPOST $(date +%H:%M:%S) $company | $role (earlier application: $dup; applying again)" >> "$LOGS/run_queue.out"
+    runlog "REPOST $(date +%H:%M:%S) $company | $role (earlier application: $dup; applying again)"
     REPOST_NOTE="REPOST: this role matches an earlier application ($dup). Reapplying is allowed and expected. Do not record CLOSED because it looks like a duplicate. Proceed with the normal task and add the note \"reapplied to a repost of $dup\" when you record it."
   fi
   log="$LOGS/$(echo "$company-$role" | tr ' /|' '___').log"
-  echo "START $(date +%H:%M:%S) $company | $role" >> "$LOGS/run_queue.out"
+  runlog "START $(date +%H:%M:%S) $company | $role"
   prompt="$(build_prompt "$company" "$role" "$url" "$cv" "$ats" "$key" "$server")"
   if [ "$REVIEW" = "1" ]; then
     # The apply steps must not reach a review run at all: an agent reading them
@@ -365,17 +370,17 @@ REVIEW RUN ENDS HERE. Do NOT open the browser, do NOT upload, do NOT run record_
   fi
   if [ -n "$reason" ]; then
     printf '%s\n' "${key:-$company|$role}" >> "$RETRY_FILE"
-    echo "INFRA-FAIL $(date +%H:%M:%S) $company | $role ($reason, rc=$rc)" >> "$LOGS/run_queue.out"
+    runlog "INFRA-FAIL $(date +%H:%M:%S) $company | $role ($reason, rc=$rc)"
     if [ "$hard" -eq 1 ]; then
       n=0
       { flock -x 8
         n=$(cat "$TOKENFAIL_FILE" 2>/dev/null); n=${n:-0}; n=$((n + 1))
         printf '%s' "$n" > "$TOKENFAIL_FILE"
       } 8>>"$TOKENFAIL_LOCK"
-      echo "TOKEN-LIMIT $(date +%H:%M:%S) $company | $role (hard failure $n)" >> "$LOGS/run_queue.out"
+      runlog "TOKEN-LIMIT $(date +%H:%M:%S) $company | $role (hard failure $n)"
       if [ "$n" -ge "${TOKEN_FAIL_MAX:-3}" ]; then
         : > "$STOP_FILE"
-        echo "ABORT $(date +%H:%M:%S): $reason hit ${n}x - stopping run; top up / sign in to the agent and re-run" >> "$LOGS/run_queue.out"
+        runlog "ABORT $(date +%H:%M:%S): $reason hit ${n}x - stopping run; top up / sign in to the agent and re-run"
       fi
     fi
   elif [ "$rc" -eq 124 ] || [ "$outcome" = "BLOCKED" ]; then
@@ -394,8 +399,8 @@ REVIEW RUN ENDS HERE. Do NOT open the browser, do NOT upload, do NOT run record_
   fi
   printf -- '- %s — %s: %s%s\n' "$company" "$role" "$sum_status" \
     "${reason:+ ($reason)}" >> "$SUMMARY_FILE"
-  tail -1 "$log" >> "$LOGS/run_queue.out" 2>/dev/null
-  echo "DONE  $(date +%H:%M:%S) $company | $role (rc=$rc)" >> "$LOGS/run_queue.out"
+  runlog "$(tail -1 "$log" 2>/dev/null)"
+  runlog "DONE  $(date +%H:%M:%S) $company | $role (rc=$rc)"
   # The role is finished: its transcript is history, so pack it.
   python3 "$ROOT/tools/storage.py" --pack-log "$log" --quiet >/dev/null 2>&1 || true
   if [ -n "$reason" ]; then
@@ -525,7 +530,7 @@ run_pool
 passes=0
 while [ ! -e "$STOP_FILE" ] && [ "$passes" -lt "${RETRY_LIMIT:-0}" ] && [ -s "$RETRY_FILE" ]; do
   passes=$((passes + 1))
-  echo "retry pass $passes ($(date +%H:%M:%S)): $(sort -u "$RETRY_FILE" | wc -l) task(s)" >> "$LOGS/run_queue.out"
+  runlog "retry pass $passes ($(date +%H:%M:%S)): $(sort -u "$RETRY_FILE" | wc -l) task(s)"
   while IFS= read -r key; do
     [ -z "$key" ] && continue
     grep -vxF "$key" "$DONE" > "$DONE.tmp" 2>/dev/null; mv -f "$DONE.tmp" "$DONE"
@@ -536,9 +541,9 @@ while [ ! -e "$STOP_FILE" ] && [ "$passes" -lt "${RETRY_LIMIT:-0}" ] && [ -s "$R
 done
 
 if [ -e "$STOP_FILE" ]; then
-  echo "queue stopped early (agent budget/rate limit/sign-in) $(date +%H:%M:%S)" >> "$LOGS/run_queue.out"
+  runlog "queue stopped early (agent budget/rate limit/sign-in) $(date +%H:%M:%S)"
 else
-  echo "queue complete $(date +%H:%M:%S)" >> "$LOGS/run_queue.out"
+  runlog "queue complete $(date +%H:%M:%S)"
 fi
 
 # Register integrity is part of finishing a run: a contradictory register means
