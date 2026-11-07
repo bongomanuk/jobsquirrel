@@ -2131,25 +2131,91 @@ App.rowMenu = (ev, i) => {
   if (!SEL.has(r.key)) { SEL.clear(); SEL.add(r.key); SEL_ANCHOR = r.key; paintSel(); }
   if (SEL.size > 1) {
     const rows = [...SEL].map(k => GRID.find(x => x.key === k)).filter(Boolean);
-    const preparedRows = rows.filter(x => (x.status || '').toUpperCase() === 'PREPARED');
-    const mitems = [
-      { icon: ic('bolt'), label: `Prepare documents (${rows.length})`, run: () => App.prepareRoles(rows.map(x => x.key)) },
-      preparedRows.length ? { icon: ic('send'), label: `Submit prepared (${preparedRows.length})`, danger: true,
+    if (!rows.length) return;
+    const n = rows.length;
+    const stOf = (x) => (x.status || '').toUpperCase();
+    const isClosed = (x) => ['REJECTED', 'CLOSED'].includes(stOf(x));
+    const isQueued = (x) => ['pending', 'human', 'retry'].includes(x.queue);
+    const isApplied = (x) => !!x.applied || ['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER', 'REJECTED'].includes(stOf(x));
+    const preparedRows = rows.filter(x => stOf(x) === 'PREPARED' && !x.running);
+    const canPrepare = rows.filter(x => !x.running && !isClosed(x) && (!isApplied(x) || stOf(x) === 'PREPARED'));
+    const matchRows = rows.filter(x => x.spec || (x.stages && x.stages.documents));
+    const openRows = rows.filter(x => !isClosed(x));
+    const flagged = rows.filter(x => x.action);
+    const blockedRows = rows.filter(x => ['BLOCKED', 'MANUAL'].includes(stOf(x)));
+    const queuedRows = rows.filter(isQueued);
+    const queueable = rows.filter(x => !isQueued(x) && !x.applied && stOf(x) !== 'PREPARED' && !isClosed(x) && !x.running);
+    const allPinned = rows.every(x => x.pinned);
+    const allShelved = rows.every(x => x.shelved);
+    const allClosed = rows.every(isClosed);
+    const hasDocs = !!(r.stages && r.stages.documents);
+    const STATUSES = allClosed
+      ? ['IN_PROGRESS', 'PREPARED', 'SUBMITTED', 'BLOCKED', 'MANUAL']
+      : ['PREPARED', 'SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER', 'REJECTED', 'BLOCKED', 'MANUAL', 'CLOSED'];
+
+    // Groups: one click puts every selected role in the group (or takes them
+    // all out when they are already all in). The tick shows the common state.
+    const groupItems = (GROUPS.groups || []).map(g => {
+      const inside = rows.filter(x => (x.groups || []).includes(g.id)).length;
+      const all = inside === n;
+      return {
+        label: (all ? '✓ ' : inside ? '◐ ' : '') + g.name,
+        hint: all ? `all ${n} are in this group: click to remove them`
+          : inside ? `${inside} of ${n} are in it: click to add the rest`
+          : `add all ${n} to this group`,
+        run: () => App.bulkGroup(rows, g.id, !all)
+      };
+    });
+    if (groupItems.length) groupItems.push({ sep: true });
+    groupItems.push({ icon: '＋', label: `New group with all ${n}…`, run: () => App.bulkNewGroup(rows) });
+    groupItems.push({ icon: ic('settings'), label: 'Manage groups…', run: () => groupsOpen() });
+    if (rows.some(x => (x.groups || []).length)) {
+      groupItems.push({ icon: '✕', label: 'Remove from all groups', run: () => App.bulkClearGroups(rows) });
+    }
+
+    const pairs = rows.map(x => `${x.company}: ${x.role}`);
+    const urls = rows.map(x => x.url).filter(Boolean);
+    const items = [
+      // The right-clicked row: browsing actions stay a single-role affair.
+      { icon: ic('doc'), label: 'Open details (this row)', run: () => App.open(i) },
+      hasDocs ? { icon: ic('folder'), label: 'Documents (this row)', run: () => { DTAB = 6; App.open(i); } } : null,
+      r.spec ? { icon: ic('grid'), label: 'Job ad & keywords (this row)', run: () => { DTAB = 3; App.open(i); } } : null,
+      { icon: ic('chat'), label: 'Discuss this role', run: () => { DTAB = 1; App.open(i); } },
+      r.url ? { icon: ic('external'), label: 'Open apply page (this row)', run: () => window.open(r.url, '_blank', 'noopener') } : null,
+      r.running ? { icon: ic('loader'), label: 'Show live log (this row)', run: () => App.showTaskLogFor(r.company, r.role) } : null,
+      { sep: true },
+      canPrepare.length ? { icon: ic('bolt'), label: `Prepare documents (${canPrepare.length})`, hint: 'CV + letter + gates', run: () => App.prepareRoles(canPrepare.map(x => x.key)) } : null,
+      preparedRows.length ? { icon: ic('send'), label: `Submit prepared (${preparedRows.length})`, hint: 'sends them', danger: true,
         run: () => App.submitRoles(preparedRows.map(x => x.key)) } : null,
+      matchRows.length ? { icon: ic('refresh'), label: `Recompute match (${matchRows.length})`, run: () => App.bulkMatch(matchRows) } : null,
       { sep: true },
-      { icon: ic('archive'), label: 'Shelve for later', run: () => App.bulk(rows, x => App.toggleShelve(x)) },
-      { icon: ic('pin'), label: 'Pin to top', run: () => App.bulk(rows, x => App.togglePin(x)) },
+      { icon: ic('tag'), label: allClosed ? 'Reopen all as' : `Set status for ${n}`, sub: STATUSES.map(x => ({
+          label: x, run: () => App.bulkStatus(rows, x) })) },
+      openRows.length ? { icon: ic('door'), label: `Close all (${openRows.length})`, hint: 'status CLOSED', run: () => App.bulkClose(openRows) } : null,
+      openRows.length ? { icon: ic('flag'), label: `Flag follow-up for all (${openRows.length})…`, run: () => App.bulkFlag(openRows) } : null,
+      flagged.length ? { icon: ic('flag'), label: `Clear follow-up flags (${flagged.length})`, run: () => App.bulkApply(flagged, x => api('/api/register/row', { company: x.company, role: x.role, action: '', key: x.key }), 'follow-up flags cleared') } : null,
+      { icon: ic('pin'), label: allPinned ? `Unpin all (${n})` : `Pin all to top (${n})`, run: () => App.bulkApply(rows, x => api('/api/roles/flags', { key: x.key, pinned: !allPinned }), allPinned ? 'unpinned' : 'pinned') },
+      { icon: ic('archive'), label: allShelved ? `Unshelve all (${n})` : `Shelve all (${n})`, run: () => App.bulkApply(rows, x => api('/api/roles/shelve', { key: x.key, on: !allShelved }), allShelved ? 'unshelved' : 'shelved') },
+      { icon: ic('tag'), label: 'Groups', sub: groupItems },
+      (queueable.length || blockedRows.length || queuedRows.length) ? { sep: true } : null,
+      queueable.length ? { icon: ic('repeat'), label: `Queue all to apply (${queueable.length})`, run: () => App.bulkQueue(queueable, 'retry') } : null,
+      blockedRows.length ? { icon: ic('hand'), label: `Hand all to me (${blockedRows.length})`, danger: true, run: () => App.bulkQueue(blockedRows, 'human') } : null,
+      queuedRows.length ? { icon: ic('trash'), label: `Remove ${queuedRows.length} from the queue`, danger: true, run: () => App.bulkQueue(queuedRows, 'delete') } : null,
       { sep: true },
-      { icon: ic('copy'), label: 'Copy keys', run: () => copyText([...SEL].join('\n')) },
+      { icon: ic('copy'), label: 'Copy', sub: [
+        { label: `Companies (${n})`, run: () => copyText(rows.map(x => x.company).join('\n')) },
+        { label: `Roles (${n})`, run: () => copyText(rows.map(x => x.role).join('\n')) },
+        { label: `Company: role (${n})`, run: () => copyText(pairs.join('\n')) },
+        urls.length ? { label: `Apply URLs (${urls.length})`, run: () => copyText(urls.join('\n')) } : null,
+        { label: `Role keys (${n})`, run: () => copyText(rows.map(x => x.key).join('\n')) },
+        { label: 'Rows for a spreadsheet', run: () => copyText(rows.map(x => [x.company, x.role, x.status, x.key].join('\t')).join('\n')) },
+      ].filter(Boolean) },
     ].filter(Boolean);
-    const el = ctxMenuEl(mitems, `<b>${rows.length} roles selected</b> <span class="muted mini">Ctrl/Shift to add</span>`);
-    el.style.left = '0px'; el.style.top = '0px';
-    document.body.appendChild(el);
-    const w = el.offsetWidth, h = el.offsetHeight;
-    el.style.left = Math.max(6, Math.min(ev.clientX || 40, innerWidth - w - 8)) + 'px';
-    el.style.top = Math.max(6, Math.min(ev.clientY || 40, innerHeight - h - 8)) + 'px';
-    CTX = el;
-    el.querySelector('.ctx-item:not(.disabled)')?.focus();
+
+    const head = `<b>${n} roles selected</b> <span class="muted mini">actions apply to all of them</span>` +
+      `<div class="ctx-role">${esc(r.company)}: ${esc(r.role)}</div>` +
+      `<div class="ctx-meta"><span class="muted mini">right-clicked row; items marked “this row” affect only it</span></div>`;
+    openCtxAt(ev, items, head);
     return;
   }
   const tab = (n) => { DTAB = n; App.open(i); };
@@ -2216,14 +2282,6 @@ App.rowMenu = (ev, i) => {
     ].filter(Boolean) },
   ].filter(Boolean);
 
-  // A separator must not lead, trail, or double up once items are filtered out.
-  const clean = [];
-  for (const it of items) {
-    if (it.sep) { if (clean.length && !clean[clean.length - 1].sep) clean.push(it); }
-    else clean.push(it);
-  }
-  while (clean.length && clean[clean.length - 1].sep) clean.pop();
-
   const head = `<div class="ctx-co">${esc(r.company)}</div>` +
     `<div class="ctx-role">${esc(r.role)}</div>` +
     `<div class="ctx-meta">${chip(r.label || r.status)}` +
@@ -2233,17 +2291,126 @@ App.rowMenu = (ev, i) => {
       `${r.interview_at ? ' · ' + esc(String(r.interview_at).slice(0, 16)) : ''}</div>` +
     (r.action ? `<div class="ctx-note">${esc(r.action)}</div>` : '');
 
+  openCtxAt(ev, items, head);
+  return false;
+};
+
+// Place a context menu at the pointer, keeping separators sane and the menu
+// inside the window. Shared by the single-row and multi-row menus.
+function openCtxAt(ev, items, head) {
+  const clean = [];
+  for (const it of items) {
+    if (it.sep) { if (clean.length && !clean[clean.length - 1].sep) clean.push(it); }
+    else clean.push(it);
+  }
+  while (clean.length && clean[clean.length - 1].sep) clean.pop();
   const el = ctxMenuEl(clean, head);
   el.style.left = '0px'; el.style.top = '0px';
   document.body.appendChild(el);
   const w = el.offsetWidth, h = el.offsetHeight;
-  const x = ev.clientX || (ev.target.getBoundingClientRect().right || 40);
-  const y = ev.clientY || (ev.target.getBoundingClientRect().top || 40);
+  const tgt = ev.target && ev.target.getBoundingClientRect ? ev.target.getBoundingClientRect() : { right: 40, top: 40 };
+  const x = ev.clientX || tgt.right || 40;
+  const y = ev.clientY || tgt.top || 40;
   el.style.left = Math.max(6, Math.min(x, innerWidth - w - 8)) + 'px';
   el.style.top = Math.max(6, Math.min(y, innerHeight - h - 8)) + 'px';
   CTX = el;
   el.querySelector('.ctx-item:not(.disabled)')?.focus();
-  return false;
+}
+
+// One action applied to every selected row, with a single refresh and report.
+App.bulkApply = async (rows, fn, label) => {
+  if (!rows.length) return { ok: 0, fail: 0 };
+  let ok = 0, fail = 0, why = '';
+  for (const r of rows) {
+    try {
+      const d = await fn(r);
+      if (d && d.error) { fail++; if (!why) why = String(d.error); }
+      else ok++;
+    } catch (e) { fail++; if (!why) why = String(e); }
+  }
+  await loadGrid();
+  if (CUR) openDetail(CUR);
+  const note = fail ? `, ${fail} failed${why ? ': ' + why.slice(0, 120) : ''}` : '';
+  toast(`${label}: ${ok} role${ok === 1 ? '' : 's'}${note}`, !!fail);
+  return { ok, fail, why };
+};
+
+App.bulkStatus = async (rows, status) => {
+  if (!rows.length) return;
+  if (!confirm(`Set ${rows.length} role${rows.length === 1 ? '' : 's'} to ${status}?`)) return;
+  await App.bulkApply(rows, x => api('/api/register/row', { company: x.company, role: x.role, status, key: x.key }), `status ${status}`);
+};
+
+App.bulkClose = async (rows) => {
+  if (!rows.length) return;
+  if (!confirm(`Close ${rows.length} role${rows.length === 1 ? '' : 's'}?\n\nThis sets the status to CLOSED and clears the follow-up flag. The rows move to Done.`)) return;
+  const today = new Date().toISOString().slice(0, 10);
+  await App.bulkApply(rows, x => api('/api/register/row', {
+    company: x.company, role: x.role, status: 'CLOSED', action: '', key: x.key,
+    notes: `${today}: closed from the bulk row menu (not pursuing).`
+  }), 'closed');
+};
+
+App.bulkFlag = async (rows) => {
+  if (!rows.length) return;
+  const text = prompt(`What needs doing for these ${rows.length} roles? (leave empty to clear)`, '');
+  if (text === null) return;
+  const t = text.trim();
+  await App.bulkApply(rows, x => api('/api/register/row', { company: x.company, role: x.role, action: t, key: x.key }),
+    t ? 'follow-up flagged' : 'follow-up flags cleared');
+};
+
+App.bulkMatch = async (rows) => {
+  if (!rows.length) return;
+  if (!await warn(`Recompute the CV-job fit for ${rows.length} role${rows.length === 1 ? '' : 's'}?\n\n` +
+    '- Instant: no agent, no model tokens.\n- Updates the Fit column for these rows.',
+    'Recompute match', 'Recompute', false)) return;
+  const d = await api('/api/match/recompute', { keys: rows.map(x => x.key) });
+  toast(d.error ? d.error : d.ok, !!d.error);
+  if (!d.error) loadGrid();
+};
+
+App.bulkGroup = async (rows, id, on) => {
+  if (!rows.length) return;
+  let ok = 0, fail = 0, why = '';
+  for (const x of rows) {
+    const d = await api('/api/groups', { op: 'assign', key: x.key, group: id, on });
+    if (d && d.error) { fail++; if (!why) why = String(d.error); } else ok++;
+  }
+  await loadGroups(); await loadGrid();
+  if (CUR) openDetail(CUR);
+  const note = fail ? `, ${fail} failed${why ? ': ' + why.slice(0, 120) : ''}` : '';
+  toast(`${on ? 'added' : 'removed'} ${ok} role${ok === 1 ? '' : 's'} ${on ? 'to' : 'from'} “${groupName(id)}”${note}`, !!fail);
+};
+
+App.bulkNewGroup = async (rows) => {
+  if (!rows.length) return;
+  const name = prompt('Name this group (a campaign, e.g. “Nordic fintech”):', '');
+  if (name == null || !name.trim()) return;
+  const d = await api('/api/groups', { op: 'create', name: name.trim() });
+  if (d.error) return toast(d.error, true);
+  let ok = 0;
+  for (const x of rows) { const r = await api('/api/groups', { op: 'assign', key: x.key, group: d.group.id, on: true }); if (!r.error) ok++; }
+  await loadGroups(); await loadGrid();
+  toast(`created “${d.group.name}” with ${ok} role${ok === 1 ? '' : 's'}`);
+};
+
+App.bulkClearGroups = async (rows) => {
+  if (!rows.length) return;
+  if (!confirm(`Remove these ${rows.length} role${rows.length === 1 ? '' : 's'} from every group?`)) return;
+  for (const x of rows) for (const id of (x.groups || [])) await api('/api/groups', { op: 'assign', key: x.key, group: id, on: false });
+  await loadGroups(); await loadGrid();
+  toast('removed from all groups');
+};
+
+App.bulkQueue = async (rows, action) => {
+  if (!rows.length) return;
+  const what = action === 'delete' ? `Remove ${rows.length} role${rows.length === 1 ? '' : 's'} from the apply queue?`
+    : action === 'human' ? `Hand ${rows.length} blocked role${rows.length === 1 ? '' : 's'} to you? Each opens a visible browser to finish by hand.`
+    : `Queue ${rows.length} role${rows.length === 1 ? '' : 's'} to apply again?`;
+  if (!confirm(what)) return;
+  const label = action === 'delete' ? 'removed from the queue' : action === 'human' ? 'handed to you' : 'queued';
+  await App.bulkApply(rows, x => api('/api/queue/action', { action, company: x.company, role: x.role }), label);
 };
 
 App.setStatus = async (r, status) => {
