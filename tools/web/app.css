@@ -129,7 +129,7 @@ pre.doc{background:#090b10;border:1px solid var(--line);border-radius:var(--radi
 .act-list li{margin:1px 0}
 .act-raw{margin-top:6px}
 .act-raw summary{cursor:pointer;color:var(--muted);font-size:12px}
-.act-raw pre{background:#090b10;border:1px solid var(--line);border-radius:6px;padding:8px;max-height:30vh;overflow:auto;font:12px/1.5 var(--mono);white-space:pre-wrap}
+.act-raw pre{background:#090b10;border:1px solid var(--line);border-radius:6px;padding:8px;max-height:56vh;min-height:120px;overflow:auto;font:12px/1.5 var(--mono);white-space:pre;resize:vertical}
 .act-sep{border-top:1px solid var(--line);margin:8px 0}
 
 /* chat transcript segments */
@@ -1080,3 +1080,9 @@ html[data-theme="light"] .sg-subcount{fill:#8a6a2f}
 html[data-theme="light"] .sg-subnode:hover .sg-subrect,
 html[data-theme="light"] .sg-subnode.on .sg-subrect{fill:#eef0f4}
 html[data-theme="light"] .sg-subnode.on .sg-subtext{fill:#8a6a2f}
+
+.rawlog{max-height:78vh;min-height:280px;overflow:auto;white-space:pre;resize:vertical;
+  font:12px/1.5 var(--mono);background:#090b10;border:1px solid var(--line);border-radius:8px;padding:10px}
+.rawlog.wrap{white-space:pre-wrap}
+html[data-theme="light"] .rawlog{background:#f6f7f9;color:#28303b;border-color:var(--line)}
+html[data-theme="light"] .act-raw pre{background:#f6f7f9;color:#28303b}

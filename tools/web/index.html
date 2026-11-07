@@ -460,6 +460,14 @@
     <button id="dr-send" class="risky" onclick="App.draftSave(true)" title="Sends the email. The dashboard asks you to approve it first">Send with approval</button></div>
 </div></div>
 
+<div id="rawlog" class="modal hide"><div class="modal-box" style="width:min(1100px,96vw)">
+  <div class="row"><b style="flex:1">Technical details</b>
+    <button class="small" onclick="App.rawlogZoom(-1)" title="Smaller text">A−</button>
+    <button class="small" onclick="App.rawlogZoom(1)" title="Larger text">A+</button>
+    <button class="small" onclick="App.rawlogWrap()" title="Wrap long lines">Wrap</button>
+    <button class="small" onclick="App.closeRawLog()" title="Close">✕</button></div>
+  <pre id="rawlog-body" class="rawlog" aria-live="polite"></pre>
+</div></div>
 <div id="peras" class="modal hide"><div class="modal-box" style="width:min(720px,94vw)">
   <div class="row"><b style="flex:1">Preparing documents</b><span id="peras-spin" class="spin"><svg class="ic" aria-hidden="true"><use href="#i-loader"></use></svg></span></div>
   <p class="muted">Generating the tailored CV and cover letter, then running the gates. <b>Nothing is submitted.</b>

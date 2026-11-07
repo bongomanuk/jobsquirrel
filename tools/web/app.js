@@ -1059,6 +1059,45 @@ const App = {
   showActivity: () => {
     if (document.body.dataset.act !== 'open') document.querySelector('#act-toggle')?.click();
   },
+  openRawLog: () => {
+    const el = $('#rawlog-body');
+    if (!el) return;
+    try { RAW_SIZE = +(localStorage.getItem('rawlog.size') || 12) || 12; } catch (e) { RAW_SIZE = 12; }
+    el.style.fontSize = RAW_SIZE + 'px';
+    try { el.classList.toggle('wrap', localStorage.getItem('rawlog.wrap') === '1'); } catch (e) {}
+    $('#rawlog').classList.remove('hide');
+    App.rawlogLoad();
+  },
+  closeRawLog: () => {
+    clearTimeout(RAW_TIMER); RAW_TIMER = null;
+    $('#rawlog').classList.add('hide');
+  },
+  rawlogZoom: (d) => {
+    RAW_SIZE = Math.min(22, Math.max(9, (RAW_SIZE || 12) + d));
+    const el = $('#rawlog-body'); if (el) el.style.fontSize = RAW_SIZE + 'px';
+    try { localStorage.setItem('rawlog.size', RAW_SIZE); } catch (e) {}
+  },
+  rawlogWrap: () => {
+    const el = $('#rawlog-body'); if (!el) return;
+    el.classList.toggle('wrap');
+    try { localStorage.setItem('rawlog.wrap', el.classList.contains('wrap') ? '1' : '0'); } catch (e) {}
+  },
+  rawlogLoad: async () => {
+    const el = $('#rawlog-body');
+    if (!el || $('#rawlog').classList.contains('hide')) { RAW_TIMER = null; return; }
+    let d = null;
+    try { d = await api('/api/live'); } catch (e) { d = null; }
+    if (d) {
+      const lines = [...((d.action && d.action.log) || [])];
+      (d.tail || []).forEach(x => { if (x && x.t) lines.push(x.t); });
+      if (lines.length) {
+        const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 40;
+        el.textContent = lines.slice(-1500).join('\n');
+        if (atBottom) el.scrollTop = el.scrollHeight;
+      }
+    }
+    RAW_TIMER = setTimeout(App.rawlogLoad, 1500);
+  },
   newChat: async () => {
     const d = await api('/api/chat/new', {});
     if (d.error) { toast(d.error, true); return; }
@@ -2825,15 +2864,23 @@ async function liveTick() {
     if (human.length) h += '<ul class="act-list act-now">' + human.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
     (d.tail || []).forEach(x => tech.push((x.k === 'phase' ? '[phase] ' : '') + (x.t || '')));
     if (!h) h = '<span class="muted">○ runner idle</span>';
-    if (tech.length) h += `<details class="act-raw"><summary>Technical details · ${tech.length} lines</summary><pre>${esc(tech.join('\n'))}</pre></details>`;
+    if (tech.length) h += `<details class="act-raw"><summary>Technical details · ${tech.length} lines ` +
+      `<button class="small" onclick="event.preventDefault();event.stopPropagation();App.openRawLog()" ` +
+      `title="Open the full log with zoom and resize">Open</button></summary>` +
+      `<pre>${esc(tech.slice(-800).join('\n'))}</pre></details>`;
     // liveTick rebuilds this pane every 2.5s. Keep the reader's open/closed
     // choice instead of snapping Technical details shut on the next poll.
     const rawEl = $('#liveterm details.act-raw');
     const rawOpen = !!(rawEl && rawEl.open);
+    const preEl = rawEl && rawEl.querySelector('pre');
+    const preScroll = preEl ? preEl.scrollTop : 0;
+    const preBottom = preEl ? (preEl.scrollTop + preEl.clientHeight >= preEl.scrollHeight - 30) : false;
     $('#liveterm').innerHTML = h;
     if (rawOpen) {
       const reopened = $('#liveterm details.act-raw');
       if (reopened) reopened.open = true;
+      const np = reopened && reopened.querySelector('pre');
+      if (np) np.scrollTop = preBottom ? np.scrollHeight : preScroll;
     }
   }
   LIVE_TIMER = setTimeout(liveTick, (LIVE_RUNNING || LIVE_TASKS.length) ? 2500 : (EVENTS_OK ? 60000 : 5000));
@@ -3275,7 +3322,8 @@ document.addEventListener('toggle', e => {
 }, true);
 let CHAT_STICK = true;                                        // follow new output only if the reader is at the bottom
 function chatAtBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 60; }
-let ACT = null, ACT_SIG = '', ACT_IGNORE = '', LAST_ACT_NAME = '', LOCAL_ACT = null;   // last dashboard action, shown in the chat
+let ACT = null, ACT_SIG = '', ACT_IGNORE = '', LAST_ACT_NAME = '', LOCAL_ACT = null;
+let RAW_TIMER = null, RAW_SIZE = 12;   // last dashboard action, shown in the chat
 let DELEGATED_SEEN = null;                              // subagent ids already announced
 let DELEGATED_DONE_SEEN = null;                         // finished subagent ids already shown
 let DONE_CARDS = [];                                    // finished subagent results, shown in the chat
