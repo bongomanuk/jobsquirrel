@@ -240,7 +240,9 @@ Columns: **Date · Company · Role · Level · ATS · Status · Fit · Pay · Wo
   BLOCKED/MANUAL branches and REJECTED/CLOSED terminals. Each node shows its live count and a
   one-line annotation; clicking a node expands its sub-states as a flat list and filters the grid to
   that status, and clicking a sub-state filters further. **SCAMS** and **SHELVED** are side nodes that
-  filter their buckets. The open/closed state is remembered.
+  filter their buckets. Counts are active roles only: a shelved role is counted under **SHELVED**,
+  not under its old status, and a status tooltip says how many roles are shelved at that status. The
+  open/closed state is remembered.
 - **Columns:** right-click any column header to choose which columns are visible. The choice is
   saved per browser. Drag a divider to resize a column; double-click it to reset that column.
 - **Multi-select, spreadsheet style.** Click a row to open it; **Ctrl/Cmd-click** adds or removes a

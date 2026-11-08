@@ -1614,12 +1614,18 @@ try { SG_EXPANDED = localStorage.getItem('sg.expanded') || ''; } catch (e) {}
 function renderStateGraph() {
   const box = document.getElementById('sg-body');
   if (!box || !PANELS.states.open) return;             // closed: nothing to draw
+  // Shelved roles are out of the process and have their own side node; counting
+  // them under their old status made a node say "1" while the matching filter
+  // showed no rows, because the grid hides shelved rows whenever a filter is on.
+  const liveRows = GRID.filter(r => !r.shelved);
   const counts = {};
-  GRID.forEach(r => { counts[r.status] = (counts[r.status] || 0) + 1; });
-  const scamCount = GRID.filter(r => r.scam && ['high', 'medium'].includes(r.scam.level)).length;
+  liveRows.forEach(r => { counts[r.status] = (counts[r.status] || 0) + 1; });
+  const scamCount = liveRows.filter(r => r.scam && ['high', 'medium'].includes(r.scam.level)).length;
   const shelvedCount = GRID.filter(r => r.shelved).length;
+  const shelvedBy = {};
+  GRID.forEach(r => { if (r.shelved) shelvedBy[r.status] = (shelvedBy[r.status] || 0) + 1; });
   const by = {};
-  GRID.forEach(r => {
+  liveRows.forEach(r => {
     if (!r.substate) return;
     const k = r.status + ':' + r.substate;
     if (!by[k]) by[k] = { status: r.status, key: r.substate, label: r.substate_label || r.substate, hint: r.substate_hint || '', n: 0 };
@@ -1657,10 +1663,15 @@ function renderStateGraph() {
     const exp = expanded === n.s;
     const subs = subsFor(n.s);
     const caret = subs.length ? (exp ? ' ▾' : ' ▸') : '';
-    return `<g class="sg-node sg-${n.s}${on ? ' active' : ''}${exp ? ' expanded' : ''}" data-status="${n.s}" role="button" tabindex="0" aria-label="${exp ? 'Collapse' : 'Expand'} ${n.s} sub-states">` +
+    const count = n.s === 'SCAMS' ? scamCount : (n.s === 'SHELVED' ? shelvedCount : (counts[n.s] || 0));
+    const shelvedHere = n.s === 'SHELVED' ? 0 : (shelvedBy[n.s] || 0);
+    const hint = `${n.s}: ${count} active role${count === 1 ? '' : 's'}` +
+      (shelvedHere ? `, ${shelvedHere} shelved (see SHELVED)` : '') + '. Click to filter and expand.';
+    return `<g class="sg-node sg-${n.s}${on ? ' active' : ''}${exp ? ' expanded' : ''}" data-status="${n.s}" role="button" tabindex="0" aria-label="${esc(hint)}">` +
+      `<title>${esc(hint)}</title>` +
       `<rect class="sg-rect" x="${n.x}" y="${y}" width="${SG_W}" height="${h}" rx="9"/>` +
       `<text class="sg-title" x="${n.x + 12}" y="${y + 23}">${n.s}${caret}</text>` +
-      `<text class="sg-count" x="${n.x + SG_W - 12}" y="${y + 23}" text-anchor="end">${n.s === 'SCAMS' ? scamCount : (n.s === 'SHELVED' ? shelvedCount : (counts[n.s] || 0))}</text>` +
+      `<text class="sg-count" x="${n.x + SG_W - 12}" y="${y + 23}" text-anchor="end">${count}</text>` +
       `<text class="sg-note" x="${n.x + 12}" y="${y + 44}">${esc(n.note)}</text></g>`;
   };
   const child = (x, y, w, label, count, cls, attrs, hint) =>
