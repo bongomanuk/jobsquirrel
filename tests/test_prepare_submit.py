@@ -34,5 +34,5 @@ def test_the_context_menu_offers_prepare_and_submit():
     with open(os.path.join(ROOT, "tools", "web", "app.js"), encoding="utf-8") as fh:
         app = fh.read()
     assert "prepareSubmit: async" in app
-    assert "Prepare and submit (${freshRows.length})" in app
+    assert "Prepare and submit (${activeRows.length})" in app
     assert "label: 'Prepare and submit'" in app

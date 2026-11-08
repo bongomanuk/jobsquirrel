@@ -74,8 +74,9 @@ Everything is observable. Useful things to ask for, or run yourself:
     one; the **Groups** toolbar button opens the group manager to create, rename or delete
     groups. Groups are independent of status and survive renames and queue runs. Select several rows
     with Ctrl/Cmd-click or Shift-click (Ctrl/Cmd+A for the whole view, Escape to clear) and
-    right-click any of them: the menu is the single-row menu applied to all selected roles, including
-    adding all of them to one of your groups in a click. **Prepare and submit** runs the whole pass
+    right-click any of them: the menu is the single-row action menu applied to all selected roles,
+    including adding all of them to one of your groups in a click. The menu is actions only; the
+    detail drawer has the documents, job ad, discussion and apply page. **Prepare and submit** runs the whole pass
     for a fresh role, or for the fresh roles in the selection: it generates the CV, runs the gates
     and sends, after the same approval prompt as a prepared submission. A PREPARED role uses
     **Submit prepared** instead. Selecting by role, not by row, so a role

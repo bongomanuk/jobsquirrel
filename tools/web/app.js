@@ -2292,8 +2292,8 @@ App.rowMenu = (ev, i) => {
     const isQueued = (x) => ['pending', 'human', 'retry'].includes(x.queue);
     const isApplied = (x) => !!x.applied || ['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER', 'REJECTED'].includes(stOf(x));
     const preparedRows = rows.filter(x => stOf(x) === 'PREPARED' && !x.running);
-    const freshRows = rows.filter(x => !x.running && !isClosed(x) && !isApplied(x) && stOf(x) !== 'PREPARED');
-    const canPrepare = rows.filter(x => !x.running && !isClosed(x) && (!isApplied(x) || stOf(x) === 'PREPARED'));
+    const activeRows = rows.filter(x => !x.running && !isClosed(x));
+    const canPrepare = activeRows;
     const matchRows = rows.filter(x => x.spec || (x.stages && x.stages.documents));
     const openRows = rows.filter(x => !isClosed(x));
     const flagged = rows.filter(x => x.action);
@@ -2334,19 +2334,13 @@ App.rowMenu = (ev, i) => {
     const pairs = rows.map(x => `${x.company}: ${x.role}`);
     const urls = rows.map(x => x.url).filter(Boolean);
     const items = [
-      // The right-clicked row: browsing actions stay a single-role affair.
-      { icon: ic('doc'), label: 'Open details (this row)', run: () => App.open(i) },
-      hasDocs ? { icon: ic('folder'), label: 'Documents (this row)', run: () => { DTAB = 6; App.open(i); } } : null,
-      r.spec ? { icon: ic('grid'), label: 'Job ad & keywords (this row)', run: () => { DTAB = 3; App.open(i); } } : null,
-      { icon: ic('chat'), label: 'Discuss this role', run: () => { DTAB = 1; App.open(i); } },
-      r.url ? { icon: ic('external'), label: 'Open apply page (this row)', run: () => window.open(r.url, '_blank', 'noopener') } : null,
       r.running ? { icon: ic('loader'), label: 'Show live log (this row)', run: () => App.showTaskLogFor(r.company, r.role) } : null,
-      { sep: true },
+      r.running ? { sep: true } : null,
       canPrepare.length ? { icon: ic('bolt'), label: `Prepare documents (${canPrepare.length})`, hint: 'CV + letter + gates', run: () => App.prepareRoles(canPrepare.map(x => x.key)) } : null,
       preparedRows.length ? { icon: ic('send'), label: `Submit prepared (${preparedRows.length})`, hint: 'sends them', danger: true,
         run: () => App.submitRoles(preparedRows.map(x => x.key)) } : null,
-      freshRows.length ? { icon: ic('send'), label: `Prepare and submit (${freshRows.length})`, hint: 'prepare, gate, send', danger: true,
-        run: () => App.prepareSubmit(freshRows.map(x => x.key)) } : null,
+      activeRows.length ? { icon: ic('send'), label: `Prepare and submit (${activeRows.length})`, hint: 'prepare, gate, send', danger: true,
+        run: () => App.prepareSubmit(activeRows.map(x => x.key)) } : null,
       matchRows.length ? { icon: ic('refresh'), label: `Recompute match (${matchRows.length})`, run: () => App.bulkMatch(matchRows) } : null,
       { sep: true },
       { icon: ic('tag'), label: allClosed ? 'Reopen all as' : `Set status for ${n}`, sub: STATUSES.map(x => ({
@@ -2387,6 +2381,7 @@ App.rowMenu = (ev, i) => {
   const queued = ['pending', 'human', 'retry'].includes(r.queue);
   const hasDocs = !!(r.stages && r.stages.documents);
   const prepared = st === 'PREPARED';
+  const active = !closed && !r.running;
   const canWrite = applied && !closed;
   const myGroups = new Set(r.groups || []);
   const groupItems = (GROUPS.groups || []).map(g => ({
@@ -2402,21 +2397,16 @@ App.rowMenu = (ev, i) => {
     ? ['IN_PROGRESS', 'PREPARED', 'SUBMITTED', 'BLOCKED', 'MANUAL']
     : ['PREPARED', 'SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER', 'REJECTED', 'BLOCKED', 'MANUAL', 'CLOSED'];
   const items = [
-    { icon: ic('doc'), label: 'Open details', run: () => App.open(i) },
-    hasDocs ? { icon: ic('folder'), label: 'Documents', run: () => tab(6) } : null,
-    r.spec ? { icon: ic('grid'), label: 'Job ad & keywords', run: () => tab(3) } : null,
-    { icon: ic('chat'), label: 'Discuss this role', run: () => tab(1) },
-    r.url ? { icon: ic('external'), label: 'Open apply page', run: () => window.open(r.url, '_blank', 'noopener') } : null,
     r.running ? { icon: ic('loader'), label: 'Show live log', run: () => App.showTaskLogFor(r.company, r.role) } : null,
-    { sep: true },
-    (!applied || prepared) && !closed && !r.running
+    r.running ? { sep: true } : null,
+    active
       ? { icon: ic('bolt'), label: hasDocs ? 'Re-prepare documents' : 'Prepare documents', hint: 'CV + letter + gates', run: () => App.prepareRoles([r.key]) }
       : null,
     prepared && !r.running
       ? { icon: ic('send'), label: 'Submit prepared', hint: 'sends it', danger: true, run: () => App.submitRoles([r.key]) }
       : null,
-    (!applied && !prepared && !closed && !r.running)
-      ? { icon: ic('send'), label: 'Prepare and submit', hint: 'prepare, gate, send', danger: true, run: () => App.prepareSubmit([r.key]) }
+    active
+      ? { icon: ic('send'), label: 'Prepare and submit', hint: applied ? 'prepare, gate, send (applies again)' : 'prepare, gate, send', danger: true, run: () => App.prepareSubmit([r.key]) }
       : null,
     (r.spec || hasDocs) ? { icon: ic('refresh'), label: 'Recompute match', run: () => App.matchThis(r.key) } : null,
     canWrite ? { icon: ic('robot'), label: 'Draft a reply with the agent', run: () => { App.open(i); App.draftAsk(); } } : null,
