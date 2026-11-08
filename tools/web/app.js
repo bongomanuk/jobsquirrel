@@ -331,6 +331,18 @@ document.addEventListener('keydown', (e) => {
   kgGo(e.key === 'ArrowLeft' ? -1 : 1);
 });
 
+// Show knowledge search results through the Cascade island when it is ready.
+// The HTML is the fallback for the first paint (and for a browser where the
+// module could not load).
+function kgShowResults(view, html) {
+  const box = $('#kg-results');
+  if (!box) return;
+  box.classList.remove('hide');
+  const isl = window.CascadeIslands && window.CascadeIslands.knowledge;
+  if (isl && isl.ready()) isl.results(view);
+  else box.innerHTML = html;
+}
+
 const App = {
   async run(command, label) {
     if (command === 'submit_queue') {
@@ -787,16 +799,22 @@ const App = {
     q = String(q || '').trim();
     const box = $('#kg-results'); if (!box) return;
     if (!q) { toast('type a phrase to search semantically', true); return; }
-    box.classList.remove('hide');
-    box.innerHTML = '<span class="muted mini">searching embeddings…</span>';
+    kgShowResults({ head: 'searching embeddings…', groups: [] }, '<span class="muted mini">searching embeddings…</span>');
     const d = await api('/api/graph/semantic?q=' + encodeURIComponent(q));
-    if (!d || d.error) { box.innerHTML = `<span class="muted mini">${esc((d && d.error) || 'semantic search failed')}</span>`; return; }
+    if (!d || d.error) {
+      const msg = (d && d.error) || 'semantic search failed';
+      kgShowResults({ head: msg, groups: [] }, `<span class="muted mini">${esc(msg)}</span>`);
+      return;
+    }
     const es = d.entities || [];
-    box.innerHTML = `<div class="kg-res-head">Semantic · “${esc(q)}” · ${es.length} match${es.length === 1 ? '' : 'es'}
+    const head = `Semantic · “${q}” · ${es.length} match${es.length === 1 ? '' : 'es'}`;
+    const view = { head, groups: es.length ? [{ label: 'Closest entities', items: es.map(e => ({ kind: 'ego', id: e.title, title: e.title, sub: `${e.type} · impact ${Math.round((e.importance || 0) * 100)}% · similarity ${e.score}` })) }] : [] };
+    const html = `<div class="kg-res-head">${esc(head)}
         <button class="small" onclick="App.graphHideResults()">✕</button></div>` +
       (es.length ? `<div class="kg-res-group"><b>Closest entities</b>` + es.map(e =>
         `<button class="kg-res-item" data-id="${esc(e.title)}" onclick="App.graphEgo(this.dataset.id)">
           <b>${esc(e.title)}</b><span class="muted mini">${esc(e.type)} · impact ${Math.round((e.importance || 0) * 100)}% · similarity ${e.score}</span></button>`).join('') + '</div>' : '');
+    kgShowResults(view, html);
   },
   editNode: async (title) => {
     const m = $('#nodeedit'); if (!m) return;
@@ -912,6 +930,8 @@ const App = {
   openSourcePath: (path, name) => viewDoc(path, name),
   kgSide: async (tab) => {
     document.querySelectorAll('.kg-side-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === tab));
+    const kisl = window.CascadeIslands && window.CascadeIslands.knowledge;
+    if (kisl && kisl.ready()) kisl.tab(tab);
     const body = $('#kg-side-body'); if (!body) return;
     if (tab === 'details') {
       if (KG && KG.selected) kgSelect(KG.selected);
@@ -1075,16 +1095,27 @@ const App = {
     if (!q) return App.graphTop();
     const box = $('#kg-results');
     if (!box) return;
-    box.classList.remove('hide');
-    box.innerHTML = '<span class="muted mini">searching…</span>';
+    kgShowResults({ head: 'searching…', groups: [] }, '<span class="muted mini">searching…</span>');
     const d = await api('/api/graph/search?q=' + encodeURIComponent(q));
-    if (!d || d.error) { box.innerHTML = `<span class="muted mini">${esc((d && d.error) || 'search failed')}</span>`; return; }
-    const cs = d.communities || [], es = d.entities || [];
-    if (!cs.length && !es.length) {
-      box.innerHTML = `<div class="kg-res-head">No matches for “${esc(q)}” <button class="small" onclick="App.graphHideResults()">✕</button></div>`;
+    if (!d || d.error) {
+      const msg = (d && d.error) || 'search failed';
+      kgShowResults({ head: msg, groups: [] }, `<span class="muted mini">${esc(msg)}</span>`);
       return;
     }
-    box.innerHTML = `<div class="kg-res-head">“${esc(q)}” · ${cs.length} communities · ${es.length} entities
+    const cs = d.communities || [], es = d.entities || [];
+    if (!cs.length && !es.length) {
+      kgShowResults({ head: `No matches for “${q}”`, groups: [] },
+        `<div class="kg-res-head">No matches for “${esc(q)}” <button class="small" onclick="App.graphHideResults()">✕</button></div>`);
+      return;
+    }
+    const view = {
+      head: `“${q}” · ${cs.length} communities · ${es.length} entities`,
+      groups: [
+        cs.length ? { label: 'Communities', items: cs.map(c => ({ kind: 'community', id: c.community, title: c.title, sub: `level ${c.level} · ${c.size} entities` })) } : null,
+        es.length ? { label: 'Entities', items: es.map(e => ({ kind: 'ego', id: e.title, title: e.title, sub: `${e.type}${e.community_title ? ' · ' + e.community_title : ''}` })) } : null,
+      ].filter(Boolean),
+    };
+    const html = `<div class="kg-res-head">“${esc(q)}” · ${cs.length} communities · ${es.length} entities
         <button class="small" onclick="App.graphHideResults()">✕</button></div>` +
       (cs.length ? `<div class="kg-res-group"><b>Communities</b>` + cs.map(c =>
         `<button class="kg-res-item" data-id="${c.community}" onclick="App.graphCommunity(this.dataset.id)">
@@ -1092,8 +1123,13 @@ const App = {
       (es.length ? `<div class="kg-res-group"><b>Entities</b>` + es.map(e =>
         `<button class="kg-res-item" data-id="${esc(e.title)}" onclick="App.graphEgo(this.dataset.id)">
           <b>${esc(e.title)}</b><span class="muted mini">${esc(e.type)}${e.community_title ? ' · ' + esc(e.community_title) : ''}</span></button>`).join('') + '</div>' : '');
+    kgShowResults(view, html);
   },
-  graphHideResults: () => { const b = $('#kg-results'); if (b) b.classList.add('hide'); },
+  graphHideResults: () => {
+    const b = $('#kg-results'); if (b) b.classList.add('hide');
+    const isl = window.CascadeIslands && window.CascadeIslands.knowledge;
+    if (isl && isl.ready()) isl.results(null);
+  },
   graphTop: () => App.graphOverview(null),
   graphBack: () => {
     if (!KG) return App.graphTypes();

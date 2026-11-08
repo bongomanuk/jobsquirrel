@@ -55,3 +55,14 @@ def test_deep_links_and_the_page_title_use_cascade_routing():
     assert "window.CascadeIslands.head" in module
     assert "routeFromUrl" in app and "router.navigate(['role'" in app
     assert '"/role"' in dash or "startswith(\"/role/\")" in dash
+
+
+def test_the_toolbar_and_knowledge_search_are_cascade_islands():
+    module = _read("tools/web/cascade-islands.js")
+    app = _read("tools/web/app.js")
+    for name in ("class ToolbarExtra", "class KgResults", "class KgTabs"):
+        assert name in module, name
+    assert "overflowContainer" in module
+    assert "window.CascadeIslands.knowledge" in module
+    assert "kgShowResults" in app
+    assert 'id="toolbar-extra"' in _read("tools/web/index.html")

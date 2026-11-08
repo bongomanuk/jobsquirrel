@@ -148,14 +148,17 @@
               <button id="fclear" class="small" type="button">Clear filters</button>
             </div>
           </details>
-          <button id="export">Export CSV</button>
           <button id="grouping" title="Group rows by bucket (default) or show one flat sorted list. Clicking a column header switches to the flat view"><svg class="ic" aria-hidden="true"><use href="#i-list"></use></svg> Grouped</button>
           <button id="groups" title="Create, rename or delete groups (campaigns)"><svg class="ic" aria-hidden="true"><use href="#i-tag"></use></svg> Groups</button>
           <button id="a-gmail-review" title="Emails that could not be confidently classified or matched; review and mark Done"><svg class="ic" aria-hidden="true"><use href="#i-mail"></use></svg> Review <b id="review-count">0</b></button>
           <button id="a-prepare-shown" title="Generate documents for the rows currently shown (expanded groups). Runs the agent per role, a few minutes each. Nothing is submitted. You will be asked to confirm."><svg class="ic" aria-hidden="true"><use href="#i-bolt"></use></svg> Prepare</button>
           <button id="a-submit-shown" class="risky" title="Submit the PREPARED rows currently shown, with the documents already generated. Sends applications. You will be asked to confirm."><svg class="ic" aria-hidden="true"><use href="#i-send"></use></svg> Submit</button>
-          <button id="a-match" title="Recompute the CV-to-job match for the rows currently shown. Instant, no agent. You will be asked to confirm."><svg class="ic" aria-hidden="true"><use href="#i-refresh"></use></svg> Match</button>
-          <button id="legend" title="What the columns, marks and statuses mean"><svg class="ic" aria-hidden="true"><use href="#i-info"></use></svg> Legend</button>
+          <div id="toolbar-extra"></div>
+          <div class="hide" aria-hidden="true">
+            <button id="export">Export CSV</button>
+            <button id="a-match">Match</button>
+            <button id="legend">Legend</button>
+          </div>
         </div>
         <div class="gridwrap">
           <table id="grid">

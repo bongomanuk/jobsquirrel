@@ -13,6 +13,7 @@ package is not used. The bundle is generated with esbuild from:
 
   export { Component, RenderContext, callback, observable, view } from '@liquefy/cascade.component';
   export { DOMElementTarget, DOMNodeComponent, documentHead, browserLocation,
+           overflowContainer, elementSlot, elementBoundsProvider,
            div, span, b, strong, ul, li, details, summary, pre, text, a, button,
            p, code, small, table, thead, tbody, tr, td, th,
            flipAnimationContainer } from '@liquefy/cascade.dom';

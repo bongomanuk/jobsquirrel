@@ -13,7 +13,8 @@
  */
 import {
   Component, RenderContext, DOMElementTarget, DOMNodeComponent, observable, documentHead,
-  browserLocation, div, a, b, ul, li, details, summary, text, flipAnimationContainer,
+  browserLocation, overflowContainer, elementSlot, elementBoundsProvider,
+  div, span, a, b, ul, li, details, summary, text, button, flipAnimationContainer,
 } from './vendor/cascade.js';
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -226,6 +227,104 @@ if (host) {
   };
 }
 
+/* The toolbar's secondary actions. Cascade measures the row and moves whatever
+ * does not fit into the More menu, so the grid keeps its primary actions when
+ * it is docked to a narrow edge. The hidden originals keep the existing click
+ * handlers; these buttons just click them. */
+class ToolbarExtra extends Component {
+  initialState() {
+    return { more: false, overflow: 0 };
+  }
+
+  build() {
+    const slot = elementSlot({
+      key: 'slot',
+      style: { display: 'flex', flexDirection: 'column', gap: '2px' },
+    });
+    const click = (id) => () => { const el = document.getElementById(id); if (el) el.click(); };
+    const items = [
+      button({ key: 'export', className: 'small', onclick: click('export') }, text('Export CSV')),
+      button({ key: 'match', className: 'small', onclick: click('a-match') }, text('Match')),
+      button({ key: 'legend', className: 'small', onclick: click('legend') }, text('Legend')),
+    ];
+    const more = button(
+      { key: 'more', className: 'small', onclick: () => { this.more = !this.more; } },
+      text(this.overflow ? `More (${this.overflow})` : 'More'),
+    );
+    const row = overflowContainer({
+      key: 'row',
+      children: items,
+      ellipsis: this.overflow ? more : null,
+      overflowSlot: slot,
+      onOverflow: (n) => { if (n !== this.overflow) this.setState({ overflow: n }); },
+      style: { display: 'flex', gap: '4px', minWidth: 0, width: '100%', flex: '1 1 auto', alignItems: 'center' },
+    });
+    return div(
+      { key: 'wrap', className: 'toolbar-extra', style: { position: 'relative', display: 'flex', minWidth: 0, width: '100%', flex: '1 1 auto' } },
+      elementBoundsProvider({ key: 'bounds', child: row, style: { display: 'flex', minWidth: 0, flex: '1 1 auto' } }),
+      div(
+        { key: 'pop', className: 'toolbar-more', style: { display: this.more && this.overflow ? 'flex' : 'none' } },
+        slot,
+      ),
+    );
+  }
+}
+
+/* The knowledge page's search results and side tabs. The results are a real
+ * list of components now, so a new search replaces them with a short cascade
+ * instead of an innerHTML swap; the tabs have the same state-driven active
+ * class as the role drawer. The graph canvases stay with Three.js. */
+class KgResults extends Component {
+  initialState() {
+    return { view: null };
+  }
+
+  build() {
+    const v = this.view;
+    if (!v) return div({ key: 'empty' });
+    const head = div(
+      { key: 'head', className: 'kg-res-head' },
+      text(v.head || ''),
+      button({ key: 'close', className: 'small', onclick: () => App.graphHideResults() }, text('✕')),
+    );
+    const groups = (v.groups || []).map((g) => div(
+      { key: `g:${g.label}`, className: 'kg-res-group' },
+      b(text(g.label)),
+      ...g.items.map((it) => button(
+        {
+          key: `${g.label}:${it.title}`,
+          className: 'kg-res-item',
+          onclick: () => (it.kind === 'community' ? App.graphCommunity(it.id) : App.graphEgo(it.id)),
+        },
+        b(text(it.title)),
+        span({ className: 'muted mini' }, text(it.sub || '')),
+      )),
+    ));
+    return div({ key: 'wrap' }, head, ...groups);
+  }
+}
+
+class KgTabs extends Component {
+  initialState() {
+    return { active: 'details' };
+  }
+
+  build() {
+    const tabs = ['details', 'classes', 'roles', 'sources', 'add'];
+    return div(
+      { key: 'tabs', style: { display: 'contents' } },
+      ...tabs.map((t) => button(
+        {
+          key: t,
+          className: this.active === t ? 'on' : '',
+          onclick: () => App.kgSide(t),
+        },
+        text(t === 'details' ? 'Details' : t === 'classes' ? 'Classes' : t === 'roles' ? 'Roles' : t === 'sources' ? 'Sources' : 'Add'),
+      )),
+    );
+  }
+}
+
 let drawer = null;
 const tabsHost = document.getElementById('dtabs');
 const bodyHost = document.getElementById('d-body');
@@ -247,6 +346,37 @@ if (tabsHost && bodyHost) {
       tabs.active = active || 0;
       body.html = html || '';
     },
+  };
+}
+
+const toolbarHost = document.getElementById('toolbar-extra');
+if (toolbarHost) {
+  try {
+    const tb = new ToolbarExtra({});
+    tb.establish().renderOnto(DOMElementTarget.forElement(toolbarHost), new RenderContext({}));
+  } catch (e) {
+    // If the island cannot render, keep the original buttons reachable instead
+    // of leaving the toolbar without them.
+    const fallback = toolbarHost.nextElementSibling;
+    if (fallback) fallback.classList.remove('hide');
+  }
+}
+
+let knowledge = null;
+const krHost = document.getElementById('kg-results');
+const ktHost = document.querySelector('.kg-side-tabs');
+let krInst = null, ktInst = null;
+if (krHost && ktHost) {
+  krHost.innerHTML = '';
+  ktHost.innerHTML = '';
+  krInst = new KgResults({});
+  krInst.establish().renderOnto(DOMElementTarget.forElement(krHost), new RenderContext({}));
+  ktInst = new KgTabs({});
+  ktInst.establish().renderOnto(DOMElementTarget.forElement(ktHost), new RenderContext({}));
+  knowledge = {
+    ready: () => true,
+    results: (view) => { krInst.view = view || null; },
+    tab: (tab) => { ktInst.active = tab || 'details'; },
   };
 }
 
@@ -277,6 +407,11 @@ window.CascadeIslands.grid = grid || {
 window.CascadeIslands.drawer = drawer || {
   ready: () => false,
   open: () => {},
+  tab: () => {},
+};
+window.CascadeIslands.knowledge = knowledge || {
+  ready: () => false,
+  results: () => {},
   tab: () => {},
 };
 window.CascadeIslands.head = {

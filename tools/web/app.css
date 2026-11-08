@@ -359,6 +359,13 @@ tr.grp .grp-n .countlink:hover{color:var(--accent)}
 .grid-toolbar{margin:0;padding:0 0 7px}
 .grid-toolbar button,.grid-toolbar .filters>summary{background:none;height:28px;padding:0 9px;font-size:12.5px;display:inline-flex;align-items:center;gap:5px;white-space:nowrap;border-radius:7px}
 .grid-toolbar button:hover,.grid-toolbar .filters>summary:hover{background:var(--surface2)}
+#toolbar-extra{display:flex;flex:0 1 240px;width:240px;min-width:0}
+.toolbar-extra{position:relative;display:flex;min-width:0;flex:1 1 auto}
+.toolbar-more{position:absolute;right:0;top:calc(100% + 5px);z-index:30;min-width:170px;
+  flex-direction:column;gap:3px;background:var(--surface);border:1px solid var(--line);
+  border-radius:8px;padding:6px;box-shadow:0 14px 34px rgba(0,0,0,.42)}
+.toolbar-more button{justify-content:flex-start;width:100%}
+html[data-theme="light"] .toolbar-more{box-shadow:0 14px 34px rgba(20,26,36,.16)}
 .grid-toolbar button.risky{background:none}
 .grid-toolbar button.risky:hover{background:rgba(207,154,154,.12)}
 .kg-toolbar .kg-modes{height:32px;border-radius:8px}

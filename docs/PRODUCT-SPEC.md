@@ -526,8 +526,11 @@ interface contract.
   so the rows stay real table rows) and the role drawer (the tab bar and the body as components, with
   the existing tab HTML in a raw block). `browserLocation` gives every role a real address
   (`/role/<key>`) with working back and forward, and `documentHead` keeps the page title on the open
-  role. The surrounding chrome, filters, sorting and the tab content itself are still plain
-  JavaScript; the framework is adopted incrementally around them.
+  role. The grid toolbar's secondary actions use Cascade's `overflowContainer`, so a narrow docked
+  grid folds Export, Match and Legend into a More menu. The knowledge page's search results are
+  Cascade components and its side tabs are state-driven. The surrounding chrome, filters, sorting and
+  the tab content itself are still plain JavaScript; the framework is adopted incrementally around
+  them.
 - **Motion.** Expanding any section animates its height and fades its content in as a short cascade.
   The role drawer opens as a cascade of detail sections, context menus and dialogs fade in, docked
   panels fade in, and hover and focus states ease instead of snapping. The grid uses keyed FLIP:
