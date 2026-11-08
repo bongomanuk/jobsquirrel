@@ -3762,7 +3762,7 @@ function catchUp() {
 window.addEventListener('focus', catchUp);
 // The Cascade island loads as a module after this script; once it is mounted,
 // render the current Activity view into it (and drop the vanilla fallback).
-window.addEventListener('cascade-ready', () => { try { liveTick(); renderRows(); if (CUR) openDetail(CUR); } catch (e) {} });
+window.addEventListener('cascade-ready', () => { try { liveTick(); loadGrid(); if (CUR) openDetail(CUR); } catch (e) {} });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) catchUp(); });
 
 // A native details toggle snaps its height. Animate the opening (the content
