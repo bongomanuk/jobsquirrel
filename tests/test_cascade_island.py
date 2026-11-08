@@ -31,3 +31,15 @@ def test_the_dashboard_serves_the_island_and_the_bundle():
     assert '"/cascade-islands.js"' in dash
     assert '"/vendor/cascade.js"' in dash
     assert '"cascade-islands.js"' in dash  # asset fingerprint
+
+
+def test_the_grid_and_the_drawer_are_cascade_islands():
+    module = _read("tools/web/cascade-islands.js")
+    for name in ("class GridRows", "class RawRow", "class DrawerTabs", "class DrawerBody"):
+        assert name in module, name
+    assert "window.CascadeIslands.grid" in module
+    assert "window.CascadeIslands.drawer" in module
+    app = _read("tools/web/app.js")
+    assert "window.CascadeIslands.grid" in app
+    assert "window.CascadeIslands.drawer" in app
+    assert "display: 'contents'" in module

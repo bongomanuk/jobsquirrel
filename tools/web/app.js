@@ -1934,13 +1934,12 @@ function renderRows() {
       : r.seniority_rank >= 3 ? 'senior' : r.seniority_rank >= 2 ? 'mid' : 'low';
     return `<span class="lvl ${band}"${T('Seniority grade read from the title and the ad: ' + r.seniority_label)}>${esc(r.seniority_label)}</span>`;
   };
-  const rowHTML = (r) => {
+  const rowModel = (r) => {
     const i = GRID.indexOf(r);
     const sel = (CUR && (r.key === CUR.key || (r.company === CUR.company && r.role === CUR.role))
       && PANELS.detail && PANELS.detail.open) ? ' sel' : '';
     const gtags = groupTagsHTML(r);
-    return `<tr class="click${sel}${SEL.has(selId(r)) ? ' multi' : ''}" data-key="${esc(r.key)}" data-id="${esc(selId(r))}" onclick="App.rowClick(event, ${i})" oncontextmenu="return App.rowMenu(event, ${i})">` +
-      `<td data-col="date" class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet: queued, not applied')}>${r.date ? esc(shortDate(r.date)) : '-'}</td>` +
+    const html = `<td data-col="date" class="muted"${T(r.date ? 'Register row last updated ' + r.date : 'Not dated yet: queued, not applied')}>${r.date ? esc(shortDate(r.date)) : '-'}</td>` +
       `<td data-col="company"${T(r.company + '  ·  employer / recruiter')}>${r.running ? `<a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="event.stopPropagation();App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show the live log"><span class="spin" title="working">${ic('loader')}</span></a> ` : (PENDING.has(r.key) ? `<span class="spin" title="Queued: waiting to start">${ic('loader')}</span> ` : '')}${r.pinned ? `<span class="pinned"${T('Pinned to the top of its group')}>${ic('pin')}</span> ` : ''}${r.shelved ? `<span class="shelved"${T('Shelved: original status kept')}>${ic('archive')}</span> ` : ''}${r.scam && ['high', 'medium'].includes(r.scam.level) ? `<span class="scamflag ${esc(r.scam.level)}"${T('Scam check: ' + r.scam.level.toUpperCase() + ': open the role for the signals')}>${ic('flag')}</span> ` : ''}${r.action ? `<span class="actflag"${T(r.action)}>${ic('flag')}</span> ` : ''}${esc(r.company)}</td>` +
       `<td data-col="role"${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}${r.repost ? ` <span class="etag repost"${T('Repost of ' + r.repost.role + ' (' + (r.repost.status || 'applied') + (r.repost.date ? ', ' + r.repost.date : '') + '). You can apply again; this is not a blocker.')}>repost</span>` : ''}${gtags ? `<div class="gtags">${gtags}</div>` : ''}</td>` +
       `<td data-col="level">${levelBadge(r)}</td>` +
@@ -1951,21 +1950,35 @@ function renderRows() {
         ? `<span class="badge ${r.queue === 'human' ? 'bad' : r.queue === 'retry' ? 'mid' : 'good'}">${esc(r.queue)}</span>`
         : `<span class="muted">-</span>`}</td>` +
       `<td data-col="files"${T(r.applied ? 'Provenance recorded: exact CV, letter and SHA-256 hashes on file' : 'No submission recorded (not applied, or not reconciled yet)')}>${r.applied ? '✓' : '<span class="muted">-</span>'}</td>` +
-      `<td data-col="ad"${T(r.spec ? 'A saved job description exists: open the row for the ad, ATS keywords and grounded context' : 'No saved job description')}>${r.spec ? '✓' : '<span class="muted">-</span>'}</td></tr>`;
+      `<td data-col="ad"${T(r.spec ? 'A saved job description exists: open the row for the ad, ATS keywords and grounded context' : 'No saved job description')}>${r.spec ? '✓' : '<span class="muted">-</span>'}</td>`;
+    return { key: r.key, id: selId(r), keyName: r.key, rowId: selId(r), cls: `click${sel}${SEL.has(selId(r)) ? ' multi' : ''}`, html, index: i };
+  };
+  const rowHTML = (r) => {
+    const m = rowModel(r);
+    return `<tr class="${m.cls}" data-key="${esc(m.key)}" data-id="${esc(m.id)}" onclick="App.rowClick(event, ${m.index})" oncontextmenu="return App.rowMenu(event, ${m.index})">${m.html}</tr>`;
   };
 
-  const empty = (msg) => `<tr><td colspan="11" data-span="all" class="muted">${msg}
+  const emptyModel = (msg) => ({
+    key: 'empty', cls: '',
+    html: `<td colspan="11" data-span="all" class="muted">${msg}
     <button class="small" type="button" onclick="App.clearFilters()">Clear filters</button>
-    <button class="small" type="button" onclick="App.bucket('all')">Show all</button></td></tr>`;
+    <button class="small" type="button" onclick="App.bucket('all')">Show all</button></td>`,
+  });
+  const empty = (msg) => { const m = emptyModel(msg); return `<tr>${m.html}</tr>`; };
   let html = '';
+  let models = [];
   let rendered = [];
   const advanced = !!(st || qq || ft || lv || fa || mp || mf || wm || q || fg || fs);
   let groups = null;
   if (!fg && GROUPED && (BUCKET === 'active' || BUCKET === 'all')) {
     groups = BUCKET_GROUPS.filter(g => BUCKET === 'all' || g.k !== 'done')
       .map(g => ({ ...g, test: r => bucketOf(r) === g.k }));
-    if (BUCKET === 'active' && !advanced && !rows.some(r => ['needs', 'scams'].includes(bucketOf(r))))
-      html += '<tr class="grp calm"><td colspan="11" data-span="all">✓ Nothing needs you right now: ongoing applications and the apply queue are below.</td></tr>';
+    if (BUCKET === 'active' && !advanced && !rows.some(r => ['needs', 'scams'].includes(bucketOf(r)))) {
+      const m = { key: 'calm', cls: 'grp calm',
+        html: '<td colspan="11" data-span="all">✓ Nothing needs you right now: ongoing applications and the apply queue are below.</td>' };
+      html += `<tr class="${m.cls}">${m.html}</tr>`;
+      models.push(m);
+    }
   } else if (!fg && BUCKET === 'focus') {
     groups = FOCUS_GROUPS;
   }
@@ -1976,18 +1989,24 @@ function renderRows() {
       const collapsed = !advanced && !!COLLAPSED[g.k];
       const target = g.k === 'focus_pay' ? "App.focusGroup('pay')" :
         g.k === 'focus_unknown' ? "App.focusGroup('unknown')" : `App.bucket('${g.k}')`;
-      html += `<tr class="grp ${g.k}${collapsed ? ' collapsed' : ''}" onclick="window.toggleGroup('${g.k}')">` +
-        `<td colspan="11" data-span="all"><span class="grp-caret">${collapsed ? '▸' : '▾'}</span>` +
+      const cells = `<td colspan="11" data-span="all"><span class="grp-caret">${collapsed ? '▸' : '▾'}</span>` +
         `<span class="grp-name" onclick="event.stopPropagation();${target}" title="Filter to this group">${esc(g.title)}</span>` +
         `<span class="grp-desc">${esc(g.desc)}</span>` +
-        `<span class="grp-n"><button type="button" class="countlink" onclick="event.stopPropagation();${target}" title="Filter to this group">${gr.length}</button></span></td></tr>`;
-      if (!collapsed) { html += gr.map(rowHTML).join(''); rendered.push(...gr); }
+        `<span class="grp-n"><button type="button" class="countlink" onclick="event.stopPropagation();${target}" title="Filter to this group">${gr.length}</button></span></td>`;
+      const gm = { key: `g:${g.k}`, cls: `grp ${g.k}${collapsed ? ' collapsed' : ''}`, html: cells, group: g.k };
+      html += `<tr class="${gm.cls}" onclick="window.toggleGroup('${g.k}')">${gm.html}</tr>`;
+      models.push(gm);
+      if (!collapsed) {
+        gr.forEach(r => { html += rowHTML(r); models.push(rowModel(r)); rendered.push(r); });
+      }
     }
-    if (!rows.length) html = empty(fg ? 'No roles in this group.' : (BUCKET === 'focus' ? 'No active roles match this focus.' : 'No rows in this view.'));
+    if (!rows.length) { const em = emptyModel(fg ? 'No roles in this group.' : (BUCKET === 'focus' ? 'No active roles match this focus.' : 'No rows in this view.')); html = `<tr>${em.html}</tr>`; models = [em]; }
   } else {
     const gr = sortRows(rows, BUCKET);
     rendered = gr;
+    models = gr.map(rowModel);
     html = gr.map(rowHTML).join('') || empty(fg ? 'No roles in this group.' : 'No matching rows in this view.');
+    if (!gr.length) models = [emptyModel(fg ? 'No roles in this group.' : 'No matching rows in this view.')];
   }
   VISIBLE = rendered.map(r => r.key);
   // Selection is stored by role identity (company + role), not by row key, and
@@ -1999,9 +2018,14 @@ function renderRows() {
   let dropped = false;
   [...SEL].forEach(id => { if (!liveIds.has(id)) { SEL.delete(id); dropped = true; } });
   if (dropped && !liveIds.has(SEL_ANCHOR)) SEL_ANCHOR = '';
-  captureRows();
-  $('#rows').innerHTML = html;
-  animateRows();
+  // The grid is the second Cascade island. Its rows are placed into a
+  // flipAnimationContainer with display:contents, so they stay real table rows
+  // and Cascade animates them moving, appearing and leaving. Until the module
+  // is ready, render the same rows as one HTML string and keep the JS FLIP.
+  const gel = window.CascadeIslands && window.CascadeIslands.grid;
+  const cascadeGrid = !!(gel && gel.ready());
+  if (cascadeGrid) gel.set(models);
+  else { captureRows(); $('#rows').innerHTML = html; animateRows(); }
   paintSel();
   if (window.applyGridCols) window.applyGridCols();
   sortIndicators();
@@ -2743,8 +2767,12 @@ async function openDetail(r) {
   setPanel('detail', { open: true });            // also re-renders the grid, marking this row
   $('#d-title').textContent = `${r.company}: ${r.role}`;
   const tabs = ['Summary', 'Chat', 'Files', 'Job ad', 'ATS', 'Evidence', 'Docs'];
-  $('#dtabs').innerHTML = tabs.map((t, i) => `<a class="${i === DTAB ? 'on' : ''}" onclick="dt(${i})">${t}</a>`).join('');
-  $('#d-body').innerHTML = '<span class="muted">loading…</span>';
+  const drawer = window.CascadeIslands && window.CascadeIslands.drawer;
+  if (drawer && drawer.ready()) drawer.open(tabs, DTAB, '<span class="muted">loading…</span>');
+  else {
+    $('#dtabs').innerHTML = tabs.map((t, i) => `<a class="${i === DTAB ? 'on' : ''}" onclick="dt(${i})">${t}</a>`).join('');
+    $('#d-body').innerHTML = '<span class="muted">loading…</span>';
+  }
   const jobs = [api(`/api/provenance?company=${encodeURIComponent(r.company)}&role=${encodeURIComponent(r.role)}`)];
   if (r.spec) jobs.push(api('/api/roles/' + encodeURIComponent(r.jd_key || r.key)));
   const [p, d] = await Promise.all(jobs); P = p || {}; D = d || {};
@@ -2753,8 +2781,13 @@ async function openDetail(r) {
 window.dt = (i) => {
   const r = CUR, map = [summary, discuss, prov, spec, ats, grounding, tailored];
   DTAB = i;
-  document.querySelectorAll('#dtabs a').forEach((a, n) => a.classList.toggle('on', n === i));
-  $('#d-body').innerHTML = map[i](r) || '<span class="muted">-</span>';
+  const html = map[i](r) || '<span class="muted">-</span>';
+  const drawer = window.CascadeIslands && window.CascadeIslands.drawer;
+  if (drawer && drawer.ready()) drawer.tab(i, html);
+  else {
+    document.querySelectorAll('#dtabs a').forEach((a, n) => a.classList.toggle('on', n === i));
+    $('#d-body').innerHTML = html;
+  }
   if (i === 0) App.loadDrafts();
   if (i === 1) {
     if (!ROLE_TIMER) ROLE_TIMER = setInterval(rolePoll, 1500);
@@ -3729,7 +3762,7 @@ function catchUp() {
 window.addEventListener('focus', catchUp);
 // The Cascade island loads as a module after this script; once it is mounted,
 // render the current Activity view into it (and drop the vanilla fallback).
-window.addEventListener('cascade-ready', () => { try { liveTick(); } catch (e) {} });
+window.addEventListener('cascade-ready', () => { try { liveTick(); renderRows(); if (CUR) openDetail(CUR); } catch (e) {} });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) catchUp(); });
 
 // A native details toggle snaps its height. Animate the opening (the content

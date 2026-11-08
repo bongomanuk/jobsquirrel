@@ -12,7 +12,7 @@
  * for now.
  */
 import {
-  Component, RenderContext, DOMElementTarget, div, b, ul, li, details, summary,
+  Component, RenderContext, DOMElementTarget, DOMNodeComponent, div, a, b, ul, li, details, summary,
   text, flipAnimationContainer,
 } from './vendor/cascade.js';
 
@@ -88,6 +88,116 @@ class ActivityRoster extends Component {
   }
 }
 
+/* The grid's rows. The cell markup is the existing, battle-tested HTML for one
+ * row; Cascade owns the row element, its identity and its place, and the flip
+ * container animates it. The container's div is display:contents so the rows
+ * are still real table rows inside the tbody. */
+class RawRow extends DOMNodeComponent {
+  setProperties({ html, cls, keyName, rowId, index, group }) {
+    this.html = html;
+    this.cls = cls;
+    this.keyName = keyName;
+    this.rowId = rowId;
+    this.index = index;
+    this.group = group;
+  }
+
+  ensureNode() {
+    let el = this.unobservable.node;
+    if (!el) {
+      el = document.createElement('tr');
+      this.unobservable.node = el;
+    }
+    if (el._html !== this.html) {
+      el.innerHTML = this.html || '';
+      el._html = this.html;
+    }
+    const cls = this.cls || '';
+    if (el.className !== cls) el.className = cls;
+    if (this.keyName != null) el.dataset.key = this.keyName;
+    else el.removeAttribute('data-key');
+    if (this.rowId != null) el.dataset.id = this.rowId;
+    else el.removeAttribute('data-id');
+    if (Number.isInteger(this.index) && this.index >= 0) {
+      el.onclick = (ev) => App.rowClick(ev, this.index);
+      el.oncontextmenu = (ev) => { ev.preventDefault(); App.rowMenu(ev, this.index); };
+    } else if (this.group) {
+      const g = this.group;
+      el.onclick = () => window.toggleGroup(g);
+      el.oncontextmenu = null;
+    } else {
+      el.onclick = null;
+      el.oncontextmenu = null;
+    }
+    return el;
+  }
+}
+
+class GridRows extends Component {
+  initialState() {
+    return { models: [] };
+  }
+
+  build() {
+    return flipAnimationContainer(
+      { key: 'rows', style: { display: 'contents' } },
+      ...this.models.map((m) => new RawRow({ key: m.key, ...m })),
+    );
+  }
+}
+
+/* The role drawer: its tab bar and its content. The tab content is still the
+ * existing, heavily data-driven HTML; Cascade owns the tabs, the active state
+ * and the body element, so opening a tab and switching tabs is component work
+ * rather than innerHTML surgery. The content itself is an island (a raw block)
+ * until its sections are ported one by one. */
+class RawBlock extends DOMNodeComponent {
+  setProperties({ html, className }) {
+    this.html = html;
+    this.className = className || '';
+  }
+
+  ensureNode() {
+    let el = this.unobservable.node;
+    if (!el) {
+      el = document.createElement('div');
+      this.unobservable.node = el;
+    }
+    if (el._html !== this.html) {
+      el.innerHTML = this.html || '';
+      el._html = this.html;
+    }
+    if (el.className !== this.className) el.className = this.className;
+    return el;
+  }
+}
+
+class DrawerTabs extends Component {
+  initialState() {
+    return { tabs: [], active: 0 };
+  }
+
+  build() {
+    return div(
+      { key: 'tabs', style: { display: 'contents' } },
+      ...this.tabs.map((t, i) => a(
+        { key: `${i}:${t}`, className: i === this.active ? 'on' : '', onclick: () => window.dt(i) },
+        text(t),
+      )),
+    );
+  }
+}
+
+class DrawerBody extends Component {
+  initialState() {
+    return { html: '' };
+  }
+
+  build() {
+    return new RawBlock({ key: 'body', html: this.html, className: 'drawer-body-inner' });
+  }
+}
+
 let activity = null;
 const host = document.getElementById('act-roster');
 if (host) {
@@ -103,9 +213,57 @@ if (host) {
   };
 }
 
+let drawer = null;
+const tabsHost = document.getElementById('dtabs');
+const bodyHost = document.getElementById('d-body');
+if (tabsHost && bodyHost) {
+  tabsHost.innerHTML = '';                    // drop any vanilla fallback tabs
+  bodyHost.innerHTML = '';
+  const tabs = new DrawerTabs({});
+  tabs.establish().renderOnto(DOMElementTarget.forElement(tabsHost), new RenderContext({}));
+  const body = new DrawerBody({});
+  body.establish().renderOnto(DOMElementTarget.forElement(bodyHost), new RenderContext({}));
+  drawer = {
+    ready: () => true,
+    open: (list, active, html) => {
+      tabs.tabs = Array.isArray(list) ? list : [];
+      tabs.active = active || 0;
+      body.html = html || '';
+    },
+    tab: (active, html) => {
+      tabs.active = active || 0;
+      body.html = html || '';
+    },
+  };
+}
+
+let grid = null;
+const gridHost = document.getElementById('rows');
+if (gridHost) {
+  gridHost.innerHTML = '';                    // drop the vanilla fallback rows
+  const inst = new GridRows({});
+  inst.establish().renderOnto(
+    DOMElementTarget.forElement(gridHost),
+    new RenderContext({}),
+  );
+  grid = {
+    ready: () => true,
+    set: (models) => { inst.models = models || []; },
+  };
+}
+
 window.CascadeIslands = window.CascadeIslands || {};
 window.CascadeIslands.activity = activity || {
   ready: () => false,
   set: () => {},
+};
+window.CascadeIslands.grid = grid || {
+  ready: () => false,
+  set: () => {},
+};
+window.CascadeIslands.drawer = drawer || {
+  ready: () => false,
+  open: () => {},
+  tab: () => {},
 };
 window.dispatchEvent(new Event('cascade-ready'));
