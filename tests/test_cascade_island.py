@@ -76,3 +76,17 @@ def test_the_context_menu_is_a_cascade_overlay():
     assert "window.CascadeIslands.menu" in module
     assert "CascadeIslands.menu" in app
     assert 'id="cascade-overlays"' in _read("tools/web/index.html")
+
+
+def test_knowledge_search_answers_while_typing():
+    app = _read("tools/web/app.js")
+    assert "KG_LIVE_TIMER" in app
+    assert "graphLiveOpen" in app
+    assert "App.kgSearch(q, true)" in app
+    assert "kgSearch: (q, live = false)" in app
+
+
+def test_cascade_integration_is_documented():
+    assert os.path.exists(os.path.join(ROOT, "docs", "CASCADE.md"))
+    assert "Cascade integration" in _read("mkdocs.yml")
+    assert "CASCADE.md" in _read("README.md")

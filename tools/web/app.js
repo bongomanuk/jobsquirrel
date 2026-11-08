@@ -865,7 +865,7 @@ const App = {
     if (KGMODE === 'universe' && window.__uni) await window.__uni.reload();
     else if (KGMODE === 'map') await App.graphTypes();
   },
-  kgSearch: (q) => KGMODE === 'universe' ? App.universeSearch(q) : App.graphSearch(q),
+  kgSearch: (q, live = false) => KGMODE === 'universe' ? App.universeSearch(q, live) : App.graphSearch(q, live),
   kgReset: () => KGMODE === 'universe' ? App.universeReset() : App.graphFit(),
   kgFocusDepth: (v) => { if (window.__kg3d) window.__kg3d.setFocusDepth(v); },
   home: () => {
@@ -881,6 +881,8 @@ const App = {
     loadGrid();
   },
   closeKnowledge: () => {
+    clearTimeout(KG_LIVE_TIMER); clearTimeout(KG_LIVE_NAV);
+    KG_LIVE_TIMER = null; KG_LIVE_NAV = null;
     kgStop();
     if (window.__uni) window.__uni.close();
     const uni = $('#kg-universe'); if (uni) uni.classList.add('hide');
@@ -891,7 +893,7 @@ const App = {
   },
   openUniverse: async () => { await App.openKnowledge('universe'); },
   closeUniverse: () => { App.setKGMode('map'); },
-  universeSearch: (q) => { if (!KG_HIST.replay) kgRecord({ kind: 'usearch', q: q || '' }); if (window.__uni) window.__uni.search(q); },
+  universeSearch: (q, live = false) => { if (!live && !KG_HIST.replay) kgRecord({ kind: 'usearch', q: q || '' }); if (window.__uni) window.__uni.search(q); },
   universeReset: () => { if (window.__uni) window.__uni.reset(); },
   graphTypes: async () => {
     kgRecord({ kind: 'types' });
@@ -1089,8 +1091,8 @@ const App = {
     const gall = $('#kg-all'); if (gall) gall.style.display = 'none';
     if (msg) msg.textContent = `${d.nodes.length} entities · ${d.links.length} relationships · ego network`;
   },
-  graphSearch: async (q) => {
-    if (!KG_HIST.replay) kgRecord({ kind: 'search', q: q || '' });
+  graphSearch: async (q, live = false) => {
+    if (!live && !KG_HIST.replay) kgRecord({ kind: 'search', q: q || '' });
     q = (q || '').trim();
     if (!q) return App.graphTop();
     const box = $('#kg-results');
@@ -1124,6 +1126,16 @@ const App = {
         `<button class="kg-res-item" data-id="${esc(e.title)}" onclick="App.graphEgo(this.dataset.id)">
           <b>${esc(e.title)}</b><span class="muted mini">${esc(e.type)}${e.community_title ? ' · ' + esc(e.community_title) : ''}</span></button>`).join('') + '</div>' : '');
     kgShowResults(view, html);
+    if (live) KG_LAST_SEARCH = { q, top: (es[0] && es[0].title) || null };
+  },
+  graphLiveOpen: async (q) => {
+    // Pausing while typing opens the top entity, but only if the box still
+    // holds the same query and the result is for an entity (not a community).
+    const box = $('#kg-q');
+    if (!box || (box.value || '').trim() !== q) return;
+    const hit = KG_LAST_SEARCH;
+    if (!hit || hit.q !== q || !hit.top) return;
+    await App.graphEgo(hit.top);
   },
   graphHideResults: () => {
     const b = $('#kg-results'); if (b) b.classList.add('hide');
@@ -1503,6 +1515,7 @@ const App = {
 };
 let CF = 'cv.json', CUR = null, CF_SEC = 'accounts', DRAFT = null, AI_MODEL_SEQ = 0;
 let ROUTING = false, ROUTE_BOOTED = false;
+let KG_LIVE_TIMER = null, KG_LIVE_NAV = null, KG_LAST_SEARCH = null;
 let ROLE_DATA = { segments: [], running: false, pending: 0 }, ROLE_TIMER = null;
 
 /* ---------- approval ---------- */
@@ -5332,6 +5345,28 @@ function startEvents() {
 }
 App.setMascot(App.crittersOn());
 kgButtons();
+// Knowledge search answers while you type: results after a short pause, and the
+// graph opens the top entity after a longer idle if the query still matches.
+const kgInput = $('#kg-q');
+if (kgInput) {
+  kgInput.title = 'Results update as you type; pause and the graph opens the top entity. Enter searches now.';
+  kgInput.addEventListener('input', () => {
+    clearTimeout(KG_LIVE_TIMER); clearTimeout(KG_LIVE_NAV);
+    const q = kgInput.value.trim();
+    if (!q) { App.graphHideResults(); KG_LAST_SEARCH = null; return; }
+    KG_LIVE_TIMER = setTimeout(() => { try { App.kgSearch(q, true); } catch (e) {} }, 260);
+    if (KGMODE === 'map' && q.length >= 3) {
+      KG_LIVE_NAV = setTimeout(() => { try { App.graphLiveOpen(q); } catch (e) {} }, 950);
+    }
+  });
+  kgInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    clearTimeout(KG_LIVE_TIMER); clearTimeout(KG_LIVE_NAV);
+    App.kgSearch(kgInput.value);
+  });
+}
+
 initPanels(); initGridCols(); syncGroupingButton(); loadGroups(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel(); startEvents();
 if (location.hash === '#knowledge') setTimeout(() => App.openKnowledge('map'), 400);
 if (location.hash === '#universe') setTimeout(() => App.openKnowledge('universe'), 400);

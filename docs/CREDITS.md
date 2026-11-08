@@ -13,6 +13,8 @@ framework by **Robert Renbris** ([erobwen/liquefy](https://github.com/erobwen/li
   The full notice and the build entry are in
   `tools/web/vendor/cascade.NOTICE`.
 
+See [How Cascade is integrated](CASCADE.md) for the component map.
+
 Cascade's own documentation and demos are at
 [erobwen.github.io/liquefy/cascade](https://erobwen.github.io/liquefy/cascade).
 

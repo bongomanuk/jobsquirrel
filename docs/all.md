@@ -66,3 +66,7 @@
 ## Credits
 
 - [Credits](CREDITS.md): Cascade by Robert Renbris, and the people behind Jobsquirrel.
+
+## Cascade
+
+- [How Cascade is integrated](CASCADE.md): the islands, the data flow and what stays on plain JavaScript.

@@ -301,7 +301,7 @@ class KgResults extends Component {
         span({ className: 'muted mini' }, text(it.sub || '')),
       )),
     ));
-    return div({ key: 'wrap' }, head, ...groups);
+    return flipAnimationContainer({ key: 'wrap', speed: 1.15, style: { display: 'block' } }, head, ...groups);
   }
 }
 
