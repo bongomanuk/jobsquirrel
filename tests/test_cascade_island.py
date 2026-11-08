@@ -66,3 +66,13 @@ def test_the_toolbar_and_knowledge_search_are_cascade_islands():
     assert "window.CascadeIslands.knowledge" in module
     assert "kgShowResults" in app
     assert 'id="toolbar-extra"' in _read("tools/web/index.html")
+
+
+def test_the_context_menu_is_a_cascade_overlay():
+    module = _read("tools/web/cascade-islands.js")
+    app = _read("tools/web/app.js")
+    assert "class CtxMenuRoot" in module
+    assert "overlayFrame" in module and "overlay(" in module
+    assert "window.CascadeIslands.menu" in module
+    assert "CascadeIslands.menu" in app
+    assert 'id="cascade-overlays"' in _read("tools/web/index.html")

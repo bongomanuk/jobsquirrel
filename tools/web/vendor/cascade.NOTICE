@@ -7,9 +7,7 @@ Bundled from the npm packages:
   @liquefy/cascade.component 2.1.1
   @liquefy/cascade.dom       2.3.1
   @liquefy/cascade.reactive  2.2.0
-
-Only the reactive, component and DOM packages are bundled; the themed UI
-package is not used. The bundle is generated with esbuild from:
+  @liquefy/cascade.ui        2.1.1  (overlayFrame and overlay only; no themed widgets) The bundle is generated with esbuild from:
 
   export { Component, RenderContext, callback, observable, view } from '@liquefy/cascade.component';
   export { DOMElementTarget, DOMNodeComponent, documentHead, browserLocation,

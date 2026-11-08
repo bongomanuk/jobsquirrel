@@ -2107,10 +2107,14 @@ window.toggleGroup = (k) => { COLLAPSED[k] = !COLLAPSED[k]; renderRows(); };
 let CTX = null;
 
 function closeCtx() {
+  const isl = window.CascadeIslands && window.CascadeIslands.menu;
+  if (isl && isl.ready()) isl.hide();
   document.querySelectorAll('.ctxmenu').forEach(el => el.remove());
   CTX = null;
 }
 document.addEventListener('click', (e) => {
+  const inMenu = e.target.closest && e.target.closest('.cascade-ctx');
+  if (!inMenu && window.CascadeIslands && window.CascadeIslands.menu) window.CascadeIslands.menu.hide();
   if (CTX && ![...document.querySelectorAll('.ctxmenu')].some(el => el.contains(e.target))) closeCtx();
 });
 document.addEventListener('keydown', (e) => {
@@ -2136,6 +2140,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && window.CascadeIslands && window.CascadeIslands.menu) window.CascadeIslands.menu.hide();
   if (!CTX) return;
   if (e.key === 'Escape') { closeCtx(); return; }
   const items = [...CTX.querySelectorAll('.ctx-item:not(.disabled)')];
@@ -2428,6 +2433,16 @@ function openCtxAt(ev, items, head) {
     else clean.push(it);
   }
   while (clean.length && clean[clean.length - 1].sep) clean.pop();
+  const isl = window.CascadeIslands && window.CascadeIslands.menu;
+  if (isl && isl.ready()) {
+    const tgt = ev.target && ev.target.getBoundingClientRect ? ev.target.getBoundingClientRect() : { right: 40, top: 40 };
+    try {
+      isl.show(clean, head, ev.clientX || tgt.right || 40, ev.clientY || tgt.top || 40);
+      return;
+    } catch (e) {
+      // Fall through to the vanilla menu rather than losing the action menu.
+    }
+  }
   const el = ctxMenuEl(clean, head);
   el.style.left = '0px'; el.style.top = '0px';
   document.body.appendChild(el);

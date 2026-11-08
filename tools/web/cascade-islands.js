@@ -14,6 +14,7 @@
 import {
   Component, RenderContext, DOMElementTarget, DOMNodeComponent, observable, documentHead,
   browserLocation, overflowContainer, elementSlot, elementBoundsProvider,
+  overlayFrame, overlay,
   div, span, a, b, ul, li, details, summary, text, button, flipAnimationContainer,
 } from './vendor/cascade.js';
 
@@ -325,6 +326,113 @@ class KgTabs extends Component {
   }
 }
 
+/* The context menu as a Cascade overlay. The vanilla menu builder still decides
+ * what to show (the same items and actions as before); this renders it above the
+ * page, with submenus and keyboard dismissal. */
+class RawInline extends DOMNodeComponent {
+  setProperties({ html, className }) {
+    this.html = html;
+    this.className = className || '';
+  }
+
+  ensureNode() {
+    let el = this.unobservable.node;
+    if (!el) {
+      el = document.createElement('span');
+      this.unobservable.node = el;
+    }
+    if (el._html !== this.html) { el.innerHTML = this.html || ''; el._html = this.html; }
+    if (el.className !== this.className) el.className = this.className;
+    return el;
+  }
+}
+
+class CtxMenuRoot extends Component {
+  initialState() {
+    return { menu: null, x: 0, y: 0, sub: null };
+  }
+
+  show(items, head, x, y) {
+    const w = Math.min(360, Math.max(220, innerWidth - 16));
+    const h = Math.min(520, Math.max(160, innerHeight - 16));
+    this.menu = { items: items || [], head: head || '' };
+    this.x = Math.max(6, Math.min(x || 40, innerWidth - w - 8));
+    this.y = Math.max(6, Math.min(y || 40, innerHeight - h - 8));
+    this.sub = null;
+  }
+
+  hide() {
+    this.menu = null;
+    this.sub = null;
+  }
+
+  itemButton(it, i, isSub = false) {
+    return button(
+      {
+        key: (isSub ? 's' : 'm') + i,
+        className: 'ctx-item' + (it.danger ? ' danger' : '') + (it.disabled ? ' disabled' : '') + (it.sub ? ' has-sub' : ''),
+        disabled: !!it.disabled,
+        onclick: (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (it.disabled) return;
+          if (it.sub) { this.openSub(i, ev.currentTarget); return; }
+          this.hide();
+          it.run(ev.currentTarget);
+        },
+        onmouseenter: (ev) => {
+          if (it.sub) this.openSub(i, ev.currentTarget);
+          else if (!isSub) this.sub = null;
+        },
+      },
+      new RawInline({ className: 'ctx-ico', html: it.icon || '' }),
+      span({ className: 'ctx-lbl' }, text(it.label || '')),
+      it.hint ? span({ className: 'ctx-hint' }, text(it.hint)) : null,
+      it.sub ? span({ className: 'ctx-arrow' }, text('›')) : null,
+    );
+  }
+
+  openSub(i, el) {
+    const menu = this.menu;
+    const it = menu && menu.items[i];
+    if (!it || !it.sub) return;
+    const r = el.getBoundingClientRect();
+    const subW = 230;
+    const subH = Math.min(420, it.sub.length * 32 + 16);
+    let left = r.right + 4;
+    if (left + subW > innerWidth - 8) left = r.left - subW - 4;
+    this.sub = {
+      items: it.sub,
+      x: Math.max(6, left),
+      y: Math.max(6, Math.min(r.top - 6, innerHeight - subH - 8)),
+    };
+  }
+
+  build() {
+    const m = this.menu;
+    const s = this.sub;
+    let content = div({ key: 'none' });
+    if (m) {
+      const panel = div(
+        { key: 'menu', className: 'ctxmenu cascade-ctx',
+          style: { position: 'fixed', left: this.x + 'px', top: this.y + 'px', pointerEvents: 'auto', zIndex: 95 } },
+        m.head ? new RawBlock({ key: 'head', className: 'ctx-head', html: m.head }) : null,
+        ...m.items.map((it, i) => it.sep ? div({ key: 'sep' + i, className: 'ctx-sep' }) : this.itemButton(it, i)),
+      );
+      const subpanel = s ? div(
+        { key: 'sub', className: 'ctxmenu ctx-sub cascade-ctx',
+          style: { position: 'fixed', left: s.x + 'px', top: s.y + 'px', pointerEvents: 'auto', zIndex: 96 } },
+        ...s.items.map((it, i) => it.sep ? div({ key: 'ssep' + i, className: 'ctx-sep' }) : this.itemButton(it, i, true)),
+      ) : null;
+      content = div({ key: 'wrap', style: { display: 'contents' } }, panel, subpanel);
+    }
+    return overlayFrame(
+      { key: 'frame', style: { position: 'fixed', inset: 0, zIndex: 90, pointerEvents: 'none' },
+        children: [overlay({ key: 'ov', showing: !!m, children: [content] })] },
+    );
+  }
+}
+
 let drawer = null;
 const tabsHost = document.getElementById('dtabs');
 const bodyHost = document.getElementById('d-body');
@@ -360,6 +468,18 @@ if (toolbarHost) {
     const fallback = toolbarHost.nextElementSibling;
     if (fallback) fallback.classList.remove('hide');
   }
+}
+
+let menu = null;
+const menuHost = document.getElementById('cascade-overlays');
+if (menuHost) {
+  const mi = new CtxMenuRoot({});
+  mi.establish().renderOnto(DOMElementTarget.forElement(menuHost), new RenderContext({}));
+  menu = {
+    ready: () => true,
+    show: (items, head, x, y) => mi.show(items, head, x, y),
+    hide: () => mi.hide(),
+  };
 }
 
 let knowledge = null;
@@ -408,6 +528,11 @@ window.CascadeIslands.drawer = drawer || {
   ready: () => false,
   open: () => {},
   tab: () => {},
+};
+window.CascadeIslands.menu = menu || {
+  ready: () => false,
+  show: () => {},
+  hide: () => {},
 };
 window.CascadeIslands.knowledge = knowledge || {
   ready: () => false,

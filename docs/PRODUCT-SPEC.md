@@ -527,8 +527,9 @@ interface contract.
   the existing tab HTML in a raw block). `browserLocation` gives every role a real address
   (`/role/<key>`) with working back and forward, and `documentHead` keeps the page title on the open
   role. The grid toolbar's secondary actions use Cascade's `overflowContainer`, so a narrow docked
-  grid folds Export, Match and Legend into a More menu. The knowledge page's search results are
-  Cascade components and its side tabs are state-driven. The surrounding chrome, filters, sorting and
+  grid folds Export, Match and Legend into a More menu. The grid's context menu is a Cascade
+  overlay with nested submenus, and the knowledge page's search results are Cascade components with
+  state-driven side tabs. The surrounding chrome, filters, sorting and
   the tab content itself are still plain JavaScript; the framework is adopted incrementally around
   them.
 - **Motion.** Expanding any section animates its height and fades its content in as a short cascade.
