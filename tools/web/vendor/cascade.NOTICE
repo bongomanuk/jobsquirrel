@@ -1,0 +1,26 @@
+Cascade (https://github.com/erobwen/liquefy), ISC License
+Copyright (c) 2026, Robert Renbris
+
+Bundled from the npm packages:
+  @liquefy/cascade.component 2.1.1
+  @liquefy/cascade.dom       2.3.1
+  @liquefy/cascade.reactive  2.2.0
+
+Only the reactive, component and DOM packages are bundled; the themed UI
+package is not used. The bundle is generated with esbuild from:
+
+  export { Component, RenderContext, callback, observable, view } from '@liquefy/cascade.component';
+  export { DOMElementTarget, div, span, b, strong, ul, li, details, summary,
+           pre, text, a, button, p, code, small, flipAnimationContainer } from '@liquefy/cascade.dom';
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.

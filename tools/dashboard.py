@@ -2270,7 +2270,8 @@ def read_task_log(name):
 def _web_build():
     """Restart + static-frontend fingerprint, so an open tab reloads itself."""
     files = ("index.html", "app.css", "app.js", "critters.js", "graph3d.js",
-             "graph-universe.js", "vendor/three.module.min.js")
+             "graph-universe.js", "cascade-islands.js", "vendor/cascade.js",
+             "vendor/three.module.min.js")
     parts = []
     for name in files:
         try:
@@ -5196,6 +5197,8 @@ class H(BaseHTTPRequestHandler):
                   "/critters.js": ("critters.js", "application/javascript; charset=utf-8"),
                   "/graph3d.js": ("graph3d.js", "application/javascript; charset=utf-8"),
                   "/graph-universe.js": ("graph-universe.js", "application/javascript; charset=utf-8"),
+                  "/cascade-islands.js": ("cascade-islands.js", "application/javascript; charset=utf-8"),
+                  "/vendor/cascade.js": ("vendor/cascade.js", "application/javascript; charset=utf-8"),
                   "/vendor/three.module.min.js": ("vendor/three.module.min.js",
                                                     "application/javascript; charset=utf-8")}
         if p in static:

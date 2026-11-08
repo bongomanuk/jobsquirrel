@@ -517,6 +517,13 @@ interface contract.
   closed panel leaves a pullout tab on its edge (tabs line up when several share a side), and its
   header button or tab reopens it. The grid header's ▸ opens the states panel, the live strip opens
   Activity, and the Agent tab opens the chat.
+- **Cascade islands.** Cascade, the reactive UI framework, is vendored under `tools/web/vendor/cascade.js`
+  (built from `@liquefy/cascade.reactive`, `.component` and `.dom` 2.x, ISC; see
+  `vendor/cascade.NOTICE`) and used for isolated parts of the dashboard. The first island is the
+  Activity run roster: its counts, running roles and per-role outcomes are Cascade components inside
+  a `flipAnimationContainer`, so roles entering, moving and leaving animate and the pane is patched
+  instead of re-rendered as a string. The rest of the pane, the role drawer and the grid are still
+  plain JavaScript and move over incrementally.
 - **Motion.** Expanding any section animates its height and fades its content in as a short cascade.
   The role drawer opens as a cascade of detail sections, context menus and dialogs fade in, docked
   panels fade in, and hover and focus states ease instead of snapping. The grid uses keyed FLIP:

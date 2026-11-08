@@ -232,7 +232,11 @@
     <span style="flex:1"></span>
     <button class="panel-close small" data-panel="activity" title="Close"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button>
   </div>
-  <div id="liveterm" class="term grow act-body">idle.</div>
+  <div id="liveterm" class="term grow act-body">
+    <div id="act-head"></div>
+    <div id="act-roster"></div>
+    <div id="act-rest"></div>
+  </div>
   <div id="tasklog" class="tasklog hide">
     <div class="row" style="margin:0 0 6px">
       <b id="tasklog-title" style="font-size:12px">task</b>
@@ -565,6 +569,7 @@
 
 <script>window.__bootfail = '';</script>
 <script type="module" src="/critters.js?v={{ASSET}}"></script>
+<script type="module" src="/cascade-islands.js?v={{ASSET}}"></script>
 <script src="/app.js?v={{ASSET}}" onerror="window.__bootfail='app.js failed to load';(function(){try{var n=+(sessionStorage.getItem('js-boot-retry')||0);if(n<2){sessionStorage.setItem('js-boot-retry',String(n+1));setTimeout(function(){location.reload()},1200)}}catch(e){}})()"></script>
 <script>
   // Recover only from a genuine boot failure (app.js failed to load), never

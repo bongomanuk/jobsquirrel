@@ -1141,6 +1141,8 @@ details[open]>:not(summary):nth-child(4){animation-delay:40ms}
 details[open]>:not(summary):nth-child(5){animation-delay:60ms}
 details[open]>:not(summary):nth-child(n+6){animation-delay:80ms}
 /* the live panes rebuild every couple of seconds: never replay motion there */
+#liveterm{display:flex;flex-direction:column;white-space:normal}
+#act-head,#act-roster,#act-rest{flex:0 0 auto;min-height:0;white-space:normal}
 #liveterm details[open]>:not(summary),#tasklog details[open]>:not(summary),
 #liveterm .act-list li{animation:none}
 .act-raw>summary::before,.tasklog-raw>summary::before{content:'▸';color:var(--accent);margin-right:5px;font-size:10px}

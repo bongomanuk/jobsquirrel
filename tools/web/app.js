@@ -3235,61 +3235,63 @@ async function liveTick() {
   if (document.body.dataset.act === 'open') {
     const tech = [];
     const localNames = (LOCAL_ACT && (Date.now() - LOCAL_ACT.at < 6 * 3600e3)) ? (LOCAL_ACT.names || []) : [];
-    let h = '<div class="act-actions"><button class="small" onclick="App.run(\'reconcile_apply\',\'Reconcile mail\')" ' +
+    let head = '<div class="act-actions"><button class="small" onclick="App.run(\'reconcile_apply\',\'Reconcile mail\')" ' +
       'title="Read Gmail, match replies to roles and write the status changes">Reconcile mail</button></div>';
+    let rest = '';
+    let roster = null;
     const localFresh = LOCAL_ACT && !LOCAL_ACT.done && (Date.now() - LOCAL_ACT.at < 15 * 60000);
     if (localFresh && !(a.name && a.running)) {
-      h += `<div class="act-h">${LOCAL_ACT.done ? ic('flag') : ic('play')} ${esc(LOCAL_ACT.label)} ` +
+      head += `<div class="act-h">${LOCAL_ACT.done ? ic('flag') : ic('play')} ${esc(LOCAL_ACT.label)} ` +
         `<span class="muted">${LOCAL_ACT.done ? 'finished' : 'starting…'}</span></div>`;
       if (LOCAL_ACT.names.length)
-        h += '<ul class="act-list">' + LOCAL_ACT.names.map(n => `<li>${esc(n)}</li>`).join('') + '</ul>';
-      h += `<div class="mini muted">${LOCAL_ACT.done ? 'see the role for the full reason' : 'requested just now; the runner picks it up in a few seconds'}</div>`;
+        head += '<ul class="act-list">' + LOCAL_ACT.names.map(n => `<li>${esc(n)}</li>`).join('') + '</ul>';
+      head += `<div class="mini muted">${LOCAL_ACT.done ? 'see the role for the full reason' : 'requested just now; the runner picks it up in a few seconds'}</div>`;
     }
     if (LOCAL_ACT && a.name && a.running) LOCAL_ACT = null;
     if (a.name && a.running) {
-      h += `<div class="act-h"><span class="spin">${ic('loader')}</span> ${esc(aname || 'working')} ` +
+      head += `<div class="act-h"><span class="spin">${ic('loader')}</span> ${esc(aname || 'working')} ` +
         `<span class="muted">running…</span></div>`;
-      const roster = runRoster(a, localNames);
-      if (roster) h += rosterHTML(roster);
+      roster = runRoster(a, localNames);
       tech.push(...(a.log || []));
     } else if (a.name && a.finished) {
       // Report the outcome of the task that just finished, and nothing older.
       const bits = [...((sm.notable || [])), sm.headline || ''].filter(Boolean);
       const outcome = bits.find(x => /^\s*STATUS\s/i.test(x)) || sm.headline || '';
-      h += `<div class="act-h">${ic('check')} ${esc(aname || 'task')} <span class="muted">finished</span></div>`;
-      // A finished batch reports every role it touched, with each outcome and
-      // reason. Only fall back to the last STATUS line when there is no roster.
-      const roster = runRoster(a, localNames);
-      if (roster) h += rosterHTML(roster);
-      else if (outcome) h += `<div class="mini">${esc(outcome.slice(0, 500))}</div>`;
+      head += `<div class="act-h">${ic('check')} ${esc(aname || 'task')} <span class="muted">finished</span></div>`;
+      roster = runRoster(a, localNames);
+      if (!roster && outcome) head += `<div class="mini">${esc(outcome.slice(0, 500))}</div>`;
     }
     const tasks = d.running_tasks || (d.running || []).map(x => ({ label: x, log: '' }));
     if (tasks.length) {
-      h += '<div class="act-h act-taskhead">▶ Working now</div>';
+      rest += '<div class="act-h act-taskhead">▶ Working now</div>';
       tasks.forEach(t => {
-        h += t.log
+        rest += t.log
           ? `<div class="act-task"><a class="runlink" data-task="${esc(t.log)}" data-title="${esc(t.label)}" title="Show the human summary and the full technical log">${esc(t.label)}</a></div>`
           : `<div class="act-task">${esc(t.label)}</div>`;
       });
     }
     const human = humanActivity((d.tail || []).map(x => x.k === 'phase' ? '[p] ' + x.t : x.t));
-    if (human.length) h += '<ul class="act-list act-now">' + human.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
+    if (human.length) rest += '<ul class="act-list act-now">' + human.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
     (d.tail || []).forEach(x => tech.push((x.k === 'phase' ? '[phase] ' : '') + (x.t || '')));
-    if (!h) h = '<span class="muted">○ No task running right now. History is in the Agent chat.</span>';
-    if (tech.length) h += `<details class="act-raw"><summary>Technical details · ${tech.length} lines ` +
+    if (tech.length) rest += `<details class="act-raw"><summary>Technical details · ${tech.length} lines ` +
       `<button class="small" onclick="event.preventDefault();event.stopPropagation();App.openRawLog()" ` +
       `title="Open the full log with zoom and resize">Open</button></summary>` +
       `<pre>${esc(tech.slice(-800).join('\n'))}</pre></details>`;
-    // liveTick rebuilds this pane every 2.5s. Keep the reader's open/closed
-    // choice instead of snapping Technical details shut on the next poll.
-    const rawEl = $('#liveterm details.act-raw');
+    // Keep the reader's open/closed choice across the pane's 2.5s rebuild.
+    const rawEl = $('#act-rest details.act-raw');
     const rawOpen = !!(rawEl && rawEl.open);
     const preEl = rawEl && rawEl.querySelector('pre');
     const preScroll = preEl ? preEl.scrollTop : 0;
     const preBottom = preEl ? (preEl.scrollTop + preEl.clientHeight >= preEl.scrollHeight - 30) : false;
-    $('#liveterm').innerHTML = h;
+    $('#act-head').innerHTML = head;
+    $('#act-rest').innerHTML = rest;
+    // The roster is the first Cascade island. Until the module has loaded (or
+    // if it is unavailable) the same markup is rendered by the vanilla fallback.
+    const island = window.CascadeIslands && window.CascadeIslands.activity;
+    if (island && island.ready()) island.set(roster);
+    else $('#act-roster').innerHTML = roster ? rosterHTML(roster) : '';
     if (rawOpen) {
-      const reopened = $('#liveterm details.act-raw');
+      const reopened = $('#act-rest details.act-raw');
       if (reopened) reopened.open = true;
       const np = reopened && reopened.querySelector('pre');
       if (np) np.scrollTop = preBottom ? np.scrollHeight : preScroll;
@@ -3725,6 +3727,9 @@ function catchUp() {
   if (CUR && !document.querySelector('#detail').hidden) openDetail(CUR);
 }
 window.addEventListener('focus', catchUp);
+// The Cascade island loads as a module after this script; once it is mounted,
+// render the current Activity view into it (and drop the vanilla fallback).
+window.addEventListener('cascade-ready', () => { try { liveTick(); } catch (e) {} });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) catchUp(); });
 
 // A native details toggle snaps its height. Animate the opening (the content
