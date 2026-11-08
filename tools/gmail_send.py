@@ -229,8 +229,20 @@ def main():
                 print(f"register: recorded outbound email on {company} — {role}")
             # An approved send that carries the CV/letter IS the application:
             # advancing the row here is what stops it sitting at PREPARED.
+            # An email-only role is BLOCKED for the same reason: there is no
+            # browser form, so the approved email is the submission. Do not
+            # advance a BLOCKED row that is blocked for another wall (captcha,
+            # login, gate failure): an email there is a follow-up, not the
+            # application.
             row = R.find_row(company, role)
-            if row and row["status"] == "PREPARED" and attached_paths:
+            note = ((row or {}).get("notes") or "").lower()
+            email_block = any(x in note for x in (
+                "email application", "no ats", "no apply url", "only accepts email",
+                "email-only", "maila ansökan", "mailto:"))
+            advance = bool(row and attached_paths and (
+                row["status"] == "PREPARED"
+                or (row["status"] == "BLOCKED" and email_block)))
+            if advance:
                 cv = next((p for p, n in attached_paths if "_CV_" in n), "")
                 letter = next((p for p, n in attached_paths if "Motivation" in n), "")
                 if cv or letter:

@@ -14,3 +14,10 @@ def test_draft_replies_do_not_volunteer_salary():
     assert "[rate to confirm]" in agents
     assert "never name employers, stages or deadlines" in " ".join(app.split()).lower()
     assert "never name employers, stages or deadlines" in " ".join(agents.split()).lower()
+
+
+def test_an_approved_email_advances_an_email_only_blocked_row():
+    with open(os.path.join(ROOT, "tools", "gmail_send.py"), encoding="utf-8") as fh:
+        send = fh.read()
+    assert 'row["status"] == "BLOCKED" and email_block' in send
+    assert "email application" in send
