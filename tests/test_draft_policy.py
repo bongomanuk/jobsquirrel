@@ -12,3 +12,5 @@ def test_draft_replies_do_not_volunteer_salary():
         agents = fh.read()
     assert "Never volunteer salary, rate, pay or benefits" in agents
     assert "[rate to confirm]" in agents
+    assert "never name employers, stages or deadlines" in " ".join(app.split()).lower()
+    assert "never name employers, stages or deadlines" in " ".join(agents.split()).lower()

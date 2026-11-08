@@ -73,7 +73,9 @@ reports a clean config.
    the human reviews it in the role drawer and presses **Send with approval**.
    Never volunteer salary, rate, pay or benefits in an email, and never negotiate
    pay in one. If the recruiter asked directly, do not invent a number: leave a
-   `[rate to confirm]` placeholder and tell the human. That
+   `[rate to confirm]` placeholder and tell the human. If the candidate says they
+   are in other processes, you may add one neutral sentence; never name
+   employers, stages or deadlines, and never invent a competing offer. That
    opens the exact email (To/Cc/Subject/body) in an editable dialog: the human can
    amend it before approving, or save changes without sending. Never
    call `gmail_send.py` to send a new email, never send `--to/--body` directly, and

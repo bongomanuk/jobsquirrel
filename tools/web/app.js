@@ -1520,6 +1520,7 @@ const App = {
       `Company: ${CUR.company}`, `Role: ${CUR.role}`,
       act ? `What is needed: ${act}` : '', notes ? `Context: ${notes}` : '',
       'Do not mention salary, rate, pay or benefits unless I explicitly ask. If the recruiter asked for a number, leave [rate to confirm] and flag it for me.',
+      'If I say I am in other processes, add one neutral sentence saying so. Never name employers, stages or deadlines, and never invent a competing offer.',
       'Read the latest relevant email in Gmail for this role (search the sender/subject), write a concise reply in my voice, then save it with:',
       `  python3 tools/draft_email.py --company "${CUR.company}" --role "${CUR.role}" --to "<recipient>" --subject "Re: <subject>" --body-file /tmp/reply.txt`,
       'Then tell me the saved path. I will review and send it from the row drawer.'].filter(Boolean).join('\n');
