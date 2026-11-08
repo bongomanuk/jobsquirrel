@@ -1466,6 +1466,7 @@ const App = {
   },
 };
 let CF = 'cv.json', CUR = null, CF_SEC = 'accounts', DRAFT = null, AI_MODEL_SEQ = 0;
+let ROUTING = false, ROUTE_BOOTED = false;
 let ROLE_DATA = { segments: [], running: false, pending: 0 }, ROLE_TIMER = null;
 
 /* ---------- approval ---------- */
@@ -1492,6 +1493,7 @@ async function loadGrid() {
   renderBuckets();
   renderRows();
   if (sc) sc.scrollTop = y;
+  routeBoot();
 }
 function bucketCounts() {
   const c = { scams: 0, shelved: 0, needs: 0, prepared: 0, ongoing: 0, pipeline: 0, done: 0 };
@@ -2759,6 +2761,38 @@ function columnMenu(ev) {
 }
 
 /* ---------- detail drawer ---------- */
+// Deep links: /role/<key> opens that role; back closes it, forward reopens it.
+// The URL is Cascade's browserLocation; this is only the app side of the route.
+function routeFromUrl() {
+  const router = window.CascadeIslands && window.CascadeIslands.router;
+  if (!router) return false;
+  let path = [];
+  try { path = router.path() || []; } catch (e) { return false; }
+  if (path[0] === 'role' && path[1]) {
+    const key = decodeURIComponent(path[1]);
+    const r = GRID.find(x => x.key === key) || GRID.find(x => String(x.key) === key);
+    // The route can arrive before the grid data (or before a role appears in a
+    // slow refresh): do not latch "booted" until it can actually open it.
+    if (!r) return false;
+    ROUTING = true;
+    setPanel('detail', { open: true });
+    openDetail(r);
+    ROUTING = false;
+    return true;
+  }
+  if (PANELS.detail.open) {
+    ROUTING = true;
+    setPanel('detail', { open: false });
+    ROUTING = false;
+  }
+  return true;
+}
+function routeBoot() {
+  const router = window.CascadeIslands && window.CascadeIslands.router;
+  if (!router || ROUTE_BOOTED) return;
+  if (routeFromUrl()) ROUTE_BOOTED = true;
+}
+
 async function openDetail(r) {
   if (!r) return;
   CUR = r; D = {}; P = {};
@@ -2766,6 +2800,13 @@ async function openDetail(r) {
   ROLE_DATA = { segments: [], running: false, pending: 0 };
   setPanel('detail', { open: true });            // also re-renders the grid, marking this row
   $('#d-title').textContent = `${r.company}: ${r.role}`;
+  const head = window.CascadeIslands && window.CascadeIslands.head;
+  const v = `${r.company}: ${r.role} · Jobsquirrel`;
+  if (head) head.set(v); else document.title = v;
+  const router = window.CascadeIslands && window.CascadeIslands.router;
+  if (router && !ROUTING && router.path()[1] !== r.key) {
+    try { router.navigate(['role', r.key]); } catch (e) { /* the static page still works */ }
+  }
   const tabs = ['Summary', 'Chat', 'Files', 'Job ad', 'ATS', 'Evidence', 'Docs'];
   const drawer = window.CascadeIslands && window.CascadeIslands.drawer;
   if (drawer && drawer.ready()) drawer.open(tabs, DTAB, '<span class="muted">loading…</span>');
@@ -3640,6 +3681,14 @@ function setPanel(key, props) {
   if (!PANELS[key]) return;
   if (key === 'grid' && props.open === false) props.open = true;
   if (key === 'detail' && props.open === false && ROLE_TIMER) { clearInterval(ROLE_TIMER); ROLE_TIMER = null; }
+  if (key === 'detail' && props.open === false) {
+    const head = window.CascadeIslands && window.CascadeIslands.head;
+    if (head) head.set('Jobsquirrel'); else document.title = 'Jobsquirrel';
+    const router = window.CascadeIslands && window.CascadeIslands.router;
+    if (router && !ROUTING && router.path()[0] === 'role') {
+      try { router.navigate([]); } catch (e) { /* ignore */ }
+    }
+  }
   Object.assign(PANELS[key], props);
   if (key === 'detail') renderRows();             // keep the row highlight in sync with the drawer
   localStorage.setItem(key + '.pos', PANELS[key].pos);
@@ -3762,7 +3811,15 @@ function catchUp() {
 window.addEventListener('focus', catchUp);
 // The Cascade island loads as a module after this script; once it is mounted,
 // render the current Activity view into it (and drop the vanilla fallback).
-window.addEventListener('cascade-ready', () => { try { liveTick(); loadGrid(); if (CUR) openDetail(CUR); } catch (e) {} });
+window.addEventListener('cascade-ready', () => { try { liveTick(); loadGrid().then(routeBoot); if (CUR) openDetail(CUR); } catch (e) {} });
+window.addEventListener('popstate', () => { setTimeout(() => { try { routeFromUrl(); } catch (e) {} }, 0); });
+// The module and the first grid fetch race; keep trying the route for a short
+// while after boot instead of depending on the order of those two events.
+let ROUTE_POLL = setInterval(() => {
+  try { routeBoot(); } catch (e) {}
+  if (ROUTE_BOOTED) { clearInterval(ROUTE_POLL); ROUTE_POLL = null; }
+}, 400);
+setTimeout(() => { if (ROUTE_POLL) { clearInterval(ROUTE_POLL); ROUTE_POLL = null; } }, 20000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) catchUp(); });
 
 // A native details toggle snaps its height. Animate the opening (the content

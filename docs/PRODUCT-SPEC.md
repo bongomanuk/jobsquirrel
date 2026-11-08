@@ -524,8 +524,10 @@ interface contract.
   run roster (counts, running roles and per-role outcomes in a `flipAnimationContainer`), the grid
   rows (keyed row components in a `flipAnimationContainer` whose container uses `display: contents`
   so the rows stay real table rows) and the role drawer (the tab bar and the body as components, with
-  the existing tab HTML in a raw block). The surrounding chrome, filters, sorting and the tab content
-  itself are still plain JavaScript; the framework is adopted incrementally around them.
+  the existing tab HTML in a raw block). `browserLocation` gives every role a real address
+  (`/role/<key>`) with working back and forward, and `documentHead` keeps the page title on the open
+  role. The surrounding chrome, filters, sorting and the tab content itself are still plain
+  JavaScript; the framework is adopted incrementally around them.
 - **Motion.** Expanding any section animates its height and fades its content in as a short cascade.
   The role drawer opens as a cascade of detail sections, context menus and dialogs fade in, docked
   panels fade in, and hover and focus states ease instead of snapping. The grid uses keyed FLIP:

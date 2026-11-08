@@ -12,9 +12,10 @@ Only the reactive, component and DOM packages are bundled; the themed UI
 package is not used. The bundle is generated with esbuild from:
 
   export { Component, RenderContext, callback, observable, view } from '@liquefy/cascade.component';
-  export { DOMElementTarget, DOMNodeComponent, div, span, b, strong, ul, li,
-           details, summary, pre, text, a, button, p, code, small, table,
-           thead, tbody, tr, td, th, flipAnimationContainer } from '@liquefy/cascade.dom';
+  export { DOMElementTarget, DOMNodeComponent, documentHead, browserLocation,
+           div, span, b, strong, ul, li, details, summary, pre, text, a, button,
+           p, code, small, table, thead, tbody, tr, td, th,
+           flipAnimationContainer } from '@liquefy/cascade.dom';
 
 Permission to use, copy, modify, and/or distribute this software for any
 purpose with or without fee is hereby granted, provided that the above

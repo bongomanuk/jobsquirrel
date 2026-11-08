@@ -43,3 +43,15 @@ def test_the_grid_and_the_drawer_are_cascade_islands():
     assert "window.CascadeIslands.grid" in app
     assert "window.CascadeIslands.drawer" in app
     assert "display: 'contents'" in module
+
+
+def test_deep_links_and_the_page_title_use_cascade_routing():
+    module = _read("tools/web/cascade-islands.js")
+    app = _read("tools/web/app.js")
+    dash = _read("tools/dashboard.py")
+    assert "browserLocation" in module
+    assert "documentHead" in module
+    assert "window.CascadeIslands.router" in module
+    assert "window.CascadeIslands.head" in module
+    assert "routeFromUrl" in app and "router.navigate(['role'" in app
+    assert '"/role"' in dash or "startswith(\"/role/\")" in dash

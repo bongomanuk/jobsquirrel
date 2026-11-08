@@ -12,11 +12,24 @@
  * for now.
  */
 import {
-  Component, RenderContext, DOMElementTarget, DOMNodeComponent, div, a, b, ul, li, details, summary,
-  text, flipAnimationContainer,
+  Component, RenderContext, DOMElementTarget, DOMNodeComponent, observable, documentHead,
+  browserLocation, div, a, b, ul, li, details, summary, text, flipAnimationContainer,
 } from './vendor/cascade.js';
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/* The page title and the URL are Cascade state too: documentHead follows an
+ * observable title, and browserLocation turns the open role into a real address
+ * (/role/<key>) with back/forward. The vanilla app calls the two small handles
+ * below; the framework does the rest. */
+const pageHead = observable({ title: 'Jobsquirrel' });
+try {
+  documentHead(() => ({ title: pageHead.title }));
+} catch (e) { /* a browser without the head helper keeps the static title */ }
+let location = null;
+try {
+  location = browserLocation({ base: '/' });
+} catch (e) { location = null; }
 
 class ActivityRoster extends Component {
   initialState() {
@@ -266,4 +279,15 @@ window.CascadeIslands.drawer = drawer || {
   open: () => {},
   tab: () => {},
 };
+window.CascadeIslands.head = {
+  set: (title) => { pageHead.title = title || 'Jobsquirrel'; },
+};
+window.CascadeIslands.router = location ? {
+  path: () => {
+    const p = location.path;
+    return Array.isArray(p) ? p.slice() : [];
+  },
+  navigate: (parts, options) => location.navigate(parts, options),
+  href: (parts) => location.href(parts),
+} : null;
 window.dispatchEvent(new Event('cascade-ready'));

@@ -5201,6 +5201,10 @@ class H(BaseHTTPRequestHandler):
                   "/vendor/cascade.js": ("vendor/cascade.js", "application/javascript; charset=utf-8"),
                   "/vendor/three.module.min.js": ("vendor/three.module.min.js",
                                                     "application/javascript; charset=utf-8")}
+        if p == "/role" or p.startswith("/role/"):
+            # A role deep link is the dashboard itself; the app opens the role
+            # from the path (Cascade browserLocation).
+            return self._file(os.path.join(WEB, "index.html"), "text/html; charset=utf-8")
         if p in static:
             return self._file(os.path.join(WEB, static[p][0]), static[p][1])
         if p == "/logs":
