@@ -199,7 +199,8 @@ same record is never duplicated across separate pages.
   **Knowledge** and **Settings**. Version, build/update status, logs and the
   About/credits live in Settings. The broad Prepare / Run Submissions actions are
   not in the header; the grid card's action bar has scoped **Prepare** and **Submit**, and
-  a `PREPARED` row's drawer has **Submit this application**.
+  a `PREPARED` row's drawer has **Submit this application**; any active row also has
+  **Prepare and submit**, which says **applies again** when the row is already applied to.
 - **Grid card:** the grid, its search/filter/view controls and its actions are one bordered
   card. The action bar sits directly above the table (not floating at the top of the page) with
   consistently sized buttons: **Export CSV**, **Grouped**, **Groups**, **Review**,
@@ -237,7 +238,7 @@ Columns: **Date · Company · Role · Level · ATS · Status · Fit · Pay · Wo
   and floats **in-flight** rows (spinner) and **QUEUED** rows (queued but not yet in the register) to the top.
 - **Application states map** folds out from the grid header (collapsed by default): a clickable
   diagram of QUEUED → DRAFTING → PREPARED → SUBMITTED → IN_PROGRESS → INTERVIEW → OFFER, with
-  BLOCKED/MANUAL branches, a NO RESULT node and REJECTED/CLOSED terminals. Each node shows its live
+  BLOCKED/MANUAL branches and REJECTED/CLOSED terminals. Each node shows its live
   count and a one-line annotation; clicking a node clears the search and the other filters, then
   expands its sub-states as a flat list and filters the grid to that status, so the count on the node
   is exactly the number of rows it shows. Clicking a sub-state filters further. **SCAMS** and
@@ -288,8 +289,9 @@ Columns: **Date · Company · Role · Level · ATS · Status · Fit · Pay · Wo
 Clicking a row opens a drawer with a single tab strip that never wraps:
 - **Summary**: structured sections rather than one long column. **Next action** flags, edits or
   clears a follow-up. **Status** shows the status chip, sub-state, stage chips and a compact
-  metadata grid. **Actions** has Prepare, Graph evidence, Recompute match and, when prepared,
-  Submit. **Drafted replies** is a collapsible section. **Role settings** groups status, type,
+  metadata grid. **Actions** has Re-prepare documents, Graph evidence, Recompute match, **Submit this
+  application** when prepared, and **Prepare and submit** for any active role (labelled
+  **applies again** when the row is already applied to). **Drafted replies** is a collapsible section. **Role settings** groups status, type,
   work model and pay override behind one **Save changes**. **Match** shows alignment, coverage,
   missing skills and keyword tools. **History and notes** is a collapsible section with past
   updates and the editable notes.
@@ -438,14 +440,14 @@ follow-up flag and exposes it on every grid row:
 The grid shows the sub-state under the status chip; **Filters → any sub-state** filters on
 `status:substate`; the Application states panel expands each node into a clickable sub-state tree. The
 `Needs you` bucket treats `assessment`, `stale`, `captcha`, `login`, `email`, `lead`, `verify`
-and `info` as waiting on the candidate, alongside flagged actions, invites and offers.
+and `info` as waiting on the candidate, alongside flagged actions, invites and offers. The full
+lifecycle and the allowed transitions are in [Application states](STATE-MODEL.md).
 
 | Status | Sub-states |
 |---|---|
 | `QUEUED` | queued |
 | `DRAFTING` | drafting |
 | `PREPARED` | needs review · ready to submit |
-| `NO RESULT` | no result |
 | `SUBMITTED` | acknowledged · awaiting reply · assessment to take · assessment overdue · follow up |
 | `IN_PROGRESS` | assessment · interviewing · background check · processing |
 | `INTERVIEW` | invited: reply · scheduled · interview today · replied: awaiting a reply · next round · final round · interviewed: awaiting outcome · interviewed: follow up |

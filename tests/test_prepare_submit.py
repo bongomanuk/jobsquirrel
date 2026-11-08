@@ -36,3 +36,5 @@ def test_the_context_menu_offers_prepare_and_submit():
     assert "prepareSubmit: async" in app
     assert "Prepare and submit (${activeRows.length})" in app
     assert "label: 'Prepare and submit'" in app
+    assert "App.prepareSubmit([${JSON.stringify(r.key)}])" in app
+    assert "Prepare and submit (applies again)" in app

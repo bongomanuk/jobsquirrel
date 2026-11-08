@@ -3014,10 +3014,11 @@ function summary(r) {
     `<section class="dsec">
       <div class="dsec-h"><b>Actions</b></div>
       <div class="dsec-b"><div class="dbtnrow">
-        <button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>${ic('bolt')} Prepare this role</button>
+        <button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>${ic('bolt')} ${r.stages && r.stages.documents ? 'Re-prepare documents' : 'Prepare this role'}</button>
         <button data-act onclick='App.roleEvidence(${JSON.stringify(r.key)})'>${ic('sparkle')} Graph evidence</button>
         <button data-act onclick='App.matchThis(${JSON.stringify(r.key)}, this)'>${ic('refresh')} Recompute match</button>
         ${r.status === 'PREPARED' ? `<button class="risky" data-act onclick='App.submitThis(${JSON.stringify(r.key)})' title="Submit this application now with the documents already prepared. Sends it and needs approval.">${ic('send')} Submit this application</button>` : ''}
+        ${!['CLOSED', 'REJECTED'].includes(r.status) && !r.running ? `<button class="risky" data-act onclick='App.prepareSubmit([${JSON.stringify(r.key)}])' title="${r.applied ? 'Generate documents, run the gates and send again through the employer site. Some ATSs refuse a second application. Needs approval.' : 'Generate documents, run the gates and send through the employer site. Needs approval.'}">${ic('send')} ${r.applied ? 'Prepare and submit (applies again)' : 'Prepare and submit'}</button>` : ''}
       </div></div>
     </section>` +
     `<details class="dsec">

@@ -123,7 +123,8 @@ Everything is observable. Useful things to ask for, or run yourself:
   - The header has three destinations: **Applications**, **Knowledge** and **Settings**. The
     page-level actions live in the grid card's action bar: **Prepare** (REVIEW=1, no submits),
     **Submit** and **Review**. Prepare, Submit, Match and Export CSV each show a confirmation
-    dialog with the scope and effect before they run. A `PREPARED` row's drawer has **Submit this application**.
+    dialog with the scope and effect before they run. A `PREPARED` row's drawer has **Submit this application**, and any active row has
+    **Prepare and submit** (labelled **applies again** when it has already been applied to).
     Submitting uses the documents already generated, with no re-generation, and needs a two-step
     confirmation (`APPROVE_RUN_QUEUE`). Every action needs the per-session token (anti-CSRF) and
     the UI binds to `127.0.0.1` only; the chat agent inherits the same approval gates: it cannot
@@ -185,7 +186,7 @@ should I do next?”.
   edge folds the state map out and back. There is no separate metric bar, title bar or card around
   the grid.
 - **Level** is the seniority grade the pipeline reads from the title (Intern up to C-level). Click the **Level** header to sort by it, or pick a grade under **Filters → any level**. It works independently of the bucket chips, and the **Pay** header sorts by salary just as independently.
-- **Needs you** is the first working bucket. It includes BLOCKED and NO RESULT rows (a gate refusal or an empty run is work for you), plus the sub-states that genuinely wait on you: assessments, follow-ups,
+- **Needs you** is the first working bucket. It includes BLOCKED rows (a gate refusal or a wall is work for you), plus the sub-states that genuinely wait on you: assessments, follow-ups,
   CAPTCHA/2FA and other human walls, plus invites and offers.
 - **Shelved** takes a role out of the process: it disappears from the status and
   bucket views (and the queue runner skips it) while its register status, notes,
@@ -201,7 +202,6 @@ should I do next?”.
 | `QUEUED` | queued | In the apply queue; nothing sent yet. |
 | `DRAFTING` | drafting | Ad/keywords saved; documents still being built. |
 | `PREPARED` | needs review · ready to submit | Documents gated; review/send, or submit when ready. |
-| `NO RESULT` | no result | A run finished without an ad, documents or a submission. |
 | `SUBMITTED` | acknowledged · awaiting reply · assessment to take · assessment overdue · follow up | Sent; waiting, a test to take (or its deadline has passed), or time to chase. |
 | `IN_PROGRESS` | assessment · interviewing · background check · processing | The employer is processing the application. |
 | `INTERVIEW` | invited: reply · scheduled · interview today · replied: awaiting a reply · next round · final round · interviewed: awaiting outcome · interviewed: follow up | The interview stage, from arranging to awaiting the result. |
