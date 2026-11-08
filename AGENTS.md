@@ -70,7 +70,10 @@ reports a clean config.
    rules in `config/profile.md` (location/work-model, languages, stack). If
    unclear or excluded, record `CLOSED`/`BLOCKED` with the reason and stop.
 4. **Email is draft-first and human-sent.** Save a reply with `tools/draft_email.py`;
-   the human reviews it in the role drawer and presses **Send with approval**. That
+   the human reviews it in the role drawer and presses **Send with approval**.
+   Never volunteer salary, rate, pay or benefits in an email, and never negotiate
+   pay in one. If the recruiter asked directly, do not invent a number: leave a
+   `[rate to confirm]` placeholder and tell the human. That
    opens the exact email (To/Cc/Subject/body) in an editable dialog: the human can
    amend it before approving, or save changes without sending. Never
    call `gmail_send.py` to send a new email, never send `--to/--body` directly, and
@@ -454,5 +457,6 @@ Stop and ask (or record `MANUAL`/`BLOCKED`) when:
   than a day are gzipped at the start of a run, a finished role's transcript is
   packed immediately, and a packed artifact reads exactly like a plain one.
 - See `BOOTSTRAP.md` (first-run interview), `docs/ACCOUNT-SETUP.md` (Gmail,
-  Calendar, LinkedIn, browser, credentials), `docs/WORKFLOW.md`,
+  Calendar, LinkedIn, browser, credentials), `docs/STATE-MODEL.md` (the
+  application states and allowed transitions), `docs/WORKFLOW.md`,
   `docs/ATS-RECIPES.md`, `docs/ELIGIBILITY.md`, `docs/KNOWLEDGE-BASE.md`.
