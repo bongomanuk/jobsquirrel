@@ -58,3 +58,15 @@ def test_the_menu_hides_prepare_and_submit_without_a_url():
         app = fh.read()
     assert "submitRows = activeRows.filter(x => !!x.url)" in app
     assert "active && r.url" in app
+
+
+def test_resolve_roles_falls_back_to_the_register_apply_url(monkeypatch):
+    monkeypatch.setattr(D, "_queue_rows", lambda path: [])
+    monkeypatch.setattr(D, "_rows", lambda path: [{
+        "company": "Acme", "role": "Software Engineer",
+        "apply_url": "https://example.test/apply",
+    }])
+    monkeypatch.setattr(D, "_key_maps", lambda: ({("acme", "software engineer"): "acme-key"}, {}))
+    monkeypatch.setattr(D, "_queue_fields", lambda co, role: ("", "", "", ""))
+    rows = D._resolve_roles(["acme-key"])
+    assert rows[0]["url"] == "https://example.test/apply"

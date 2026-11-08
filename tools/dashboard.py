@@ -2112,7 +2112,9 @@ def grid():
                     "notes": notes, "letter": r.get("letter", ""), "action": (r.get("action") or "").strip(),
                     "scam": _worst_scam(scam_check.load(jd_key), scam_check.load(key),
                                         email_scams.get(ck)),
-                    "url": qrow.get(ck, {}).get("url", "") or subm_url.get(ck, ""),
+                    "url": (qrow.get(ck, {}).get("url", "")
+                            or subm_url.get(ck, "")
+                            or r.get("apply_url", "")),
                     "stages": stages_for(key, ck in subm, jd_key=jd_key,
                                          ats_key=ats_key, content_key=content_key),
                     "pinned": bool((flags.get(key) or {}).get("pinned")),
@@ -4327,6 +4329,10 @@ def _resolve_roles(keys):
             k = km.get((co.lower(), role.lower())) or _slug(f"{co}-{role}")
             if k in (want - found) and k not in found:
                 url, cv, ats, _ = _queue_fields(co, role)
+                # A register row can carry the apply URL even when no queue row
+                # does. Without this fallback a prepared role with no queue entry
+                # looked as if it had no URL, so the submit action disappeared.
+                url = url or r.get("apply_url", "")
                 rows.append({"company": co, "role": role, "url": url, "cv": cv, "ats": ats, "key": k})
                 found.add(k)
     return rows
