@@ -101,7 +101,7 @@ class ActivityRoster extends Component {
           { className: 'act-list' },
           ...v.done.map((x) => li(
             { key: `${x.label}|${x.status || ''}|${String(x.reason || '').slice(0, 40)}` },
-            b(text(`${x.label} · ${x.status || 'NO RESULT'}`)),
+            b(text(`${x.label} · ${x.status || 'NO OUTCOME'}`)),
             text(x.reason ? `: ${String(x.reason).slice(0, 240)}` : ''),
           )),
         ),

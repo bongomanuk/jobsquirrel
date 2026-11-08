@@ -9,7 +9,6 @@ const icIcon = (n) => ic(n);
 const STATUS_HELP = {
   QUEUED: 'In the apply queue: nothing done yet; applied when you run the queue',
   DRAFTING: 'In progress: the ad/keywords are saved but no finished documents yet',
-  'NO RESULT': 'A run finished but produced nothing (no ad, no documents, no application): re-prepare it, or remove it',
   SUBMITTED: 'Application sent: awaiting a reply',
   IN_PROGRESS: 'Application in progress (multi-step form being completed)',
   INTERVIEW: 'Interview held: awaiting the outcome',
@@ -75,7 +74,6 @@ const SUBSTATE_ORDER = {
   QUEUED: ['queued'],
   DRAFTING: ['drafting'],
   PREPARED: ['review', 'ready'],
-  'NO RESULT': ['no-result'],
   SUBMITTED: ['assessment-overdue', 'assessment', 'stale', 'acknowledged', 'awaiting'],
   IN_PROGRESS: ['assessment-overdue', 'assessment', 'interviewing', 'background', 'processing'],
   INTERVIEW: ['invited', 'today', 'scheduled', 'replied', 'held-followup', 'held', 'next', 'final'],
@@ -95,7 +93,7 @@ function bucketOf(r) {
   if (r.shelved) return 'shelved';               // a parked role is out of every other bucket
   if (r.scam && ['high', 'medium'].includes(r.scam.level)) return 'scams';
   if (s === 'CLOSED' || s === 'REJECTED') return 'done';
-  if (s === 'BLOCKED' || s === 'NO RESULT') return 'needs';
+  if (s === 'BLOCKED') return 'needs';
   if (r.action || NEEDS_STATUS.has(s) || r.substate === 'invited' || r.queue === 'human' ||
       NEEDS_SUBSTATES.has(r.substate)) return 'needs';
   if (['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW'].includes(s)) return 'ongoing';
@@ -1633,7 +1631,6 @@ const SG_MAIN = [
 const SG_SIDE = [
   { s: 'SCAMS', x: 20, note: 'verify the employer' },
   { s: 'SHELVED', x: 195, note: 'parked, status kept' },
-  { s: 'NO RESULT', x: 370, note: 'run produced nothing' },
   { s: 'BLOCKED', x: 545, note: 'wall: captcha / login' },
   { s: 'MANUAL', x: 720, note: 'needs you' },
   { s: 'REJECTED', x: 895, note: 'not selected' },
@@ -1886,7 +1883,7 @@ function renderSubstateFilter() {
   SUBSTATE_SIG = sig;
   const cur = sel.value;
   const order = ['QUEUED', 'DRAFTING', 'PREPARED', 'SUBMITTED', 'IN_PROGRESS', 'INTERVIEW',
-                 'OFFER', 'NO RESULT', 'BLOCKED', 'MANUAL', 'REJECTED', 'CLOSED'];
+                 'OFFER', 'BLOCKED', 'MANUAL', 'REJECTED', 'CLOSED'];
   let html = '<option value="">any sub-state</option>';
   order.forEach(st => {
     const items = Object.values(by).filter(x => x.status === st)
@@ -4131,7 +4128,7 @@ function runRoster(a, names) {
       const g = (typeof GRID !== 'undefined' ? GRID : []).find(row => normLab(row.company + ' | ' + row.role) === id);
       const wasRunning = x.state === 'running';
       x.state = 'done';
-      x.status = g ? (g.status || 'NO RESULT') : (wasRunning ? 'NO RESULT' : (x.status || 'NO RESULT'));
+      x.status = g ? (g.status || 'NO OUTCOME') : (wasRunning ? 'NO OUTCOME' : (x.status || 'NO OUTCOME'));
       if (g && !x.reason) x.reason = g.hint || '';
     });
   }
@@ -4164,7 +4161,7 @@ function rosterHTML(roster) {
     const open = roster.done.length <= 12 ? ' open' : '';
     h += `<details class="act-raw"${open}><summary>Outcomes · ${roster.done.length} role${roster.done.length === 1 ? '' : 's'}</summary>` +
       '<ul class="act-list">' + roster.done.map(x =>
-        `<li><b>${esc(x.label)}</b> · ${esc(x.status || 'NO RESULT')}` +
+        `<li><b>${esc(x.label)}</b> · ${esc(x.status || 'NO OUTCOME')}` +
         (x.reason ? `: ${esc(x.reason.slice(0, 240))}` : '') + '</li>').join('') +
       '</ul></details>';
   }

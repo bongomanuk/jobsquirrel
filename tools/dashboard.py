@@ -1619,7 +1619,6 @@ def _hint(status, notes):
         "QUEUED": "in the apply queue — nothing done yet; applied when you run the queue",
         "DRAFTING": "in progress — ad/keywords saved, but no finished documents yet",
         "PREPARED": "documents generated and gated — ready to apply",
-        "NO RESULT": "a run finished but produced nothing (no ad, no documents, no application) — re-prepare it, or remove it",
         "SUBMITTED": "applied — waiting for a reply",
         "IN_PROGRESS": "application in progress",
         "INTERVIEW": "interview held — awaiting the outcome",
@@ -1830,8 +1829,6 @@ def _substate(status, notes="", action="", label=""):
         if has("review", "send the drafted", "draft ready", "approve", "email draft", "awaiting human"):
             return ("review", "needs review", "Documents are ready but you need to review and send them.")
         return ("ready", "ready to submit", "Documents are gated; submit when you are ready.")
-    if st == "NO RESULT":
-        return ("no-result", "no result", "A run finished without an ad, documents or a submission; re-prepare or remove it.")
     if st == "BLOCKED":
         if has("gate", "pre-submit", "canonical", "echoes", "verbatim", "alignment"):
             return ("gate", "gate failure",
@@ -2135,12 +2132,16 @@ def grid():
         stamp = _mtime(jd) or _mtime(os.path.join(STATE, "queue.tsv"))
         qdate = time.strftime("%Y-%m-%d", time.localtime(stamp)) if stamp else ""
         st = stages_for(key, ck in subm)
-        finished = f"{co}|{role}" in done
+        finished = (f"{co}|{role}" in done
+                    or bool(r.get("key") and r["key"] in done))
         if st["applied"]:
             stg = "SUBMITTED"
         elif finished:
-            # Finished work must not look PREPARED just because artifacts remain.
-            stg = "NO RESULT"
+            # A finished queue row with no register row is a queue leftover, not
+            # an application. It has no state of its own: skip it here and keep
+            # it in state/queue-leftovers.md. Inventing NO RESULT for it made a
+            # phantom application that nobody could explain.
+            continue
         elif st["documents"]:
             stg = "PREPARED"
         elif st["ad"] or st["keywords"] or st["grounding"]:
@@ -4416,13 +4417,10 @@ def submit_roles(keys, approval_token=""):
         return {"error": "refused: submitting applications is irreversible; confirm to send APPROVE_RUN_QUEUE"}
     approval._record(f"submit {len(rows)} prepared role(s) via dashboard", "ui-token:APPROVE_RUN_QUEUE")
     tmp, tmp_done = _queue_only_roles(rows)
-    try:
-        import register as REG
-        for r in rows:
-            REG.set_row(r["company"], r["role"], status="QUEUED",
-                        note="submitting prepared documents via dashboard")
-    except Exception:
-        pass
+    # The row stays PREPARED while the submission runs: the grid already shows a
+    # spinner for the running task. Resetting it to QUEUED made a prepared role
+    # look as if it were waiting to be applied to, and a crash could strand it
+    # there. The outcome sets SUBMITTED/BLOCKED/CLOSED directly.
     _spawn(f"submit {len(rows)} prepared role(s)",
            ["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
            {"PARALLEL": "1", "QUEUE": tmp, "DONE": tmp_done, "PREPARED": "1"},
