@@ -3654,6 +3654,28 @@ function catchUp() {
 window.addEventListener('focus', catchUp);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) catchUp(); });
 
+// A native details toggle snaps its height. Animate the opening (the content
+// cascade in CSS handles the rest), never the live task panes, and respect the
+// reduced-motion preference.
+document.addEventListener('click', (ev) => {
+  const sum = ev.target.closest && ev.target.closest('summary');
+  if (!sum) return;
+  const d = sum.parentElement;
+  if (!d || d.tagName !== 'DETAILS') return;
+  if (d.closest('#liveterm, #tasklog')) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const start = d.getBoundingClientRect().height;
+  requestAnimationFrame(() => {
+    if (!d.open) return;
+    const end = d.getBoundingClientRect().height;
+    if (!(end > start + 2)) return;
+    try {
+      d.animate([{ height: start + 'px', overflow: 'hidden' }, { height: end + 'px', overflow: 'hidden' }],
+        { duration: 180, easing: 'cubic-bezier(.2,.7,.3,1)' });
+    } catch (e) { /* the browser may not animate height on this element */ }
+  });
+});
+
 function initPanels() {
   // migrate pre-v6 keys so upgrading doesn't reset the panel layout
   if (localStorage.getItem('agent.open') === null && localStorage.getItem('dock.open') !== null)

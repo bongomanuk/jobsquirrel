@@ -282,7 +282,7 @@ body[data-act="closed"] #tasklog{display:none}
 .c-tools>summary{cursor:pointer;padding:5px 9px;color:var(--muted);font-size:12px;list-style:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .c-tools>summary::-webkit-details-marker{display:none}
 .c-tools>summary::before{content:'▸ ';color:var(--accent)}
-.c-tools[open]>summary::before{content:'▾ '}
+.c-tools[open]>summary::before{content:'▸ '}
 .c-tools .c-tool{margin:0;border:0;border-top:1px solid var(--line);border-radius:0}
 .c-code{margin:6px 0;border:1px solid var(--line);border-radius:6px;background:#090b10}
 .c-code>summary{cursor:pointer;padding:4px 9px;color:var(--muted);font-size:12px}
@@ -322,7 +322,7 @@ body[data-act="closed"] #tasklog{display:none}
   background:none;font:600 12.5px var(--sans);color:var(--muted);min-height:28px;display:flex;align-items:center;gap:5px}
 .filters>summary::-webkit-details-marker{display:none}
 .filters>summary::before{content:'▸';color:var(--accent)}
-.filters[open]>summary::before{content:'▾'}
+.filters[open]>summary::before{content:'▸'}
 .filters[open]>summary{background:var(--surface2);color:var(--fg)}
 .filterbox{position:absolute;z-index:12;top:calc(100% + 5px);left:0;background:var(--surface);border:1px solid var(--line);
   border-radius:9px;padding:8px;display:flex;gap:6px;flex-wrap:wrap;width:min(720px,92vw);box-shadow:0 14px 34px rgba(0,0,0,.5)}
@@ -407,7 +407,7 @@ tr.grp .grp-n .countlink:hover{color:var(--accent)}
 .dsec > summary{display:flex;align-items:baseline;gap:8px;cursor:pointer;list-style:none}
 .dsec > summary::-webkit-details-marker{display:none}
 .dsec > summary::before{content:'▸';color:var(--accent);font-size:10px}
-.dsec[open] > summary::before{content:'▾'}
+.dsec[open] > summary::before{content:'▸'}
 .dsec[open] > summary{margin-bottom:8px}
 .dsec > summary b{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--accent)}
 .daction{padding:2px 0 2px 10px;border-left:2px solid var(--accent);background:none;border-radius:0;font-size:13px;line-height:1.45}
@@ -1106,3 +1106,85 @@ html[data-theme="light"] .sg-subnode.on .sg-subtext{fill:#8a6a2f}
 html[data-theme="light"] .rawlog{background:#f6f7f9;color:#28303b;border-color:var(--line)}
 html[data-theme="light"] .act-raw pre{background:#f6f7f9;color:#28303b}
 .act-actions{display:flex;gap:6px;margin:0 0 8px}
+
+/* ---- motion: expansion, cascades and short state transitions ---------------
+   One motion language for the whole UI: fast, small distances, no bounce.
+   Detail sections and menu items arrive in a short cascade; panels, menus and
+   dialogs fade in; hover and focus states ease instead of snapping. Everything
+   is disabled under prefers-reduced-motion. */
+:root{
+  --ease:cubic-bezier(.2,.7,.3,1);
+  --dur-fast:120ms; --dur:180ms;
+}
+@keyframes fq-fade{from{opacity:0}to{opacity:1}}
+@keyframes fq-pop{from{opacity:0;transform:translateY(6px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes fq-menu{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+@keyframes fq-cascade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+
+/* native <details> expansion, where the browser supports animating the content */
+@supports selector(::details-content){
+  :root{interpolate-size:allow-keywords}
+  details::details-content{
+    block-size:0; overflow:clip;
+    transition:block-size var(--dur) var(--ease), content-visibility var(--dur);
+    transition-behavior:allow-discrete;
+  }
+  details[open]::details-content{block-size:auto}
+}
+
+/* one marker, rotating; the opened content arrives as a short cascade */
+details>summary::before{display:inline-block;transition:transform var(--dur-fast) var(--ease)}
+details[open]>summary::before{transform:rotate(90deg)}
+details[open]>:not(summary){animation-name:fq-cascade;animation-duration:var(--dur);animation-timing-function:var(--ease);animation-fill-mode:both}
+details[open]>:not(summary):nth-child(3){animation-delay:20ms}
+details[open]>:not(summary):nth-child(4){animation-delay:40ms}
+details[open]>:not(summary):nth-child(5){animation-delay:60ms}
+details[open]>:not(summary):nth-child(n+6){animation-delay:80ms}
+/* the live panes rebuild every couple of seconds: never replay motion there */
+#liveterm details[open]>:not(summary),#tasklog details[open]>:not(summary),
+#liveterm .act-list li{animation:none}
+.act-raw>summary::before,.tasklog-raw>summary::before{content:'▸';color:var(--accent);margin-right:5px;font-size:10px}
+
+/* dialogs, menus, panels */
+.modal:not(.hide){animation-name:fq-fade;animation-duration:var(--dur-fast);animation-timing-function:var(--ease);animation-fill-mode:both}
+.modal:not(.hide) .modal-box{animation-name:fq-pop;animation-duration:var(--dur);animation-timing-function:var(--ease);animation-fill-mode:both}
+.ctxmenu{animation-name:fq-menu;animation-duration:var(--dur-fast);animation-timing-function:var(--ease);animation-fill-mode:both}
+.ctxmenu>.ctx-item{animation-name:fq-cascade;animation-duration:var(--dur-fast);animation-timing-function:var(--ease);animation-fill-mode:both}
+.ctxmenu>.ctx-item:nth-child(2){animation-delay:8ms}
+.ctxmenu>.ctx-item:nth-child(3){animation-delay:16ms}
+.ctxmenu>.ctx-item:nth-child(4){animation-delay:24ms}
+.ctxmenu>.ctx-item:nth-child(5){animation-delay:32ms}
+.ctxmenu>.ctx-item:nth-child(6){animation-delay:40ms}
+.ctxmenu>.ctx-item:nth-child(7){animation-delay:48ms}
+.ctxmenu>.ctx-item:nth-child(8){animation-delay:56ms}
+.ctxmenu>.ctx-item:nth-child(n+9){animation-delay:60ms}
+.panel:not([hidden]){animation-name:fq-fade;animation-duration:var(--dur-fast);animation-timing-function:var(--ease);animation-fill-mode:both}
+#knowledge:not(.hide){animation-name:fq-fade;animation-duration:var(--dur);animation-timing-function:var(--ease);animation-fill-mode:both}
+
+/* the role drawer opens as a cascade of sections */
+#d-body details.dsec{animation-name:fq-cascade;animation-duration:var(--dur);animation-timing-function:var(--ease);animation-fill-mode:both}
+#d-body details.dsec:nth-of-type(1){animation-delay:0ms}
+#d-body details.dsec:nth-of-type(2){animation-delay:18ms}
+#d-body details.dsec:nth-of-type(3){animation-delay:36ms}
+#d-body details.dsec:nth-of-type(4){animation-delay:54ms}
+#d-body details.dsec:nth-of-type(5){animation-delay:72ms}
+#d-body details.dsec:nth-of-type(6){animation-delay:90ms}
+#d-body details.dsec:nth-of-type(n+7){animation-delay:108ms}
+#set-body>*{animation-name:fq-cascade;animation-duration:var(--dur);animation-timing-function:var(--ease);animation-fill-mode:both}
+#set-body>*:nth-child(2){animation-delay:25ms}
+#set-body>*:nth-child(3){animation-delay:50ms}
+#set-body>*:nth-child(4){animation-delay:75ms}
+#set-body>*:nth-child(n+5){animation-delay:90ms}
+
+/* small state changes ease instead of snapping */
+.tabs2 a{transition:color var(--dur-fast),border-color var(--dur-fast)}
+#grid tbody tr.click td{transition:background-color var(--dur-fast) var(--ease)}
+.grid-toolbar button,.grid-toolbar .filters>summary{transition:background var(--dur-fast),color var(--dur-fast),border-color var(--dur-fast)}
+.sg-rect{transition:stroke var(--dur-fast) var(--ease),fill var(--dur-fast) var(--ease),stroke-width var(--dur-fast)}
+.sg-subrect{transition:stroke var(--dur-fast),fill var(--dur-fast)}
+summary{transition:color var(--dur-fast)}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-delay:0ms!important;
+    transition-duration:.001ms!important;scroll-behavior:auto!important}
+}
