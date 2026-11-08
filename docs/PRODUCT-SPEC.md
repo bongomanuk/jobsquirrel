@@ -519,9 +519,12 @@ interface contract.
   Activity, and the Agent tab opens the chat.
 - **Motion.** Expanding any section animates its height and fades its content in as a short cascade.
   The role drawer opens as a cascade of detail sections, context menus and dialogs fade in, docked
-  panels fade in, and hover and focus states ease instead of snapping. The timing is 120-180 ms with
-  one easing curve. Everything is disabled under `prefers-reduced-motion`, and the surfaces that
-  poll (Activity, the task log, the chat transcript) never replay motion on each update. Chat replies render as Markdown with runs of tool calls
+  panels fade in, and hover and focus states ease instead of snapping. The grid uses keyed FLIP:
+  rows glide to their new place when you sort, filter or collapse a group, and new rows arrive in a
+  short cascade; panels glide when they are docked or the layout around them changes. The timing is
+  120-260 ms with one easing curve. Everything is disabled under `prefers-reduced-motion`, and the
+  surfaces that poll (Activity, the task log, the chat transcript) never replay motion on each
+  update. Chat replies render as Markdown with runs of tool calls
   grouped into a single collapsed step block (and multi-line code fences collapsed), so only the
   assistant's prose stays in the body; a token/cost footer closes the turn. Driven by the agent's
   structured event stream (opencode `--format json`, Claude Code `stream-json`) with a

@@ -1806,6 +1806,53 @@ function clearFilterInputs() {
   const f = document.getElementById('filters'); if (f) f.open = false;
 }
 
+const prefersReduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* FLIP for the grid: remember where each keyed row is drawn, then after a
+   re-render animate the rows that moved and cascade in the ones that arrived.
+   Sorting, filtering and collapsing a group glide instead of jumping. */
+let ROW_RECTS = null;
+function captureRows() {
+  ROW_RECTS = null;
+  if (prefersReduced() || document.hidden) return;
+  const sc = document.querySelector('#gridpanel .scroll');
+  const prev = new Map();
+  document.querySelectorAll('#rows tr[data-key]').forEach(tr => {
+    const r = tr.getBoundingClientRect();
+    // Only rows near the viewport can visibly move; measuring a thousand
+    // off-screen rows on every render is wasted layout work.
+    if (r.bottom < -200 || r.top > innerHeight + 200) return;
+    prev.set(tr.dataset.key, r);
+  });
+  prev.scroll = sc ? sc.scrollTop : 0;
+  ROW_RECTS = prev;
+}
+function animateRows() {
+  const prev = ROW_RECTS; ROW_RECTS = null;
+  if (!prev || !prev.size || prefersReduced()) return;
+  const sc = document.querySelector('#gridpanel .scroll');
+  const dyScroll = (prev.scroll || 0) - (sc ? sc.scrollTop : 0);
+  let fresh = 0;
+  document.querySelectorAll('#rows tr[data-key]').forEach(tr => {
+    const old = prev.get(tr.dataset.key);
+    const now = tr.getBoundingClientRect();
+    if (old) {
+      const dx = old.left - now.left, dy = old.top - now.top + dyScroll;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+      try {
+        tr.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
+          { duration: 240, easing: 'cubic-bezier(.2,.8,.2,1)' });
+      } catch (e) { /* ignore */ }
+    } else {
+      // Only when the grid already had rows: the first paint does not cascade.
+      const delay = Math.min(fresh++, 9) * 18;
+      try {
+        tr.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 170, delay, easing: 'ease-out', fill: 'backwards' });
+      } catch (e) { /* ignore */ }
+    }
+  });
+}
+
 function renderRows() {
   const q = $('#q').value.toLowerCase(), st = $('#fstatus').value, qq = $('#fqueue').value;
   const ft = $('#ftype') ? $('#ftype').value : '';
@@ -1952,7 +1999,9 @@ function renderRows() {
   let dropped = false;
   [...SEL].forEach(id => { if (!liveIds.has(id)) { SEL.delete(id); dropped = true; } });
   if (dropped && !liveIds.has(SEL_ANCHOR)) SEL_ANCHOR = '';
+  captureRows();
   $('#rows').innerHTML = html;
+  animateRows();
   paintSel();
   if (window.applyGridCols) window.applyGridCols();
   sortIndicators();
@@ -3462,6 +3511,13 @@ function applyEdgeSizes() {
 }
 function layoutPanels() {
   if (PANELS.grid) PANELS.grid.open = true;         // the grid is never closable
+  const before = new Map();
+  if (!prefersReduced()) {
+    for (const k in PANELS) {
+      const el = panelOf(k);
+      if (el && !el.hidden) before.set(k, el.getBoundingClientRect());
+    }
+  }
   for (const k in PANELS) {
     const el = panelOf(k), p = PANELS[k];
     if (!el) continue;
@@ -3479,6 +3535,23 @@ function layoutPanels() {
   });
   document.body.dataset.act = PANELS.activity.open ? 'open' : 'closed';
   applyEdgeSizes();
+  // Panels that moved or resized because another panel was docked glide to
+  // their new place. A panel that is appearing has no old rect and fades in.
+  if (!prefersReduced()) {
+    for (const k in PANELS) {
+      const el = panelOf(k);
+      if (!el || el.hidden) continue;
+      const old = before.get(k);
+      if (!old || !old.width) continue;
+      const now = el.getBoundingClientRect();
+      const dx = old.left - now.left, dy = old.top - now.top;
+      if (Math.abs(dx) < 2 && Math.abs(dy) < 2) continue;
+      try {
+        el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
+          { duration: 260, easing: 'cubic-bezier(.2,.8,.2,1)' });
+      } catch (e) { /* ignore */ }
+    }
+  }
   // pullout tabs, one per closed panel, offset along the edge when several
   // panels are closed on the same side
   const openEdges = {};
