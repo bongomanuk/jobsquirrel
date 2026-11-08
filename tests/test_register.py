@@ -2,6 +2,8 @@ import os
 import subprocess
 import sys
 
+import pytest
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -66,3 +68,15 @@ def test_an_unrelated_outbound_keeps_an_unrelated_flag(tmp_path, monkeypatch):
     R.upsert("Acme", "Eng", "MANUAL", notes="invited", action="book a time for Friday")
     R.log_outbound("Acme", "Eng", "news@acme.com", "Company newsletter", "mid-2")
     assert _row(R)["action"] == "book a time for Friday"
+
+
+def test_a_live_application_cannot_be_downgraded_to_prepared(tmp_path, monkeypatch):
+    R = _temp_register(tmp_path, monkeypatch)
+    monkeypatch.setattr(R, "_jd_guard", lambda *a, **k: None)
+    monkeypatch.setattr(R, "_submitted_guard", lambda *a, **k: None)
+    R.upsert("Acme", "Eng", "SUBMITTED", notes="applied")
+    with pytest.raises(ValueError, match="refusing to downgrade a live SUBMITTED"):
+        R.upsert("Acme", "Eng", "PREPARED", notes="review")
+    R.upsert("Acme", "Eng", "PREPARED", notes="repost: earlier SUBMITTED", repost=True)
+    assert _row(R)["status"] == "PREPARED"
+    assert "earlier SUBMITTED" in _row(R)["notes"]

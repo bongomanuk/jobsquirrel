@@ -261,9 +261,32 @@ def _submitted_guard(company, role, status, note=""):
         "recorded' for a pre-ledger row)")
 
 
+LIVE_APPLICATION_STATUSES = {"SUBMITTED", "IN_PROGRESS", "INTERVIEW", "OFFER"}
+
+
+def _prepared_guard(company, role, status, repost=False):
+    """A live application is not downgraded to PREPARED without --repost.
+
+    PREPARED means "documents ready, not submitted". A row already SUBMITTED,
+    IN_PROGRESS, INTERVIEW or OFFER is a live application; replacing that with
+    PREPARED hides it. A deliberate new attempt at a repost passes --repost and
+    keeps the earlier status in the note.
+    """
+    if (status or "").upper() != "PREPARED" or repost:
+        return
+    row = find_row(company, role)
+    old = ((row or {}).get("status") or "").upper()
+    if old in LIVE_APPLICATION_STATUSES:
+        raise ValueError(
+            f"refusing to downgrade a live {old} application to PREPARED: pass "
+            "--repost for a deliberate new attempt, or leave the live status and "
+            "note the refreshed documents")
+
+
 def upsert(company, role, status, day="", ats="", letter="", notes="", employment="", action=None,
-           key="", apply_url=""):
+           key="", apply_url="", repost=False):
     """Insert or update the single row for (company, role). Returns the row."""
+    _prepared_guard(company, role, status, repost)
     _submitted_guard(company, role, status, notes)
     _jd_guard(company, role, status)
     with locked():
@@ -314,11 +337,12 @@ def delete(company, role):
         return removed
 
 
-def set_row(company, role, status="", note="", employment=None, action=None):
+def set_row(company, role, status="", note="", employment=None, action=None, repost=False):
     """Update exactly one row (company+role): status, note, type and/or follow-up flag.
 
     `action=None` leaves the flag alone; `action=""` clears it.
     """
+    _prepared_guard(company, role, status, repost)
     _submitted_guard(company, role, status, note)
     _jd_guard(company, role, status)
     with locked():
@@ -895,6 +919,9 @@ def main():
                     help="engagement type: full-time | part-time | contract | consultant | freelance | internship | temporary")
     ap.add_argument("--action", default=None,
                     help="follow-up needed (e.g. 'reply to the recruiter about the interview'); empty string clears it. A passive 'await a reply' is ignored: the status already says that")
+    ap.add_argument("--repost", action="store_true",
+                    help="a deliberate new attempt at a role that already has a live application; "
+                         "allows PREPARED and keeps the earlier status in the note")
     args = ap.parse_args()
 
     # --company/--role/--notes only mean something with --set or --delete. Without
@@ -913,7 +940,8 @@ def main():
             ap.error("--set requires --company, --role and --status")
         try:
             row = upsert(args.company, args.role, args.status.upper(), args.date, args.ats,
-                         args.letter, args.notes, args.employment, args.action)
+                         args.letter, args.notes, args.employment, args.action,
+                         repost=args.repost)
         except ValueError as exc:
             print(f"refused: {exc}", file=sys.stderr)
             sys.exit(1)

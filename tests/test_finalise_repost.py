@@ -28,6 +28,7 @@ def test_a_repost_records_prepared_and_keeps_the_earlier_status(monkeypatch):
     assert why == "PREPARED"
     cmd = called[0]
     assert "--status" in cmd and "PREPARED" in cmd
+    assert "--repost" in cmd
     note = cmd[cmd.index("--notes") + 1]
     assert "review: cv.docx" in note
     assert "earlier application still IN_PROGRESS since 2026-10-08" in note

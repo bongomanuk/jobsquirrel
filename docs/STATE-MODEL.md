@@ -60,7 +60,9 @@ sub-state (`awaiting`, `acknowledged`, `stale`, `assessment`).
 One row is kept per company and role. A repost reuses that row:
 
 - Preparation for the new attempt records `PREPARED`, even when the earlier
-  attempt is `IN_PROGRESS` or `SUBMITTED`.
+  attempt is `IN_PROGRESS` or `SUBMITTED`. The register refuses a live-to-
+  `PREPARED` write unless the review is an explicit repost (`--repost`); a plain
+  document refresh leaves the live status alone and notes the new files.
 - The note keeps the earlier status and date, for example
   `repost: earlier application still IN_PROGRESS since 2026-10-08; new documents
   prepared, not submitted`. The live recruiter thread is not lost.
@@ -77,6 +79,15 @@ to track. It is not an application state and must not appear in the state map.
 ```bash
 python3 tools/queue_leftovers.py --write        # list them in state/queue-leftovers.md
 python3 tools/queue_leftovers.py --drop         # remove them from the active queue
+```
+
+The active queue should contain only work to do. A row that is already in
+`queue.done`, or whose register row is `SUBMITTED`, `IN_PROGRESS`, `INTERVIEW`,
+`OFFER`, `REJECTED`, `CLOSED`, `BLOCKED` or `MANUAL`, is not pending. Clean it
+with:
+
+```bash
+python3 tools/queue_clean.py --apply
 ```
 
 `--drop` also moves their `queue.done` entries to `state/queue-leftovers.done`,

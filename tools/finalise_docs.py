@@ -53,10 +53,13 @@ def record_prepared(company, role, cv, letter, need_letter, repost=False):
         since = row.get("date") or "unknown"
         note += (f" | repost: earlier application still {status} since {since}; "
                  f"new documents prepared, not submitted")
-    rc, out = run([sys.executable, "tools/register.py", "--set",
-                   "--company", company, "--role", role,
-                   "--status", "PREPARED",
-                   "--notes", note])
+    cmd = [sys.executable, "tools/register.py", "--set",
+           "--company", company, "--role", role,
+           "--status", "PREPARED",
+           "--notes", note]
+    if repost:
+        cmd.append("--repost")
+    rc, out = run(cmd)
     return ("ok", "PREPARED") if rc == 0 else ("fail", out.strip()[-300:])
 
 
