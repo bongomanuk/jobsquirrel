@@ -308,7 +308,10 @@ PYJSON
 
 run_task() {
   local line="$1" server="$2" company role url cv ats key log rc
-  IFS=$'\t' read -r company role url cv ats key <<<"$line"
+  # A tab is IFS whitespace, so a plain read collapses an empty URL/CV/ATS and
+  # shifts the key into the URL. Split on a non-whitespace separator so every
+  # field, including an empty one, stays in its place.
+  IFS=$'\x1f' read -r company role url cv ats key <<< "${line//$'\t'/$'\x1f'}"
   [ -z "${company:-}" ] && return 0
   case "$company" in \#*) return 0 ;; esac
   if grep -qxF "$company|$role" "$DONE" 2>/dev/null || { [ -n "${key:-}" ] && grep -qxF "$key" "$DONE" 2>/dev/null; }; then return 0; fi

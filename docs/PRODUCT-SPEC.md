@@ -290,8 +290,9 @@ Clicking a row opens a drawer with a single tab strip that never wraps:
 - **Summary**: structured sections rather than one long column. **Next action** flags, edits or
   clears a follow-up. **Status** shows the status chip, sub-state, stage chips and a compact
   metadata grid. **Actions** has Re-prepare documents, Graph evidence, Recompute match, **Submit this
-  application** when prepared, and **Prepare and submit** for any active role (labelled
-  **applies again** when the row is already applied to). **Drafted replies** is a collapsible section. **Role settings** groups status, type,
+  application** when prepared, and **Prepare and submit** for an active role with a real apply
+  URL (labelled **applies again** when the row is already applied to). A network or email-only
+  row has no URL and keeps **Re-prepare documents** and the email route. **Drafted replies** is a collapsible section. **Role settings** groups status, type,
   work model and pay override behind one **Save changes**. **Match** shows alignment, coverage,
   missing skills and keyword tools. **History and notes** is a collapsible section with past
   updates and the editable notes.

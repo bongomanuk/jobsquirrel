@@ -2333,9 +2333,10 @@ App.rowMenu = (ev, i) => {
     const isClosed = (x) => ['REJECTED', 'CLOSED'].includes(stOf(x));
     const isQueued = (x) => ['pending', 'human', 'retry'].includes(x.queue);
     const isApplied = (x) => !!x.applied || ['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER', 'REJECTED'].includes(stOf(x));
-    const preparedRows = rows.filter(x => stOf(x) === 'PREPARED' && !x.running);
+    const preparedRows = rows.filter(x => stOf(x) === 'PREPARED' && !x.running && !!x.url);
     const activeRows = rows.filter(x => !x.running && !isClosed(x));
     const canPrepare = activeRows;
+    const submitRows = activeRows.filter(x => !!x.url);
     const matchRows = rows.filter(x => x.spec || (x.stages && x.stages.documents));
     const openRows = rows.filter(x => !isClosed(x));
     const flagged = rows.filter(x => x.action);
@@ -2381,8 +2382,8 @@ App.rowMenu = (ev, i) => {
       canPrepare.length ? { icon: ic('bolt'), label: `Prepare documents (${canPrepare.length})`, hint: 'CV + letter + gates', run: () => App.prepareRoles(canPrepare.map(x => x.key)) } : null,
       preparedRows.length ? { icon: ic('send'), label: `Submit prepared (${preparedRows.length})`, hint: 'sends them', danger: true,
         run: () => App.submitRoles(preparedRows.map(x => x.key)) } : null,
-      activeRows.length ? { icon: ic('send'), label: `Prepare and submit (${activeRows.length})`, hint: 'prepare, gate, send', danger: true,
-        run: () => App.prepareSubmit(activeRows.map(x => x.key)) } : null,
+      submitRows.length ? { icon: ic('send'), label: `Prepare and submit (${submitRows.length})`, hint: 'prepare, gate, send', danger: true,
+        run: () => App.prepareSubmit(submitRows.map(x => x.key)) } : null,
       matchRows.length ? { icon: ic('refresh'), label: `Recompute match (${matchRows.length})`, run: () => App.bulkMatch(matchRows) } : null,
       { sep: true },
       { icon: ic('tag'), label: allClosed ? 'Reopen all as' : `Set status for ${n}`, sub: STATUSES.map(x => ({
@@ -2447,7 +2448,7 @@ App.rowMenu = (ev, i) => {
     prepared && !r.running
       ? { icon: ic('send'), label: 'Submit prepared', hint: 'sends it', danger: true, run: () => App.submitRoles([r.key]) }
       : null,
-    active
+    active && r.url
       ? { icon: ic('send'), label: 'Prepare and submit', hint: applied ? 'prepare, gate, send (applies again)' : 'prepare, gate, send', danger: true, run: () => App.prepareSubmit([r.key]) }
       : null,
     (r.spec || hasDocs) ? { icon: ic('refresh'), label: 'Recompute match', run: () => App.matchThis(r.key) } : null,
@@ -3017,8 +3018,8 @@ function summary(r) {
         <button data-act onclick='App.prepareThis(${JSON.stringify(r.key)})'>${ic('bolt')} ${r.stages && r.stages.documents ? 'Re-prepare documents' : 'Prepare this role'}</button>
         <button data-act onclick='App.roleEvidence(${JSON.stringify(r.key)})'>${ic('sparkle')} Graph evidence</button>
         <button data-act onclick='App.matchThis(${JSON.stringify(r.key)}, this)'>${ic('refresh')} Recompute match</button>
-        ${r.status === 'PREPARED' ? `<button class="risky" data-act onclick='App.submitThis(${JSON.stringify(r.key)})' title="Submit this application now with the documents already prepared. Sends it and needs approval.">${ic('send')} Submit this application</button>` : ''}
-        ${!['CLOSED', 'REJECTED'].includes(r.status) && !r.running ? `<button class="risky" data-act onclick='App.prepareSubmit([${JSON.stringify(r.key)}])' title="${r.applied ? 'Generate documents, run the gates and send again through the employer site. Some ATSs refuse a second application. Needs approval.' : 'Generate documents, run the gates and send through the employer site. Needs approval.'}">${ic('send')} ${r.applied ? 'Prepare and submit (applies again)' : 'Prepare and submit'}</button>` : ''}
+        ${r.status === 'PREPARED' && r.url ? `<button class="risky" data-act onclick='App.submitThis(${JSON.stringify(r.key)})' title="Submit this application now with the documents already prepared. Sends it and needs approval.">${ic('send')} Submit this application</button>` : ''}
+        ${!['CLOSED', 'REJECTED'].includes(r.status) && !r.running && r.url ? `<button class="risky" data-act onclick='App.prepareSubmit([${JSON.stringify(r.key)}])' title="${r.applied ? 'Generate documents, run the gates and send again through the employer site. Some ATSs refuse a second application. Needs approval.' : 'Generate documents, run the gates and send through the employer site. Needs approval.'}">${ic('send')} ${r.applied ? 'Prepare and submit (applies again)' : 'Prepare and submit'}</button>` : ''}
       </div></div>
     </section>` +
     `<details class="dsec">

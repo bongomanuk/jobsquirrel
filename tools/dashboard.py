@@ -4382,6 +4382,11 @@ def prepare_submit_roles(keys, approval_token=""):
     rows = _resolve_roles(keys)
     if not rows:
         return {"error": "couldn't resolve those roles to a company/role"}
+    no_url = [r for r in rows if not (r.get("url") or "").strip()]
+    if no_url:
+        names = ", ".join(f"{r['company']} / {r['role']}" for r in no_url[:3])
+        return {"error": f"no apply URL for {names}: prepare documents only, or use the email route. "
+                         f"A browser submission needs a real URL."}
     if action_alive():
         return {"error": "another run is active; wait for it to finish"}
     if WQ and WQ.runner_active():
@@ -4416,6 +4421,11 @@ def submit_roles(keys, approval_token=""):
     rows = _resolve_roles(keys)
     if not rows:
         return {"error": "couldn't resolve those roles to a company/role"}
+    no_url = [r for r in rows if not (r.get("url") or "").strip()]
+    if no_url:
+        names = ", ".join(f"{r['company']} / {r['role']}" for r in no_url[:3])
+        return {"error": f"no apply URL for {names}: this is an email-only or network row. "
+                         f"Use the drafted email, not a browser submission."}
     if action_alive():
         return {"error": "another run is active; wait for it to finish"}
     if WQ and WQ.runner_active():

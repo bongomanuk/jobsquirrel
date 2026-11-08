@@ -55,6 +55,10 @@ sub-state (`awaiting`, `acknowledged`, `stale`, `assessment`).
   into the apply path.
 - **MANUAL -> QUEUED, PREPARED or CLOSED** when the human decides what the lead
   is worth. `MANUAL` is never a silent waiting state.
+- A network or email-only row has no apply URL. It can be prepared or have a
+  draft email, but it is not submitted through a browser. **Prepare and submit**
+  is offered only when the row has a real URL; otherwise use **Prepare
+  documents** and the email route.
 
 ## Reposts and second attempts
 

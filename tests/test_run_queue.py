@@ -234,3 +234,17 @@ def test_queue_order_is_most_senior_first_by_whole_words(tmp_path):
     # Most senior first, file order within a rank: the same order prioritise_queue.py gives.
     assert calls == sorted((t for t, _ in TITLES), key=lambda t: -P.seniority(t))
     assert calls[:2] == ["VP Engineering", "Co-founder & CTO"]
+
+
+def test_an_empty_url_and_cv_do_not_shift_the_key(tmp_path):
+    rows = [("Co", "Engineer", "", "", "", "kempty")]
+    root, env = _sandbox(tmp_path, rows)
+    env["PARALLEL"] = "1"
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+                       env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    prompt = (tmp_path / "prompts" / "Co.txt").read_text()
+    assert "Apply URL: \n" in prompt
+    assert "CV to upload: \n" in prompt
+    assert "--key kempty" in prompt
+    assert "Apply URL: kempty" not in prompt
