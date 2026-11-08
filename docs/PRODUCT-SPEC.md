@@ -237,12 +237,13 @@ Columns: **Date · Company · Role · Level · ATS · Status · Fit · Pay · Wo
   and floats **in-flight** rows (spinner) and **QUEUED** rows (queued but not yet in the register) to the top.
 - **Application states map** folds out from the grid header (collapsed by default): a clickable
   diagram of QUEUED → DRAFTING → PREPARED → SUBMITTED → IN_PROGRESS → INTERVIEW → OFFER, with
-  BLOCKED/MANUAL branches and REJECTED/CLOSED terminals. Each node shows its live count and a
-  one-line annotation; clicking a node expands its sub-states as a flat list and filters the grid to
-  that status, and clicking a sub-state filters further. **SCAMS** and **SHELVED** are side nodes that
-  filter their buckets. Counts are active roles only: a shelved role is counted under **SHELVED**,
-  not under its old status, and a status tooltip says how many roles are shelved at that status. The
-  open/closed state is remembered.
+  BLOCKED/MANUAL branches, a NO RESULT node and REJECTED/CLOSED terminals. Each node shows its live
+  count and a one-line annotation; clicking a node clears the search and the other filters, then
+  expands its sub-states as a flat list and filters the grid to that status, so the count on the node
+  is exactly the number of rows it shows. Clicking a sub-state filters further. **SCAMS** and
+  **SHELVED** are side nodes that filter their buckets. Counts are active roles only: a shelved role
+  is counted under **SHELVED**, not under its old status, and a status tooltip says how many roles
+  are shelved at that status. The open/closed state is remembered.
 - **Columns:** right-click any column header to choose which columns are visible. The choice is
   saved per browser. Drag a divider to resize a column; double-click it to reset that column.
 - **Multi-select, spreadsheet style.** Click a row to open it; **Ctrl/Cmd-click** adds or removes a

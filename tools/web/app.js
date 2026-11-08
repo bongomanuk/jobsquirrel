@@ -92,8 +92,8 @@ function substateRank(st, key) {
 }
 function bucketOf(r) {
   const s = r.status, lb = r.label || s;
+  if (r.shelved) return 'shelved';               // a parked role is out of every other bucket
   if (r.scam && ['high', 'medium'].includes(r.scam.level)) return 'scams';
-  if (r.shelved) return 'shelved';
   if (s === 'CLOSED' || s === 'REJECTED') return 'done';
   if (s === 'BLOCKED' || s === 'NO RESULT') return 'needs';
   if (r.action || NEEDS_STATUS.has(s) || r.substate === 'invited' || r.queue === 'human' ||
@@ -1563,7 +1563,7 @@ function bucketCounts() {
   const c = { scams: 0, shelved: 0, needs: 0, prepared: 0, ongoing: 0, pipeline: 0, done: 0 };
   GRID.forEach(r => { const k = bucketOf(r); c[k] = (c[k] || 0) + 1; });
   const live = GRID;
-  return { ...c, focus: live.filter(r => r.focus || r.focus_unknown).length,
+  return { ...c, focus: live.filter(r => !r.shelved && (r.focus || r.focus_unknown)).length,
            active: c.scams + c.needs + c.prepared + c.ongoing + c.pipeline, all: live.length };
 }
 function renderBuckets() {
@@ -1597,6 +1597,7 @@ const SG_MAIN = [
 const SG_SIDE = [
   { s: 'SCAMS', x: 20, note: 'verify the employer' },
   { s: 'SHELVED', x: 195, note: 'parked, status kept' },
+  { s: 'NO RESULT', x: 370, note: 'run produced nothing' },
   { s: 'BLOCKED', x: 545, note: 'wall: captcha / login' },
   { s: 'MANUAL', x: 720, note: 'needs you' },
   { s: 'REJECTED', x: 895, note: 'not selected' },
@@ -1663,10 +1664,13 @@ function renderStateGraph() {
     const exp = expanded === n.s;
     const subs = subsFor(n.s);
     const caret = subs.length ? (exp ? ' ▾' : ' ▸') : '';
-    const count = n.s === 'SCAMS' ? scamCount : (n.s === 'SHELVED' ? shelvedCount : (counts[n.s] || 0));
-    const shelvedHere = n.s === 'SHELVED' ? 0 : (shelvedBy[n.s] || 0);
-    const hint = `${n.s}: ${count} active role${count === 1 ? '' : 's'}` +
-      (shelvedHere ? `, ${shelvedHere} shelved (see SHELVED)` : '') + '. Click to filter and expand.';
+    const isScam = n.s === 'SCAMS', isShelved = n.s === 'SHELVED';
+    const count = isScam ? scamCount : (isShelved ? shelvedCount : (counts[n.s] || 0));
+    const shelvedHere = isShelved ? 0 : (shelvedBy[n.s] || 0);
+    const noun = isScam ? 'flagged role' : isShelved ? 'shelved role' : 'active role';
+    const hint = `${n.s}: ${count} ${noun}${count === 1 ? '' : 's'}` +
+      (shelvedHere ? `, ${shelvedHere} shelved (see SHELVED)` : '') +
+      (isScam || isShelved ? '. Click to filter.' : '. Click to filter and expand.');
     return `<g class="sg-node sg-${n.s}${on ? ' active' : ''}${exp ? ' expanded' : ''}" data-status="${n.s}" role="button" tabindex="0" aria-label="${esc(hint)}">` +
       `<title>${esc(hint)}</title>` +
       `<rect class="sg-rect" x="${n.x}" y="${y}" width="${SG_W}" height="${h}" rx="9"/>` +
@@ -1761,6 +1765,11 @@ function renderStateGraph() {
     const g = e.target.closest('.sg-node');
     if (!g) return;
     const st = g.dataset.status;
+    // A node is a whole view: its count must be the number of rows it shows, so
+    // clear the search and every other filter first, as the bucket chips do.
+    // A leftover search, group or queue filter used to leave fewer rows than
+    // the count on the node.
+    clearFilterInputs();
     if (st === 'SCAMS') {
       BUCKET = 'scams'; BUCKET_BEFORE_SEARCH = null;
       renderBuckets(); renderRows();
@@ -1844,7 +1853,7 @@ function renderSubstateFilter() {
   const sel = $('#fsubstate'); if (!sel) return;
   const by = {};
   GRID.forEach(r => {
-    if (!r.substate) return;
+    if (r.shelved || !r.substate) return;                 // shelved roles are a separate view
     const k = r.status + ':' + r.substate;
     if (!by[k]) by[k] = { status: r.status, key: r.substate, label: r.substate_label || r.substate, n: 0 };
     by[k].n++;
@@ -1854,7 +1863,7 @@ function renderSubstateFilter() {
   SUBSTATE_SIG = sig;
   const cur = sel.value;
   const order = ['QUEUED', 'DRAFTING', 'PREPARED', 'SUBMITTED', 'IN_PROGRESS', 'INTERVIEW',
-                 'OFFER', 'BLOCKED', 'MANUAL', 'REJECTED', 'CLOSED'];
+                 'OFFER', 'NO RESULT', 'BLOCKED', 'MANUAL', 'REJECTED', 'CLOSED'];
   let html = '<option value="">any sub-state</option>';
   order.forEach(st => {
     const items = Object.values(by).filter(x => x.status === st)

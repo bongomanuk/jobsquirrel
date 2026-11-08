@@ -177,11 +177,13 @@ should I do next?”.
 - The **Status** cell shows the status chip and, underneath, the sub-state when it adds detail.
 - **Filters → any sub-state** narrows the grid to one sub-state; like a group, it crosses the
   bucket boundaries.
-- The **top row of the grid** carries the bucket filter chips (Active, Focus, Probably scams,
-  Needs you, Probably scams, Shelved, Prepared, Ongoing, To apply, Done, All) with live counts, plus the live status
-  and run controls. Click a state to expand its sub-states and filter to it, then click a sub-state
-  to narrow further. The small chevron at the left edge folds the state map out and back. There is no
-  separate metric bar, title bar or card around the grid.
+- The **top row of the grid** carries the bucket filter chips (Active, Focus, Needs you,
+  Probably scams, Prepared, Ongoing, To apply, Done, All) with live counts, plus the live status
+  and run controls. Click a state to clear the search and the other filters, expand its sub-states
+  and filter to it, then click a sub-state to narrow further. The count on a state is the number of
+  rows it shows, and shelved roles are counted only under Shelved. The small chevron at the left
+  edge folds the state map out and back. There is no separate metric bar, title bar or card around
+  the grid.
 - **Level** is the seniority grade the pipeline reads from the title (Intern up to C-level). Click the **Level** header to sort by it, or pick a grade under **Filters → any level**. It works independently of the bucket chips, and the **Pay** header sorts by salary just as independently.
 - **Needs you** is the first working bucket. It includes BLOCKED and NO RESULT rows (a gate refusal or an empty run is work for you), plus the sub-states that genuinely wait on you: assessments, follow-ups,
   CAPTCHA/2FA and other human walls, plus invites and offers.
