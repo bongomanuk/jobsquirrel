@@ -249,6 +249,7 @@ python3 tools/secrets_store.py --check         # permissions + syntax
 python3 tools/secrets_store.py --migrate       # import legacy files once
 printf '%s' "$KEY" | python3 tools/secrets_store.py --set agent OPENROUTER_API_KEY
 python3 tools/accounts.py --get jobs.example.com
+python3 tools/accounts.py --for jobs.example.com --email you@example.com   # create + store
 ```
 
 Sections are `agent` (model/API keys), `graphrag` (knowledge-graph LLM),

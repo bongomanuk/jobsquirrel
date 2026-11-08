@@ -70,7 +70,11 @@ fi
 # nothing gets flagged). The pipeline browser is not used in this mode.
 if [ "$MANUAL" = "1" ]; then
   echo "MANUAL mode: opening each role in your real browser (via $OPEN_CMD). No automation."
-  while IFS=$'\t' read -r company role url cv letter reason; do
+  while IFS= read -r row; do
+    # A tab is IFS whitespace, so `read -r` would collapse an empty letter field
+    # and shift the reason into it. Read the line, then split on a non-whitespace
+    # separator so every field, including an empty one, is preserved.
+    IFS=$'\x1f' read -r company role url cv letter reason <<< "${row//$'\t'/$'\x1f'}"
     [ -z "${company:-}" ] && continue
     case "$company" in \#*) continue ;; esac
     grep -qxF "$company|$role" "$DONE" && continue
@@ -116,7 +120,8 @@ if ! curl -s -m 3 "$HUMAN_SERVER/health" >/dev/null 2>&1; then
   done
   HUMAN_PY="${HUMAN_PY:-python3}"
   setsid nohup "$HUMAN_PY" "$ROOT/tools/camoufox_server.py" --port "$PORT" --headful \
-    --profile "${HUMAN_PROFILE:-$HOME/.config/job-search/human-profile}" \
+    --os "${HUMAN_OS:-linux}" --profile "${HUMAN_PROFILE:-$HOME/.config/job-search/human-profile}" \
+    --disable-coop --main-world-eval \
     >> "$LOGS/camoufox_server.log" 2>&1 < /dev/null &
   disown
   # give it time to launch the visible browser
@@ -132,37 +137,55 @@ echo "Human-assist browser: $HUMAN_SERVER (VISIBLE Camoufox). Queue: $QUEUE"
 
 build_prompt() {
   local company="$1" role="$2" url="$3" cv="$4" letter="$5" reason="$6" key="$7"
+  local LETTER_LINE="" LETTER_ARG=""
+  if [ -n "$letter" ] && [ "$letter" != "-" ] && [ -f "$letter" ]; then
+    LETTER_LINE="Cover letter: $letter (upload this exact file)"
+    LETTER_ARG="--letter \"$letter\""
+  else
+    LETTER_LINE="Cover letter: none (do not create or upload one)"
+  fi
   cat <<EOF
-You are helping the candidate described in config/profile.md finish ONE application that is blocked only by a HUMAN step. Repo: $ROOT (cwd).
+You are helping the candidate described in config/profile.md finish ONE application. Repo: $ROOT (cwd).
 Company: $company
 Role: $role
-Blocker (a human must act): $reason
+Blocker (the part the pipeline could not do): ${reason:-none recorded}
 Apply URL: $url
-If Apply URL is empty, find the employer's OWN apply URL with a web search (Lever/Greenhouse/Ashby/Workday/Teamtailor/their careers site) and go straight there - do NOT grep or explore the repo to find it. Work fast: your only job is to pre-fill this one form.
+If Apply URL is empty, find the employer's OWN apply URL with a web search (Lever/Greenhouse/Ashby/Workday/Teamtailor/their careers site) and go straight there. Work fast.
 CV: $cv
-Cover letter: $letter
-EEO/diversity questions: read config/profile.md first and use its identity, work-authorisation, pay and standard diversity/EEO answers exactly - never decline these or choose "prefer not to say" unless profile.md says so.
-The CV and cover letter above are ALREADY PREPARED - upload those exact files. Do NOT generate, re-render or edit any document, and do not run GraphRAG.
+$LETTER_LINE
+EEO/diversity questions: read config/profile.md first and use its identity, work-authorisation, pay and standard diversity/EEO answers exactly. Never decline these or choose "prefer not to say" unless profile.md says so.
+The CV above is ALREADY PREPARED. Upload that exact file. Do NOT generate, re-render or edit any document, and do not run GraphRAG.
 
 Browser: run every command as \`python3 tools/camoufox_browser.py --server $HUMAN_SERVER <cmd>\` (nav/snap/click/fill/select/check/upload/value/eval/wait). Prefix \`$TIMEOUT_CMD 30\`. This browser is VISIBLE to the human.
+At the start run: \`python3 tools/human_status.py set --company "$company" --role "$role" --state filling --note "pre-filling the form"\`
 
 Steps:
-1. Open the Apply URL. Pre-fill EVERYTHING so the human only has to solve the challenge: identity (name/email/phone, location, work authorisation, pay) from config/profile.md, upload the CV and cover letter, and answer any questions truthfully. Identify the Submit button now (e.g. \`python3 tools/camoufox_browser.py --server $HUMAN_SERVER eval "(()=>JSON.stringify([...document.querySelectorAll('button,input[type=submit]')].map((b,i)=>({i,t:(b.innerText||b.value||'').trim().slice(0,40)})).filter(x=>/apply|submit/i.test(x.t)))())"\`). At the very start run: \`python3 tools/human_status.py set --company "$company" --role "$role" --state filling --note "pre-filling the form"\`
-2. With every field filled, click Submit once. The page may ask for a human check at this point; do NOT solve, bypass or evade it. If the submission goes through instead (thank-you page), skip to step 5.
-3. Announce it (this fires a desktop notification + the focused viewer): \`python3 tools/human_status.py set --company "$company" --role "$role" --state awaiting --note "<one line, e.g. tick the 'I'm not a robot' box>"\`, then print a LOUD banner: ">>> SOLVE THE CHALLENGE IN THE VISIBLE BROWSER - everything else is already done for you <<<".
-4. WAIT for the human to finish it. Every ~5s snap the page and check whether the challenge is gone and the form is still there. Poll up to 20 minutes; never touch the challenge yourself.
-5. ONCE THE HUMAN HAS FINISHED: wait ~3s. The page usually submits itself once the check is passed - do not click Submit again if the page has moved on. Only if you are still on the same /apply form after ~3s, click Submit once. Then confirm the success/thank-you page and record. The pre-submit gate must pass first (it writes the receipt record_submission.py requires); if there is no letter file, run the record with \`GATE_ENFORCE=0\` and say why:
-   \`python3 tools/check_documents.py --letter "$letter" --cv "$cv" --company "$company" --record\`  (must print RESULT: PASS)
-   \`python3 tools/human_status.py set --company "$company" --role "$role" --state done --note "captcha solved; auto-submitted"\`
-   \`python3 tools/record_submission.py --company "$company" --role "$role" --ats "human-assisted" --url "$url" --cv "$cv" --letter "$letter" --status SUBMITTED --evidence "<exact thank-you text/URL>"\`
+1. Open the Apply URL and pre-fill EVERYTHING: identity (name/email/phone, location, work authorisation, pay) from config/profile.md, the CV and cover letter above, and every question you can answer truthfully.
+   ACCOUNT CREATION IS YOUR JOB, not a handoff:
+   - Try \`python3 tools/accounts.py --get <site-host>\`.
+   - If there is no entry, run \`python3 tools/accounts.py --for <site-host> --email <the candidate email in config/profile.md>\`. It generates a strong password and stores it in the encrypted secrets store. Fill the sign-in or create-account form with it.
+   - NEVER print the password, NEVER invent one, and NEVER stop just because the form asks you to choose one.
+   Identify the Submit button.
+2. With every field filled, CLICK SUBMIT ONCE to trigger the challenge. The challenge is the ONLY human step: do not solve, bypass or evade it. If the submit succeeds, skip to step 5.
+3. Announce ONLY the challenge (this fires a desktop notification + the focused viewer): \`python3 tools/human_status.py set --company "$company" --role "$role" --state awaiting --note "<the exact challenge: e.g. ByteDance slider, hCaptcha, 2FA code, email code>"\`, then print a LOUD banner: ">>> SOLVE THE CHALLENGE IN THE VISIBLE BROWSER - everything else is already done for you <<<".
+4. WAIT for the human to solve that one step. Poll every ~5s and treat it as solved when ANY of these is true: the challenge container or frame is gone (\`#captcha_container\`, \`#slideValidatorV2\`, \`[class*=slide-wrapper]\`, \`iframe[src*=recaptcha]\`, \`iframe[src*=hcaptcha]\`, \`iframe[src*=turnstile]\`), the URL changed, the next step or a thank-you page is visible, or the site's token is present. Do not keep waiting for a reCAPTCHA token that this site does not use. Poll up to 20 minutes.
+5. ONCE SOLVED, finish the application yourself. This includes any account password (from accounts.py), every remaining form field, the final Submit, the thank-you page, the gates and the record. Hand back ONLY a CAPTCHA/2FA/email code/verification link you cannot complete, or a decision profile.md does not answer. Do not stop at a password, an empty field or a new page.
+   The pre-submit gate must pass first (it writes the receipt record_submission.py requires):
+   \`python3 tools/check_documents.py $LETTER_ARG --cv "$cv" --company "$company" --record\`  (must print RESULT: PASS)
+   \`python3 tools/human_status.py set --company "$company" --role "$role" --state done --note "submitted after the human cleared the challenge"\`
+   \`python3 tools/record_submission.py --company "$company" --role "$role" --ats "human-assisted" --url "$url" --cv "$cv" $LETTER_ARG --status SUBMITTED --evidence "<exact thank-you text/URL>"\`
 6. If it is still unsolved after 20 minutes, or Submit fails, run \`python3 tools/human_status.py set --company "$company" --role "$role" --state done --note "not completed"\` and leave the register row BLOCKED with note "human step not completed".
-Never fabricate; never solve or evade a CAPTCHA yourself.
+Never fabricate. Never submit a document that did not come from the pipeline. Never bypass or evade a challenge yourself.
 
-Return exactly one line: STATUS <Company> | $role | SUBMITTED|BLOCKED | <reason>
+Return exactly one line: STATUS <Company> | $role | SUBMITTED|BLOCKED | <reason> | CV: $cv | letter: ${LETTER_LINE#Cover letter: }
 EOF
 }
 
-while IFS=$'\t' read -r company role url cv letter reason; do
+while IFS= read -r row; do
+  # Preserve an empty cover-letter field; a tab-delimited `read` would drop it
+  # and put the blocker text into $letter (it then reached the agent as a
+  # cover letter and the record command).
+  IFS=$'\x1f' read -r company role url cv letter reason <<< "${row//$'\t'/$'\x1f'}"
   [ -z "${company:-}" ] && continue
   case "$company" in \#*) continue ;; esac
   grep -qxF "$company|$role" "$DONE" && continue

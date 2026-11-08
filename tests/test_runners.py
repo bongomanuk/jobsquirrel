@@ -91,6 +91,28 @@ def test_linkedin_runs_each_role_through_the_agent(tmp_path):
     assert f"Prefix `{_timeout_cmd(root, env)} 30`" in prompt
 
 
+def test_human_assist_keeps_an_empty_letter_out_of_the_reason(tmp_path):
+    # An empty cover-letter field and the blocker text used to collapse into one
+    # tab-delimited field, so the reason reached the agent as a cover letter and
+    # the record command. The prompt must say there is no letter and keep the
+    # reason on the Blocker line.
+    rows = [("Co0", "Engineer", "https://example.test/0", "cv.docx", "",
+             "captcha: ByteDance slider")]
+    root, env = _sandbox(tmp_path, "queue-human.tsv", rows)
+
+    r = subprocess.run(["bash", _script("human_assist.sh")], env=env,
+                       capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    prompt = (tmp_path / "prompts" / "Co0.txt").read_text()
+    assert "Blocker (the part the pipeline could not do): captcha: ByteDance slider" in prompt
+    assert "Cover letter: none (do not create or upload one)" in prompt
+    assert "Cover letter: captcha" not in prompt
+    assert "--letter" not in prompt
+    assert "accounts.py --for" in prompt
+    assert "Hand back ONLY" in prompt
+    assert "Do not stop at a password" in prompt
+
+
 def test_human_assist_prefills_each_role_through_the_agent(tmp_path):
     rows = [("Co0", "Engineer", "https://example.test/0", "cv.docx", "letter.docx", "captcha"),
             ("Co1", "Manager", "", "cv.docx", "letter.docx", "captcha")]
