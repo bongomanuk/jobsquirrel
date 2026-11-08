@@ -1830,14 +1830,21 @@ def _substate(status, notes="", action="", label=""):
             return ("review", "needs review", "Documents are ready but you need to review and send them.")
         return ("ready", "ready to submit", "Documents are gated; submit when you are ready.")
     if st == "BLOCKED":
-        if has("gate", "pre-submit", "canonical", "echoes", "verbatim", "alignment"):
+        # A note often mentions a passed gate on the way to a different wall.
+        # Only a real refusal is a gate failure; "gate PASS" is not.
+        if has("gate fail", "gate failed", "gate failure", "pre-submit gate failed",
+               "pre-submit gate did not pass", "pre-submit gate refused",
+               "alignment fail", "alignment failed", "did not print result: pass",
+               "documents need re-preparation", "canonical", "echoes", "verbatim"):
             return ("gate", "gate failure",
                     "The pre-submit gate refused the documents; fix them and re-prepare.")
         if has("captcha", "recaptcha", "bot check", "human check", "are you a robot"):
             return ("captcha", "CAPTCHA", "A CAPTCHA/bot check stopped the submission; solve it and retry.")
         if has("2fa", "two-factor", "login", "log in", "sign in", "sso", "verification code", "verify"):
             return ("login", "login / 2FA", "The site needs a login, SSO or 2FA step from you.")
-        if has("email", "careers@", "mailto"):
+        if has("email application", "apply by email", "maila ansökan", "send by email",
+               "email the", "email your", "mailto:", "email-only", "only accepts email",
+               "no ats", "no apply url"):
             return ("email", "email application", "The employer only accepts email; send the drafted application.")
         if has("recruiter", "agency", "lead", "intro"):
             return ("lead", "recruiter lead", "A recruiter/agency lead needs a human reply.")
@@ -1847,7 +1854,9 @@ def _substate(status, notes="", action="", label=""):
             return ("info", "missing information", "A question or eligibility point needs your answer.")
         return ("blocked", "blocked", "A hard wall stopped the submission; open the row for the exact reason.")
     if st == "MANUAL":
-        if has("email", "careers@", "mailto"):
+        if has("email application", "apply by email", "maila ansökan", "send by email",
+               "email the", "email your", "mailto:", "email-only", "only accepts email",
+               "no ats", "no apply url"):
             return ("email", "email application", "Email-only employer; send the drafted application.")
         if has("recruiter", "agency", "lead", "intro"):
             return ("lead", "recruiter lead", "A recruiter/agency lead needs a human reply.")
