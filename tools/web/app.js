@@ -1280,6 +1280,21 @@ const App = {
     if (d.error) { LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now(), done: true }; liveTick(); PENDING.clear(); LIVE_RUNNING = false; }
     else { App.showActivity(); }
   },
+  prepareSubmit: async (keys) => {
+    const n = (keys || []).length;
+    if (!n) { toast('no roles selected', true); return; }
+    if (!await approve(`Prepare and submit ${n} application(s): the CV is generated, the gates run, and the application is SENT through the employer's site. Irreversible.`,
+      `POST /api/prepare-submit { "keys": [${n} role key(s)], "approval_token": "APPROVE_RUN_QUEUE" }`)) return;
+    starting('preparing and submitting applications', keys);
+    noteAction('Preparing and submitting applications', keys);
+    const d = await api('/api/prepare-submit', { keys, approval_token: 'APPROVE_RUN_QUEUE' });
+    toast(d.error ? d.error : `preparing and submitting ${n} application(s) in the background: watch Activity`, !!d.error);
+    if (d.error) {
+      LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now(), done: true };
+      liveTick(); PENDING.clear(); LIVE_RUNNING = false;
+    } else { App.showActivity(); }
+  },
+  prepareSubmitThis: (key) => App.prepareSubmit([key]),
   submitThis: (key) => App.submitRoles([key], 'this role'),
   submitPrepared: () => App.submitRoles(GRID.filter(r => r.status === 'PREPARED' && VIEW.includes(r.key)).map(r => r.key), 'the current view'),
   matchShown: async (el) => {
@@ -2277,6 +2292,7 @@ App.rowMenu = (ev, i) => {
     const isQueued = (x) => ['pending', 'human', 'retry'].includes(x.queue);
     const isApplied = (x) => !!x.applied || ['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER', 'REJECTED'].includes(stOf(x));
     const preparedRows = rows.filter(x => stOf(x) === 'PREPARED' && !x.running);
+    const freshRows = rows.filter(x => !x.running && !isClosed(x) && !isApplied(x) && stOf(x) !== 'PREPARED');
     const canPrepare = rows.filter(x => !x.running && !isClosed(x) && (!isApplied(x) || stOf(x) === 'PREPARED'));
     const matchRows = rows.filter(x => x.spec || (x.stages && x.stages.documents));
     const openRows = rows.filter(x => !isClosed(x));
@@ -2329,6 +2345,8 @@ App.rowMenu = (ev, i) => {
       canPrepare.length ? { icon: ic('bolt'), label: `Prepare documents (${canPrepare.length})`, hint: 'CV + letter + gates', run: () => App.prepareRoles(canPrepare.map(x => x.key)) } : null,
       preparedRows.length ? { icon: ic('send'), label: `Submit prepared (${preparedRows.length})`, hint: 'sends them', danger: true,
         run: () => App.submitRoles(preparedRows.map(x => x.key)) } : null,
+      freshRows.length ? { icon: ic('send'), label: `Prepare and submit (${freshRows.length})`, hint: 'prepare, gate, send', danger: true,
+        run: () => App.prepareSubmit(freshRows.map(x => x.key)) } : null,
       matchRows.length ? { icon: ic('refresh'), label: `Recompute match (${matchRows.length})`, run: () => App.bulkMatch(matchRows) } : null,
       { sep: true },
       { icon: ic('tag'), label: allClosed ? 'Reopen all as' : `Set status for ${n}`, sub: STATUSES.map(x => ({
@@ -2396,6 +2414,9 @@ App.rowMenu = (ev, i) => {
       : null,
     prepared && !r.running
       ? { icon: ic('send'), label: 'Submit prepared', hint: 'sends it', danger: true, run: () => App.submitRoles([r.key]) }
+      : null,
+    (!applied && !prepared && !closed && !r.running)
+      ? { icon: ic('send'), label: 'Prepare and submit', hint: 'prepare, gate, send', danger: true, run: () => App.prepareSubmit([r.key]) }
       : null,
     (r.spec || hasDocs) ? { icon: ic('refresh'), label: 'Recompute match', run: () => App.matchThis(r.key) } : null,
     canWrite ? { icon: ic('robot'), label: 'Draft a reply with the agent', run: () => { App.open(i); App.draftAsk(); } } : null,

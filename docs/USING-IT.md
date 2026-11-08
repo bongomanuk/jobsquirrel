@@ -75,7 +75,10 @@ Everything is observable. Useful things to ask for, or run yourself:
     groups. Groups are independent of status and survive renames and queue runs. Select several rows
     with Ctrl/Cmd-click or Shift-click (Ctrl/Cmd+A for the whole view, Escape to clear) and
     right-click any of them: the menu is the single-row menu applied to all selected roles, including
-    adding all of them to one of your groups in a click. Selecting by role, not by row, so a role
+    adding all of them to one of your groups in a click. **Prepare and submit** runs the whole pass
+    for a fresh role, or for the fresh roles in the selection: it generates the CV, runs the gates
+    and sends, after the same approval prompt as a prepared submission. A PREPARED role uses
+    **Submit prepared** instead. Selecting by role, not by row, so a role
     stays selected when preparing it changes its status. A reposted role is tagged **repost** in the
     grid (hover for the earlier application) and is still applied to; a repost is never a reason to
     close it. The Activity pane lists every role in a running batch (running, done and waiting), not

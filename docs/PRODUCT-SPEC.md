@@ -261,9 +261,11 @@ Columns: **Date · Company · Role · Level · ATS · Status · Fit · Pay · Wo
   not a block: the queue applies to it again and the register keeps the new submission, with the
   earlier history in its notes.
 - **Right-click a row** for the full action menu: open details / documents / the ad / the apply page,
-  discuss the role, prepare documents, submit prepared (approval-gated), recompute the match, draft a
+  discuss the role, prepare documents, submit prepared (approval-gated), **prepare and submit** a
+  fresh role in one approval-gated pass (generate, gate, send), recompute the match, draft a
   reply with the agent, set the status, flag or clear a follow-up, **pin to the top**, re-queue, hand to a human, unblock/remove from the queue, and copy the company, role,
-  URL or key. Keyboard: arrows move, Escape closes.
+  URL or key. Keyboard: arrows move, Escape closes. The same items apply to a multi-row selection,
+  with the eligible counts in the labels.
 - **Groups** in the toolbar opens the group manager: create a campaign, rename or delete one.
   Deleting a group removes its memberships, not the roles. Right-click a row → Groups to add or
   remove that role.

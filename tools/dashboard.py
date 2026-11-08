@@ -4361,6 +4361,41 @@ def prepare_roles(keys):
     return {"ok": f"generating documents for {len(rows)} role(s) — watch the Activity pane (nothing is submitted)"}
 
 
+def prepare_submit_roles(keys, approval_token=""):
+    """Prepare and submit the selected roles in one apply run.
+
+    Unlike prepare_roles (REVIEW, documents only) and submit_roles (PREPARED
+    documents only) this runs the normal apply pass: generate the CSV, run the
+    gates, then submit through the employer's ATS. Irreversible, so it needs the
+    same approval token as submit_roles, and one worker at a time."""
+    rows = _resolve_roles(keys)
+    if not rows:
+        return {"error": "couldn't resolve those roles to a company/role"}
+    if action_alive():
+        return {"error": "another run is active; wait for it to finish"}
+    if WQ and WQ.runner_active():
+        return {"error": "a queue run is already active"}
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import approval
+    if approval_token != "APPROVE_RUN_QUEUE":
+        approval._record(f"prepare and submit {len(rows)} role(s) via dashboard", "REFUSED (no approval token)")
+        return {"error": "refused: preparing and submitting applications is irreversible; confirm to send APPROVE_RUN_QUEUE"}
+    approval._record(f"prepare and submit {len(rows)} role(s) via dashboard", "ui-token:APPROVE_RUN_QUEUE")
+    tmp, tmp_done = _queue_only_roles(rows)
+    try:
+        import register as REG
+        for r in rows:
+            REG.set_row(r["company"], r["role"], status="QUEUED",
+                        note="preparing and submitting via dashboard")
+    except Exception:
+        pass
+    _spawn(f"prepare and submit {len(rows)} role(s)",
+           ["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+           {"PARALLEL": "1", "QUEUE": tmp, "DONE": tmp_done},
+           roles=[{"company": r["company"], "role": r["role"], "key": r.get("key", "")} for r in rows])
+    return {"ok": f"preparing and submitting {len(rows)} application(s) — watch the Activity pane (this sends them)"}
+
+
 def submit_roles(keys, approval_token=""):
     """Submit the selected roles with the documents already prepared for them.
 
@@ -5547,6 +5582,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(prepare_roles(data.get("keys") or []))
         if p == "/api/submit":
             return self._json(submit_roles(data.get("keys") or [], data.get("approval_token", "")))
+        if p == "/api/prepare-submit":
+            return self._json(prepare_submit_roles(data.get("keys") or [], data.get("approval_token", "")))
         if p == "/api/match/recompute":
             return self._json(recompute_match(data.get("keys")))
         if p == "/api/ats/add":
