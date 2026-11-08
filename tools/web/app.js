@@ -1553,18 +1553,54 @@ async function loadGrid() {
   const sc = document.querySelector('.scroll'), y = sc ? sc.scrollTop : 0;
   const g = await api('/api/grid');
   if (Array.isArray(g)) GRID = g;          // keep the last good grid through a transient error
+  publishGridStats();
   renderSubstateFilter();
   renderBuckets();
   renderRows();
   if (sc) sc.scrollTop = y;
   routeBoot();
 }
+function publishGridStats() {
+  const isl = window.CascadeIslands && window.CascadeIslands.stats;
+  if (isl && isl.ready()) return isl.set(GRID, bucketOf);
+  return null;
+}
+function legacyGridStats() {
+  const live = GRID.filter(r => !r.shelved);
+  const buckets = { scams: 0, shelved: 0, needs: 0, prepared: 0, ongoing: 0, pipeline: 0, done: 0 };
+  GRID.forEach(r => { const k = bucketOf(r); buckets[k] = (buckets[k] || 0) + 1; });
+  const status = {}, shelvedBy = {}, substates = {};
+  let shelved = 0, scams = 0, focus = 0;
+  GRID.forEach(r => {
+    if (r.shelved) { shelved++; shelvedBy[r.status] = (shelvedBy[r.status] || 0) + 1; }
+  });
+  live.forEach(r => {
+    status[r.status] = (status[r.status] || 0) + 1;
+    if (r.scam && ['high', 'medium'].includes(r.scam.level)) scams++;
+    if (r.focus || r.focus_unknown) focus++;
+    if (r.substate) {
+      const k = r.status + ':' + r.substate;
+      if (!substates[k]) substates[k] = { status: r.status, key: r.substate,
+        label: r.substate_label || r.substate, hint: r.substate_hint || '', n: 0 };
+      substates[k].n++;
+    }
+  });
+  return { buckets, status, shelvedBy, substates, shelved, scams, focus,
+           active: buckets.scams + buckets.needs + buckets.prepared + buckets.ongoing + buckets.pipeline,
+           all: GRID.length };
+}
+function gridStatsSnapshot() {
+  const isl = window.CascadeIslands && window.CascadeIslands.stats;
+  if (isl && isl.ready()) {
+    let snap = isl.get();
+    if (!snap || snap.all !== GRID.length) snap = isl.set(GRID, bucketOf);
+    return snap;
+  }
+  return legacyGridStats();
+}
 function bucketCounts() {
-  const c = { scams: 0, shelved: 0, needs: 0, prepared: 0, ongoing: 0, pipeline: 0, done: 0 };
-  GRID.forEach(r => { const k = bucketOf(r); c[k] = (c[k] || 0) + 1; });
-  const live = GRID;
-  return { ...c, focus: live.filter(r => !r.shelved && (r.focus || r.focus_unknown)).length,
-           active: c.scams + c.needs + c.prepared + c.ongoing + c.pipeline, all: live.length };
+  const snap = gridStatsSnapshot();
+  return { ...snap.buckets, focus: snap.focus, active: snap.active, all: snap.all };
 }
 function renderBuckets() {
   const el = $('#metrics'); if (!el) return;
@@ -1615,23 +1651,16 @@ try { SG_EXPANDED = localStorage.getItem('sg.expanded') || ''; } catch (e) {}
 function renderStateGraph() {
   const box = document.getElementById('sg-body');
   if (!box || !PANELS.states.open) return;             // closed: nothing to draw
-  // Shelved roles are out of the process and have their own side node; counting
-  // them under their old status made a node say "1" while the matching filter
-  // showed no rows, because the grid hides shelved rows whenever a filter is on.
-  const liveRows = GRID.filter(r => !r.shelved);
-  const counts = {};
-  liveRows.forEach(r => { counts[r.status] = (counts[r.status] || 0) + 1; });
-  const scamCount = liveRows.filter(r => r.scam && ['high', 'medium'].includes(r.scam.level)).length;
-  const shelvedCount = GRID.filter(r => r.shelved).length;
-  const shelvedBy = {};
-  GRID.forEach(r => { if (r.shelved) shelvedBy[r.status] = (shelvedBy[r.status] || 0) + 1; });
-  const by = {};
-  liveRows.forEach(r => {
-    if (!r.substate) return;
-    const k = r.status + ':' + r.substate;
-    if (!by[k]) by[k] = { status: r.status, key: r.substate, label: r.substate_label || r.substate, hint: r.substate_hint || '', n: 0 };
-    by[k].n++;
-  });
+  // One snapshot for every count on this panel. The aggregate model lives in
+  // the Cascade stats store (grid-stats.js); app.js only supplies the bucket
+  // classifier. Shelved roles are counted under SHELVED, not under their old
+  // status, so a node's number is always what clicking it shows.
+  const snap = gridStatsSnapshot();
+  const counts = snap.status;
+  const scamCount = snap.scams;
+  const shelvedCount = snap.shelved;
+  const shelvedBy = snap.shelvedBy;
+  const by = snap.substates;
   const subsFor = (st) => Object.values(by).filter(x => x.status === st)
     .sort((a, b) => substateRank(st, a.key) - substateRank(st, b.key) || b.n - a.n || String(a.label).localeCompare(String(b.label)));
   const active = ($('#fstatus') || {}).value || '';
@@ -1851,13 +1880,7 @@ function renderGroupList() {
 let SUBSTATE_SIG = '';
 function renderSubstateFilter() {
   const sel = $('#fsubstate'); if (!sel) return;
-  const by = {};
-  GRID.forEach(r => {
-    if (r.shelved || !r.substate) return;                 // shelved roles are a separate view
-    const k = r.status + ':' + r.substate;
-    if (!by[k]) by[k] = { status: r.status, key: r.substate, label: r.substate_label || r.substate, n: 0 };
-    by[k].n++;
-  });
+  const by = gridStatsSnapshot().substates;
   const sig = JSON.stringify(by);
   if (sig === SUBSTATE_SIG) return;
   SUBSTATE_SIG = sig;

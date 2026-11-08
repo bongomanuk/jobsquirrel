@@ -2,6 +2,7 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP = os.path.join(ROOT, "tools", "web", "app.js")
+STATS = os.path.join(ROOT, "tools", "web", "grid-stats.js")
 
 
 def _app():
@@ -11,8 +12,9 @@ def _app():
 
 def test_state_map_counts_only_active_roles():
     app = _app()
-    assert "const liveRows = GRID.filter(r => !r.shelved);" in app
-    assert "liveRows.forEach(r => { counts[r.status]" in app
+    assert "const snap = gridStatsSnapshot();" in app
+    assert "const counts = snap.status;" in app
+    assert "const shelvedBy = snap.shelvedBy;" in app
     assert "shelvedBy[n.s]" in app
     assert "see SHELVED" in app
 
@@ -31,8 +33,13 @@ def test_a_shelved_role_is_counted_and_shown_under_shelved_only():
     app = _app()
     bucket = app.split("function bucketOf(r) {", 1)[1].split("}", 1)[0]
     assert bucket.index("if (r.shelved) return 'shelved';") < bucket.index("return 'scams';")
-    assert "live.filter(r => !r.shelved && (r.focus || r.focus_unknown)).length" in app
-    assert "if (r.shelved || !r.substate) return;" in app
+    with open(STATS, encoding="utf-8") as fh:
+        stats = fh.read()
+    assert "const b = r.shelved ? 'shelved' : classify(r);" in stats
+    assert "if (r.shelved) {" in stats
+    assert stats.index("if (r.shelved) {") < stats.index("if (r.scam &&")
+    assert "if (r.focus || r.focus_unknown)" in stats
+    assert "continue;" in stats
 
 
 def test_no_result_has_its_own_state_node():

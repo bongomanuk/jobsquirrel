@@ -20,6 +20,29 @@ import {
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
+/* The grid's aggregate data pipeline. The pure derivation lives in
+ * grid-stats.js; this observable is the one store the bucket chips, the state
+ * map, the status tooltips and the sub-state filter read. It is updated only
+ * when the raw grid changes, not on every filter keystroke. */
+const gridStats = observable({ rows: [], bucketOf: null, snap: null });
+function refreshGridStats(rows, bucketOf) {
+  const derive = (window.GridStats && window.GridStats.derive) || (() => ({
+    buckets: { scams: 0, shelved: 0, needs: 0, prepared: 0, ongoing: 0, pipeline: 0, done: 0 },
+    status: {}, shelvedBy: {}, substates: {}, shelved: 0, scams: 0, focus: 0,
+    active: 0, all: (rows || []).length,
+  }));
+  gridStats.rows = rows || [];
+  gridStats.bucketOf = bucketOf || null;
+  gridStats.snap = derive(gridStats.rows, gridStats.bucketOf);
+  return gridStats.snap;
+}
+let stats = {
+  ready: () => !!(window.GridStats && window.GridStats.derive),
+  set: (rows, bucketOf) => refreshGridStats(rows, bucketOf),
+  get: () => gridStats.snap,
+  derive: (rows, bucketOf) => refreshGridStats(rows, bucketOf),
+};
+
 /* The page title and the URL are Cascade state too: documentHead follows an
  * observable title, and browserLocation turns the open role into a real address
  * (/role/<key>) with back/forward. The vanilla app calls the two small handles
@@ -524,6 +547,7 @@ window.CascadeIslands.grid = grid || {
   ready: () => false,
   set: () => {},
 };
+window.CascadeIslands.stats = stats;
 window.CascadeIslands.drawer = drawer || {
   ready: () => false,
   open: () => {},

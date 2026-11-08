@@ -27,12 +27,21 @@ island has a tiny API on `window.CascadeIslands`, and the vanilla side calls it
 with a plain view model. If the module is unavailable, the old markup is used or
 the original controls are revealed.
 
+The grid's aggregate model is a Cascade **store** rather than a component tree.
+`tools/web/grid-stats.js` derives the bucket, status, sub-state, shelved and
+scam counts in one pass; `cascade-islands.js` wraps that derivation in one
+`observable` and exposes it as `CascadeIslands.stats`. `app.js` publishes the
+raw rows after each `/api/grid` load and reads the snapshot for the bucket
+chips, the state map, the tooltips and the sub-state filter. There is no second
+count derivation for those surfaces to drift from.
+
 ## What each island covers
 
 | Surface | Components | Cascade features | The vanilla side |
 | --- | --- | --- | --- |
 | Activity run roster | `ActivityRoster` | component state, `flipAnimationContainer` | computes the roster from the live run and calls `CascadeIslands.activity.set(view)` |
 | Grid rows | `GridRows`, `RawRow` | custom `DOMNodeComponent`, keyed rows, `flipAnimationContainer` with `display: contents` so rows stay real `<tr>` elements | filters, sorts, groups and selection still compute the row models |
+| Grid aggregate model | `CascadeIslands.stats` (`observable`) | one reactive store over the pure `grid-stats.js` derivation | publishes `GRID` and the bucket classifier; reads counts for the chips, state map, tooltips and sub-state filter |
 | Role drawer | `DrawerTabs`, `DrawerBody`, `RawBlock` | state-driven tabs, raw block for the existing tab HTML | the seven tab renderers and their actions |
 | Grid toolbar | `ToolbarExtra` | `overflowContainer`, `elementSlot`, `elementBoundsProvider` | the original buttons stay hidden as the click handlers |
 | Knowledge search results | `KgResults` | keyed result components, `flipAnimationContainer` | search and graph navigation |
@@ -54,14 +63,23 @@ The application owns the data. A typical update looks like this:
 The islands never fetch. They receive plain data and callbacks, so the
 application's permissions, state and rendering rules stay in one place.
 
+The aggregate model follows the same rule. `grid-stats.js` is a pure function
+over rows and a bucket classifier; the Cascade store only holds its latest
+snapshot. A filter keystroke does not recompute it. A new `/api/grid` response
+does, once, and every surface reads the same numbers.
+
 ## What stays outside Cascade
 
 - **The 3D graph canvases.** The map and universe views are Three.js renderers
   with their own layout and input. Cascade owns the surrounding search results
   and tabs, not the canvas.
-- **The data pipeline.** `GRID`, filtering, sorting, grouping and the register
-  remain the existing JavaScript engine. Moving them to observables and temporal
-  signals is a separate, deeper rewrite.
+- **The row list pipeline.** `GRID`, filtering, sorting, grouping, selection and
+  the register remain the existing JavaScript engine. The aggregate model moved
+  to Cascade, but the filtered row list is cheap at roughly a thousand rows and
+  is tightly coupled to actions (prepare shown, submit prepared, export, bulk
+  selection). Rewriting that path in observables would add indirection without a
+  measured gain. If the grid grows into the tens of thousands of rows, this is
+  the next surface to revisit.
 - **Dialog contents.** The raw-log, legend, settings, ask and enrichment dialogs
   are still plain HTML. The context menu is the first overlay; the rest can
   follow the same `overlayFrame` pattern.
