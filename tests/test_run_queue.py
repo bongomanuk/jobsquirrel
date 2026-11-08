@@ -76,6 +76,22 @@ def test_queue_runs_each_role_once_in_parallel(tmp_path):
     # Review runs end on the same STATUS line the runner parses, not a PREPARED line.
     assert "STATUS Co0 | Engineer 0 | PREPARED|BLOCKED|CLOSED | <reason>" in prompt
     assert "Return exactly one line: PREPARED" not in prompt
+    assert "Do not call register.py --set for PREPARED" in prompt
+    assert "--record-prepared" in prompt
+
+
+def test_a_repost_review_tells_finalise_to_record_prepared(tmp_path):
+    rows = [("CoR", "Engineer", "u", "cv", "ats", "kr")]
+    root, env = _sandbox(tmp_path, rows)
+    (root / "state" / "applications.csv").write_text(
+        "company,role,status,date\nCoR,Engineer,IN_PROGRESS,2026-10-08\n")
+    env["PARALLEL"] = "1"
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+                       env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    prompt = (tmp_path / "prompts" / "CoR.txt").read_text()
+    assert "REPOST: this role matches an earlier application" in prompt
+    assert "--record-prepared --repost" in prompt
 
 
 def test_blocked_roles_get_one_retry(tmp_path):

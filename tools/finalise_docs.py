@@ -31,6 +31,35 @@ def run(cmd):
     return r.returncode, out
 
 
+LIVE_STATUSES = ("SUBMITTED", "INTERVIEW", "IN_PROGRESS", "OFFER")
+
+
+def record_prepared(company, role, cv, letter, need_letter, repost=False):
+    """Record PREPARED for a review, returning (result, reason).
+
+    A live application is normally not downgraded: the row still means the
+    application we sent. A repost is different. The user is preparing a new
+    attempt at the same role, so PREPARED is the current state of that attempt;
+    the earlier status is kept in the note, where the drawer and the grid tag
+    can still show it. Without --repost the old behaviour is unchanged.
+    """
+    row = REG.find_row(company, role)
+    status = ((row or {}).get("status") or "").upper()
+    if row and status in LIVE_STATUSES and not repost:
+        return "skip", status
+    note = (f"review: {cv} | {letter}" if need_letter
+            else f"review: {cv} (CV only; no cover letter required)")
+    if repost and row and status in LIVE_STATUSES:
+        since = row.get("date") or "unknown"
+        note += (f" | repost: earlier application still {status} since {since}; "
+                 f"new documents prepared, not submitted")
+    rc, out = run([sys.executable, "tools/register.py", "--set",
+                   "--company", company, "--role", role,
+                   "--status", "PREPARED",
+                   "--notes", note])
+    return ("ok", "PREPARED") if rc == 0 else ("fail", out.strip()[-300:])
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--key", required=True)
@@ -40,6 +69,9 @@ def main() -> int:
     ap.add_argument("--ats", default="")
     ap.add_argument("--engagement", default="fulltime")
     ap.add_argument("--record-prepared", action="store_true")
+    ap.add_argument("--repost", action="store_true",
+                    help="the review is a new attempt at a role that already has a live "
+                         "application; record PREPARED and keep the earlier status in the note")
     ap.add_argument("--skip-cv", action="store_true")
     ap.add_argument("--skip-letter", action="store_true")
     ap.add_argument("--letter-mode", choices=("auto", "yes", "no"), default="auto",
@@ -104,19 +136,14 @@ def main() -> int:
         return rc or 2
 
     if args.record_prepared:
-        row = REG.find_row(args.company, args.role)
-        if row and (row.get("status") or "").upper() in ("SUBMITTED", "INTERVIEW",
-                                                         "IN_PROGRESS", "OFFER"):
-            print(f"FINALISE: {row['status']} already recorded; not downgrading to PREPARED")
+        result, why = record_prepared(args.company, args.role, cv, letter,
+                                      need_letter, args.repost)
+        if result == "skip":
+            print(f"FINALISE: {why} already recorded; not downgrading to PREPARED")
             return 0
-        note = f"review: {cv} | {letter}" if need_letter else f"review: {cv} (CV only; no cover letter required)"
-        rc, _ = run([sys.executable, "tools/register.py", "--set",
-                     "--company", args.company, "--role", args.role,
-                     "--status", "PREPARED",
-                     "--notes", note])
-        if rc:
-            print("FINALISE FAIL: could not record PREPARED", file=sys.stderr)
-            return rc
+        if result != "ok":
+            print(f"FINALISE FAIL: could not record PREPARED: {why}", file=sys.stderr)
+            return 2
     state = "PREPARED" if args.record_prepared else "GATE PASS"
     print(f"FINALISE PASS {args.company} | {args.role} | {state} | letter={'yes' if need_letter else 'no'}")
     return 0
