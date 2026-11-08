@@ -1112,7 +1112,6 @@ html[data-theme="light"] .sg-subnode.on .sg-subtext{fill:#8a6a2f}
 .rawlog.wrap{white-space:pre-wrap}
 html[data-theme="light"] .rawlog{background:#f6f7f9;color:#28303b;border-color:var(--line)}
 html[data-theme="light"] .act-raw pre{background:#f6f7f9;color:#28303b}
-.act-actions{display:flex;gap:6px;margin:0 0 8px}
 
 /* ---- motion: expansion, cascades and short state transitions ---------------
    One motion language for the whole UI: fast, small distances, no bounce.

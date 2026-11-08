@@ -25,3 +25,14 @@ def test_panels_support_the_centre_cell_and_stacking():
     assert "return 'center';" in js
     # a panel dropped on an edge is appended to that edge's stack
     assert "if (cont && el.parentElement !== cont) cont.appendChild(el);" in js
+
+
+def test_reconcile_is_an_activity_header_action_not_panel_content():
+    html = _read("tools/web/index.html")
+    activity = html.split('<aside class="panel" id="activity"', 1)[1].split("</aside>", 1)[0]
+    head = activity.split('<div class="dock-head">', 1)[1].split("</div>", 1)[0]
+    assert 'id="btn-reconcile"' in head
+    agent = html.split('<aside class="panel" id="dock"', 1)[1].split("</aside>", 1)[0]
+    assert 'id="btn-reconcile"' not in agent
+    js = _read("tools/web/app.js")
+    assert 'class="act-actions"' not in js

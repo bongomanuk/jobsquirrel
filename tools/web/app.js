@@ -3439,8 +3439,7 @@ async function liveTick() {
   if (document.body.dataset.act === 'open') {
     const tech = [];
     const localNames = (LOCAL_ACT && (Date.now() - LOCAL_ACT.at < 6 * 3600e3)) ? (LOCAL_ACT.names || []) : [];
-    let head = '<div class="act-actions"><button class="small" onclick="App.run(\'reconcile_apply\',\'Reconcile mail\')" ' +
-      'title="Read Gmail, match replies to roles and write the status changes">Reconcile mail</button></div>';
+    let head = '';
     let rest = '';
     let roster = null;
     const localFresh = LOCAL_ACT && !LOCAL_ACT.done && (Date.now() - LOCAL_ACT.at < 15 * 60000);

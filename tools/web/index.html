@@ -103,7 +103,7 @@
             <summary>Filters <span id="filt-n" class="muted"></span></summary>
             <div class="filterbox">
               <select id="fstatus"><option value="">any status</option>
-                <option>QUEUED</option><option>DRAFTING</option><option>NO RESULT</option><option>SUBMITTED</option><option>IN_PROGRESS</option><option>INTERVIEW</option><option>SCHEDULED</option><option>INVITED</option><option>OFFER</option>
+                <option>QUEUED</option><option>DRAFTING</option><option>SUBMITTED</option><option>IN_PROGRESS</option><option>INTERVIEW</option><option>SCHEDULED</option><option>INVITED</option><option>OFFER</option>
                 <option>REJECTED</option><option>BLOCKED</option><option>MANUAL</option><option>PREPARED</option><option>CLOSED</option></select>
               <select id="fsubstate" title="Filter by a sub-state within a status (assessment, scheduled, CAPTCHA, …)">
                 <option value="">any sub-state</option></select>
@@ -205,7 +205,6 @@
     <span class="dock-grip dock-drag" data-panel="agent" title="Drag to dock (left / top / bottom / right)">⠿</span>
     <span class="dock-title dock-drag" data-panel="agent" title="Drag me to dock this panel"><svg class="ic" aria-hidden="true"><use href="#i-chat"></use></svg> Agent Console</span>
     <span style="flex:1"></span>
-    <button class="small" id="btn-reconcile" title="Read Gmail, match replies to roles and write the status changes">Reconcile mail</button>
     <button class="panel-close small" data-panel="agent" title="Collapse"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button>
   </div>
   <div class="panes" id="panes">
@@ -234,6 +233,7 @@
     <span class="dock-grip dock-drag" data-panel="activity" title="Drag to dock (left / top / bottom / right / centre)">⠿</span>
     <span class="dock-title dock-drag" data-panel="activity" title="Drag me to dock this panel">Activity <span id="act-sum" class="muted">idle</span></span>
     <span style="flex:1"></span>
+    <button class="small" id="btn-reconcile" title="Read Gmail, match replies to roles and write the status changes">Reconcile mail</button>
     <button class="panel-close small" data-panel="activity" title="Close"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button>
   </div>
   <div id="liveterm" class="term grow act-body">
