@@ -10,7 +10,7 @@ const STATUS_HELP = {
   QUEUED: 'In the apply queue: nothing done yet; applied when you run the queue',
   DRAFTING: 'In progress: the ad/keywords are saved but no finished documents yet',
   SUBMITTED: 'Application sent: awaiting a reply',
-  IN_PROGRESS: 'Application in progress (multi-step form being completed)',
+  IN_PROGRESS: 'An active process step is underway: assessment, checks or a live conversation',
   INTERVIEW: 'Interview held: awaiting the outcome',
   SCHEDULED: 'Interview booked but not happened yet: prepare for it',
   INVITED: 'Interview requested: not booked yet; reply and arrange a time',
@@ -1626,7 +1626,7 @@ const SG_MAIN = [
   { s: 'DRAFTING', x: 195, note: 'ad saved, docs in progress' },
   { s: 'PREPARED', x: 370, note: 'documents gated' },
   { s: 'SUBMITTED', x: 545, note: 'application sent' },
-  { s: 'IN_PROGRESS', x: 720, note: 'employer reviewing' },
+  { s: 'IN_PROGRESS', x: 720, note: 'assessment / live process' },
   { s: 'INTERVIEW', x: 895, note: 'invited / booked / held' },
   { s: 'OFFER', x: 1070, note: 'offer received' },
 ];

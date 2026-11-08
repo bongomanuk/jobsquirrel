@@ -11,8 +11,8 @@ application. The queue is work to do; a finished queue row is not a state.
 | `QUEUED` | In the apply queue. Nothing has been prepared or sent. | discovery, the dashboard, a retry |
 | `DRAFTING` | The advert is saved and preparation has started, but there are no gated documents yet. Shown for a queue row that has an ad, keywords or grounding. | preparation |
 | `PREPARED` | The CV (and a letter only when required) is generated, measured and gate-PASS. Ready to submit. | a review/prepare run |
-| `SUBMITTED` | The application was sent and confirmed, with a matching provenance row. | `record_submission.py`, or an approved email with the documents |
-| `IN_PROGRESS` | The employer is reviewing, or a recruiter conversation is live after the application. | reconciliation, a manual update |
+| `SUBMITTED` | The application was sent and confirmed, with a matching provenance row. An ATS status such as Under Consideration stays here: it is still waiting, not a new stage. | `record_submission.py`, or an approved email with the documents |
+| `IN_PROGRESS` | An active process step is underway: an assessment, background checks, or a live recruiter conversation. Mere employer review stays `SUBMITTED`. | reconciliation, a manual update |
 | `INTERVIEW` | An interview is invited, scheduled or held. Its sub-state says which. | reconciliation, a manual update |
 | `OFFER` | An offer was received. | a manual update |
 | `REJECTED` | The employer declined. | reconciliation, a manual update |
@@ -34,8 +34,9 @@ QUEUED -> DRAFTING -> PREPARED -> SUBMITTED -> IN_PROGRESS -> INTERVIEW -> OFFER
 ```
 
 `SUBMITTED` is the handoff from the candidate to the employer. `IN_PROGRESS` is
-not set by a successful submit; it means the employer has replied or a live
-conversation has started. A silent employer keeps the row at `SUBMITTED` and its
+not set by a successful submit; it means an active step has started: an
+assessment, background checks, or a live conversation. A silent employer, or an
+ATS label such as Under Consideration, keeps the row at `SUBMITTED` and its
 sub-state (`awaiting`, `acknowledged`, `stale`, `assessment`).
 
 ## Branch rules

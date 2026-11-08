@@ -1875,7 +1875,8 @@ def _substate(status, notes="", action="", label=""):
             return ("assessment", "assessment to take", "The employer sent a test/assessment; complete it before the deadline.")
         if has("no reply", "no response", "follow up", "follow-up", "stale", "chase", "nudge"):
             return ("stale", "follow up", "No reply yet; it is time to follow up.")
-        if has("acknowledg", "confirmation", "received", "thank you for applying", "thanks for applying"):
+        if has("acknowledg", "confirmation", "received", "thank you for applying",
+               "thanks for applying", "under consideration"):
             return ("acknowledged", "acknowledged", "The employer confirmed receipt; waiting for the next step.")
         return ("awaiting", "awaiting reply", "Application sent; waiting for the employer.")
     if st == "IN_PROGRESS":

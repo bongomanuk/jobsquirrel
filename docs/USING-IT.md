@@ -203,7 +203,7 @@ should I do next?”.
 | `DRAFTING` | drafting | Ad/keywords saved; documents still being built. |
 | `PREPARED` | needs review · ready to submit | Documents gated; review/send, or submit when ready. |
 | `SUBMITTED` | acknowledged · awaiting reply · assessment to take · assessment overdue · follow up | Sent; waiting, a test to take (or its deadline has passed), or time to chase. |
-| `IN_PROGRESS` | assessment · interviewing · background check · processing | The employer is processing the application. |
+| `IN_PROGRESS` | assessment · interviewing · background check · processing | An active step is underway. A simple "under consideration" stays SUBMITTED. |
 | `INTERVIEW` | invited: reply · scheduled · interview today · replied: awaiting a reply · next round · final round · interviewed: awaiting outcome · interviewed: follow up | The interview stage, from arranging to awaiting the result. |
 | `OFFER` | offer received · verbal offer · negotiating · accepted · declined | The offer stage. |
 | `BLOCKED` | CAPTCHA · login / 2FA · email application · recruiter lead · site problem · missing information · blocked | A wall; the ones that need you appear under **Needs you**. |

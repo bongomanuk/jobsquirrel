@@ -18,3 +18,7 @@ def test_a_passed_gate_does_not_hide_the_actual_blocker():
     ]
     for notes, want in cases:
         assert D._substate("BLOCKED", notes)[0] == want, notes
+
+
+def test_under_consideration_is_still_submitted_acknowledged():
+    assert D._substate("SUBMITTED", "Workday Candidate Home: Under Consideration")[0] == "acknowledged"
