@@ -1,5 +1,7 @@
-Cascade (https://github.com/erobwen/liquefy), ISC License
-Copyright (c) 2026, Robert Renbris
+Cascade, the reactive UI framework by Robert Renbris
+Project: https://github.com/erobwen/liquefy
+Docs:    https://erobwen.github.io/liquefy/cascade
+ISC License, Copyright (c) 2026, Robert Renbris
 
 Bundled from the npm packages:
   @liquefy/cascade.component 2.1.1

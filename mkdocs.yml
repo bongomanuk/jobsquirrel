@@ -89,6 +89,8 @@ nav:
       - Scam detector: SCAMS.md
       - Eligibility: ELIGIBILITY.md
       - Releases: RELEASES.md
+  - CAPTCHA (private build): CAPTCHA.md
+  - Credits: CREDITS.md
 
 extra:
   social:

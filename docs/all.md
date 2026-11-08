@@ -44,6 +44,7 @@
 |---|---|
 | 🕵️ **[SCAMS.md](SCAMS.md)** | The recruitment-scam detector: the hard rule, every signal, email checks, the **Probably scams** bucket, overrides and limits. |
 | 🛡️ **[ELIGIBILITY.md](ELIGIBILITY.md)** | Writing your eligibility and accuracy rules. |
+| 🤖 **[CAPTCHA.md](CAPTCHA.md)** | The CAPTCHA setting and the private-build solver; when to stop. |
 | 📜 **[DISCLAIMER.md](https://github.com/bongomanuk/jobsquirrel/blob/main/DISCLAIMER.md)** | Acceptable use, no-warranty and liability. |
 
 ## Reference
@@ -61,3 +62,7 @@
 *Built for the honest, targeted, auditable job hunt. If it helps, give it a star.* ⭐
 
 </div>
+
+## Credits
+
+- [Credits](CREDITS.md): Cascade by Robert Renbris, and the people behind Jobsquirrel.

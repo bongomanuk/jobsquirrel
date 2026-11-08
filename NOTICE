@@ -13,3 +13,8 @@ you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
     http://www.apache.org/licenses/LICENSE-2.0
+
+This product includes Cascade (https://github.com/erobwen/liquefy),
+Copyright (c) 2026 Robert Renbris, licensed under the ISC License.
+The bundled copy is tools/web/vendor/cascade.js; the full notice and the
+package versions are in tools/web/vendor/cascade.NOTICE.

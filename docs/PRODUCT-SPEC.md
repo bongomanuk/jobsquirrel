@@ -519,7 +519,8 @@ interface contract.
   Activity, and the Agent tab opens the chat.
 - **Cascade islands.** Cascade, the reactive UI framework, is vendored under `tools/web/vendor/cascade.js`
   (built from `@liquefy/cascade.reactive`, `.component` and `.dom` 2.x, ISC; see
-  `vendor/cascade.NOTICE`) and used for the dynamic surfaces. Three islands are live: the Activity
+  `vendor/cascade.NOTICE`). Cascade is by Robert Renbris ([erobwen/liquefy](https://github.com/erobwen/liquefy));
+  the credit is repeated in [CREDITS.md](CREDITS.md). and used for the dynamic surfaces. Three islands are live: the Activity
   run roster (counts, running roles and per-role outcomes in a `flipAnimationContainer`), the grid
   rows (keyed row components in a `flipAnimationContainer` whose container uses `display: contents`
   so the rows stay real table rows) and the role drawer (the tab bar and the body as components, with

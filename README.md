@@ -84,6 +84,12 @@ hosted model or a local one. See [Agent setup](docs/AGENT-SETUP.md).
 You are responsible for what it sends. Keep your config accurate, review the
 gates, and read [DISCLAIMER.md](DISCLAIMER.md).
 
+## Credits
+
+The reactive parts of the dashboard (Activity roster, grid rows and the role drawer) use
+**[Cascade](https://github.com/erobwen/liquefy)** by **Robert Renbris**, vendored under the
+ISC license. See [CREDITS.md](docs/CREDITS.md) and `tools/web/vendor/cascade.NOTICE`.
+
 ## Documentation
 
 - [Introduction](docs/INTRO.md)

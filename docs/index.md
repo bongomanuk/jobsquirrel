@@ -95,4 +95,6 @@ description: Jobsquirrel is an open, self-hosted job-application agent: it finds
 
 Made by [Peter Hollas](https://hollas.net) · [hollas.net](https://hollas.net)
 
+Reactive UI by [Cascade](https://github.com/erobwen/liquefy), Robert Renbris · [Credits](CREDITS.md)
+
 </div>
