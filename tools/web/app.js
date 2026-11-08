@@ -1160,7 +1160,7 @@ const App = {
   },
   chat: async () => {
     const inp = $('#chatmsg'), m = inp.value.trim(); if (!m) return;
-    ACT = null; ACT_SIG = '';
+    ACT = null; ACT_SIG = ''; ACT_KEY = '';
     CHAT.running = true; CHAT_STICK = true; setSpin(true); renderChat();
     const d = await api('/api/chat', { message: m });
     if (d.error) { toast(d.error, true); CHAT.running = false; setSpin(false); renderChat(); return; }  // keep your text
@@ -1226,7 +1226,7 @@ const App = {
     const d = await api('/api/chat/new', {});
     if (d.error) { toast(d.error, true); return; }
     clearInterval(CHAT_TIMER); CHAT_TIMER = null;
-    ACT = null; ACT_SIG = '';
+    ACT = null; ACT_SIG = ''; ACT_KEY = ''; ACT_AT = 0; CARD_SEQ = 1;
     CHAT_OPEN.clear();
     CHAT = { segments: [], running: false }; DONE_CARDS = []; DELEGATED_DONE_SEEN = null;
     setSpin(false); renderChat(); toast('agent history cleared');
@@ -3302,14 +3302,13 @@ async function liveTick() {
   const done = d.delegated_done || [];
   const doneIds = new Set(done.map(x => x.id));
   if (DELEGATED_DONE_SEEN === null) {
-    DELEGATED_DONE_SEEN = doneIds;                      // page load: don't replay old results
-    DONE_CARDS = done.slice(0, 1);                      // ...but show the latest finished task
-    if (DONE_CARDS.length) renderChat();
+    DELEGATED_DONE_SEEN = doneIds;                      // page load: no old result card
   } else {
     const freshDone = done.filter(x => !DELEGATED_DONE_SEEN.has(x.id));
     DELEGATED_DONE_SEEN = doneIds;
     if (freshDone.length) {
-      DONE_CARDS.push(...freshDone.slice(-3));
+      const at = (CHAT.segments || []).length;
+      DONE_CARDS.push(...freshDone.slice(-3).map(x => ({ ...x, at, seq: CARD_SEQ++ })));
       renderChat();
       if (!document.hidden) toast(`Background task finished: ${freshDone[0].title || 'subagent'}`);
     }
@@ -3389,6 +3388,19 @@ async function liveTick() {
     ACT_IGNORE = '';
     ACT_SIG = sig;
     ACT = a.name && (a.running || (a.log || []).length || hasSummary) ? a : null;
+    const key = ACT ? [a.name, a.running ? 'run' : 'done'].join('|') : '';
+    if (ACT && key !== ACT_KEY) {
+      // Place the card when the run starts, not when it finishes. A repeated
+      // action name gets a new position when it comes back as a running run.
+      const starting = a.running || !ACT_KEY;
+      ACT_KEY = key;
+      if (starting) {
+        ACT_AT = (CHAT.segments || []).length;
+        ACT_SEQ = CARD_SEQ++;
+      }
+    } else if (!ACT) {
+      ACT_KEY = '';
+    }
     renderChat();
   }
   const busyNow = !!(a.running || (d.running_tasks || []).length || delegated.length || LIVE_RUNNING);
@@ -4014,6 +4026,10 @@ document.addEventListener('toggle', e => {
 let CHAT_STICK = true;                                        // follow new output only if the reader is at the bottom
 function chatAtBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 60; }
 let ACT = null, ACT_SIG = '', ACT_IGNORE = '', LAST_ACT_NAME = '', LOCAL_ACT = null;
+// Where an action card belongs in the transcript. A card is not pinned to the
+// bottom: it is inserted after the chat segments that existed when it started
+// (or finished), so the console stays chronological.
+let ACT_AT = 0, ACT_KEY = '', ACT_SEQ = 0, CARD_SEQ = 1;
 let RAW_TIMER = null, RAW_SIZE = 12;
 const ACT_LABEL = {
   reconcile_apply: 'Reconcile mail', reconcile: 'Reconcile mail (dry run)',
@@ -4022,7 +4038,7 @@ const ACT_LABEL = {
 };   // last dashboard action, shown in the chat
 let DELEGATED_SEEN = null;                              // subagent ids already announced
 let DELEGATED_DONE_SEEN = null;                         // finished subagent ids already shown
-let DONE_CARDS = [];                                    // finished subagent results, shown in the chat
+let DONE_CARDS = [];                                    // {.., at, seq}: finished subagent results, in order
 let CHAT_TURN_RUNNING = false, LIVE_BUSY = false;       // chat turn + any action/subagent running
 function doneCard(d) {
   return `<div class="c-act"><div class="c-user">✓ ${esc(d.title || 'background task')} <span class="muted">finished</span></div>` +
@@ -4258,8 +4274,14 @@ function friendlyAgent(text) {
 
 function renderChat() {
   const el = $('#chat'), segs = (CHAT && CHAT.segments) || [];
-  if (!segs.length && !CHAT.running && !ACT) { el.innerHTML = '<span class="muted">ask the agent anything…</span>'; return; }
-  let h = '', i = 0;
+  if (!segs.length && !CHAT.running && !ACT && !DONE_CARDS.length) {
+    el.innerHTML = '<span class="muted">ask the agent anything…</span>'; return;
+  }
+  // Build the transcript in chunks, then slot the action and finished-task
+  // cards in at the segment index where they started or finished. A card is
+  // not appended after the whole chat: a later user message stays below it.
+  const chunks = [];
+  let i = 0;
   while (i < segs.length) {
     const s = segs[i];
     if (s.t === 'tool') {                       // one human section per run of tool calls
@@ -4270,25 +4292,35 @@ function renderChat() {
         if (segs[i].t === 'tool') grp.push(segs[i]);
         i++;
       }
-      h += toolSection(grp, start);
+      chunks.push({ start, html: toolSection(grp, start) });
       continue;
     }
     if (s.t === 'text' && !String(s.body || '').trim()) { i++; continue; }
-    if (s.t === 'user') h += `<div class="c-user"><div class="md">${md(s.body)}</div></div>`;
-    else if (s.t === 'status') h += /Handed to a background subagent/i.test(s.body)
+    let html = '';
+    if (s.t === 'user') html = `<div class="c-user"><div class="md">${md(s.body)}</div></div>`;
+    else if (s.t === 'status') html = /Handed to a background subagent/i.test(s.body)
       ? `<div class="c-status">${esc(s.body)} <button class="small c-act-link" onclick="App.showActivity()">Activity</button></div>`
       : `<div class="c-status">${esc(s.body)}</div>`;
-    else if (looksLikeDump(s.body)) h += `<details class="c-code" data-k="d:${i}"><summary>output <span class="muted mini">· ${s.body.split('\n').length} lines</span></summary><pre>${esc(s.body)}</pre></details>`;
-    else h += `<div class="md">${collapseCode(md(friendlyAgent(s.body)))}</div>`;
+    else if (looksLikeDump(s.body)) html = `<details class="c-code" data-k="d:${i}"><summary>output <span class="muted mini">· ${s.body.split('\n').length} lines</span></summary><pre>${esc(s.body)}</pre></details>`;
+    else html = `<div class="md">${collapseCode(md(friendlyAgent(s.body)))}</div>`;
+    chunks.push({ start: i, html });
     i++;
   }
-  if (ACT) h += actionCard(ACT);
-  if (DONE_CARDS.length) h += DONE_CARDS.map(doneCard).join('');
+  const cards = [];
+  if (ACT) cards.push({ at: Math.min(ACT_AT, segs.length), seq: ACT_SEQ, html: actionCard(ACT) });
+  DONE_CARDS.forEach(d => cards.push({
+    at: Math.min(Number.isFinite(d.at) ? d.at : segs.length, segs.length),
+    seq: d.seq || 0, html: doneCard(d),
+  }));
+  cards.sort((a, b) => a.at - b.at || a.seq - b.seq);
+  let h = '', ci = 0;
+  const emit = (upto) => { while (ci < cards.length && cards[ci].at <= upto) h += cards[ci++].html; };
+  for (const c of chunks) { emit(c.start); h += c.html; }
+  emit(segs.length);
   el.innerHTML = h;
   el.querySelectorAll('details[data-k]').forEach(d => { d.open = CHAT_OPEN.has(d.getAttribute('data-k')); });
   if (CHAT_STICK) el.scrollTop = el.scrollHeight;             // never yank the reader back down
 }
-
 /* ---------- per-role chat (drawer → Discuss) ---------- */
 function roleSegsHTML(segs, running) {
   let h = '', i = 0;
