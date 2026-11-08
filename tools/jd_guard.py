@@ -74,6 +74,8 @@ def has_spec_at(path):
             return False
     except OSError:
         return False
+    if _looks_shell(_head(path)):
+        return False
     return not is_lead_brief(path)
 
 
@@ -100,31 +102,53 @@ def _looks_closed(text):
         "please sign in", "log in to continue"))
 
 
+def _looks_shell(text):
+    """A LinkedIn page shell with no advert body is not a job description."""
+    low = (text or "").lower()
+    if "linkedin corporation" not in low or "select language" not in low:
+        return False
+    return not any(x in low for x in (
+        "about the job", "job description", "responsibilities", "qualifications",
+        "what you will do", "om jobbet", "arbetsuppgifter", "kvalifikationer"))
+
+
 def fetch_http(url):
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept-Language": "en"})
     with urllib.request.urlopen(req, timeout=25) as r:
         raw = r.read(4_000_000).decode("utf-8", "ignore")
     text = text_from_html(raw)
-    if len(text) < MIN_CHARS or _looks_closed(text):
+    if len(text) < MIN_CHARS or _looks_closed(text) or _looks_shell(text):
         raise ValueError("page has no usable job description (login wall or empty)")
     return text
 
 
 def fetch_browser(url, server):
-    cmd = [sys.executable, str(ROOT / "tools" / "camoufox_browser.py"),
-           "--server", server.rstrip("/"), "nav", url]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+    base = [sys.executable, str(ROOT / "tools" / "camoufox_browser.py"),
+            "--server", server.rstrip("/")]
+    r = subprocess.run(base + ["nav", url], capture_output=True, text=True, timeout=90)
     if r.returncode:
         raise ValueError((r.stdout + r.stderr).strip()[:300] or "browser navigation failed")
-    cmd = [sys.executable, str(ROOT / "tools" / "camoufox_browser.py"),
-           "--server", server.rstrip("/"), "eval", "document.body.innerText"]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    # LinkedIn and several ATSs render the advert after the first paint. Give
+    # the page a moment, then take the description element rather than the
+    # navigation/footer shell.
+    subprocess.run(base + ["wait", "3500"], capture_output=True, text=True, timeout=30)
+    js = r"""(() => {
+      const sels = ['.jobs-description-content__text', '.jobs-box__html-content',
+        '[data-testid="job-description"]', '[class*="jobs-description"]',
+        '[class*="job-description"]', 'article'];
+      for (const s of sels) {
+        const e = document.querySelector(s);
+        if (e && (e.innerText || '').trim().length > 300) return e.innerText;
+      }
+      return document.body.innerText;
+    })()"""
+    r = subprocess.run(base + ["eval", js], capture_output=True, text=True, timeout=60)
     try:
         out = json.loads(r.stdout)
     except ValueError:
         raise ValueError("browser returned no readable text")
     text = str(out.get("result") or "").strip()
-    if not out.get("ok") or len(text) < MIN_CHARS or _looks_closed(text):
+    if not out.get("ok") or len(text) < MIN_CHARS or _looks_closed(text) or _looks_shell(text):
         raise ValueError("browser page has no usable job description")
     return text
 
