@@ -4,12 +4,62 @@
 
 
 The browser CLI (`tools/camoufox_browser.py`) exposes: `status | nav | snap |
-click | fill | type | select | pick | fillmap | press | check | value | eval |
-wait | upload | download | headers`. Refs renumber after every `snap`, so prefer
-CSS selectors with `fill '<sel>' '<text>'`. Custom widgets that render options in
-a listbox (Workday, Greenhouse react-select, Ashby) are **not** clickable via
-dispatched events, use `pick '<option text>' ['<opener selector>']` (it scrolls
-virtualised lists and clicks with real input).
+click | fill | type | select | pick | fillmap | flow | press | check | value |
+eval | text | wait | waitfor | waittext | waiturl | upload | download | headers`.
+Refs renumber after every `snap`, so prefer CSS selectors with
+`fill '<sel>' '<text>'`. Custom widgets that render options in a listbox
+(Workday, Greenhouse react-select, Ashby) are **not** clickable via dispatched
+events, use `pick '<option text>' ['<opener selector>']` (it scrolls virtualised
+lists and clicks with real input).
+
+## One call per page: `flow`
+
+Every separate browser command is a separate agent turn, and the agent re-reads
+the whole transcript on each one — a 20-control form used to cost 20 turns and a
+growing context, which is why a submit took five to ten minutes. `flow` runs the
+whole page inside the browser server:
+
+```bash
+python3 tools/camoufox_browser.py --server $S flow '{"steps":[
+  {"op":"nav","url":"https://example.test/apply"},
+  {"op":"waitfor","selector":"#email"},
+  {"op":"fill","selector":"#email","value":"me@example.test"},
+  {"op":"pick","text":"Sweden","open":"#country"},
+  {"op":"upload","selector":"input[type=file]","path":"documents/applications/CV.docx"},
+  {"op":"click","target":"button[type=submit]"},
+  {"op":"waittext","text":"thank you|application received","regex":true,"timeout":30000},
+  {"op":"snap","match":"next|continue"}
+]}'     # or: flow @steps.json
+```
+
+Steps: `nav{url}`, `fill{selector,value}`, `type`, `select{selector,value}`,
+`check`, `upload{selector,path}`, `press{key,selector}`, `click{target}`,
+`pick{text,open}`, `eval{js}`, `waitfor{selector,timeout,state}`,
+`waittext{text,timeout,regex}`, `waiturl{url,timeout}`, `text{max}`,
+`snap{match}`, `sleep{ms}`. Add `"optional": true` to a step that may legitimately
+fail. The flow stops at the first failing step and returns `failed_at` and the
+error, so one call covers fill → upload → submit → confirmation.
+
+Use `waitfor` / `waittext` / `waiturl` instead of `wait` or `sleep`: they return
+the moment the condition holds. `snap --match '<regex>'` narrows the ref list
+without renumbering it, and `text [chars]` returns trimmed page text for reading
+a confirmation.
+
+## 2FA / sign-in checkpoints
+
+A code or an app approval is the one thing the pipeline must not solve. When a
+sign-in is stopped by one, ask the human and wait:
+
+```bash
+python3 tools/ask_human.py --reason "LinkedIn sign-in: code needed" \
+  --detail "Acme / Engineer" --timeout 600
+```
+
+It pings the desktop and shows a single dialog in the dashboard; when the human
+types the code it prints `{"ok":true,"answer":"482913"}`, and the agent types
+that into the page and carries on. Exit code 2 / `"ok":false` means nobody
+answered (or it was cancelled): record `BLOCKED` with the page left open.
+Email-delivered codes do not need a human — read them with `tools/email_verify.py`.
 
 > These recipes are starting points. Employers change their forms; when a step
 > fails, `snap` the page, adjust the selector, and prefer the employer's own ATS

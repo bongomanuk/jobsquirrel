@@ -14,6 +14,7 @@ import argparse
 import os
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gmail_readonly as G
@@ -56,6 +57,8 @@ def main():
     ap.add_argument("--days", type=int, default=14, help="look back this many days (with --domain)")
     ap.add_argument("--latest", type=int, default=1, help="how many of the newest messages to show")
     ap.add_argument("--open", action="store_true", help="open the newest link in the browser")
+    ap.add_argument("--wait", type=int, default=0,
+                    help="poll for up to this many seconds (5s interval) until a matching message with a link/code arrives")
     args = ap.parse_args()
 
     query = args.query
@@ -67,6 +70,15 @@ def main():
         ap.error("provide --query or --domain")
 
     msgs = messages(query, max_results=15)
+    if args.wait and args.wait > 0:
+        # Poll instead of a fixed `sleep 45`: a confirmation that arrives in 6
+        # seconds is used 6 seconds later, and a slow one still gets its window.
+        deadline = time.time() + args.wait
+        while time.time() < deadline:
+            msgs = messages(query, max_results=15)
+            if any(any(G.extract(m[2])) for m in msgs):
+                break
+            time.sleep(5)
     if not msgs:
         print(f"no matching messages for: {query}")
         sys.exit(1)

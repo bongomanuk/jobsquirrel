@@ -15,6 +15,7 @@ import json
 import re
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -112,8 +113,96 @@ def dispatch(cmd: str, body: dict) -> dict:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             page.screenshot(path=path, full_page=True)
         refs = page.evaluate(INTERACTIVE_JS)
+        total = len(refs)
+        # `match` narrows the list without renumbering: the refs keep the index
+        # the click handler uses, so a filtered snap is still safe to click from.
+        # A full 100-ref dump is ~6KB of transcript per turn; filtering it to the
+        # few controls that matter is most of the token saving in a form flow.
+        match = str(body.get("match") or "").strip()
+        if match:
+            try:
+                rx = re.compile(match, re.I)
+            except re.error as e:
+                return {"ok": False, "error": f"snap: bad match regex: {e}"}
+            refs = [r for r in refs
+                    if rx.search(str(r.get("text") or "")) or rx.search(str(r.get("tag") or ""))]
         return {"ok": True, "url": page.url, "title": page.title(),
-                "path": path, "refs": refs}
+                "path": path, "refs": refs, "refs_total": total}
+
+    if cmd == "text":
+        # Trimmed visible text: enough to read a confirmation or an error, far
+        # cheaper than a full-page eval that the agent re-reads every turn.
+        maxc = max(200, min(int(body.get("max") or 1500), 20000))
+        txt = page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
+        txt = re.sub(r"[ \t]+", " ", txt)
+        txt = re.sub(r"\n{3,}", "\n\n", txt).strip()
+        return {"ok": True, "url": page.url, "title": page.title(),
+                "chars": len(txt), "text": txt[:maxc]}
+
+    if cmd == "waitfor":
+        sel = str(body.get("selector") or "").strip()
+        if not sel:
+            return {"ok": False, "error": "waitfor: missing selector"}
+        state = str(body.get("state") or "visible")
+        ms = max(100, min(int(body.get("timeout") or 15000), 120000))
+        t0 = time.time()
+        try:
+            page.wait_for_selector(sel, state=state, timeout=ms)
+        except Exception as e:
+            return {"ok": False,
+                    "error": f"waitfor: {state} {sel!r} not seen in {ms}ms ({str(e)[:100]})",
+                    "url": page.url, "title": page.title()}
+        return {"ok": True, "selector": sel, "state": state,
+                "waited_ms": int((time.time() - t0) * 1000), "url": page.url}
+
+    if cmd == "waittext":
+        # Event wait instead of `sleep N`: returns the moment the text appears,
+        # so a fast confirmation costs 300ms and a slow one still gets its time.
+        needle = str(body.get("text") or "").strip()
+        if not needle:
+            return {"ok": False, "error": "waittext: missing text"}
+        ms = max(200, min(int(body.get("timeout") or 20000), 180000))
+        rx = None
+        if body.get("regex"):
+            try:
+                rx = re.compile(needle, re.I | re.S)
+            except re.error as e:
+                return {"ok": False, "error": f"waittext: bad regex: {e}"}
+        t0 = time.time()
+        last = ""
+        while (time.time() - t0) * 1000 < ms:
+            last = page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
+            hit = bool(rx.search(last)) if rx else (needle.lower() in last.lower())
+            if hit:
+                return {"ok": True, "matched": needle,
+                        "waited_ms": int((time.time() - t0) * 1000),
+                        "url": page.url, "title": page.title()}
+            page.wait_for_timeout(250)
+        return {"ok": False,
+                "error": f"waittext: {needle!r} not seen in {ms}ms",
+                "url": page.url, "title": page.title(),
+                "text": re.sub(r"\s+", " ", last)[:300]}
+
+    if cmd == "waiturl":
+        want = str(body.get("url") or "").strip()
+        if not want:
+            return {"ok": False, "error": "waiturl: missing url"}
+        ms = max(200, min(int(body.get("timeout") or 20000), 180000))
+        rx = None
+        if body.get("regex"):
+            try:
+                rx = re.compile(want, re.I)
+            except re.error as e:
+                return {"ok": False, "error": f"waiturl: bad regex: {e}"}
+        t0 = time.time()
+        while (time.time() - t0) * 1000 < ms:
+            cur = page.url or ""
+            if (rx.search(cur) if rx else want.lower() in cur.lower()):
+                return {"ok": True, "url": cur, "title": page.title(),
+                        "waited_ms": int((time.time() - t0) * 1000)}
+            page.wait_for_timeout(250)
+        return {"ok": False, "error": f"waiturl: {want!r} not reached in {ms}ms",
+                "url": page.url, "title": page.title()}
 
     if cmd == "click":
         target = str(body.get("target") or "").strip()
@@ -443,6 +532,62 @@ def dispatch(cmd: str, body: dict) -> dict:
     if cmd == "headers":
         return {"ok": True, "url": page.url, "title": page.title(),
                 "extra_http_headers": EXTRA_HEADERS}
+
+    if cmd == "flow":
+        # A whole form page in ONE round-trip. Every browser call is a separate
+        # agent turn that re-sends the transcript, so a 20-control form cost 20
+        # model turns and a growing context. A flow runs the same steps here,
+        # in-process, and returns one compact log.
+        steps = body.get("steps") or []
+        if not isinstance(steps, list) or not steps:
+            return {"ok": False, "error": "flow: need a non-empty 'steps' list"}
+        stop = not bool(body.get("continue"))
+        log = []
+        for i, raw in enumerate(steps):
+            if not isinstance(raw, dict):
+                return {"ok": False, "failed_at": i, "error": "flow: step is not an object",
+                        "steps": log, "url": page.url}
+            st = dict(raw)
+            op = str(st.pop("op", "fill") or "fill").strip().lower()
+            optional = bool(st.pop("optional", False))
+            # `fill`/`type` take "text" in the single-command API; a flow step
+            # reads more naturally as {selector, value}, so accept both.
+            if op in ("fill", "type") and "text" not in st and "value" in st:
+                st["text"] = st.pop("value")
+            if op == "flow":
+                return {"ok": False, "failed_at": i,
+                        "error": "flow: nested flow is not allowed", "steps": log}
+            try:
+                res = dispatch(op, st)
+            except Exception as e:
+                res = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+            ok = bool(res.get("ok"))
+            entry = {"i": i, "op": op, "ok": ok}
+            if not ok:
+                entry["error"] = str(res.get("error") or "failed")[:240]
+            else:
+                if op == "snap":
+                    entry["refs"] = res.get("refs") or []
+                    entry["refs_total"] = res.get("refs_total")
+                for k in ("clicked", "picked", "pressed", "filled", "typed", "uploaded",
+                          "selected", "checked", "applied", "waited_ms", "matched",
+                          "value", "result", "url"):
+                    if k in res:
+                        v = res[k]
+                        entry[k] = v if isinstance(v, (int, float, bool)) else str(v)[:160]
+                        break
+            log.append(entry)
+            if not ok and not optional and stop:
+                return {"ok": False, "failed_at": i, "failed_op": op,
+                        "error": entry["error"], "steps": log,
+                        "url": page.url, "title": page.title()}
+        done = {"ok": True, "steps": log, "step_count": len(log),
+                "url": page.url, "title": page.title()}
+        if body.get("text"):
+            maxc = max(100, min(int(body.get("text_max") or 400), 20000))
+            txt = page.evaluate("() => (document.body && document.body.innerText) || ''") or ""
+            done["text"] = re.sub(r"\s+", " ", txt).strip()[:maxc]
+        return done
 
     return {"ok": False, "error": f"unknown cmd: {cmd}"}
 

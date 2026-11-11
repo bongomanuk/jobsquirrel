@@ -41,12 +41,17 @@ runlog() { printf '%s\n' "$*" >> "$LOGS/run_queue.out"; printf '%s\n' "$*"; }
 SUMMARY_FILE="${SUMMARY_FILE:-$LOGS/run-summary-$$.md}"
 : > "$SUMMARY_FILE"
 PARALLEL="${PARALLEL:-5}"
-TASK_TIMEOUT="${TASK_TIMEOUT:-1200}"
+# A task that has produced no useful output for this long is stuck, not working:
+# at ~3s per model turn a real application finishes well inside ten minutes. The
+# old 1200s cap meant one stalled worker burned 20 minutes and then retried.
+TASK_TIMEOUT="${TASK_TIMEOUT:-600}"
 RETRY_LIMIT="${RETRY_LIMIT:-1}"
 LIGHT="${LIGHT:-0}"                 # 1 = cheap run: one fixed CV, no per-role CV/letter
 FIXED_CV="${FIXED_CV:-}"            # CV file to upload when LIGHT=1
 REVIEW="${REVIEW:-0}"               # 1 = prepare documents only (gate PASS, record PREPARED, do NOT submit)
 PREPARED="${PREPARED:-0}"           # 1 = submit documents that a REVIEW pass already generated (no re-generation)
+CAPTCHA_ON=0                        # private build: on unless Settings -> CAPTCHA disables it
+if python3 "$ROOT/tools/captcha_solver.py" --enabled >/dev/null 2>&1; then CAPTCHA_ON=1; fi
 ELIGIBILITY_OVERRIDE="${ELIGIBILITY_OVERRIDE:-}"
 PROFILE="${PROFILE:-$ROOT/config/profile.md}"   # identity / eligibility config
 # The coding agent that applies to each role: opencode | claude | any command.
@@ -67,6 +72,27 @@ fi
 CV_PREFIX="${CV_PREFIX:-CV}"
 
 mkdir -p "$LOGS"; touch "$DONE"
+
+# One run at a time on this repo. Each worker drives its own Camoufox browser and
+# the box has 8 cores: a second concurrent batch (an ad-hoc retry, a "quick"
+# prepare) does not add throughput, it makes every task 2-4x slower by thrashing.
+# The lock is per-ROOT and released automatically when the run exits.
+if command -v flock >/dev/null 2>&1; then
+  exec 9>>"$ROOT/state/run.lock"
+  if ! flock -n 9; then
+    if [ "${ALLOW_CONCURRENT:-0}" = "1" ]; then
+      runlog "WARN: another run_queue.sh is active; ALLOW_CONCURRENT=1 set, continuing (expect slower roles)"
+    else
+      cat >&2 <<'LOCKMSG'
+run_queue: another run_queue.sh is already active on this repo (state/run.lock).
+  One run at a time: a second batch does not add throughput on this machine, it
+  makes every role slower. Wait for the current run, or set ALLOW_CONCURRENT=1
+  if you really want two batches sharing the CPU.
+LOCKMSG
+      exit 3
+    fi
+  fi
+fi
 
 # Keep state/ bounded and usable: gzip logs older than the window, and restore any
 # per-role artifact that was packed (job ads, keyword files, grounding packs, gate
@@ -120,7 +146,15 @@ ensure_server() {
     "$_p" -c 'import camoufox' >/dev/null 2>&1 && { py="$_p"; break; }
   done
   py="${py:-python3}"
-  setsid nohup "$py" "$ROOT/tools/camoufox_server.py" --port "$port" \
+  # A persistent profile per port: a sign-in done once (Google, LinkedIn, an
+  # employer portal) survives into later runs instead of every run looking like a
+  # new device and triggering another verification. HEADFUL=1 shows the windows,
+  # for a run where the human has to sign in by hand.
+  local profile="${CAMOUFOX_PROFILE_DIR:-$HOME/.config/job-search/profiles}/work-$port"
+  mkdir -p "$profile" 2>/dev/null
+  local headful=""
+  [ "${HEADFUL:-0}" = "1" ] && headful="--headful"
+  setsid nohup "$py" "$ROOT/tools/camoufox_server.py" --port "$port" --profile "$profile" $headful \
     >> "$LOGS/camoufox_server_$port.log" 2>&1 < /dev/null &
   disown
   local _t
@@ -138,13 +172,33 @@ if [ "$REVIEW" != "1" ]; then
   done
 fi
 
+browser_help() {
+  # One shared browser/flow instruction block for every run mode. It is inlined
+  # into the prompt rather than pasted three times, so the `flow` recipe cannot
+  # drift between the prepare, submit-prepared and apply paths.
+  cat <<BROWSER
+  Browser: every command is \`python3 tools/camoufox_browser.py --server $server <cmd>\`; prefix a single command with \`$TIMEOUT_CMD 30\` and a \`flow\` with \`$TIMEOUT_CMD 120\`.
+  SPEED - ONE \`flow\` CALL PER FORM PAGE: \`flow '{"steps":[...]}'\` (or \`flow @steps.json\`) runs a whole page in ONE round-trip: nav{url}, fill{selector,value}, type, select{selector,value}, check{selector}, upload{selector,path}, press{key,selector}, click{target}, pick{text,open}, eval{js}, waitfor{selector,timeout}, waittext{text,timeout,regex}, waiturl{url,timeout}, text{max}, snap{match}, sleep{ms}. Add optional:true to a step that may legitimately fail. It stops at the first failed step and returns failed_at + error. Prefer ONE flow covering fill -> upload -> click submit -> waittext for the confirmation -> snap match, then a second flow only if the page moved.
+  Waiting: use waitfor / waittext / waiturl instead of wait or sleep - they return the moment the condition holds. Refs renumber after every snap, so re-snap before using refs; prefer CSS selectors with \`fill '<sel>' '<text>'\`. \`snap --match '<regex>'\` returns only the matching refs (their numbers stay valid); \`text [chars]\` returns trimmed page text for a confirmation or an error.
+  Many fields without flow: \`fillmap '<json steps>'\` (op: fill|check|select|upload|press) fills them all in one call.
+  Custom ATS widgets (Workday, Greenhouse/react-select, Ashby): listbox options are NOT clickable via eval-dispatched events - use \`pick '<option text>' ['<opener selector>']\` (it scrolls virtualised lists and clicks with real input). \`press Enter '<sel>'\` commits type-aheads, \`press Escape\` closes a popup. \`click\` retries with a forced click automatically; add \`--force\` if something is in the way. CSS ids starting with a digit need \`[id="53683"]\`, not \`#53683\`.
+  LinkedIn: if a LinkedIn page shows a login wall, checkpoint, App Challenge or SMS code, go to the employer's own ATS or the posting's external apply link first - one attempt on LinkedIn, never a loop. If the employer route needs the LinkedIn session, use the 2FA handoff below.
+  CAPTCHA is NOT a human handoff: "verify you are human", hCaptcha/reCAPTCHA, a slider or rotate widget is handled by the captcha rule (the private build solves it). Never ask the human for a CAPTCHA and never use ask_human/open_for_human for one.
+  NEEDS THE HUMAN TO SIGN IN (an employer portal or a Google/Microsoft account that wants a password, a LinkedIn "was this you?" app approval, a device check with no code): do NOT just report it and stop, and do NOT use ask_human for a sign-in that needs typing in the page. Run \`python3 tools/open_for_human.py --url "<the exact login URL>" --port ${server##*:} --reason "Sign in: <what>" --detail "$company / $role" --timeout 900\` - it replaces this worker's headless browser with a VISIBLE Camoufox window on the same port and profile, opens the page, and blocks until the human presses Done in the dashboard. Then continue the application in that same browser. Use OPEN_FOR_HUMAN once per sign-in, not per attempt, and never for a CAPTCHA.
+  2FA / sign-in checkpoint (LinkedIn "App Challenge" or device approval, an SMS/authenticator code, "verify your device"): a code or an app tap is a HUMAN handoff, not a dead end - do NOT record BLOCKED yet and never try to work around it. READ THE PAGE FIRST and pick the mode: if it says "check your app", "was this you?" or "tap Yes" it is an APPROVAL - \`python3 tools/ask_human.py --mode approve --reason "LinkedIn: approve the sign-in on your phone" --detail "<Company> / <Role>" --timeout 600\` (the dashboard asks the human to tap Yes and press Done; no code exists, so never ask for one). Only if it shows a 6-digit code field use \`--mode code --reason "LinkedIn sign-in: enter the code sent to your phone"\`. It blocks until they answer and prints one JSON line \`{"ok":true,"answer":"482913"}\` (or \`"approved"\`). Then act in the page: \`fill '<code field>' '<answer>'\` + \`press Enter\`, or for an approval re-read the page/\`nav\` it again to let it pass, then carry on with the application. Only if it prints \`"ok":false\` (nobody answered in time) record BLOCKED with "2FA handoff unanswered, page left open". Ask at most once per checkpoint per role. If the checkpoint emails the code instead of texting it, read it with email_verify.py --wait 90 first: no human needed.
+BROWSER
+}
+
 build_prompt() {
   local company="$1"; role="$2"; url="$3"; cv="$4"; ats="$5"; key="$6"; server="$7"
   local REVIEW_MSG="" OUTCOMES="SUBMITTED|BLOCKED|CLOSED" CAPTCHA_RULE="" REPOST_FLAG=""
   [ -n "${REPOST_NOTE:-}" ] && REPOST_FLAG="--repost"
-  CAPTCHA_RULE="If a CAPTCHA / \"verify you are human\" / anti-bot challenge appears: do NOT solve or evade it. Record \`python3 tools/register.py --set --company \"$company\" --role \"$role\" --status BLOCKED --notes \"captcha: <exact challenge>\"\` and return STATUS BLOCKED."
+  if [ "${CAPTCHA_ON:-0}" = "1" ]; then
+    CAPTCHA_RULE="If a CAPTCHA / \"verify you are human\" / anti-bot challenge appears: run \`python3 tools/captcha_solver.py --solve --server $server\`. If it reports ok, wait ~3s and submit once if the page has not moved (never submit while the token is empty). If it fails, record \`python3 tools/register.py --set --company \"$company\" --role \"$role\" --status BLOCKED --notes \"captcha: <solver error>\"\` and return STATUS BLOCKED. At most two solver attempts."
+  else
+    CAPTCHA_RULE="If a CAPTCHA / \"verify you are human\" / anti-bot challenge appears: do NOT solve or evade it. Record \`python3 tools/register.py --set --company \"$company\" --role \"$role\" --status BLOCKED --notes \"captcha: <exact challenge>\"\` and return STATUS BLOCKED."
+  fi
   local INTRO="You are applying to ONE job on behalf of the candidate described in config/profile.md. Repo: $ROOT (cwd). Do not touch other jobs."
-  local BROWSER_LINE="  Browser: run every command as \`python3 tools/camoufox_browser.py --server $server <cmd>\` (nav/snap/click/fill/type/select/pick/fillmap/press/check/upload/value/eval/wait). Prefix \`$TIMEOUT_CMD 30\`. Re-snap before using refs; prefer CSS selectors with \`fill '<sel>' '<text>'\`. To cut tokens, BATCH form fields with \`fillmap '<json steps>'\` (steps: [{\"selector\":\"#x\",\"value\":\"...\",\"op\":\"fill|check|select|upload|press\"}]) instead of one call per field."
   if [ "${REVIEW:-0}" = "1" ]; then
     OUTCOMES="PREPARED|BLOCKED|CLOSED"
     INTRO="You are PREPARING documents for ONE job (REVIEW, no submission). Repo: $ROOT (cwd). Do not touch other jobs."
@@ -159,7 +213,7 @@ Company: $company
 Role: $role
 Apply URL: $url
 CV to upload (FIXED - do NOT generate or edit any CV or cover letter): $FIXED_CV
-Browser: run every command as \`python3 tools/camoufox_browser.py --server $server <cmd>\` (nav/snap/click/fill/type/select/pick/fillmap/press/check/upload/value/eval/wait). Prefix \`$TIMEOUT_CMD 30\`. Re-snap before using refs; prefer CSS selectors with \`fill '<sel>' '<text>'\`. To cut tokens, BATCH form fields with \`fillmap '<json steps>'\` (steps: [{"selector":"#x","value":"...","op":"fill|check|select|upload|press"}]) instead of one call per field.
+$(browser_help)
 
 FIRST, before anything else: read config/profile.md and apply it - identity (name, email, phone, location, links), work authorisation, languages, availability, pay/rate, eligibility/exclusions, accuracy rules and the standard diversity/EEO answers. Use those exact values wherever a form asks; never invent or substitute personal data. Treat config/cv.json as the source of truth for the candidate's experience.
 This is a LIGHT run: be fast and cheap. Do NOT run GraphRAG, do NOT write a CV or letter, do NOT run alignment/document gates (the runner already gated $FIXED_CV, so recording it as SUBMITTED needs no --force).
@@ -168,12 +222,12 @@ Steps:
 0. DUPLICATE GUARD: the queue runner already checked the register for this company and role before starting. Do not re-read state/applications.csv or call register.py --show. A repost or an earlier application does NOT block a new one: apply/prepare it as normal and note the repost. Never record CLOSED just because the role looks like a duplicate.
 ${REPOST_NOTE:-}
 0b. ELIGIBILITY GATE (mandatory): apply ONLY if the role is compatible with the eligibility rules in config/profile.md (based-in location, accepted work models, languages, work authorisation, exclusions). If the role is excluded, or requires work authorisation / a language / an on-site location the candidate does not have, record CLOSED with the reason and STOP - do not fill or submit. If the location/work model is unclear or excluded, record CLOSED/BLOCKED per those rules and STOP (no application). Only if eligible, continue.
-1. Open the apply URL. If it is a LinkedIn job page, find the employer's own Apply link / real ATS (Greenhouse/Lever/Ashby/Workday/Teamtailor/own site) and apply there. If the only route is LinkedIn Easy Apply, do NOT use it: record BLOCKED with note "LinkedIn Easy Apply is not supported in the public build" and STOP.
+1. Open the apply URL. If it is a LinkedIn job page, find the employer's own Apply link / real ATS (Greenhouse/Lever/Ashby/Workday/Teamtailor/own site) and apply there; prefer it over LinkedIn Easy Apply.
 2. Fill the form with the identity and standard answers from config/profile.md: work authorisation as stated there; salary/pay if asked as stated there; EEO / diversity questions answered truthfully as specified in profile.md - do NOT decline or pick "prefer not to say" unless profile.md says so. Upload $FIXED_CV as the CV. Skip optional cover-letter/portfolio fields.
 3. ${CAPTCHA_RULE}
 4. Submit, then CONFIRM before recording anything - a submit click alone is NOT proof:
    - Confirm the success/thank-you page (e.g. "application received", "Thanks for applying"); note its EXACT text and URL.
-   - EMAIL VERIFICATION (mandatory): wait ~45s and read the candidate's Gmail (the account config/profile.md is set up for) for an ATS/employer verification message. Some ATS (Teamtailor, join.com, Workday, etc.) require a "Complete the application" link before the application counts. Find it with \`.venv/bin/python tools/email_verify.py --query 'newer_than:2h (from:teamtailor-mail.com OR from:join.com OR "Complete the application" OR "Security code for your application" OR "verify your email" OR "Activate your account")'\` and COMPLETE it: open the verify link in THIS pipeline browser (\`python3 tools/camoufox_browser.py --server $server nav '<LINK>'\`), or type the emailed security code into the code field and resubmit. Also open any account-activation link the employer sends (Workday etc.).
+   - EMAIL VERIFICATION (mandatory): some ATS (Teamtailor, join.com, Workday) require a "Complete the application" link before the application counts. Read the candidate's Gmail (the account config/profile.md is set up for), polling instead of sleeping - \`.venv/bin/python tools/email_verify.py --wait 90 --query 'newer_than:2h (from:teamtailor-mail.com OR from:join.com OR "Complete the application" OR "Security code for your application" OR "verify your email" OR "Activate your account")'\` returns as soon as a message with a link or code arrives. Then COMPLETE it: open the verify/activation link in THIS pipeline browser (\`python3 tools/camoufox_browser.py --server $server nav '<LINK>'\`), or type the emailed security code into the code field and resubmit.
 5. Record ONLY with real confirmation: \`python3 tools/record_submission.py --company "$company" --role "$role" --ats "$ats" --url "$url" --cv $FIXED_CV --status SUBMITTED --evidence "<the exact thank-you text or the confirmation email you received>"\`. The evidence MUST be real - never "confirmed"/"ok"/a placeholder (the recorder rejects those). If a verification link or code is still pending and you cannot complete it, record \`--status BLOCKED --evidence "submitted but pending email verification: <what>" --force\` instead and STOP. If a CAPTCHA/anti-bot wall persists, record BLOCKED as in step 3. Never fabricate.
 
 Return exactly one line: STATUS <Company> | $role | SUBMITTED|BLOCKED|CLOSED | <reason>
@@ -189,8 +243,7 @@ ATS: $ats
 Apply URL: $url
 CV to upload (ALREADY GENERATED - do NOT regenerate): documents/applications/${CV_PREFIX}_CV_$key.docx
 $LETTER_LINE
-  Browser: run every command as \`python3 tools/camoufox_browser.py --server $server <cmd>\` (nav/snap/click/fill/type/select/pick/fillmap/press/check/upload/value/eval/wait). Prefix \`$TIMEOUT_CMD 30\`. Refs renumber after every snap - re-snap before using refs; prefer CSS selectors with \`fill '<sel>' '<text>'\`. To cut tokens, BATCH form fields with \`fillmap '<json steps>'\` (steps: [{"selector":"#x","value":"...","op":"fill|check|select|upload|press"}]) instead of one call per field.
-  Custom ATS widgets (Workday, Greenhouse/react-select, Ashby): options in a listbox/dropdown are NOT clickable via eval-dispatched events - use \`pick '<option text>' ['<opener selector>']\` (it scrolls virtualised lists and clicks with real input). Use \`press Enter '<sel>'\` to commit type-aheads, \`press Escape\` to close a popup. \`click\` retries with a forced click automatically when an overlay blocks it; add \`--force\` yourself if you already know something is in the way. CSS ids starting with a digit need \`[id="53683"]\`, not \`#53683\`.
+$(browser_help)
 
 SUBMIT-PREPARED RUN: these files were generated, written and gated in an earlier REVIEW pass and are FINAL. Do NOT re-do any preparation. Specifically: do NOT run kb_graphrag.py, ats_keywords.py, cv_target.py, render_motivation/render_cv, and do NOT rewrite, re-render, edit or "improve" the CV or letter. Do NOT run check_alignment.py. Do not call GraphRAG. If the CV is missing, STOP and record BLOCKED with the missing path - never generate a replacement. If only the cover letter is missing because the advert did not ask for one, leave it out unless the form makes it mandatory (step 1b).
 
@@ -204,7 +257,7 @@ ${REPOST_NOTE:-}
 1b. COVER LETTER FALLBACK (only when the form marks a cover letter as mandatory and no letter was prepared): write a short, grounded letter to state/letters/$key.json with keys headline, title, engagement ("fulltime"), opening and fit, using state/kb-context/$key.md and state/cv-content/$key.json. Use the candidate's voice and only facts the CV/KB support. Render and gate it WITHOUT touching the CV: \`python3 tools/finalise_docs.py --key $key --company "<Company>" --role "$role" --jd state/job-descriptions/$key.md --ats state/ats/$key.txt --engagement $ENGAGEMENT --skip-cv --letter-mode yes\` - it must print RESULT: PASS and write the gate receipt. Then upload documents/applications/${CV_PREFIX}_Motivation_$key.docx, re-run the step 1 gate with \`--letter documents/applications/${CV_PREFIX}_Motivation_$key.docx\`, and add the same \`--letter documents/applications/${CV_PREFIX}_Motivation_$key.docx\` to the step 3 record command. If the letter cannot be generated or gated, record BLOCKED.
 2. Apply via the Camoufox browser: fill fields with profile.md values, upload the prepared CV $LETTER_UPLOAD, answer questions honestly, submit. Verify a success/thank-you page.
    Multi-step forms (Workday etc): the footer button is [data-automation-id="pageFooterNextButton"] (Save and Continue). If a save is rejected, read the Error-* text and fix exactly the field it names (usually a custom dropdown - use \`pick\`).
-2b. EMAIL VERIFICATION (mandatory): after submit, wait ~45s, then read the candidate's Gmail (\`.venv/bin/python tools/email_verify.py --query 'newer_than:2h (from:teamtailor-mail.com OR from:join.com OR "Complete the application" OR "Security code for your application" OR "verify your email" OR "Activate your account")'\`) and COMPLETE it in THIS browser. Do NOT record SUBMITTED until a real confirmation is seen. If verification remains pending, record BLOCKED.
+2b. EMAIL VERIFICATION (mandatory): read the candidate's Gmail with a poll instead of a sleep - \`.venv/bin/python tools/email_verify.py --wait 90 --query 'newer_than:2h (from:teamtailor-mail.com OR from:join.com OR "Complete the application" OR "Security code for your application" OR "verify your email" OR "Activate your account")'\` returns as soon as a message with a link or code arrives - and COMPLETE it in THIS browser. Do NOT record SUBMITTED until a real confirmation is seen. If verification remains pending, record BLOCKED.
 2c. BLOCKER RECOVERY: re-read the page and retry once; on a login wall use \`python3 tools/accounts.py --get <site-host>\` (the secrets store). If there is no entry, create one with \`python3 tools/accounts.py --for <site-host> --email <the candidate email in config/profile.md>\`: it stores a strong password, and you fill that. Never print or invent a password. If the apply URL is dead, resolve the employer's own ATS. ${CAPTCHA_RULE}
 3. On success: \`python3 tools/record_submission.py --company "<Company>" --role "$role" --ats "$ats" --url "$url" --key $key --cv documents/applications/${CV_PREFIX}_CV_$key.docx ${LETTER_RECORD}--status SUBMITTED --evidence "<the exact thank-you text or the confirmation email>"\`. The evidence MUST be real - never "confirmed"/"ok"/a placeholder.
 
@@ -219,8 +272,7 @@ Role: $role
 ATS: $ats
 Apply URL: $url
 CV to upload: $cv
-  Browser: run every command as \`python3 tools/camoufox_browser.py --server $server <cmd>\` (nav/snap/click/fill/type/select/pick/fillmap/press/check/upload/value/eval/wait). Prefix \`$TIMEOUT_CMD 30\`. Refs renumber after every snap - re-snap before using refs; prefer CSS selectors with \`fill '<sel>' '<text>'\`. To cut tokens, BATCH form fields with \`fillmap '<json steps>'\` (steps: [{"selector":"#x","value":"...","op":"fill|check|select|upload|press"}]) instead of one call per field.
-  Custom ATS widgets (Workday, Greenhouse/react-select, Ashby): options in a listbox/dropdown are NOT clickable via eval-dispatched events - use \`pick '<option text>' ['<opener selector>']\` (it scrolls virtualised lists and clicks with real input). Use \`press Enter '<sel>'\` to commit type-aheads, \`press Escape\` to close a popup. \`click\` retries with a forced click automatically when an overlay blocks it; add \`--force\` yourself if you already know something is in the way. CSS ids starting with a digit need \`[id="53683"]\`, not \`#53683\`.
+$(browser_help)
 
 FIRST, before anything else: read config/profile.md and apply it - identity (name, email, phone, location, links), work authorisation, languages, availability, pay/rate, eligibility/exclusions, accuracy rules and the standard diversity/EEO answers. Use those exact values wherever a form asks; never invent or substitute personal data. Use config/cv.json as the source of truth for the candidate's experience, and config/archetypes.json for the CV archetypes described below. Use the real company name you resolve in the gate/record calls.
 ${REVIEW_MSG:-}
@@ -242,7 +294,7 @@ ${REPOST_NOTE:-}
 4. Apply via the Camoufox browser: fill fields, upload the targeted CV documents/applications/${CV_PREFIX}_CV_$key.docx (ATS-safe) and the prepared letter if one exists, answer questions honestly using the identity and standard answers in config/profile.md (work authorisation etc.), submit. Verify a success/thank-you page.
    If the form has a REQUIRED cover-letter upload and no letter was prepared, write state/letters/$key.json now (same rules), run \`python3 tools/finalise_docs.py --key $key --company "$company" --role "$role" --jd state/job-descriptions/$key.md --ats state/ats/$key.txt --engagement $ENGAGEMENT --letter-mode yes\` and upload the rendered letter. If the field is optional, leave it empty.
    Multi-step forms (Workday etc): the footer button is [data-automation-id="pageFooterNextButton"] (Save and Continue). If a save is rejected, read the Error-* text on the page and fix exactly the field it names (usually a custom dropdown - use \`pick\`). Never leave a required field blank hoping it is optional; optional sections are fine to leave empty.
-4b. EMAIL VERIFICATION (mandatory - do not skip): some ATS (Teamtailor, join.com, Workday, etc.) email a "Complete the application" link before the application counts. After submit, wait ~45s, then read the candidate's Gmail (\`.venv/bin/python tools/email_verify.py --query 'newer_than:2h (from:teamtailor-mail.com OR from:join.com OR "Complete the application" OR "Security code for your application" OR "verify your email" OR "Activate your account")'\`) and COMPLETE it: open the verify/activation link in THIS pipeline browser (\`python3 tools/camoufox_browser.py --server $server nav '<LINK>'\`), or enter any emailed security code into the code field and resubmit. Do NOT record SUBMITTED until a real confirmation is seen (final received/thank-you page text or URL, or a confirmation email). If a verification step remains pending, record BLOCKED, not SUBMITTED.
+4b. EMAIL VERIFICATION (mandatory - do not skip): some ATS (Teamtailor, join.com, Workday, etc.) email a "Complete the application" link before the application counts. After submit, read the candidate's Gmail with a poll instead of a sleep (\`.venv/bin/python tools/email_verify.py --wait 90 --query 'newer_than:2h (from:teamtailor-mail.com OR from:join.com OR "Complete the application" OR "Security code for your application" OR "verify your email" OR "Activate your account")'\`) and COMPLETE it: open the verify/activation link in THIS pipeline browser (\`python3 tools/camoufox_browser.py --server $server nav '<LINK>'\`), or enter any emailed security code into the code field and resubmit. Do NOT record SUBMITTED until a real confirmation is seen (final received/thank-you page text or URL, or a confirmation email). If a verification step remains pending, record BLOCKED, not SUBMITTED.
 4c. BLOCKER RECOVERY (mandatory - do NOT record BLOCKED until you have actually tried these and can say what you tried). Most "blocked" states have a legitimate workaround:
    - Re-read the page for the EXACT error and retry the action once after a short wait - transient overlays, slow saves and stale sessions are common.
    - Login/session wall (LinkedIn, an ATS account, Google, etc.): sign in using \`python3 tools/accounts.py --get <site-host>\` (the secrets store), or the credentials referenced in config/profile.md. If there is no entry, create one with \`python3 tools/accounts.py --for <site-host> --email <the candidate email in config/profile.md>\` (it stores a strong password). NEVER print or invent credentials. If the site also demands a challenge you cannot solve, that single step is the human step.
@@ -395,7 +447,12 @@ REVIEW RUN ENDS HERE. Do NOT open the browser, do NOT upload, do NOT run record_
     reason="empty model output"
   fi
   if [ -n "$reason" ]; then
-    printf '%s\n' "${key:-$company|$role}" >> "$RETRY_FILE"
+    # A stall ("timeout with no model output") is not a transient wall: retrying
+    # it burns another TASK_TIMEOUT of a worker and stalls in the same place.
+    # Leave it pending so the operator can retry it deliberately, alone.
+    if [[ "$reason" != *"no model output"* ]]; then
+      printf '%s\n' "${key:-$company|$role}" >> "$RETRY_FILE"
+    fi
     runlog "INFRA-FAIL $(date +%H:%M:%S) $company | $role ($reason, rc=$rc)"
     if [ "$hard" -eq 1 ]; then
       n=0

@@ -96,8 +96,21 @@ reports a clean config.
    key is an optional fallback. Run it at most twice, wait for the token, then
    submit once. If the setting is off or the solve fails, do **not** evade:
    record `BLOCKED` (or `MANUAL`) with the exact challenge and what you tried,
-   and move on. Never solve a 2FA prompt, an email code or a login checkpoint.
-   Surface those to the human.
+   and move on. Never solve a 2FA prompt, an email code or a login checkpoint
+   yourself, and never work around one. Ask the human for it and wait:
+   `python3 tools/ask_human.py --mode approve --reason "LinkedIn: approve the
+   sign-in on your phone" --detail "<company> / <role>" --timeout 600` pings their
+   desktop and shows ONE blocking dialog, then prints
+   `{"ok":true,"answer":"approved"}`; use `--mode code` only when the page really
+   shows a 6-digit code. A sign-in that needs typing in the page (a Google or
+   employer password) is not a code at all: run `tools/open_for_human.py --url
+   <login-url> --port <server-port>`, which puts a VISIBLE Camoufox window on that
+   worker's port and profile, waits for the human, and leaves it running so the
+   application continues in the browser they just used. A CAPTCHA is never a
+   human handoff: the private build's solver handles it. If no code is emailed, the human supplies the SMS
+   code or approves it in their app — do not record `BLOCKED` until the handoff
+   has actually timed out or been declined. Email codes are still read with
+   `tools/email_verify.py`; only a phone/app step goes to the human.
 5b. **Recruitment scams.** Never download or install software for an interview,
    never join a chat-only interview, never share a wallet/seed phrase/private key,
    never pay a fee and never move money. A HIGH signal from

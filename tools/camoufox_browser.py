@@ -51,9 +51,11 @@ def post(server: str, payload: dict, timeout: float = 45.0) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Camoufox pipeline browser CLI")
     ap.add_argument("--server", default=DEFAULT_SERVER)
-    ap.add_argument("cmd", help="status|nav|snap|click|fill|type|select|pick|fillmap|press|check|value|eval|wait|upload|download|headers|dialog")
+    ap.add_argument("cmd", help="status|nav|snap|click|fill|type|select|pick|fillmap|flow|press|check|value|eval|wait|waitfor|waittext|waiturl|text|upload|download|headers|dialog")
     ap.add_argument("args", nargs="*", help="command arguments")
     ap.add_argument("--force", action="store_true", help="click: skip actionability checks")
+    ap.add_argument("--match", default="", help="snap: only refs whose text/tag matches this regex")
+    ap.add_argument("--timeout", type=float, default=None, help="HTTP timeout in seconds (flow defaults to 300)")
     ns = ap.parse_args()
 
     cmd = ns.cmd.lower()
@@ -70,6 +72,60 @@ def main() -> int:
     elif cmd == "snap":
         if a:
             payload["path"] = a[0]
+        if ns.match:
+            payload["match"] = ns.match
+    elif cmd == "text":
+        if a:
+            payload["max"] = int(a[0])
+    elif cmd == "waitfor":
+        if not a:
+            print("usage: waitfor <selector> [timeout_ms] [visible|attached|hidden]", file=sys.stderr)
+            return 1
+        payload["selector"] = a[0]
+        if len(a) > 1 and str(a[1]).isdigit():
+            payload["timeout"] = int(a[1])
+        for word in ("visible", "attached", "hidden", "detached"):
+            if word in a[1:]:
+                payload["state"] = word
+    elif cmd == "waittext":
+        if not a:
+            print("usage: waittext <text|regex> [timeout_ms] [--regex]", file=sys.stderr)
+            return 1
+        payload["text"] = a[0]
+        if len(a) > 1 and str(a[1]).isdigit():
+            payload["timeout"] = int(a[1])
+        if "--regex" in a:
+            payload["regex"] = True
+    elif cmd == "waiturl":
+        if not a:
+            print("usage: waiturl <substring|regex> [timeout_ms] [--regex]", file=sys.stderr)
+            return 1
+        payload["url"] = a[0]
+        if len(a) > 1 and str(a[1]).isdigit():
+            payload["timeout"] = int(a[1])
+        if "--regex" in a:
+            payload["regex"] = True
+    elif cmd == "flow":
+        if not a:
+            print("usage: flow '<json>' | flow @steps.json", file=sys.stderr)
+            return 1
+        spec = " ".join(a)
+        if spec.startswith("@"):
+            try:
+                spec = open(spec[1:], encoding="utf-8").read()
+            except OSError as e:
+                print(f"flow: cannot read {spec[1:]}: {e}", file=sys.stderr)
+                return 1
+        try:
+            parsed = json.loads(spec)
+        except Exception as e:
+            print(f"flow: invalid JSON: {e}", file=sys.stderr)
+            return 1
+        if isinstance(parsed, dict):
+            payload.update(parsed)
+        else:
+            payload["steps"] = parsed
+        payload["cmd"] = "flow"
     elif cmd == "click":
         if not a:
             print("usage: click <ref|selector>", file=sys.stderr)
@@ -173,7 +229,8 @@ def main() -> int:
         print(f"unknown cmd: {cmd}", file=sys.stderr)
         return 1
 
-    out = post(ns.server, payload)
+    out = post(ns.server, payload,
+               timeout=ns.timeout or (300.0 if cmd == "flow" else 45.0))
     # Compact JSON: the agent re-reads every command result, and pretty-printing
     # bloats the transcript by ~40% in tokens for no information gain.
     print(json.dumps(out, separators=(",", ":"), default=str))

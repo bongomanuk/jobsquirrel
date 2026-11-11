@@ -463,6 +463,11 @@
   <h2 id="perm-title" style="text-transform:none;letter-spacing:0;color:var(--fg)">Agent requests permission</h2>
   <p id="perm-sub" class="muted">The agent wants to do something that needs your approval.</p>
   <div id="perm-text" class="term" style="max-height:20vh"></div>
+  <div id="perm-ask" class="hide">
+    <label class="emailbody">Your answer<input id="perm-answer" autocomplete="one-time-code"
+      placeholder="e.g. the 6-digit code from your phone, or 'done'"></label>
+    <div class="muted mini" style="margin-top:6px">Used once, in the page the agent already has open. Nothing is stored.</div>
+  </div>
   <div id="perm-email" class="hide">
     <div class="emailmeta">
       <label>To<input id="pe-to" autocomplete="off"></label>

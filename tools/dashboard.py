@@ -647,7 +647,7 @@ def _drop_key(path, key):
 def _queue_fields(company, role):
     """Recover url/cv/ats/key so a re-queued row is complete."""
     for path in ("queue.tsv", "queue-human.tsv", "queue.retry",
-                 "queue-prepared.tsv"):
+                 "queue-prepared-linkedin.tsv", "queue-linkedin.tsv"):
         for r in _queue_rows(os.path.join(STATE, path)):
             if r["company"].lower() == company.lower() and r["role"].lower() == role.lower():
                 if r["url"] or r["key"]:
@@ -3722,6 +3722,39 @@ def permission_request(category, detail, timeout=300):
     return {"decision": rec.get("decision") or "deny", "id": rid, "category": category}
 
 
+def ask_request(question, detail="", timeout=600, mode="code"):
+    """The agent needs something only the human can supply: a code, or an
+    approval they give in their own phone app ("was this you?" -> Yes).
+
+    Identical pending asks are SHARED, not duplicated: three workers that hit the
+    same sign-in checkpoint wait on one dialog, and the human answers once.
+    """
+    question = question[:80]
+    detail = detail[:400]
+    mode = "approve" if str(mode).lower().startswith("approv") else "code"
+    now = time.time()
+    with _PERM_LOCK:
+        for r in _PERM.values():
+            if (r.get("ask") and r.get("decision") is None
+                    and r["category"] == question and r["detail"] == detail
+                    and now - r["ts"] < timeout):
+                rid, ev = r["id"], r["event"]
+                break
+        else:
+            rid = uuid.uuid4().hex
+            ev = threading.Event()
+            _PERM[rid] = {"id": rid, "category": question, "detail": detail,
+                          "event": ev, "decision": None, "ts": now,
+                          "answer": None, "ask": True, "mode": mode,
+                          "rememberable": False}
+    ev.wait(timeout)
+    with _PERM_LOCK:
+        rec = _PERM.pop(rid, {})
+    answer = (rec.get("answer") or "").strip()
+    return {"answer": answer, "id": rid, "timeout": not answer,
+            "declined": rec.get("decision") == "deny" and not answer}
+
+
 def consent_request(purpose, token, timeout=300, email=None):
     """A one-off approval (send mail, write the calendar): always asks, never remembered.
 
@@ -3754,15 +3787,23 @@ def permission_pending():
     with _PERM_LOCK:
         return [{"id": r["id"], "category": r["category"], "detail": r["detail"],
                  "rememberable": r.get("rememberable", True),
+                 "ask": bool(r.get("ask")),
+                 "mode": r.get("mode") or "code",
                  "email": r.get("email")}
                 for r in _PERM.values() if r["decision"] is None]
 
 
-def permission_decide(rid, decision, remember=False, edits=None, save=False):
+def permission_decide(rid, decision, remember=False, edits=None, save=False, answer=None):
     with _PERM_LOCK:
         r = _PERM.get(rid)
     if not r:
         return {"error": "unknown or expired request"}
+    if r.get("ask"):
+        # A typed answer (a code) is the whole decision; an empty one denies.
+        r["answer"] = str(answer or "").strip()
+        r["decision"] = "allow" if r["answer"] else "deny"
+        r["event"].set()
+        return {"ok": "answered" if r["answer"] else "left unanswered"}
     r["decision"] = "allow" if decision == "allow" else "deny"
     r["edits"] = edits
     r["save"] = bool(save)
@@ -4568,6 +4609,12 @@ def _submission_parallel(rows):
     run_queue.sh also locks per employer (and serialises all LinkedIn Easy
     Apply), so this is an upper bound: different employers can run together,
     the same employer cannot.
+
+    It is also capped by the machine: every worker drives its own Camoufox
+    browser, plus Python, the PDF render and the agent. Beyond ~half the cores
+    per-role time gets worse, not better, so a bigger batch does not finish
+    sooner - it just makes every role slower. One run at a time on the repo is
+    enforced by run_queue.sh itself (state/run.lock).
     """
     keys = set()
     for r in rows:
@@ -4577,7 +4624,9 @@ def _submission_parallel(rows):
         else:
             co = re.sub(r"[^a-z0-9]+", "-", (r.get("company") or "").lower()).strip("-")
             keys.add("company:" + (co or "unknown"))
-    return max(1, min(3, len(keys)))
+    cores = os.cpu_count() or 4
+    cap = max(1, min(3, cores // 2))
+    return max(1, min(cap, len(keys)))
 
 
 def prepare_submit_roles(keys, approval_token=""):
@@ -5774,7 +5823,8 @@ class H(BaseHTTPRequestHandler):
             rid = str(data.get("id", ""))
             decision = str(data.get("decision", "deny"))
             res = permission_decide(rid, decision, bool(data.get("remember")),
-                                    data.get("edits") or {}, bool(data.get("save")))
+                                    data.get("edits") or {}, bool(data.get("save")),
+                                    data.get("answer"))
             _log_approval(f"id={rid[:8]}... decision={decision} origin={origin!r} host={host!r} -> {res}")
             return self._json(res)
         if not self._authed():
@@ -5912,6 +5962,13 @@ class H(BaseHTTPRequestHandler):
         if p == "/api/agent/permission":
             return self._json(permission_request(str(data.get("category", "?"))[:60],
                                                  str(data.get("detail", ""))[:400]))
+        if p == "/api/agent/ask":
+            # The agent needs something only the human can supply (a 2FA/SMS
+            # code). It blocks here; the answer comes back once, to the caller.
+            return self._json(ask_request(str(data.get("question", "Input needed"))[:120],
+                                          str(data.get("detail", ""))[:400],
+                                          float(data.get("timeout") or 600),
+                                          str(data.get("mode") or "code")))
         if p == "/api/update/apply":
             return self._json(apply_update(str(data.get("approval_token", ""))))
         if p == "/api/prepare":

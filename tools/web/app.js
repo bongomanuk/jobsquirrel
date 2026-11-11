@@ -120,6 +120,7 @@ const md = (s) => {
   return t;
 };
 let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] }, CHAT_BASE = 0, CUR_PERM = null, PERM_BUSY = false, DRAFT_SENDING = false;
+const DISMISSED = new Map();   // request id -> when the human answered it
 let MISSK_ASKED = new Set();
 let SEL = new Set(), SEL_ANCHOR = '';              // selected roles, by company|role identity
 const selId = (r) => r ? String(r.company || '').trim().toLowerCase() + '|' + String(r.role || '').trim().toLowerCase() : '';
@@ -3803,10 +3804,26 @@ async function liveTick() {
       if (np) np.scrollTop = preBottom ? np.scrollHeight : preScroll;
     }
   }
-  LIVE_TIMER = setTimeout(liveTick, (LIVE_RUNNING || LIVE_TASKS.length) ? 2500 : (EVENTS_OK ? 60000 : 5000));
+  // While a dialog is open, poll fast: the ask expires on the server (the agent
+  // is blocked on it), and the human must not be left typing into a dead request.
+  const delay = CUR_PERM ? 3000
+    : (LIVE_RUNNING || LIVE_TASKS.length) ? 2500
+    : (EVENTS_OK ? 60000 : 5000);
+  LIVE_TIMER = setTimeout(liveTick, delay);
   permTick();
 }
-/* the embedded agent asks before doing something risky (agent_access.py -> here) */
+/* the embedded agent asks before doing something risky (agent_access.py -> here)
+   and, for a 2FA/SMS checkpoint, asks for the code itself (tools/ask_human.py).
+   It is ONE dialog: a single #perm modal that shows whichever request needs the
+   human now. A blocking ask outranks a routine permission question, and a new
+   request replaces the one on screen instead of stacking a second dialog. */
+function permPick(q) {
+  // An answered request can linger for a beat while the server unblocks: hide it
+  // immediately rather than flashing the dialog back at the human.
+  const now = Date.now();
+  const live = q.filter(x => { const t = DISMISSED.get(x.id); return !t || now - t > 5000; });
+  return live.find(x => x.ask) || live[0] || null;
+}
 async function permTick(force = false) {
   const d = await api('/api/agent/pending');
   const q = (d && d.pending) || [];
@@ -3814,17 +3831,32 @@ async function permTick(force = false) {
     if (CUR_PERM) { CUR_PERM = null; $('#perm').classList.add('hide'); }
     return;
   }
-  if (CUR_PERM && !force && q[0].id === CUR_PERM.id) return;
-  CUR_PERM = q[0];
+  const next = permPick(q);
+  if (CUR_PERM && !force && next && next.id === CUR_PERM.id) return;
+  CUR_PERM = next;
   const dm = $('#draftm'); if (dm) dm.classList.add('hide');
   const email = CUR_PERM.email && typeof CUR_PERM.email === 'object' ? CUR_PERM.email : null;
+  const ask = !!CUR_PERM.ask;
+  const approve = ask && CUR_PERM.mode === 'approve';
   const always = CUR_PERM.rememberable !== false;
-  $('#perm-title').textContent = email ? 'Review email before sending' : 'Agent requests permission';
-  $('#perm-sub').textContent = email
-    ? 'This is the exact email that will be sent. Edit anything below before approving.'
-    : 'The agent wants to do something that needs your approval.';
+  $('#perm-title').textContent = approve ? 'Approve the sign-in in your app'
+    : ask ? 'The agent needs a code from you'
+    : (email ? 'Review email before sending' : 'Agent requests permission');
+  $('#perm-sub').textContent = approve
+    ? 'Open LinkedIn on your phone (or the app): it is asking whether this was you. Tap Yes, then press \u201cI\u2019ve approved it\u201d. The agent then carries on in the page it already has open.'
+    : ask
+      ? 'A sign-in checkpoint is waiting for a code. Put it here: the agent types it into the page it already has open and carries on.'
+      : (email
+        ? 'This is the exact email that will be sent. Edit anything below before approving.'
+        : 'The agent wants to do something that needs your approval.');
   $('#perm-text').textContent = `${CUR_PERM.category}: ${CUR_PERM.detail}`;
   $('#perm-text').style.display = email ? 'none' : '';
+  const askBox = $('#perm-ask');
+  if (askBox) askBox.classList.toggle('hide', !ask || approve);
+  if (ask && !approve) {
+    $('#perm-answer').value = '';
+    setTimeout(() => { const el = $('#perm-answer'); if (el) el.focus(); }, 60);
+  }
   $('#perm-email').classList.toggle('hide', !email);
   $('#perm-save').classList.toggle('hide', !email);
   if (email) {
@@ -3838,8 +3870,11 @@ async function permTick(force = false) {
       : 'No attachments';
   }
   $('#perm-always').textContent = always ? `Always allow ${CUR_PERM.category}` : 'Allow once';
-  $('#perm-always').style.display = always ? '' : 'none';
-  $('#perm-once').textContent = email ? 'Approve & send' : (always ? 'Allow once' : 'Approve');
+  $('#perm-always').style.display = (always && !ask) ? '' : 'none';
+  $('#perm-once').textContent = approve ? 'I\u2019ve approved it'
+    : ask ? 'Send code'
+    : (email ? 'Approve & send' : (always ? 'Allow once' : 'Approve'));
+  $('#perm-deny').textContent = ask ? 'Cancel' : 'Deny';
   $('#perm').classList.remove('hide');
 }
 async function permAnswer(decision, remember, save) {
@@ -3851,6 +3886,14 @@ async function permAnswer(decision, remember, save) {
     const shown = CUR_PERM;
     const email = shown.email && typeof shown.email === 'object' ? shown.email : null;
     let edits;
+    let answer;
+    if (shown.ask && decision === 'allow') {
+      if (shown.mode === 'approve') answer = 'approved';
+      else {
+        answer = ($('#perm-answer').value || '').trim();
+        if (!answer) { toast('type the code first', true); return; }
+      }
+    }
     if (email) {
       const to = $('#pe-to').value.trim();
       const cc = $('#pe-cc').value.trim();
@@ -3885,7 +3928,8 @@ async function permAnswer(decision, remember, save) {
       }
     }
     CUR_PERM = null; $('#perm').classList.add('hide');
-    const r = await api('/api/agent/decide', { id, decision, remember: !!remember, edits, save: !!save });
+    DISMISSED.set(id, Date.now());
+    const r = await api('/api/agent/decide', { id, decision, remember: !!remember, edits, save: !!save, answer });
     if (r && r.error) {
       toast(r.error, true);
       if (/session/i.test(r.error)) { location.reload(); return; }
@@ -6093,6 +6137,9 @@ $('#btn-pause').onclick = () => App.togglePause($('#btn-pause').textContent.incl
 $('#perm-once').onclick = () => permAnswer('allow', false);
 $('#perm-always').onclick = () => permAnswer('allow', true);
 $('#perm-deny').onclick = () => permAnswer('deny', false);
+$('#perm-answer').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); permAnswer('allow', false); }
+});
 $('#perm-save').onclick = () => permAnswer('deny', false, true);
 setInterval(() => permTick(), 2500);
 window.addEventListener('focus', () => permTick(true));
