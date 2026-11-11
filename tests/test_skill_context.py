@@ -57,3 +57,14 @@ def test_coverage_ignores_page_chrome(monkeypatch, tmp_path):
     assert cov == 100, (cov, missing, detail)
     assert {d["term"] for d in detail if d["kind"] == "not-a-skill"} == {"SEK", "BCG"}
     assert [d["term"] for d in detail if d["kind"] != "not-a-skill"] == []
+
+
+def test_parenthetical_label_is_the_noun_phrase_not_the_sentence():
+    jd = ("# Acme — Engineer\n---\nWork together with the Acme Product Public Key "
+          "Infrastructure (EPPKI). The role has responsibility for the Internal "
+          "Development Platform (IDP).\n")
+    cleaned = A.clean_jd(jd)
+    assert S._deterministic("EPPKI", cleaned, jd)["label"] == \
+        "Acme Product Public Key Infrastructure (EPPKI)"
+    assert S._deterministic("IDP", cleaned, jd)["label"] == \
+        "Internal Development Platform (IDP)"

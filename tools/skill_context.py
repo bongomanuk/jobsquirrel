@@ -37,6 +37,8 @@ AGENT_CFG = os.path.join(os.path.expanduser("~"), ".config", "job-search", "agen
 # excludes them, so a 95% row cannot have an empty "missing" list full of
 # currency codes or sidebar company names.
 JUNK_KINDS = ("not-a-skill", "company", "currency", "code")
+CACHE_VERSION = 2
+EXPLAIN_VERSION = 2
 
 _MEM = None
 _JD_MEM = {}
@@ -152,6 +154,38 @@ def _header_company(jd_text):
     return m.group(1).strip() if m else ""
 
 
+CONNECTORS = ("together with", "along with", "such as", "including",
+              "responsible for", "responsibility for", "role has", "role is",
+              "is responsible for", "are responsible for", "as part of",
+              "within", "across", "in the")
+
+
+def _clean_expansion(full, term):
+    """Turn a captured clause into the noun phrase before the parenthesis.
+
+    "together with the Ericsson Product Public Key Infrastructure (EPPKI)" ->
+    "Ericsson Product Public Key Infrastructure"; "The role has responsibility for
+    the Internal Development Platform (IDP)" -> "Internal Development Platform".
+    Rejects a whole sentence rather than showing it as a skill label.
+    """
+    s = re.sub(r"\s+", " ", str(full or "")).strip(" .,;:-")
+    low = s.lower()
+    for c in CONNECTORS:
+        i = low.rfind(c)
+        if i >= 0:
+            s = s[i + len(c):].strip(" .,;:-")
+            low = s.lower()
+    s = re.sub(r"^(?:the|a|an)\s+", "", s, flags=re.I).strip(" .,;:-")
+    words = s.split()
+    if not s or len(words) > 8 or s.lower() == str(term or "").lower():
+        return ""
+    first = words[0].lower() if words else ""
+    if first in {"together", "this", "that", "role", "responsible", "is", "are",
+                 "has", "have", "with", "for", "and", "or"}:
+        return ""
+    return s
+
+
 def _deterministic(term, cleaned, original):
     """Cheap, context-grounded resolution. Returns a dict or None."""
     t = str(term or "").strip()
@@ -177,8 +211,8 @@ def _deterministic(term, cleaned, original):
                 rf"{re.escape(t)}\s*\(\s*([A-Za-z][A-Za-z0-9 &/+'’.\-]{{2,70}}?)\s*\)"):
         m = re.search(pat, cleaned, re.I)
         if m:
-            full = re.sub(r"\s+", " ", m.group(1)).strip(" .,;:-")
-            if full and full.lower() != t.lower() and len(full) <= 70:
+            full = _clean_expansion(m.group(1), t)
+            if full and len(full) <= 70:
                 return {"term": t, "label": f"{full} ({t})", "kind": "skill",
                         "source": "advert", "note": f"The advert expands {t} as “{full}”."}
     if t in KNOWN:
@@ -208,7 +242,7 @@ def _ai_resolve(terms, cleaned, timeout=60):
     payload = {"model": model,
                "messages": [{"role": "system", "content": "You interpret job-advert keywords for a candidate."},
                             {"role": "user", "content": prompt}],
-               "temperature": 0, "max_tokens": 900}
+               "temperature": 0, "max_tokens": 1500}
     out = None
     for _ in range(2):
         try:
@@ -333,8 +367,8 @@ def explain(key, term, use_ai=True, timeout=60):
     detail = (resolve(key, [term]) or [{}])[0]
     cache = _explain_cache()
     entry = cache.get(key) if isinstance(cache.get(key), dict) else {}
-    if entry.get("jd") != sha:
-        entry = {"jd": sha, "terms": {}}
+    if entry.get("jd") != sha or entry.get("v") != EXPLAIN_VERSION:
+        entry = {"jd": sha, "v": EXPLAIN_VERSION, "terms": {}}
     hit = (entry.get("terms") or {}).get(term)
     if hit and hit.get("plain") and (hit.get("plain_source") or "ai") == "ai":
         return hit
@@ -363,6 +397,7 @@ def explain(key, term, use_ai=True, timeout=60):
     row = {**detail, "plain": plain.strip()[:900], "plain_source": plain_source,
            "source": detail.get("source") or "context"}
     entry["terms"] = {**(entry.get("terms") or {}), term: row}
+    entry["v"] = EXPLAIN_VERSION
     cache[key] = entry
     _save_explain(cache)
     return row
@@ -396,8 +431,8 @@ def resolve(key, terms, use_ai=False, refresh=False, timeout=60):
         return [{"term": t, "label": "", "kind": "unknown", "source": "", "note": ""} for t in terms]
     store = _cache()
     entry = store.get(key) if isinstance(store.get(key), dict) else {}
-    if entry.get("jd") != sha:
-        entry = {"jd": sha, "terms": {}}
+    if entry.get("jd") != sha or entry.get("v") != CACHE_VERSION:
+        entry = {"jd": sha, "v": CACHE_VERSION, "terms": {}}
     out, pending = [], []
     for t in terms:
         hit = None if refresh else (entry.get("terms") or {}).get(t)
@@ -419,6 +454,7 @@ def resolve(key, terms, use_ai=False, refresh=False, timeout=60):
                           **{r["term"]: r for r in out if r.get("source") == "ai"}}
     entry["terms"] = {**(entry.get("terms") or {}),
                       **{r["term"]: r for r in out if r.get("source") != "unknown"}}
+    entry["v"] = CACHE_VERSION
     store[key] = entry
     _save(store)
     deduped, seen = [], set()

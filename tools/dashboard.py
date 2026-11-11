@@ -1355,7 +1355,9 @@ def _jd_key_for(ats_key, key, company="", role=""):
 def _cov_sig(key, cvrel, ats_key=None, content_key=None):
     ak, ck = ats_key or key, content_key or key
     cvp = cvrel if os.path.isabs(cvrel or "") else os.path.join(ROOT, cvrel or "")
-    return ":".join(str(_mtime(p)) for p in (
+    # Bump when the coverage algorithm changes: the on-disk cache must not
+    # outlive a change to which tokens count as requirements.
+    return "v3:" + ":".join(str(_mtime(p)) for p in (
         os.path.join(STATE, "ats", ak + ".txt"),
         os.path.join(STATE, "job-descriptions", ak + ".md"),
         os.path.join(STATE, "cv-content", ck + ".json"),
