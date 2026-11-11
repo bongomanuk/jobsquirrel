@@ -134,9 +134,29 @@ if [ "$NS" -eq 1 ] && [ "${PARALLEL:-1}" -gt 1 ]; then
   NS=${#SERVERS[@]}
 fi
 
+# Kill whatever listens on a port (a wedged browser server holds it forever).
+kill_port() {
+  local port="$1" pid=""
+  pid=$(ss -ltnp 2>/dev/null | grep ":$port " | grep -oP 'pid=\K[0-9]+' | head -1)
+  [ -z "$pid" ] && command -v lsof >/dev/null 2>&1 && pid=$(lsof -ti "tcp:$port" 2>/dev/null | head -1)
+  [ -n "$pid" ] && kill "$pid" 2>/dev/null && sleep 1
+  return 0
+}
+
 ensure_server() {
   local url="$1" port="$2"
-  curl -s -m 3 "$url/health" >/dev/null 2>&1 && return 0
+  if curl -s -m 3 "$url/health" >/dev/null 2>&1; then
+    # Healthy port, dead page: a browser whose window was closed answers /health
+    # but fails every command ("page closed"). Recycle it instead of handing the
+    # agent a zombie that looks like a long-running task.
+    local st
+    st=$(curl -s -m 5 -X POST "$url/cmd" -H 'Content-Type: application/json' -d '{"cmd":"status"}' 2>/dev/null)
+    case "$st" in
+      *'"ok": true'*|*'"ok":true'*) return 0 ;;
+      *) runlog "recycling a wedged camoufox server on port $port"
+         kill_port "$port" ;;
+    esac
+  fi
   runlog "starting camoufox server on port $port ..."
   # The project venv may not have camoufox (it can live in the system/user
   # site-packages), so start the server with an interpreter that can import it.
