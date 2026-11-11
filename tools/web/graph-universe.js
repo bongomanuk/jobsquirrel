@@ -1171,6 +1171,7 @@ function focusFrame(n, dist) {
 }
 
 function select(n) {
+  clearPlayback();
   if (!S.selected) S.returnView = { target: S.orbit.target.clone(), radius: S.orbit.radius };
   S.selected = n; S.auto = false;
   S.selDist = graphDistances(n.id);
@@ -1251,7 +1252,7 @@ function renderNodeSide(d) {
     <div class="uni-actions">
       <button class="small" data-title="${esc(d.title)}" onclick="App.editNode(this.dataset.title)">Edit details</button>
       <button class="small" onclick="window.__uni && window.__uni.focusSelected()">Fly here</button>
-      <button class="small" onclick="window.__uni && window.__uni.reset()">Reset view</button>
+      <button class="small" data-title="${esc(d.title)}" onclick="window.__uni && window.__uni.highlightNeighbourhood(this.dataset.title, 2)" title="Animate the subgraph around this node, one hop at a time">Highlight subgraph</button>
     </div>`;
 }
 
@@ -1453,6 +1454,7 @@ function drawTrace(links) {
   if (pts.length) g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
   S.trace.geometry.dispose();
   S.trace.geometry = g;
+  S.trace.material.opacity = (links && links.length > 60) ? 0.35 : 0.85;
   S.trace.visible = pts.length > 0;
 }
 
@@ -1502,6 +1504,68 @@ function tickPulse(now) {
     S.pulse = null;
     S.pulseDot.visible = false;
   }
+}
+
+/* Light the subgraph around one star, hop by hop. */
+export function highlightNeighbourhood(idOrTitle, hops = 2) {
+  const root = S.byId.get(idOrTitle) ||
+    S.nodes.find(n => String(n.title).toLowerCase() === String(idOrTitle).toLowerCase());
+  if (!root) return 0;
+  const maxHops = Math.max(1, Math.min(4, +hops || 2));
+  const levels = [[root.id]];
+  const levelLinks = [[]];
+  const seen = new Set([root.id]);
+  for (let d = 1; d <= maxHops; d++) {
+    const fresh = new Set();
+    const links = [];
+    for (const l of S.links) {
+      const a = l.source, b = l.target;
+      if ((seen.has(a) && !seen.has(b)) || (seen.has(b) && !seen.has(a))) {
+        fresh.add(seen.has(a) ? b : a);
+        links.push(l);
+      }
+    }
+    if (!fresh.size) break;
+    for (const n of fresh) seen.add(n);
+    levels.push([...fresh]);
+    levelLinks.push(links);
+  }
+  const ids = new Set([root.id]);
+  const shown = new Set();
+  const MAX_SHOWN = 16;
+  const MAX_NODES = 240;
+  const addLinks = arr => {
+    let room = MAX_SHOWN - shown.size;
+    if (room <= 0) return;
+    for (const l of [...arr].sort((a, b) => (b.weight || 0) - (a.weight || 0)).slice(0, room)) {
+      shown.add(l);
+    }
+  };
+  const labelList = () => {
+    const list = [...ids].sort((a, b) =>
+      ((S.byId.get(b) || {}).degree || 0) - ((S.byId.get(a) || {}).degree || 0));
+    const out = list.slice(0, 60);
+    if (!out.includes(root.id)) out.unshift(root.id);
+    return out;
+  };
+  const apply = () => setPlayback([...ids], [...shown], labelList());
+  clearPlayback();
+  apply();
+  focusOn([...ids], 1300);
+  let step = 0;
+  const tick = () => {
+    step++;
+    if (step >= levels.length) return;
+    for (const n of levels[step]) ids.add(n);
+    addLinks(levelLinks[step]);
+    apply();
+    pulsePath(levelLinks[step].slice(0, 12), 260);
+    focusOn([...ids], 1300 + step * 420);
+    setTimeout(tick, 760);
+  };
+  setTimeout(tick, 450);
+  if (window.toast) window.toast(`Highlighting ${Math.min(seen.size, MAX_NODES)} nodes within ${maxHops} hops`);
+  return seen.size;
 }
 
 export function selectByTitle(title) {

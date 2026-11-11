@@ -608,7 +608,7 @@ export function highlightNeighbourhood(id, hops = 2, opts = {}) {
     for (const n of levels[step]) ids.add(n);
     for (const l of levelLinks[step]) shown.add(l);
     apply();
-    pulsePath(levelLinks[step], 240);
+    pulsePath(levelLinks[step].slice(0, 12), 240);
     setTimeout(tick, opts.step || 720);
   };
   setTimeout(tick, 420);
