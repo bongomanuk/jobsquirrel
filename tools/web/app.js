@@ -1801,15 +1801,28 @@ function approve(purpose, callText) {
 let GRID_TIMER = null, LIVE_TIMER = null, LIVE_RUNNING = false, IDLE_TICKS = 0, WAS_BUSY = false, BUSY_NAME = '', DTAB = 0;
 let EVENTS = null, EVENTS_OK = false, STATE_REV = '', LIVE_REV = '', REV_TIMER = null;
 let GROUPED = localStorage.getItem('grid.grouped') !== '0';
+let GRID_SIG = '';
 async function loadGrid() {
   const sc = document.querySelector('#gridpanel .gridwrap'), y = sc ? sc.scrollTop : 0;
   const g = await api('/api/grid');
-  if (Array.isArray(g)) GRID = g;          // keep the last good grid through a transient error
-  publishGridStats();
-  renderSubstateFilter();
-  renderBuckets();
-  renderRows();
-  if (sc) sc.scrollTop = y;
+  if (Array.isArray(g)) {
+    // Re-render only when something the grid shows actually changed. A live
+    // tick used to rebuild every row every few seconds, which let the island
+    // re-order/animate rows and made the page look like it was scrolling.
+    const sig = g.map(r => [r.key, r.status, r.running ? 1 : 0, r.substate || '',
+      r.action ? 1 : 0, r.match == null ? '' : r.match].join('\u0001')).join('\u0002');
+    const changed = sig !== GRID_SIG;
+    GRID = g;
+    GRID_SIG = sig;
+    publishGridStats();
+    renderSubstateFilter();
+    renderBuckets();
+    if (changed) renderRows();
+  }
+  if (sc) {
+    sc.scrollTop = y;
+    requestAnimationFrame(() => { if (sc) sc.scrollTop = y; });
+  }
   routeBoot();
 }
 function publishGridStats() {
@@ -2252,7 +2265,7 @@ function renderRows() {
   VIEW = rows.map(r => r.key);
 
   const k = SORT.k;
-  const rank = (r) => r.running ? 0 : (r.status === 'QUEUED' ? 1 : 2);   // in-flight + queued float to the top
+  const rank = () => 2;   // keep row order stable while a run updates statuses
   const needRank = (r) => r.status === 'OFFER' ? 0
     : ((r.label || '') === 'INVITED' || ['assessment', 'assessment-overdue', 'held-followup', 'today', 'stale'].includes(r.substate) ? 1
       : (r.action || NEEDS_SUBSTATES.has(r.substate) ? 2 : 3));

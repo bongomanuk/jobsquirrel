@@ -2245,7 +2245,6 @@ def grid():
                     "hint": _hint(stg, "")})
     _save_cov(); _save_emp(); _save_meta()
     out.sort(key=lambda x: (x["date"] or ""), reverse=True)
-    out.sort(key=lambda x: 0 if x["running"] else (1 if x["status"] == "QUEUED" else 2))
     return out
 
 
