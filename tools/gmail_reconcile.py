@@ -450,6 +450,17 @@ def follow_up(category, sender, subject):
     return None
 
 
+def predates_row(date, row):
+    """True when this email is older than the register row it matched.
+
+    A replayed invitation from a cancelled posting must not create an interview
+    stage on a row that was prepared today.
+    """
+    rd = str((row or {}).get("date") or "").strip()
+    md = str(date or "").strip()
+    return bool(rd and md and md < rd)
+
+
 def propose(current, category):
     if category == "REJECTION":
         return current if current == "OFFER" else "REJECTED"
@@ -461,6 +472,11 @@ def propose(current, category):
         if current in ("OFFER", "REJECTED"):
             return current
         if current in ("CLOSED", "BLOCKED", "MANUAL"):
+            return ""
+        # A role that was never sent cannot have been invited to interview: a
+        # PREPARED/QUEUED row matched an old invitation for a different posting
+        # and would have fabricated an interview stage.
+        if current not in ("SUBMITTED", "IN_PROGRESS", "INTERVIEW"):
             return ""
         return "INTERVIEW"
     if category == "CONFIRMATION":
@@ -696,6 +712,10 @@ def main():
                            "links": [], "codes": []})
             continue
         proposed = propose(row["status"], category)
+        # An email older than the row cannot describe an application that did not
+        # exist yet (a replayed 5 Nov invitation matched a row created 11 Nov).
+        if proposed and predates_row(date, row):
+            proposed = ""
         if proposed and proposed != row["status"]:
             changes.append((row, proposed, category, date, subject, amb, sender))
         elif category in ("OTHER", "INTERVIEW"):
