@@ -782,7 +782,7 @@ function assignLabels() {
     el.innerHTML = `<b>${esc(islandTitle(c))}</b><span>${c.size} ${c.size === 1 ? 'entity' : 'entities'}</span>`;
     const lc = S.colorMode === 'islands' ? c.islandColor : c.color;
     const lb = el.querySelector('b');
-    if (lb) lb.style.color = lc.getStyle();
+    if (lb) lb.style.color = labelInk(lc);
     el.style.display = '';
     const w = el.offsetWidth || 130, h = el.offsetHeight || 30;
     for (const [dx, dy] of [[0, -38], [0, 38], [-90, 0], [90, 0], [0, 0]]) {
@@ -853,7 +853,7 @@ function assignLabels() {
     el._node = n;
     el.textContent = n.title;
     const lab = n.colorObj || colorOf(n);
-    el.style.color = lab.getStyle();
+    el.style.color = labelInk(lab);
     el.classList.toggle('extra', n === S.selected || n === S.hovered);
     el.classList.toggle('grounded', !!n.grounded);
     el.classList.toggle('sel', n === S.selected);
@@ -911,6 +911,7 @@ function islandTitle(c) {
   return t || (c && c.name) || '';
 }
 
+const labelInk = c => c.clone().lerp(new THREE.Color('#ffffff'), 0.22).getStyle();
 function esc(s) { return String(s == null ? '' : s).replace(/[—–]/g, '-').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
 /* ------------------------------------------------------------------ loop --- */

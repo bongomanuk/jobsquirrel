@@ -1593,9 +1593,33 @@ const App = {
   },
   loadDrafts: async () => {
     if (!CUR) return;
+    // With the drawer component the tab HTML can land a beat after dt(0) runs.
+    // Wait for the section, then fetch, rather than leaving it looking empty.
+    const waitFor = (tries = 0) => new Promise(resolve => {
+      const el = $('#dt-draft-list');
+      if (el || tries > 15) return resolve(el);
+      setTimeout(() => resolve(waitFor(tries + 1)), 100);
+    });
+    const el = await waitFor();
+    if (!el || !CUR) return;
     const d = await api(`/api/drafts?company=${encodeURIComponent(CUR.company)}&role=${encodeURIComponent(CUR.role)}`);
-    const el = $('#dt-draft-list'); if (!el) return;
     const items = ((d && d.drafts) || []).filter(x => !x.sent_at);
+    const box = $('#dt-drafts-details');
+    const sum = $('#dt-drafts-sum');
+    const ready = $('#dt-drafts-ready');
+    if (box) {
+      box.classList.toggle('draft-ready', items.length > 0);
+      if (items.length) box.open = true;      // a ready reply must not hide in a closed fold
+    }
+    if (sum) sum.innerHTML = items.length
+      ? `<b style="color:var(--accent)">${items.length} ready to send</b>`
+      : 'review before sending';
+    if (ready) {
+      ready.classList.toggle('hide', !items.length);
+      ready.innerHTML = items.length
+        ? `A reply is drafted and waiting for approval. Open it, check the text, then <b>Send with approval</b>.`
+        : '';
+    }
     el.innerHTML = items.length ? items.map(x => {
       return `<div class="draftrow"><div class="row"><b>${esc(x.subject || '(no subject)')}</b><span style="flex:1"></span>
         <button class="mini" onclick='App.draftEdit(${JSON.stringify(x.path)})'>Edit</button>
@@ -3230,9 +3254,10 @@ function summary(r) {
         ${!['CLOSED', 'REJECTED'].includes(r.status) && !r.running && r.url ? `<button class="risky" data-act onclick='App.prepareSubmit([${JSON.stringify(r.key)}])' title="${r.applied ? 'Generate documents, run the gates and send again through the employer site. Some ATSs refuse a second application. Needs approval.' : 'Generate documents, run the gates and send through the employer site. Needs approval.'}">${ic('send')} ${r.applied ? 'Prepare and submit (applies again)' : 'Prepare and submit'}</button>` : ''}
       </div></div>
     </section>` +
-    `<details class="dsec">
-      <summary><b>Drafted replies</b><span class="muted mini">review before sending</span></summary>
+    `<details class="dsec" id="dt-drafts-details">
+      <summary><b>Drafted replies</b><span class="muted mini" id="dt-drafts-sum">review before sending</span></summary>
       <div class="dsec-b">
+        <div id="dt-drafts-ready" class="dnote ok hide"></div>
         <div class="dbtnrow">
           <button class="small" onclick="App.draftAsk()" title="Ask the agent to read the latest email and save a draft for this role">${ic('robot')} Draft with agent</button>
           <button class="small" onclick="App.draftNew()">＋ New</button>
