@@ -259,7 +259,10 @@ def cmdlines():
         yield c
 
 
-RUNNER_SCRIPTS = ("run_queue.sh", "run_linkedin.sh", "human_assist.sh")
+RUNNER_SCRIPTS = tuple(
+    s for s in ("run_queue.sh", "run_linkedin.sh", "human_assist.sh")
+    if os.path.exists(os.path.join(ROOT, "tools", s))
+)
 
 
 def _proc_cwd(pid: int) -> str:

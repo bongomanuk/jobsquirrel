@@ -64,8 +64,8 @@ tireless assistant working under your instructions", not "press go and forget it
 - Your CV and **as much other material as you can share**: every old CV, a
   project/brag doc, design notes, talks, reviews (this is what makes the
   knowledge base, and therefore every application, sharp and specific).
-- Optional: access so I can track replies, read-only Gmail, and (for LinkedIn
-  Easy Apply) a one-time login. I'll walk you through both.
+- Optional: access so I can track replies, read-only Gmail, and a one-time
+  LinkedIn login for manual use. The public build does not automate Easy Apply.
 - A few human-only moments as they come up: solving a CAPTCHA/2FA, and approving
   any email before it's sent.
 

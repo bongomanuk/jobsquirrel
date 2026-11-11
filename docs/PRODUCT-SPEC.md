@@ -135,7 +135,7 @@ Components:
 | `approval.py` | Reusable human-approval gate (interactive y/N or `APPROVE_<TOKEN>=1`). |
 | `camoufox_server.py` / `camoufox_browser.py` | Camoufox browser API + CLI. |
 | `agent_run.sh` | Resolve + run the configured agent for one task. |
-| `run_queue.sh` / `run_linkedin.sh` / `human_assist.sh` | Runners (queue / LinkedIn / human). |
+| `run_queue.sh` / `human_assist.sh` | Runners (queue / human). Automated LinkedIn Easy Apply is a private add-on, not in this build. |
 | `doctor.py` | Health check (config, KB, browser, register, git). |
 | `dashboard.py` | Web UI (§9). |
 

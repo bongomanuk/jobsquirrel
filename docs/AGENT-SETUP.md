@@ -257,8 +257,8 @@ sandbox: `python3` can still do anything. To change it:
 | `CLAUDE_ARGS="--max-turns 80"` | extra flags for every task, e.g. `--no-session-persistence` to keep the runs out of your session history |
 
 The same mechanism runs any other CLI agent: `AGENT="mycli run"` runs
-`mycli run "<prompt>"` for each role. `AGENT` applies to `run_queue.sh`,
-`run_linkedin.sh` and `human_assist.sh` alike.
+`mycli run "<prompt>"` for each role. `AGENT` applies to `run_queue.sh`
+and `human_assist.sh` alike.
 
 ### macOS
 
@@ -359,7 +359,7 @@ On the first run the agent interviews you. Have these to hand:
 - The **accuracy rules**: claims you must never overstate (titles, scope,
   certifications, metrics).
 - Optional: read-only Gmail and a one-time LinkedIn login for reply tracking and
-  Easy Apply.
+  manual use. The public build does not automate Easy Apply.
 
 Then it builds everything and shows you the run modes (**Discover / Review /
 Apply / fixed-CV**) so you can choose.

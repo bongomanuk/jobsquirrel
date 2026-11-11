@@ -169,9 +169,9 @@ Guide, in order (skip any the user declines):
    mail on its own and surfaces verification links for them to act on.
 3. **Google Calendar** (optional, same consent): `python3 tools/calendar_event.py
    list --days 14` so the agent can list/add interview events.
-4. **LinkedIn** (optional; Easy Apply only), log in once in the dedicated
-   persistent profile (headful). Explain the runner is serialised, paced and
-   never mass-applies, and stops on any CAPTCHA/checkpoint.
+4. **LinkedIn** (optional, manual use), log in once in the dedicated persistent
+   profile only if the user wants to research or apply manually. The public build
+   does not automate Easy Apply; use the employer's own ATS.
 5. **Per-site ATS credentials**: `tools/accounts.py` creates strong per-host
    passwords on demand; email verification via `tools/email_verify.py`.
 6. **Agent + GraphRAG LLM key**: confirm the agent has a model key, and fill

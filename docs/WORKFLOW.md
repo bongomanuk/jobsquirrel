@@ -74,12 +74,11 @@ Principal/Staff · Lead/Manager · Senior · other. Set `PRIORITISE=0` to use fi
 order instead, or sort the queue file itself with
 `python3 tools/prioritise_queue.py` (`--dry-run` to preview).
 
-LinkedIn Easy Apply is handled **separately and serially** by
-`tools/run_linkedin.sh` (one at a time, human-like delays, a daily cap) using a
-persistent logged-in profile so you stay logged in and at a human pace.
-**Note:** automating LinkedIn may breach its terms of service and can get your
-account restricted, it is **opt-in**; prefer the employer's own ATS
-(see [DISCLAIMER.md](https://github.com/bongomanuk/jobsquirrel/blob/main/DISCLAIMER.md)).
+Automated LinkedIn Easy Apply is **not part of the public build**. Use the
+employer's own ATS; if a posting only offers Easy Apply, record `BLOCKED` and
+handle it manually if you choose. A private add-on can provide a serialised
+runner, but automating Easy Apply may breach LinkedIn's terms and can get an
+account restricted (see [DISCLAIMER.md](https://github.com/bongomanuk/jobsquirrel/blob/main/DISCLAIMER.md)).
 
 ## Tracking replies
 

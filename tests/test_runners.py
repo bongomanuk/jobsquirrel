@@ -67,6 +67,12 @@ def _script(name):
     return os.path.join(ROOT, "tools", name)
 
 
+requires_linkedin = pytest.mark.skipif(
+    not os.path.exists(os.path.join(ROOT, "tools", "run_linkedin.sh")),
+    reason="automated LinkedIn Easy Apply is a private add-on")
+
+
+@requires_linkedin
 def test_linkedin_runs_each_role_through_the_agent(tmp_path):
     rows = [("Co0", "Engineer", "https://example.test/0", "cv.docx", "linkedin", "k0"),
             ("Co1", "Manager", "https://example.test/1", "cv.docx", "linkedin", "k1")]
@@ -164,6 +170,7 @@ def _watch_queue(monkeypatch, root):
     return wq
 
 
+@requires_linkedin
 def test_watcher_marks_a_running_task_live(tmp_path, monkeypatch):
     # A real run: /proc on Linux, ps on macOS.
     rows = [("Acme Ltd", "Staff Engineer", "https://example.test/0", "cv.docx", "linkedin", "k0")]

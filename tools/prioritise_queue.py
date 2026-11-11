@@ -17,7 +17,6 @@ Seniority ranks (higher first):
 Usage:
   python3 tools/prioritise_queue.py                 # reorder state/queue.tsv in place
   python3 tools/prioritise_queue.py --dry-run       # print the new order only
-  python3 tools/prioritise_queue.py --queue state/queue-linkedin.tsv
   python3 tools/prioritise_queue.py --keep-file-order   # same as run_queue PRIORITISE=0
 """
 import argparse

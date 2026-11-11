@@ -39,7 +39,7 @@ def reason_of(note):
 def load_queue():
     """(company, role, url, cv) from the queues that still hold the apply URL."""
     m = {}
-    for fn in ("state/queue.tsv", "state/queue-linkedin.tsv"):
+    for fn in ("state/queue.tsv",):
         p = os.path.join(ROOT, fn)
         if not os.path.exists(p):
             continue
@@ -88,7 +88,7 @@ def main():
     # also route not-done QUEUE rows whose ATS flags automation (Ashby / LinkedIn) to manual
     def dset(path):
         return {l.strip() for l in open(os.path.join(ROOT, path))} if os.path.exists(os.path.join(ROOT, path)) else set()
-    for fn, dpath in (("state/queue.tsv", "state/queue.done"), ("state/queue-linkedin.tsv", "state/queue-linkedin.done")):
+    for fn, dpath in (("state/queue.tsv", "state/queue.done"),):
         p = os.path.join(ROOT, fn)
         if not os.path.exists(p):
             continue
@@ -102,7 +102,7 @@ def main():
                 continue
             if not re.search(r"ashby|linkedin", ats, re.I):
                 continue
-            reason = "Ashby anti-spam re-check" if "ashby" in ats.lower() else "LinkedIn Easy Apply"
+            reason = "Ashby anti-spam re-check" if "ashby" in ats.lower() else "LinkedIn Easy Apply (manual)"
             rows.append((co, role, url, cv, find_letter(co, role), reason))
 
     # dedupe by company|role

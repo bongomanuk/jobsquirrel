@@ -655,7 +655,7 @@ def _drop_key(path, key):
 def _queue_fields(company, role):
     """Recover url/cv/ats/key so a re-queued row is complete."""
     for path in ("queue.tsv", "queue-human.tsv", "queue.retry",
-                 "queue-prepared-linkedin.tsv", "queue-linkedin.tsv"):
+                 "queue-prepared.tsv"):
         for r in _queue_rows(os.path.join(STATE, path)):
             if r["company"].lower() == company.lower() and r["role"].lower() == role.lower():
                 if r["url"] or r["key"]:

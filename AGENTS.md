@@ -130,8 +130,10 @@ reports a clean config.
    that predate provenance logging) and `--backfill` (resync key/apply_url).
    `--stats` writes `state/counts.md`; never edit that file by hand.
 8. **Respect each site's terms.** Prefer the employer's own ATS over portals.
-   LinkedIn Easy Apply is **opt-in and may breach LinkedIn's User Agreement**: do
-   not mass-apply, and if the user hasn't explicitly enabled it, don't use it.
+   The public build does **not** automate LinkedIn Easy Apply: if a posting only
+   offers it, record `BLOCKED` and move on. A private add-on may provide a
+   serialised runner, but automating Easy Apply may breach LinkedIn's User
+   Agreement; never mass-apply and only use it if the user explicitly enables it.
    Never post, message or interact on social sites unless the user asked in that
    session (and it complies with the site's terms).
 9. **Reach outside the repo through the gate.** To read a file outside this repo,

@@ -107,4 +107,4 @@ The runner works on Linux and macOS. macOS lacks `flock`, `setsid` and
 `timeout`, so `tools/compat/` provides portable stand-ins that are used only
 where the real commands are missing. If the project venv (`.venv`, from
 `tools/install.sh`) exists, the runner uses it automatically. The same goes for
-`run_linkedin.sh` and `human_assist.sh`, which also take `AGENT`.
+`human_assist.sh`, which also takes `AGENT`.

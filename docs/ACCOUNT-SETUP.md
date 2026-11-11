@@ -169,32 +169,16 @@ sets your timezone, default duration, calendar and working hours (the tool warns
 when a slot falls outside them); `invite_attendees` controls whether attendees
 also receive an invitation email.
 
-## 4. LinkedIn (optional, Easy Apply only)
+## 4. LinkedIn (optional, manual use)
 
-> **Terms-of-service risk.** LinkedIn's User Agreement prohibits automated
-> access and activity. Driving Easy Apply with a browser bot, however human-paced
->, **may breach those terms and can get your account restricted or banned.**
-> This is **opt-in** and does nothing unless you set it up; if you use it, you
-> accept that risk. Prefer the employer's own ATS wherever one exists. (Not legal
-> advice.)
+The public build reads LinkedIn job-alert email and can queue those roles, but
+it does **not** automate LinkedIn Easy Apply. Use the employer's own ATS; if a
+posting only offers Easy Apply, record `BLOCKED` and apply manually if you choose.
 
-Many roles are best applied via the employer's own ATS. LinkedIn Easy Apply is
-supported but deliberately **serialised and paced** (one at a time, human-like
-delays, a daily cap) via `tools/run_linkedin.sh`, using a **dedicated persistent
-browser profile** so you stay logged in and a device/2FA prompt isn't re-triggered.
-
-1. Start the browser with that profile, headful, and log in once:
-   ```bash
-   # the runner uses its own profile dir under ~/.config/job-search/linkedin-profile
-   python3 tools/camoufox_server.py --port 9869 --headful
-   python3 tools/camoufox_browser.py --server http://127.0.0.1:9869 nav https://www.linkedin.com/login
-   # log in in the window; complete any 2FA
-   ```
-2. Prefer the employer's own ATS where one exists; put LinkedIn-only roles in
-   `state/queue-linkedin.tsv` and run `bash tools/run_linkedin.sh`.
-3. **Never mass-apply, and stop on any CAPTCHA/checkpoint**: do not evade. If a
-   checkpoint appears (or you're unsure whether it's allowed), stop and don't use
-   this mode.
+You can still log in to LinkedIn manually in the browser for research or a manual
+application. Never mass-apply, and stop on any CAPTCHA/checkpoint. Automating
+Easy Apply may breach LinkedIn's User Agreement and can get an account restricted;
+that capability is a private add-on, not part of this build.
 
 ## 5. Per-site ATS accounts (Workday, SuccessFactors, Ashby, own sites…)
 
