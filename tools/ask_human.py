@@ -45,6 +45,8 @@ def notify(reason: str, detail: str) -> None:
     One ping per question per 120s: several workers hitting the same checkpoint
     must not turn into a stack of notifications the human has to dismiss.
     """
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return                                    # tests must never ping the desktop
     marker = os.path.join(ROOT, "state", "human", "last-notify.json")
     now = time.time()
     try:
@@ -152,13 +154,31 @@ def main() -> int:
     a = ap.parse_args()
 
     # The agent must not be able to fake an answer: it may only ask.
-    notify(a.reason, a.detail)
-    result = ask_dashboard(a.reason, a.detail, a.timeout, a.mode)
-    if result.get("no_dashboard"):
+    #
+    # Notify only once there is somewhere to answer. A ping with no dialog is
+    # exactly the "notification I cannot act on" this feature exists to remove,
+    # and a headless/test call must not ping the desktop at all.
+    url, tok = _discover_dashboard()
+    if not url or not tok:
         result = ask_tty(a.reason, a.detail, a.mode)
         if result.get("no_tty"):
             result = {"ok": False, "timeout": True,
                       "error": "no dashboard and no terminal to ask on"}
+    else:
+        notify(a.reason, a.detail)
+        result = ask_dashboard(a.reason, a.detail, a.timeout, a.mode)
+        # Clear the "awaiting" marker: a status that says a human is needed must
+        # not outlive the question.
+        try:
+            if os.environ.get("PYTEST_CURRENT_TEST"):
+                raise RuntimeError("skip in tests")
+            subprocess.run([sys.executable, os.path.join(ROOT, "tools", "human_status.py"),
+                            "set", "--company", "sign-in", "--role", a.reason[:80],
+                            "--state", "done" if result.get("ok") else "expired",
+                            "--note", "answered" if result.get("ok") else "no answer"],
+                           capture_output=True, timeout=10)
+        except Exception:
+            pass
     print(json.dumps(result, separators=(",", ":")))
     return 0 if result.get("ok") else 2
 
