@@ -51,6 +51,7 @@ const MAT = {
   sled: new THREE.MeshStandardMaterial({ color: 0xb5654a, roughness: 0.75 }),
   wall: new THREE.MeshStandardMaterial({ color: 0x8a6a4a, roughness: 0.9 }),
   roof: new THREE.MeshStandardMaterial({ color: 0x4a3a2e, roughness: 0.95 }),
+  stick: new THREE.MeshStandardMaterial({ color: 0x9a6b3f, roughness: 0.9 }),
   tongue: new THREE.MeshStandardMaterial({ color: 0xd97b8a, roughness: 0.7 }),
 };
 
@@ -311,21 +312,19 @@ export function buildSquirrel(friend = false) {
   head.add(heldNut);
 
   const sword = new THREE.Group();
-  // held high in the right paw, blade above the head: a small duelist's guard
-  sword.position.set(0.17, 0.12, 0.43);
-  sword.rotation.set(-0.15, 0, -0.3);
+  // a good stout stick, gripped at the right paw and held up for a scrap
+  sword.position.set(0.16, 0.1, 0.4);
+  sword.rotation.set(-1.1, 0, -0.25);
   sword.visible = false;
   chest.add(sword);
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.72, 0.05), MAT.blade);
-  blade.position.y = 0.42;
-  sword.add(blade);
-  const guard = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.045, 0.07), MAT.gold);
-  guard.position.y = 0.08;
-  sword.add(guard);
-  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.14, 6), MAT.nutCap);
-  grip.position.y = -0.02;
-  sword.add(grip);
-  sword.rotation.x = -1.3;
+  const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.065, 1.0, 6), MAT.stick);
+  stick.position.y = 0.5;
+  sword.add(stick);
+  const twig = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.03, 0.24, 5), MAT.stick);
+  twig.position.set(0.04, 0.9, 0);
+  twig.rotation.z = 0.7;
+  sword.add(twig);
+  sword.add(ball(0.045, MAT.stick, 0, 0.06, 0));
 
   const beer = new THREE.Group();
   beer.position.set(0, -0.16, 0.08);
@@ -404,6 +403,7 @@ function addCritter(opts) {
     bonkUntil: 0, sparkAt: 0, tree: null, forageX: 0, forageAt: 0, carried: false,
     eatingUntil: 0, foraged: false, throwUntil: 0, danceUntil: 0, buildUntil: 0,
     baby: false, babyUntil: 0, babyTarget: 0, nextBabyTarget: 0,
+    fightAt: 0, attackUntil: 0, chipAt: 0,
   };
   state.critters.push(c);
   return c;
@@ -819,15 +819,30 @@ function animate(c, dt) {
     c.root.rotation.z = 0;
   }
   if (c.duel && c.sword) {
-    const t = p * 3.2;
     c.sword.visible = true;
-    c.front[1].shoulder.rotation.x = -2.25 + Math.sin(t) * 0.16;
-    c.front[1].elbow.rotation.x = -1.1;
-    c.sword.rotation.z = -0.32 + Math.sin(t * 1.4) * 0.55;
-    c.sword.rotation.x = -0.15 + Math.cos(t) * 0.12;
-    c.root.position.x += Math.sin(t) * 0.4;
-    c.hips.rotation.x = -0.15 + Math.sin(t * 2) * 0.08;
-    c.neck.rotation.z = Math.sin(t) * 0.12;
+    const dir = c.partner ? (Math.sign(c.partner.x - c.x) || 1) : 1;
+    const attacking = c.attackUntil > now;
+    const blocking = c.partner && c.partner.attackUntil > now;
+    c.front[1].shoulder.rotation.x = attacking ? -2.45 : -2.1;
+    c.front[1].elbow.rotation.x = attacking ? -0.7 : -1.15;
+    if (attacking) {
+      const k = 1 - Math.max(0, c.attackUntil - now) / 320;
+      c.sword.rotation.x = -2.1 + k * 1.75;
+      c.sword.rotation.z = -0.25 + Math.sin(k * Math.PI) * 0.25;
+      c.root.position.x = c.x + dir * 5;
+      c.hips.rotation.x = -0.2;
+      c.neck.rotation.z = -dir * 0.06;
+    } else if (blocking) {
+      c.sword.rotation.x = -0.55;
+      c.sword.rotation.z = 0.45;
+      c.root.position.x = c.x - dir * 2;
+      c.hips.rotation.x = -0.08;
+    } else {
+      c.sword.rotation.x = -1.55 + Math.sin(now / 90) * 0.06;
+      c.sword.rotation.z = -0.2;
+      c.root.position.x = c.x;
+      c.hips.rotation.x = -0.1;
+    }
   } else if (c.sword) {
     c.sword.visible = false;
   }
@@ -1069,13 +1084,26 @@ function frame() {
     }
     if (c.mode === 'duel') {
       const d = c.meetX - c.x;
-      if (Math.abs(d) > 34) c.x += Math.sign(d) * Math.min(Math.abs(d), 165 * dt);
-      else if (!c.fightUntil) {
-        c.fightUntil = now + 5200;
-        c.duel = true;
+      if (Math.abs(d) > 3) c.x += Math.sign(d) * Math.min(Math.abs(d), 165 * dt);
+      else {
+        if (!c.fightUntil) {
+          c.fightUntil = now + 7200;
+          c.duel = true;
+          c.fightAt = now + 600;
+        }
+        if (now > c.fightAt) {
+          c.attackUntil = now + 320;
+          c.fightAt = now + 680 + Math.random() * 480;
+          if (c.partner && Math.random() < 0.32) {
+            c.partner.bonkUntil = now + 380;
+            c.partner.hopUntil = now + 300;
+          }
+        }
       }
       if (c.fightUntil && now > c.fightUntil) {
         c.duel = false;
+        c.attackUntil = 0;
+        c.fightAt = 0;
         if (c === state.resident) { c.mode = 'travel'; c.target = c.home; c.fightUntil = 0; c.social = false; }
         else c.mode = 'leave';
       }
@@ -1236,6 +1264,13 @@ function frame() {
       kickNut(c);
     }
     animate(c, dt);
+    if (c.duel && c.partner && c === state.resident && now > (c.chipAt || 0) &&
+        (c.attackUntil > now || c.partner.attackUntil > now)) {
+      c.chipAt = now + 130;
+      const mx = (c.x + c.partner.x) / 2;
+      addPuff(mx + (Math.random() - 0.5) * 4, FLOOR + 22 + (Math.random() - 0.5) * 5,
+              { color: '#c9a06a', size: 2.6, life: 220, vy: 26, grow: 1.5 });
+    }
     if (c.x > c.endX || c.y < -BAR) removeCritter(c);
   }
 
@@ -1397,10 +1432,10 @@ function run(kind) {
     const stage = Math.round(-w * 0.28);
     const f = addCritter({ ...base, x: -w / 2 - 60, friend: true, holdAt: 0 });
     f.mode = 'duel';
-    f.meetX = stage + 48;
+    f.meetX = stage + 26;
     if (lead) {
       lead.mode = 'duel';
-      lead.meetX = stage - 48;
+      lead.meetX = stage - 26;
       lead.target = lead.meetX;
       lead.social = true;
       lead.nextAction = performance.now() + 12000;
