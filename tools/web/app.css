@@ -1451,3 +1451,15 @@ summary{transition:color var(--dur-fast)}
   *,*::before,*::after{animation-duration:.001ms!important;animation-delay:0ms!important;
     transition-duration:.001ms!important;scroll-behavior:auto!important}
 }
+
+/* A CV reads as a CV: employer left, dates right, real bullets, no marks. */
+.kg-doc-role{margin:0 0 9px}
+.kg-doc-role-top{display:flex;align-items:baseline;gap:8px;margin-top:6px}
+.kg-doc-employer{flex:1;min-width:0;font-weight:800;font-size:12px;color:var(--fg)}
+.kg-doc-role-sub{font-size:9.5px;color:var(--muted);white-space:nowrap}
+.kg-doc-role-title{font-size:10.5px;color:var(--muted);margin:0 0 3px;font-style:italic}
+.kg-doc-bullets{margin:2px 0 0;padding-left:15px;list-style:disc}
+.kg-doc-bullets li{margin:0 0 3px;font-size:11px;line-height:1.5;color:var(--fg)}
+.kg-doc-bullets li::marker{color:var(--accent)}
+.kg-doc-block h4{border-bottom:1px solid var(--line);padding-bottom:2px;margin-bottom:5px}
+.kg-doc-block p.kg-play-sentence{font-size:11px;line-height:1.55;margin:0 0 4px}

@@ -106,6 +106,9 @@ function bucketOf(r) {
   if (s === 'PREPARED') return 'prepared';
   return 'pipeline';
 }
+// md() wraps everything in <p>; the document sentences are inline spans/li, and
+// a <p> inside a <span> gets reparented by the parser, leaving the text mangled.
+const mdInline = (s) => md(s).replace(/^<p>/, '').replace(/<\/p>\s*$/, '');
 const T = (s) => ` title="${esc(s)}"`;
 const chip = (s) => `<span class="chip ${esc((s || '').replace(/\s+/g, '_'))}"${T(STATUS_HELP[s] || '')}>${esc(s || '')}</span>`;
 const md = (s) => {
@@ -5372,10 +5375,18 @@ function kgPlayRender(d) {
     if (!CITE.has(id)) { CITE_ORDER.push(id); CITE.set(id, CITE_ORDER.length); }
     return CITE.get(id);
   };
-  const citesOf = (s) => (s.cites || []).slice(0, 4).map(c =>
-    `<sup class="kg-cite-n" data-id="${esc(c)}" title="${esc(c)}" onclick="App.kgPlayCite(this.dataset.id)">${citeNum(c)}</sup>`).join('');
-  const sentenceHTML = (s) => `<p class="kg-play-sentence kg-play-reveal" data-step="${esc(String(s.step == null ? 0 : s.step))}" data-text="${esc(s.text || '')}">` +
-    `<span class="kg-say"></span><span class="kg-caret">▍</span><span class="kg-play-cites">${citesOf(s)}</span></p>`;
+  // No reference marks in the document: a CV is prose. The numbering feeds the
+  // build rail only, so every cited node is still listed (and clickable) there.
+  const noteCites = (s) => { (s.cites || []).forEach(c => citeNum(c)); };
+  const sentenceHTML = (s, tag = 'p') => {
+    noteCites(s);
+    // Never let a caller pass an array index as the tag: `.map(sentenceHTML)`
+    // used to hand in the index, producing `<0 class=...>` and a page of raw
+    // markup rendered as text.
+    const t = tag === 'li' ? 'li' : 'p';
+    return `<${t} class="kg-play-sentence kg-play-reveal" data-step="${esc(String(s.step == null ? 0 : s.step))}" data-text="${esc(s.text || '')}">` +
+      `<span class="kg-say"></span><span class="kg-caret">▍</span></${t}>`;
+  };
   let h = `<div class="kg-doc-head"><div class="kg-doc-name">${esc(doc.name || 'Tailored profile')}</div>` +
     (doc.contact && doc.contact.length ? `<div class="kg-doc-contact">${doc.contact.map(esc).join(' · ')}</div>` : '') +
     `<div class="kg-doc-target">${esc(doc.target || '')}</div></div>` +
@@ -5389,12 +5400,18 @@ function kgPlayRender(d) {
     if (block.type === 'experience') {
       (block.roles || []).forEach(role => {
         const firstStep = (role.sentences && role.sentences[0] && role.sentences[0].step) || 0;
-        h += `<div class="kg-doc-role"><div class="kg-doc-role-h kg-play-reveal" data-step="${esc(String(firstStep))}" data-head="1">${esc(role.heading || '')}</div>` +
-          (role.sub ? `<div class="kg-doc-role-sub kg-play-reveal" data-step="${esc(String(firstStep))}" data-head="1">${esc(role.sub)}</div>` : '') +
-          (role.sentences || []).map(sentenceHTML).join('') + '</div>';
+        // A CV role: employer/title on the left, dates on the right, then bullets.
+        const parts = String(role.heading || '').split(' — ');
+        const employer = parts.length > 1 ? parts[0] : '';
+        const title = parts.length > 1 ? parts.slice(1).join(' — ') : (role.heading || '');
+        h += `<div class="kg-doc-role"><div class="kg-doc-role-top kg-play-reveal" data-step="${esc(String(firstStep))}" data-head="1">` +
+          `<span class="kg-doc-employer">${esc(employer || title)}</span>` +
+          (role.sub ? `<span class="kg-doc-role-sub">${esc(role.sub)}</span>` : '') + '</div>' +
+          (employer ? `<div class="kg-doc-role-title kg-play-reveal" data-step="${esc(String(firstStep))}" data-head="1">${esc(title)}</div>` : '') +
+          `<ul class="kg-doc-bullets">${(role.sentences || []).map(x => sentenceHTML(x, 'li')).join('')}</ul></div>`;
       });
     } else {
-      h += (block.sentences || []).map(sentenceHTML).join('');
+      h += (block.sentences || []).map(x => sentenceHTML(x)).join('');
     }
     h += '</div>';
   });
@@ -5445,7 +5462,7 @@ async function kgTypeSentence(el, speed, run) {
     if (!/^\s+$/.test(w)) await new Promise(r => setTimeout(r, per));
     if (n % 3 === 0) keepVisible();
   }
-  say.innerHTML = md(text);
+  say.innerHTML = mdInline(text);
   el.classList.add('done');
   keepVisible();
 }
