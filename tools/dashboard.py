@@ -1357,9 +1357,32 @@ def _cov_sig(key, cvrel, ats_key=None, content_key=None):
     cvp = cvrel if os.path.isabs(cvrel or "") else os.path.join(ROOT, cvrel or "")
     return ":".join(str(_mtime(p)) for p in (
         os.path.join(STATE, "ats", ak + ".txt"),
+        os.path.join(STATE, "job-descriptions", ak + ".md"),
         os.path.join(STATE, "cv-content", ck + ".json"),
         os.path.join(STATE, "letters-content", ck + ".json"), cvp,
         os.path.join(ROOT, "config", "cv.json"), SKILLS_FILE))
+
+
+def _coverage_with_gaps(key, kws, hay):
+    """Coverage over real requirements only.
+
+    Missing keywords that the advert-context resolver classifies as page chrome
+    (a currency, a company name, a reference code) are not requirements: they
+    must not lower the percentage and must not appear as "missing skills" with
+    an empty list. Returns (coverage, missing, missing_detail).
+    """
+    hit = [k for k in kws if k.lower() in hay]
+    miss = [k for k in kws if k.lower() not in hay]
+    try:
+        detail = skill_context.resolve(key, miss)
+    except Exception:
+        detail = []
+    junk = {str(d.get("term") or "").lower() for d in detail
+            if d.get("kind") in skill_context.JUNK_KINDS}
+    effective = [k for k in kws if k.lower() not in junk]
+    hits = [k for k in hit if k.lower() not in junk]
+    cov = round(100 * len(hits) / len(effective)) if effective else None
+    return cov, miss, detail
 
 
 def coverage_for(key, cvrel="", ats_key=None, content_key=None):
@@ -1380,9 +1403,7 @@ def coverage_for(key, cvrel="", ats_key=None, content_key=None):
         cvp = cvrel if os.path.isabs(cvrel) else os.path.join(ROOT, cvrel)
         hay = _doc_text(cvp).lower()
     hay += " " + _skills_text()
-    cov = None
-    if hay.strip():
-        cov = round(100 * sum(1 for k in kws if k.lower() in hay) / len(kws))
+    cov = _coverage_with_gaps(key, kws, hay)[0] if hay.strip() else None
     _COV.setdefault(key, {}).update(sig=sig, cov=cov)
     _cov_dirty = True
     return cov
@@ -1412,12 +1433,10 @@ def match_score(key, cache=True):
     letters = _read(os.path.join(STATE, "letters-content", key + ".json"))
     if kws and (content or letters):
         hay = (content + " " + letters).lower()
-        hit = [k for k in kws if k.lower() in hay]
-        res["coverage"] = round(100 * len(hit) / len(kws))
-        res["missing"] = [k for k in kws if k.lower() not in hay][:24]
-    try:
-        res["missing_detail"] = skill_context.resolve(key, res.get("missing") or [])
-    except Exception:
+        hay += " " + _skills_text()               # recorded skills count toward the fit
+        cov, miss, detail = _coverage_with_gaps(key, kws, hay)
+        res["coverage"], res["missing"], res["missing_detail"] = cov, miss[:24], detail
+    else:
         res["missing_detail"] = []
     _MATCH_CACHE[key] = res
     _load_cov()
@@ -1465,24 +1484,12 @@ def match_info(key):
         if cv:
             hay = _doc_text(cv if os.path.isabs(cv) else os.path.join(ROOT, cv)).lower()
     hay += " " + _skills_text()                     # recorded skills count toward the fit
-    cov, missing, evidenced = None, [], []
+    cov, missing, evidenced, missing_detail = None, [], [], []
     if kws and hay.strip():
-        miss = [k for k in kws if k.lower() not in hay]
-        cov = round(100 * (len(kws) - len(miss)) / len(kws))
+        cov, miss, missing_detail = _coverage_with_gaps(key, kws, hay)
         missing = miss[:24]
         ev = _evidenced_skills()
         evidenced = [k for k in missing if k.strip().lower() in ev]
-    try:
-        missing_detail = skill_context.resolve(key, missing)
-    except Exception:
-        missing_detail = []
-    # Junk tokens must not depress coverage: a currency code or a company name
-    # from the page chrome is not a requirement.
-    junk = sum(1 for d in missing_detail
-               if d.get("kind") in ("not-a-skill", "company", "currency", "code"))
-    if cov is not None and junk:
-        total = max(1, len(kws) - junk)
-        cov = round(100 * (len(kws) - len(missing)) / total)
     return {"key": key, "coverage": cov, "missing": missing,
             "missing_detail": missing_detail, "evidenced": evidenced,
             "alignment": (_COV.get(key, {}) or {}).get("align", ""),

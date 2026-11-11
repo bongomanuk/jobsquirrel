@@ -38,3 +38,22 @@ def test_missing_skill_context_explains_and_filters():
     assert S._deterministic("SEK", cleaned, JD)["kind"] == "not-a-skill"
     assert S._deterministic("UMKACN", cleaned, JD)["kind"] == "not-a-skill"
     assert S._deterministic("BCG", cleaned, JD)["kind"] == "not-a-skill"
+
+
+def test_coverage_ignores_page_chrome(monkeypatch, tmp_path):
+    """A row at 100% has no missing skills, and junk never lowers coverage."""
+    import dashboard as D
+
+    jd_dir = tmp_path / "job-descriptions"
+    jd_dir.mkdir()
+    (jd_dir / "acme.md").write_text(
+        "# Acme AB — Engineer\n---\nA Python role. Salary SEK 100000.\n", encoding="utf-8")
+    monkeypatch.setattr(D, "STATE", str(tmp_path))
+    monkeypatch.setattr(S, "STATE", str(tmp_path))
+    monkeypatch.setattr(S, "_MEM", None)
+    monkeypatch.setattr(S, "_JD_MEM", {})
+
+    cov, missing, detail = D._coverage_with_gaps("acme", ["Python", "SEK", "BCG"], "python")
+    assert cov == 100, (cov, missing, detail)
+    assert {d["term"] for d in detail if d["kind"] == "not-a-skill"} == {"SEK", "BCG"}
+    assert [d["term"] for d in detail if d["kind"] != "not-a-skill"] == []

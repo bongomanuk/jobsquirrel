@@ -33,6 +33,14 @@ CACHE = os.path.join(STATE, "skill-context.json")
 EXPLAIN_CACHE = os.path.join(STATE, "skill-explanations.json")
 AGENT_CFG = os.path.join(os.path.expanduser("~"), ".config", "job-search", "agent.json")
 
+# Kinds that are not requirements at all. The drawer hides them and coverage
+# excludes them, so a 95% row cannot have an empty "missing" list full of
+# currency codes or sidebar company names.
+JUNK_KINDS = ("not-a-skill", "company", "currency", "code")
+
+_MEM = None
+_JD_MEM = {}
+
 CURRENCY = {"SEK", "EUR", "USD", "GBP", "NOK", "DKK", "CHF", "CAD", "AUD"}
 COMMON = {"GOT", "BACK", "SEE", "GET", "YOU", "THE", "AND", "FOR", "NEW", "ALL"}
 
@@ -69,15 +77,21 @@ def _read(path):
 
 
 def _cache():
+    global _MEM
+    if _MEM is not None:
+        return _MEM
     try:
         with open(CACHE, encoding="utf-8") as fh:
             data = json.load(fh)
-        return data if isinstance(data, dict) else {}
+        _MEM = data if isinstance(data, dict) else {}
     except (OSError, ValueError):
-        return {}
+        _MEM = {}
+    return _MEM
 
 
 def _save(data):
+    global _MEM
+    _MEM = data
     try:
         os.makedirs(STATE, exist_ok=True)
         tmp = CACHE + ".tmp"
@@ -311,13 +325,11 @@ def explain(key, term, use_ai=True, timeout=60):
     term = str(term or "").strip()
     if not key or not term:
         return {"term": term, "label": term, "kind": "unknown", "plain": "", "note": ""}
-    original = _read(os.path.join(STATE, "job-descriptions", key + ".md"))
+    original, cleaned, sha = _jd(key)
     if not original:
         return {"term": term, "label": term, "kind": "unknown",
                 "plain": f"{term} is a requirement in this advert.",
                 "note": "No saved advert to read."}
-    cleaned = ats_keywords.clean_jd(original)
-    sha = hashlib.sha1(original.encode("utf-8", "ignore")).hexdigest()
     detail = (resolve(key, [term]) or [{}])[0]
     cache = _explain_cache()
     entry = cache.get(key) if isinstance(cache.get(key), dict) else {}
@@ -356,17 +368,32 @@ def explain(key, term, use_ai=True, timeout=60):
     return row
 
 
+def _jd(key):
+    """(original, cleaned, sha) for a role, memoised by file mtime."""
+    path = os.path.join(STATE, "job-descriptions", key + ".md")
+    try:
+        mt = os.path.getmtime(path)
+    except OSError:
+        return "", "", ""
+    hit = _JD_MEM.get(key)
+    if hit and hit[0] == mt:
+        return hit[1], hit[2], hit[3]
+    original = _read(path)
+    cleaned = ats_keywords.clean_jd(original)
+    sha = hashlib.sha1(original.encode("utf-8", "ignore")).hexdigest()
+    _JD_MEM[key] = (mt, original, cleaned, sha)
+    return original, cleaned, sha
+
+
 def resolve(key, terms, use_ai=False, refresh=False, timeout=60):
     """Resolve missing keywords for a role, in the order given."""
     key = os.path.basename(str(key or ""))[:120]
     terms = [str(t).strip() for t in (terms or []) if str(t).strip()]
     if not key or not terms:
         return []
-    original = _read(os.path.join(STATE, "job-descriptions", key + ".md"))
+    original, cleaned, sha = _jd(key)
     if not original:
         return [{"term": t, "label": "", "kind": "unknown", "source": "", "note": ""} for t in terms]
-    cleaned = ats_keywords.clean_jd(original)
-    sha = hashlib.sha1(original.encode("utf-8", "ignore")).hexdigest()
     store = _cache()
     entry = store.get(key) if isinstance(store.get(key), dict) else {}
     if entry.get("jd") != sha:
