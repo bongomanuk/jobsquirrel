@@ -1286,6 +1286,16 @@ const App = {
     return App.graphOverview(null);
   },
   graphSelect: (id) => { if (KG && KG.byId.has(id)) kgSelect(id); else App.graphEgo(id); },
+  kgHighlightSubgraph: () => {
+    if (!KG || !KG.selected || !window.__kg3d) return;
+    const hops = Math.max(1, Math.min(3, +(document.getElementById('kg-focus')?.value || 2)));
+    const n = window.__kg3d.highlightNeighbourhood(KG.selected, hops);
+    if (n) toast(`Highlighting ${n} node${n === 1 ? '' : 's'} within ${hops} hop${hops === 1 ? '' : 's'}`);
+  },
+  kgClearHighlight: () => {
+    if (window.__kg3d) window.__kg3d.clearPlayback();
+    toast('highlight cleared');
+  },
   graphFit: () => { if (window.__kg3d) window.__kg3d.fit(); },
   graphType: (type) => {
     if (!KG) return;
@@ -5358,7 +5368,7 @@ function kgSelect(id) {
   const n = KG.byId.get(id);
   if (!n) return;
   KG.selected = id;
-  if (window.__kg3d) window.__kg3d.select(id);
+  if (window.__kg3d) { window.__kg3d.clearPlayback(); window.__kg3d.select(id); }
   const body = $('#kg-side-body'); if (!body) return;
   document.querySelectorAll('.kg-side-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === 'details'));
   body.className = 'kg-side-body';
@@ -5379,6 +5389,8 @@ function kgSelect(id) {
         ${isComm
           ? `<button class="small" data-id="${n.community}" onclick="App.graphCommunity(this.dataset.id)">Open community</button>`
           : `<button class="small" data-id="${esc(n.type)}" onclick="App.graphTypeEntities(this.dataset.id)">Open topic</button>`}
+        <button class="small" onclick="App.kgHighlightSubgraph()" title="Animate the subgraph around this node, one hop at a time">Highlight subgraph</button>
+        <button class="small" onclick="App.kgClearHighlight()">Clear highlight</button>
       </div>`;
     return;
   }
@@ -5401,6 +5413,8 @@ function kgSelect(id) {
     <div class="row" style="margin-top:10px;flex-wrap:wrap">
       <button class="small" data-title="${esc(n.title)}" onclick="App.editNode(this.dataset.title)">Edit details</button>
       <button class="small" data-id="${esc(n.title)}" onclick="App.graphEgo(this.dataset.id)">Focus ego network</button>
+      <button class="small" onclick="App.kgHighlightSubgraph()" title="Animate the subgraph around this node, one hop at a time">Highlight subgraph</button>
+      <button class="small" onclick="App.kgClearHighlight()" title="Clear the highlighted subgraph">Clear highlight</button>
       ${n.community != null ? `<button class="small" data-id="${n.community}" onclick="App.graphCommunity(this.dataset.id)">Open community</button>` : ''}
     </div>`;
 }
@@ -5408,7 +5422,7 @@ function kgSelect(id) {
 function kgClear() {
   if (!KG) return;
   KG.selected = null;
-  if (window.__kg3d) window.__kg3d.clearSelection();
+  if (window.__kg3d) { window.__kg3d.clearPlayback(); window.__kg3d.clearSelection(); }
   const body = $('#kg-side-body');
   document.querySelectorAll('.kg-side-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === 'details'));
   if (body) {

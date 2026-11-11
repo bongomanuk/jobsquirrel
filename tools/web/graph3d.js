@@ -564,6 +564,57 @@ export function clearPlayback() {
   updateLabels(null, true);
 }
 
+/* Light up the subgraph around one node, one hop at a time. */
+export function highlightNeighbourhood(id, hops = 2, opts = {}) {
+  const root = S.byId.get(id);
+  if (!root) return 0;
+  const maxHops = Math.max(1, Math.min(4, +hops || 2));
+  const levels = [[id]];
+  const levelLinks = [[]];
+  const seen = new Set([id]);
+  for (let d = 1; d <= maxHops; d++) {
+    const fresh = new Set();
+    const links = [];
+    for (const l of S.links) {
+      const a = l.source, b = l.target;
+      if ((seen.has(a) && !seen.has(b)) || (seen.has(b) && !seen.has(a))) {
+        fresh.add(seen.has(a) ? b : a);
+        links.push(l);
+      }
+    }
+    if (!fresh.size) break;
+    for (const n of fresh) seen.add(n);
+    levels.push([...fresh]);
+    levelLinks.push(links);
+  }
+  const pickLabels = ids => {
+    const list = [...ids].sort((a, b) =>
+      (S.byId.get(b) && S.byId.get(b).degree || 0) - (S.byId.get(a) && S.byId.get(a).degree || 0));
+    const out = list.slice(0, 48);
+    if (!out.includes(id)) out.unshift(id);
+    return out;
+  };
+  const ids = new Set([id]);
+  const shown = new Set();
+  const apply = () => setPlayback([...ids], [...shown], pickLabels(ids));
+  clearPlayback();
+  select(id);
+  apply();
+  flyTo(id, Math.max(420, 380 * maxHops));
+  let step = 0;
+  const tick = () => {
+    step++;
+    if (step >= levels.length) return;
+    for (const n of levels[step]) ids.add(n);
+    for (const l of levelLinks[step]) shown.add(l);
+    apply();
+    pulsePath(levelLinks[step], 240);
+    setTimeout(tick, opts.step || 720);
+  };
+  setTimeout(tick, 420);
+  return seen.size;
+}
+
 export function pulsePath(links, dur = 420) {
   const pairs = (links || []).map(l => ({ a: S.byId.get(l.from || l.source),
                                           b: S.byId.get(l.to || l.target) }))
