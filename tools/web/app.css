@@ -1463,3 +1463,25 @@ summary{transition:color var(--dur-fast)}
 .kg-doc-bullets li::marker{color:var(--accent)}
 .kg-doc-block h4{border-bottom:1px solid var(--line);padding-bottom:2px;margin-bottom:5px}
 .kg-doc-block p.kg-play-sentence{font-size:11px;line-height:1.55;margin:0 0 4px}
+
+/* Provenance: grounded lines carry a quiet underline; hovering one lights the
+   evidence that backs it in the rail. Nothing is asserted that is not cited. */
+.kg-play-sentence.grounded .kg-say{box-shadow:inset 0 -1px 0 rgba(126,178,124,.35)}
+.kg-play-sentence.grounded:hover .kg-say{box-shadow:inset 0 -1px 0 rgba(126,178,124,.85);background:rgba(126,178,124,.07)}
+.kg-play-sentence.ungrounded .kg-say{box-shadow:inset 0 -1px 0 rgba(214,158,86,.45)}
+.kg-play-sentence.ungrounded:hover .kg-say{background:rgba(214,158,86,.08)}
+.kg-play-gate{padding:2px 8px 4px;font-size:9.5px;color:var(--muted)}
+.kg-gate-line b{color:var(--fg)}
+.kg-gate-warn{color:#d69e56}
+.kg-gate-list{margin-top:3px;max-height:96px;overflow:auto}
+.kg-gate-row{display:flex;gap:5px;width:100%;text-align:left;background:none;border:0;border-radius:4px;
+  padding:1px 3px;color:var(--muted);font-size:9px;line-height:1.35;cursor:pointer}
+.kg-gate-row i{flex:0 0 26px;font-style:normal;font-weight:700;color:#d69e56;font-variant-numeric:tabular-nums}
+.kg-gate-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kg-gate-row:hover,.kg-gate-row.hot{background:rgba(214,158,86,.1);color:var(--fg)}
+.kg-cite-row.hot{background:rgba(126,178,124,.14);color:var(--fg)}
+.kg-play-coverage{max-height:120px;overflow:auto;padding:2px 6px 6px;display:flex;flex-wrap:wrap;gap:3px}
+.kg-cov-row{display:inline-flex;align-items:center;gap:4px;background:rgba(148,163,184,.07);
+  border:1px solid var(--line);border-radius:10px;padding:1px 6px;font-size:9px;color:var(--muted);cursor:pointer}
+.kg-cov-row:hover{border-color:var(--accent);color:var(--fg)}
+.kg-cov-row b{color:var(--accent);font-weight:700}

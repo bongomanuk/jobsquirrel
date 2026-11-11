@@ -107,3 +107,26 @@ def test_the_build_is_animated_step_by_step(built):
     for role in roles:
         employer = role["heading"].split(" — ")[0]
         assert any(employer in lb for lb in labels), f"no step writes {employer}"
+
+
+def test_every_line_carries_its_grounding(built):
+    """Provenance is measured per line, not asserted per document."""
+    doc = built["doc"]
+    g = doc.get("gating") or {}
+    assert g.get("sentences", 0) >= 40
+    assert 0 <= g.get("grounded", 0) <= g.get("sentences", 0)
+    lines = [s for b in doc["blocks"] for s in (b.get("sentences") or [])]
+    lines += [s for b in doc["blocks"] for r in (b.get("roles") or [])
+              for s in (r.get("sentences") or [])]
+    assert all("grounding" in s for s in lines), "a line without a grounding record"
+    assert all(0.0 <= s["grounding"]["score"] <= 1.0 for s in lines)
+    # the ones that do not clear the bar are listed, never hidden
+    weak = [s for s in lines if not s["grounding"]["grounded"]]
+    assert len(weak) == len(g.get("ungrounded") or [])
+
+
+def test_the_graph_supplies_requirement_coverage(built):
+    cov = built["doc"].get("coverage") or []
+    assert cov, "no requirement-to-evidence map"
+    assert all(c["keyword"] and c["nodes"] for c in cov)
+    assert len(cov) <= 14

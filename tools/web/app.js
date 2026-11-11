@@ -1161,6 +1161,14 @@ const App = {
     kgPlayRender(KG_PLAY.data);
     kgPlayRun(KG_PLAY.run);
   },
+  kgPlayHover: (el, on) => {
+    const rail = $('#kg-play-cites');
+    if (!rail) return;
+    const ids = on && el && el.dataset ? new Set(String(el.dataset.cites || '').split('|').filter(Boolean)) : new Set();
+    rail.querySelectorAll('.kg-cite-row').forEach(r => r.classList.toggle('hot', ids.size > 0 && ids.has(r.dataset.id)));
+    const g = $('#kg-play-gate');
+    if (g) g.querySelectorAll('.kg-gate-row').forEach(r => r.classList.toggle('hot', ids.size > 0 && ids.has(r.dataset.id)));
+  },
   kgPlayCite: (id) => {
     if (!id) return;
     if (KGMODE === 'universe') { if (window.__uni) window.__uni.selectByTitle(id); }
@@ -5227,12 +5235,15 @@ function kgPlayUIHTML() {
     <aside class="kg-play-rail">
       <div class="kg-pane-h"><span>Build</span><b>how this CV is made</b></div>
       <div id="kg-play-meta" class="kg-play-meta"></div>
+      <div id="kg-play-gate" class="kg-play-gate"></div>
       <div class="kg-play-now"><span class="kg-play-now-k">now</span>
         <span id="kg-play-query" class="kg-play-query"></span></div>
       <div id="kg-play-because" class="kg-play-because"></div>
       <div id="kg-play-trail" class="kg-play-trail"></div>
       <div class="kg-play-rail-h">cited evidence</div>
       <div id="kg-play-cites" class="kg-cites-list"></div>
+      <div class="kg-play-rail-h">requirement coverage</div>
+      <div id="kg-play-coverage" class="kg-play-coverage"></div>
       <div id="kg-play-note" class="kg-play-note-rail"></div>
     </aside>
   </div>`;
@@ -5380,11 +5391,16 @@ function kgPlayRender(d) {
   const noteCites = (s) => { (s.cites || []).forEach(c => citeNum(c)); };
   const sentenceHTML = (s, tag = 'p') => {
     noteCites(s);
+    const g = s.grounding || {};
+    const gcls = g.grounded ? ' grounded' : (g.score == null ? '' : ' ungrounded');
     // Never let a caller pass an array index as the tag: `.map(sentenceHTML)`
     // used to hand in the index, producing `<0 class=...>` and a page of raw
     // markup rendered as text.
     const t = tag === 'li' ? 'li' : 'p';
-    return `<${t} class="kg-play-sentence kg-play-reveal" data-step="${esc(String(s.step == null ? 0 : s.step))}" data-text="${esc(s.text || '')}">` +
+    return `<${t} class="kg-play-sentence kg-play-reveal${gcls}" data-step="${esc(String(s.step == null ? 0 : s.step))}"` +
+      ` data-text="${esc(s.text || '')}" data-cites="${esc((s.cites || []).join('|'))}"` +
+      ` data-ground="${esc(String(g.score == null ? '' : g.score))}"` +
+      ` onmouseenter="App.kgPlayHover(this,1)" onmouseleave="App.kgPlayHover(this,0)">` +
       `<span class="kg-say"></span><span class="kg-caret">▍</span></${t}>`;
   };
   let h = `<div class="kg-doc-head"><div class="kg-doc-name">${esc(doc.name || 'Tailored profile')}</div>` +
@@ -5421,6 +5437,25 @@ function kgPlayRender(d) {
   // the rail: the note and the numbered evidence, never inside the document
   const meta = $('#kg-play-meta');
   if (meta) meta.textContent = doc.meta || '';
+  const gateEl = $('#kg-play-gate');
+  if (gateEl && doc.gating) {
+    const g = doc.gating;
+    const bad = (g.ungrounded || []);
+    gateEl.innerHTML = `<div class="kg-gate-line"><b>${g.grounded}/${g.sentences}</b> lines grounded` +
+      (bad.length ? ` · <span class="kg-gate-warn">${bad.length} below the bar</span>` : '') + '</div>' +
+      (bad.length ? `<div class="kg-gate-list">` + bad.map((u, i) =>
+        `<button class="kg-gate-row" data-id="${esc(((u.nodes || [])[0]) || '')}" title="${esc(u.text || '')}">` +
+        `<i>${Math.round((u.score || 0) * 100)}%</i><span>${esc(kgShort(u.text || '', 64))}</span></button>`).join('') +
+        '</div>' : '');
+  }
+  const cov = $('#kg-play-coverage');
+  if (cov) {
+    const rows = doc.coverage || [];
+    cov.innerHTML = rows.length
+      ? rows.map(c => `<button class="kg-cov-row" data-id="${esc((c.nodes || [])[0] || '')}" title="${esc((c.nodes || []).join(', '))}">` +
+          `<span>${esc(c.keyword)}</span><b>${(c.nodes || []).length}</b></button>`).join('')
+      : '<div class="muted mini">No requirement matched the graph.</div>';
+  }
   const note = $('#kg-play-note');
   if (note) note.innerHTML = doc.note ? `<div class="kg-play-note">${md(doc.note)}</div>` : '';
   const list = $('#kg-play-cites');

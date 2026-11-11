@@ -1179,13 +1179,84 @@ def playground(key="", text="", hops=2, kind="cv"):
                     break
             return out[:limit]
 
+        # ---- provenance: a sentence is grounded when the evidence the graph
+        # returned actually says it. Measured, not asserted.
+        STOP = set((
+            "the a an and or of to in for with on at by from as is are was were be been being "
+            "that this these those it its their his her our your my i we you they he she them us "
+            "not no more most very can could should would will shall may might do does did have has "
+            "had into over under about across within without through per than then there here which "
+            "who whom whose what when where why how all any both each few other some such only own "
+            "same so too s t just don now also via using used use new end end-to-end").split())
+
+        def _tokens(text):
+            return [t for t in re.findall(r"[a-z0-9][a-z0-9+#./-]{2,}", str(text or "").lower())
+                    if t not in STOP and not t.isdigit()]
+
+        def _ids(v):
+            if v is None:
+                return []
+            if isinstance(v, str):
+                try:
+                    import json as _json
+                    v = _json.loads(v)
+                except Exception:
+                    return [x.strip() for x in v.split(",") if x.strip()]
+            try:
+                return [str(x) for x in v]
+            except TypeError:
+                return [str(v)]
+
+        unit_doc = {}
+        docs_df = _load("documents")
+        if docs_df is not None:
+            for d in docs_df.itertuples():
+                title = str(getattr(d, "title", "") or "").strip()
+                for u in _ids(getattr(d, "text_unit_ids", [])):
+                    unit_doc[u] = title
+
+        def _node_units(t):
+            r = by_title.get(t)
+            return _ids(getattr(r, "text_unit_ids", [])) if r is not None else []
+
+        def _evidence_for(titles):
+            """Everything the graph holds about these nodes: descriptions + edges."""
+            parts = []
+            for t in titles:
+                r = by_title.get(t)
+                if r is not None:
+                    parts.append(str(getattr(r, "description", "") or ""))
+                for _w, child, d in adj.get(t, []):
+                    if d:
+                        parts.append(d)
+                    rc = by_title.get(child)
+                    if rc is not None:
+                        parts.append(str(getattr(rc, "description", "") or ""))
+            return " ".join(parts).lower()
+
+        def ground(text, titles):
+            toks = _tokens(text)
+            if not toks:
+                return {"score": 0.0, "grounded": False, "terms": [], "docs": []}
+            low = " " + str(text or "").lower() + " "
+            # Any entity the line names is evidence too, even when the traversal did
+            # not return it (a language, a certification, a university).
+            named = [str(t) for t in by_title if len(str(t)) >= 4
+                     and re.search(r"\b" + re.escape(str(t).lower()) + r"\b", low)]
+            used = list(dict.fromkeys([*titles[:6], *named[:6]]))
+            ev = _evidence_for(used)
+            hit = [t for t in dict.fromkeys(toks) if t in ev]
+            score = len(hit) / max(1, len(dict.fromkeys(toks)))
+            docs = sorted({unit_doc[u] for t in used for u in _node_units(t) if u in unit_doc})
+            return {"score": round(score, 2), "grounded": score >= 0.34 and bool(used),
+                    "terms": hit[:10], "docs": docs[:4], "nodes": used[:6]}
+
         def cites(text, n=4, types=None):
             low = str(text or "").lower()
-            out = []
+            toks = set(_tokens(text))
+            scored = []
             for t, r in by_title.items():
                 if len(str(t)) < 4:
-                    continue
-                if not re.search(r"\b" + re.escape(str(t).lower()) + r"\b", low):
                     continue
                 typ = str(getattr(r, "type", "")).upper()
                 if types:
@@ -1194,8 +1265,13 @@ def playground(key="", text="", hops=2, kind="cv"):
                 elif typ not in ("SKILL", "TECHNOLOGY", "PROJECT", "ORGANIZATION",
                                  "CERTIFICATION", "METRIC", "PLATFORM", "ROLE"):
                     continue
-                out.append(str(t))
-            return list(dict.fromkeys(out))[:n]
+                named = bool(re.search(r"\b" + re.escape(str(t).lower()) + r"\b", low))
+                desc = set(_tokens(getattr(r, "description", "")))
+                overlap = len(toks & desc)
+                if named or overlap >= 3:
+                    scored.append((1 if named else 0, overlap, str(t)))
+            scored.sort(key=lambda x: (-x[0], -x[1], -len(x[2])))
+            return [t for _n, _o, t in scored][:n]
 
         skill_titles = []
         for t in (cap_titles + skills + [t for t in visited
@@ -1492,6 +1568,34 @@ def playground(key="", text="", hops=2, kind="cv"):
                          terms=[],
                          explain="Education and certifications come from the saved CV, not from the advert; "
                                  "they are included only where the record supports them.")
+            # ---- provenance pass: score every written line against the evidence
+            # the graph returned, and keep the ones that do not clear the bar so
+            # the UI can show them honestly instead of claiming a perfect build.
+            def _written():
+                for group in (summary, skill_sentences, edu_sentences):
+                    for s_ in group:
+                        yield s_
+                for rb in role_blocks:
+                    for s_ in rb["sentences"]:
+                        yield s_
+
+            total_s = grounded_n = 0
+            ungrounded = []
+            for s_ in _written():
+                g = ground(s_["text"], s_.get("cites") or [])
+                s_["grounding"] = g
+                total_s += 1
+                if g["grounded"]:
+                    grounded_n += 1
+                else:
+                    ungrounded.append({"text": s_["text"][:160],
+                                       "score": g["score"],
+                                       "section": s_.get("section") or "",
+                                       "group": s_.get("group") or ""})
+
+            coverage = [{"keyword": kw, "nodes": matched.get(kw, [])[:4]}
+                        for kw in keywords if matched.get(kw)]
+
             n += 1
             steps_.append({"n": n, "kind": "gate",
                            "query": "Gate the CV: every line is grounded and cited",
@@ -1503,7 +1607,8 @@ def playground(key="", text="", hops=2, kind="cv"):
                 "title": "Curriculum Vitae",
                 "subtitle": "",
                 "meta": (f"{len(nodes)} evidence nodes · {len(links)} connections · "
-                         f"{len(covered)}/{len(keywords)} requirements evidenced"),
+                         f"{len(covered)}/{len(keywords)} requirements evidenced · "
+                         f"{grounded_n}/{total_s} lines grounded"),
                 "name": name_, "target": target, "contact": contact,
                 "blocks": [
                     {"heading": "Professional summary", "type": "p", "sentences": summary},
@@ -1512,9 +1617,13 @@ def playground(key="", text="", hops=2, kind="cv"):
                     {"heading": "Education & certifications", "type": "p",
                      "sentences": edu_sentences},
                 ],
-                "note": "Every line is drawn from config/cv.json; the graph supplies the ranking "
-                        "and citations. Coherence gate: included claims are grounded in the saved CV.",
+                "note": ("Every line is drawn from config/cv.json; the graph supplies the ranking "
+                         "and citations, and each line is scored against the evidence it cites. "
+                         "Anything below the grounding bar is listed here, not hidden."),
                 "note_step": n,
+                "gating": {"sentences": total_s, "grounded": grounded_n,
+                           "ungrounded": ungrounded[:12]},
+                "coverage": coverage[:14],
             }
         found_terms = [k for k in keywords if matched.get(k)]
         missing_terms = [k for k in keywords if not matched.get(k)]
