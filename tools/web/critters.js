@@ -311,10 +311,11 @@ export function buildSquirrel(friend = false) {
   head.add(heldNut);
 
   const sword = new THREE.Group();
-  sword.position.set(0, -0.16, 0.02);
-  sword.rotation.x = -0.5;
+  // held high in the right paw, blade above the head: a small duelist's guard
+  sword.position.set(0.17, 0.12, 0.43);
+  sword.rotation.set(-0.15, 0, -0.3);
   sword.visible = false;
-  front[1].elbow.add(sword);
+  chest.add(sword);
   const blade = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.72, 0.05), MAT.blade);
   blade.position.y = 0.42;
   sword.add(blade);
@@ -649,8 +650,28 @@ function startDisco(stage) {
   const light = new THREE.PointLight(0xff6ad5, 10, 300);
   light.position.set(stage, 14, 28);
   g.add(ball, glow, string, light);
+  // a full-width wash of colour behind the dancers
+  const washes = [];
+  for (let i = 0; i < 5; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: puffTexture(), color: 0xff6ad5, transparent: true,
+      opacity: 0.14, depthWrite: false,
+    }));
+    sp.position.set(-state.W / 2 + (i + 0.5) * (state.W / 5), 6, -8);
+    sp.scale.set(Math.max(340, state.W / 4.2), 96, 1);
+    g.add(sp);
+    washes.push(sp);
+  }
+  const lights = [];
+  for (let i = 0; i < 3; i++) {
+    const l = new THREE.PointLight(0xff6ad5, 7, 600);
+    l.position.set(-state.W / 3 + i * (state.W / 3), 20, 32);
+    g.add(l);
+    lights.push(l);
+  }
   state.scene.add(g);
-  state.disco = { g, ball, light, stage, until: performance.now() + 7200, sparkAt: 0 };
+  state.disco = { g, ball, glow, light, lights, washes, stage,
+                  until: performance.now() + 7200, sparkAt: 0 };
 }
 
 function stopDisco() {
@@ -800,10 +821,10 @@ function animate(c, dt) {
   if (c.duel && c.sword) {
     const t = p * 3.2;
     c.sword.visible = true;
-    c.front[1].shoulder.rotation.x = -1.2 + Math.sin(t) * 1.05;
-    c.front[1].elbow.rotation.x = -0.3 + Math.sin(t + 1) * 0.6;
-    c.sword.rotation.z = Math.sin(t * 1.3) * 0.9;
-    c.sword.rotation.x = -1.25 + Math.cos(t) * 0.4;
+    c.front[1].shoulder.rotation.x = -2.25 + Math.sin(t) * 0.16;
+    c.front[1].elbow.rotation.x = -1.1;
+    c.sword.rotation.z = -0.32 + Math.sin(t * 1.4) * 0.55;
+    c.sword.rotation.x = -0.15 + Math.cos(t) * 0.12;
     c.root.position.x += Math.sin(t) * 0.4;
     c.hips.rotation.x = -0.15 + Math.sin(t * 2) * 0.08;
     c.neck.rotation.z = Math.sin(t) * 0.12;
@@ -928,6 +949,11 @@ function updateWeather(now, dt) {
     const d = state.disco;
     d.ball.rotation.y += dt * 4;
     d.light.color.setHSL((now * 0.00035) % 1, 0.75, 0.6);
+    d.washes.forEach((sp, i) => {
+      sp.material.color.setHSL((now * 0.00028 + i * 0.19) % 1, 0.78, 0.55);
+      sp.material.opacity = 0.13 + 0.05 * Math.sin(now * 0.004 + i);
+    });
+    d.lights.forEach((l, i) => l.color.setHSL((now * 0.00035 + i * 0.31) % 1, 0.8, 0.55));
     if (now > d.sparkAt) {
       d.sparkAt = now + 240;
       addPuff(d.stage + (Math.random() - 0.5) * 34, BAR / 2 - 12 + (Math.random() - 0.5) * 12,
