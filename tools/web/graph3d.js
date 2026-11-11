@@ -6,15 +6,15 @@
  */
 import * as THREE from './vendor/three.module.min.js';
 
-const LEVEL_COLORS = ['#f59e0b', '#3b82f6', '#22c55e', '#a855f7', '#06b6d4', '#ef4444', '#ec4899', '#14b8a6'];
-const COMM_COLORS = ['#f59e0b', '#3b82f6', '#22c55e', '#a855f7', '#06b6d4', '#ef4444',
-  '#ec4899', '#14b8a6', '#eab308', '#8b5cf6', '#f97316', '#84cc16'];
+const LEVEL_COLORS = ['#cfb078', '#8fb4dc', '#8fc7a8', '#b4a1d8', '#83c6cb', '#c98f95', '#c99cb1', '#7fc4ba'];
+const COMM_COLORS = ['#cfb078', '#8fb4dc', '#8fc7a8', '#b4a1d8', '#83c6cb', '#c98f95',
+  '#c99cb1', '#7fc4ba', '#c9b78a', '#ab9dd6', '#cfa780', '#a8c69a'];
 const TYPE_COLORS = {
-  TECHNOLOGY: '#3b82f6', SKILL: '#22c55e', METRIC: '#f59e0b', PROJECT: '#a855f7',
-  PRODUCT: '#06b6d4', ORGANIZATION: '#ef4444', ROLE: '#eab308', PLATFORM: '#8b5cf6',
-  CERTIFICATION: '#14b8a6', EDUCATION: '#64748b', PERSON: '#f97316', CONCEPT: '#94a3b8'
+  TECHNOLOGY: '#8fb4dc', SKILL: '#8fc7a8', METRIC: '#cfb078', PROJECT: '#b4a1d8',
+  PRODUCT: '#83c6cb', ORGANIZATION: '#c98f95', ROLE: '#cfbc86', PLATFORM: '#ab9dd6',
+  CERTIFICATION: '#7fc4ba', EDUCATION: '#9aa6b8', PERSON: '#d8a273', CONCEPT: '#8f99aa'
 };
-const ACCENT = 0xf59e0b;
+const ACCENT = 0xd8b47c;
 const DIM = 0x334155;
 
 const S = {
@@ -131,7 +131,7 @@ function init() {
   S.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   S.renderer.setClearColor(0x05070c, 1);
   S.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  S.renderer.toneMappingExposure = 1.35;
+  S.renderer.toneMappingExposure = 1.2;
   if ('outputColorSpace' in S.renderer) S.renderer.outputColorSpace = THREE.SRGBColorSpace;
   S.scene = new THREE.Scene();
   S.scene.background = new THREE.Color(0x05070c);
@@ -142,13 +142,13 @@ function init() {
   S.raycaster = new THREE.Raycaster();
   S.lastUser = 0;
   S.marker = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: glowTexture(), color: new THREE.Color('#fbbf24'), transparent: true,
+    map: glowTexture(), color: new THREE.Color('#e0b877'), transparent: true,
     opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending
   }));
   S.marker.visible = false;
   S.scene.add(S.marker);
   S.pulseDot = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: glowTexture(), color: new THREE.Color('#fde68a'), transparent: true,
+    map: glowTexture(), color: new THREE.Color('#f2d9ab'), transparent: true,
     opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending
   }));
   S.pulseDot.visible = false;
@@ -335,7 +335,7 @@ export async function show(data, opts = {}) {
     const ig = new THREE.BufferGeometry();
     ig.setAttribute('position', new THREE.BufferAttribute(ip, 3));
     S.impact = new THREE.Points(ig, new THREE.PointsMaterial({
-      size: 20, color: 0xfbbf24, map: glowTexture(), transparent: true,
+      size: 20, color: 0xe0b877, map: glowTexture(), transparent: true,
       opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true
     }));
     S.impact.frustumCulled = false;
@@ -788,7 +788,7 @@ function paintLines(selected, dist) {
   if (!S.lineMesh) return;
   const col = S.lineColors;
   const accent = new THREE.Color(ACCENT), base = new THREE.Color(0x93a4bd);
-  const gold = new THREE.Color(0xfbbf24);
+  const gold = new THREE.Color(0xe0b877);
   const amt = dist ? (S.focusAmount == null ? 1 : S.focusAmount) : 0;
   const playOn = S.playIds.size > 0;
   S.links.forEach((l, i) => {

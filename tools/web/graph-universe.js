@@ -24,12 +24,12 @@ const S = {
 };
 
 const COLORS = {
-  PERSON: '#fb923c', ORGANIZATION: '#f87171', ROLE: '#facc15', SKILL: '#4ade80',
-  TECHNOLOGY: '#60a5fa', PROJECT: '#c084fc', PRODUCT: '#22d3ee', METRIC: '#fbbf24',
-  CERTIFICATION: '#2dd4bf', EDUCATION: '#94a3b8', PLATFORM: '#a78bfa', CONCEPT: '#94a3b8'
+  PERSON: '#d8a273', ORGANIZATION: '#c98f95', ROLE: '#cfbc86', SKILL: '#8fc7a8',
+  TECHNOLOGY: '#8fb4dc', PROJECT: '#b4a1d8', PRODUCT: '#83c6cb', METRIC: '#cfb078',
+  CERTIFICATION: '#7fc4ba', EDUCATION: '#9aa6b8', PLATFORM: '#ab9dd6', CONCEPT: '#8f99aa'
 };
-const ISLAND_COLORS = ['#f87171', '#fb923c', '#fbbf24', '#4ade80', '#2dd4bf', '#60a5fa',
-  '#a78bfa', '#c084fc', '#22d3ee', '#f472b6', '#94a3b8', '#facc15'];
+const ISLAND_COLORS = ['#c98f95', '#cfa780', '#cfbc86', '#8fc7a8', '#7fc4ba', '#8fb4dc',
+  '#ab9dd6', '#b4a1d8', '#83c6cb', '#c99cb1', '#9aa6b8', '#c9b78a'];
 const ontologyColor = n => new THREE.Color(COLORS[n.class] || COLORS[n.type] || n.color || '#94a3b8');
 const colorOf = (n, mode = S.colorMode) => {
   if (mode === 'islands') {
@@ -80,7 +80,7 @@ function init() {
   S.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
   S.renderer.setClearColor(0x020309, 1);
   S.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  S.renderer.toneMappingExposure = 1.35;
+  S.renderer.toneMappingExposure = 1.2;
   if ('outputColorSpace' in S.renderer) S.renderer.outputColorSpace = THREE.SRGBColorSpace;
   S.scene = new THREE.Scene();
   S.scene.background = new THREE.Color(0x020309);
@@ -305,7 +305,7 @@ function relax(clusters) {
 
 function paintBaseLinkColors() {
   if (!S.lines || !S.linkBaseColors) return;
-  const gold = new THREE.Color('#fbbf24');
+  const gold = new THREE.Color('#e0b877');
   const attr = S.lines.geometry.attributes.color;
   S.links.forEach((l, i) => {
     const a = S.byId.get(l.source), b = S.byId.get(l.target);
@@ -478,7 +478,7 @@ function build(data) {
     const ip = new Float32Array(landmarks.length * 3), ic = new Float32Array(landmarks.length * 3);
     landmarks.forEach((n, i) => {
       ip[i * 3] = n.pos.x; ip[i * 3 + 1] = n.pos.y; ip[i * 3 + 2] = n.pos.z;
-      const c = n.colorObj.clone().lerp(new THREE.Color('#ffd166'), 0.65);
+      const c = n.colorObj.clone().lerp(new THREE.Color('#e8c68f'), 0.65);
       ic[i * 3] = c.r; ic[i * 3 + 1] = c.g; ic[i * 3 + 2] = c.b;
     });
     const ig = new THREE.BufferGeometry();
@@ -501,7 +501,7 @@ function build(data) {
     lp[i * 6 + 3] = b.pos.x; lp[i * 6 + 4] = b.pos.y; lp[i * 6 + 5] = b.pos.z;
     const d = a.pos.distanceTo(b.pos);
     const fade = Math.max(0.06, Math.min(1, 1.25 - d / 2400));   // long bridges barely glimmer
-    const c = l.grounded ? new THREE.Color('#fbbf24') : a.colorObj.clone().lerp(b.colorObj, 0.5).multiplyScalar(fade);
+    const c = l.grounded ? new THREE.Color('#e0b877') : a.colorObj.clone().lerp(b.colorObj, 0.5).multiplyScalar(fade);
     lc[i * 6] = c.r; lc[i * 6 + 1] = c.g; lc[i * 6 + 2] = c.b;
     lc[i * 6 + 3] = c.r; lc[i * 6 + 4] = c.g; lc[i * 6 + 5] = c.b;
   });
@@ -535,13 +535,13 @@ function build(data) {
   S.scene.add(ng);
 
   S.marker = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: glowTexture(), color: new THREE.Color('#fbbf24'), transparent: true,
+    map: glowTexture(), color: new THREE.Color('#e0b877'), transparent: true,
     opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending
   }));
   S.marker.visible = false;
   S.scene.add(S.marker);
   S.pulseDot = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: glowTexture(), color: new THREE.Color('#fde68a'), transparent: true,
+    map: glowTexture(), color: new THREE.Color('#f2d9ab'), transparent: true,
     opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending
   }));
   S.pulseDot.visible = false;
@@ -549,7 +549,7 @@ function build(data) {
   // a dedicated overlay for the current query's edges: the universe graph is
   // the full KB, so synthetic citation edges used by the build are not in it.
   S.trace = new THREE.LineSegments(new THREE.BufferGeometry(),
-    new THREE.LineBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.85,
+    new THREE.LineBasicMaterial({ color: 0xe0b877, transparent: true, opacity: 0.85,
       depthWrite: false, blending: THREE.AdditiveBlending }));
   S.trace.visible = false;
   S.scene.add(S.trace);
@@ -1557,7 +1557,7 @@ export function search(q) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     S.hits = new THREE.Points(g, new THREE.PointsMaterial({
-      size: 34, color: new THREE.Color('#fbbf24'), map: glowTexture(), transparent: true,
+      size: 34, color: new THREE.Color('#e0b877'), map: glowTexture(), transparent: true,
       opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true
     }));
     S.scene.add(S.hits);
