@@ -834,6 +834,7 @@ body.knowledge-open{overflow:hidden}
 .kg-play-result span{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .kg-play-empty{padding:9px 10px;color:var(--muted);font-size:11px}
 .kg-play-selected{margin:3px 0 1px;color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kg-play-meta{padding:3px 8px 0;font:9.5px/1.4 var(--mono);color:var(--muted)}
 .kg-play-now{display:flex;align-items:baseline;gap:6px;margin:2px 0 4px;min-height:16px}
 .kg-play-now-k{flex:0 0 auto;font:600 9px/1.4 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
 .kg-play-why{margin:0 0 8px;border-top:1px solid var(--line);padding-top:4px}

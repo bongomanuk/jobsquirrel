@@ -5223,6 +5223,7 @@ function kgPlayUIHTML() {
     <div class="kg-split" data-split="2" title="Drag to resize"></div>
     <aside class="kg-play-rail">
       <div class="kg-pane-h"><span>Build</span><b>how this CV is made</b></div>
+      <div id="kg-play-meta" class="kg-play-meta"></div>
       <div class="kg-play-now"><span class="kg-play-now-k">now</span>
         <span id="kg-play-query" class="kg-play-query"></span></div>
       <div id="kg-play-because" class="kg-play-because"></div>
@@ -5378,8 +5379,7 @@ function kgPlayRender(d) {
   let h = `<div class="kg-doc-head"><div class="kg-doc-name">${esc(doc.name || 'Tailored profile')}</div>` +
     (doc.contact && doc.contact.length ? `<div class="kg-doc-contact">${doc.contact.map(esc).join(' · ')}</div>` : '') +
     `<div class="kg-doc-target">${esc(doc.target || '')}</div></div>` +
-    `<div class="kg-play-title">${esc(doc.title || 'Curriculum Vitae')}</div>` +
-    `<div class="muted mini">${esc(doc.subtitle || '')}</div>`;
+    `<div class="kg-play-title">${esc(doc.title || 'Curriculum Vitae')}</div>`;
   (doc.prologue || []).forEach(line => { h += `<p class="kg-doc-prologue">${esc(line)}</p>`; });
   (doc.blocks || []).forEach(block => {
     h += `<div class="kg-doc-block${block.type === 'letter' ? ' kg-doc-letter' : ''}">`;
@@ -5402,6 +5402,8 @@ function kgPlayRender(d) {
     `<button class="small" onclick="App.kgPlayStop()">Stop</button></div>`;
   box.innerHTML = h;
   // the rail: the note and the numbered evidence, never inside the document
+  const meta = $('#kg-play-meta');
+  if (meta) meta.textContent = doc.meta || '';
   const note = $('#kg-play-note');
   if (note) note.innerHTML = doc.note ? `<div class="kg-play-note">${md(doc.note)}</div>` : '';
   const list = $('#kg-play-cites');

@@ -1245,11 +1245,18 @@ def playground(key="", text="", hops=2, kind="cv"):
         org_full = [e.get("employer", "") for e in roles if e.get("employer")] or orgs[:3]
         org_names = [str(x).split(",")[0].strip() for x in org_full]
         top_skills = skill_titles[:5] or ["the connected record"]
+        # Keep entity titles out of the prose: "strengths in Structural Causal
+        # Inference" is a graph label, not a sentence a person would write.
         summary1 = (f"{name_} is a senior engineering leader with experience at "
-                    f"{', '.join(org_names[:3])} and core strengths in "
-                    f"{', '.join(_nice_skill(t) for t in top_skills)}.")
-        summary2 = (f"Targeting {target}, with evidence across "
-                    f"{', '.join(covered[:6]) if covered else 'the requirements'}.")
+                    f"{', '.join(org_names[:3])}.")
+        # A CV summary is about the candidate, not about how the graph matched.
+        # Use the profile the candidate wrote for themselves, and leave the
+        # requirement-coverage numbers to the build rail.
+        own = " ".join(str(cv.get("profile_default") or "").split())
+        own_sentences = [x.strip() for x in re.split(r"(?<=[.!?])\s+", own) if x.strip()]
+        summary2 = " ".join(own_sentences[:2]).strip()
+        if not summary2:
+            summary2 = f"Targeting {target}."
         sum_cites = ([person] if person in by_title else []) + \
                     [o for o in org_full if o in by_title] + skill_titles[:5]
         sum_cites = list(dict.fromkeys(sum_cites))[:7]
@@ -1259,15 +1266,18 @@ def playground(key="", text="", hops=2, kind="cv"):
             {"text": summary2, "cites": skill_titles[:5], "step": 0,
              "section": "Profile", "group": "", "trace": []},
         ]
-        skill_sentence = {"text": skill_text, "cites": skill_titles[:10], "step": 0,
-                          "section": "Core skills", "group": "", "trace": []}
+        # `skill_text` is a list of graph entity titles ("Structural Causal
+        # Inference", "Security AND Compliance"), which reads like metadata in a
+        # CV. The rail shows those matches; the document keeps the candidate's
+        # own skill lines.
+        skill_sentence = None
         all_skills = [str(line).strip() for line in (cv.get("skills") or []) if line]
         matched_skills = [line for line in all_skills if hits(line) > 0]
         rest_skills = [line for line in all_skills if line not in matched_skills]
         # the advert's own skills first, then the rest of the record so the CV is
         # complete rather than a shortlist of whatever the advert happened to name
         skill_lines = (matched_skills + rest_skills)[:10]
-        skill_sentences = [skill_sentence]
+        skill_sentences = []
         for line in skill_lines:
             text = line.rstrip('.') + '.'
             if ':' not in text:
@@ -1491,7 +1501,9 @@ def playground(key="", text="", hops=2, kind="cv"):
                                       "a graph node. Missing requirements are left out, not invented."})
             doc = {
                 "title": "Curriculum Vitae",
-                "subtitle": f"Tailored CV · {len(nodes)} evidence nodes and {len(links)} connections",
+                "subtitle": "",
+                "meta": (f"{len(nodes)} evidence nodes · {len(links)} connections · "
+                         f"{len(covered)}/{len(keywords)} requirements evidenced"),
                 "name": name_, "target": target, "contact": contact,
                 "blocks": [
                     {"heading": "Professional summary", "type": "p", "sentences": summary},

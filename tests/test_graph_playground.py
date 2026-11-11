@@ -80,6 +80,22 @@ def test_the_document_has_every_section(built):
     assert len(skills) >= 6, "skills are the record, not just the advert's matches"
 
 
+def test_the_document_carries_no_build_metadata(built):
+    """Counts, coverage and graph labels belong in the rail, not in the CV."""
+    doc = built["doc"]
+    assert doc.get("subtitle", "") == "", "no counts under the title"
+    assert doc.get("meta"), "the counts still exist, in the rail field"
+    text = " ".join(
+        [s["text"] for b in doc["blocks"] for s in (b.get("sentences") or [])]
+        + [s["text"] for b in doc["blocks"] for r in (b.get("roles") or [])
+           for s in (r.get("sentences") or [])])
+    for banned in ("evidence nodes", "requirements evidenced", "connections"):
+        assert banned not in text, banned
+    summary = [b for b in doc["blocks"] if b["heading"] == "Professional summary"][0]["sentences"]
+    assert all("with evidence across" not in s["text"] for s in summary)
+    assert all(s["text"].count("·") == 0 for s in summary), "no separator-joined node titles"
+
+
 def test_the_build_is_animated_step_by_step(built):
     steps = built["steps"]
     writes = [s for s in steps if s["kind"] == "write"]

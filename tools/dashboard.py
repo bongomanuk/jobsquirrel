@@ -4879,8 +4879,14 @@ def graph_play(key="", text="", hops=2, kind="cv"):
     key = str(key or "").strip()
     text = str(text or "")
     kind = "letter" if str(kind or "").lower() == "letter" else "cv"
+    # The tool's own mtime is part of the key: a cached build must never outlive a
+    # change to the generator (it did, and the UI kept showing the old document).
+    try:
+        tool_ver = os.path.getmtime(GRAPH_TOOL)
+    except OSError:
+        tool_ver = 0
     cache_key = (key, hashlib.sha1(text.encode("utf-8", "ignore")).hexdigest(),
-                 str(hops or 2), kind)
+                 str(hops or 2), kind, tool_ver)
     hit = _PLAY_CACHE.get(cache_key)
     if hit and time.time() - hit[0] < _PLAY_CACHE_TTL:
         return hit[1]
