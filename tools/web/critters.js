@@ -41,7 +41,7 @@ const MAT = {
   nut: new THREE.MeshStandardMaterial({ color: 0xc08a4e, roughness: 0.85 }),
   nutCap: new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 0.9 }),
   beer: new THREE.MeshStandardMaterial({ color: 0xd9a45f, roughness: 0.4 }),
-  blade: new THREE.MeshStandardMaterial({ color: 0xcfd8e3, roughness: 0.25, metalness: 0.85 }),
+  blade: new THREE.MeshStandardMaterial({ color: 0xf2f6ff, roughness: 0.2, metalness: 0.8, emissive: 0x6f84a8, emissiveIntensity: 0.55 }),
   foam: new THREE.MeshStandardMaterial({ color: 0xf7f0de, roughness: 1 }),
   snow: new THREE.MeshStandardMaterial({ color: 0xf3f8ff, roughness: 0.95 }),
   snowball: new THREE.MeshStandardMaterial({ color: 0xd8e6f7, roughness: 0.9 }),
@@ -315,15 +315,16 @@ export function buildSquirrel(friend = false) {
   sword.rotation.x = -0.5;
   sword.visible = false;
   front[1].elbow.add(sword);
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.44, 0.035), MAT.blade);
-  blade.position.y = 0.28;
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.72, 0.05), MAT.blade);
+  blade.position.y = 0.42;
   sword.add(blade);
-  const guard = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.05), MAT.gold);
-  guard.position.y = 0.06;
+  const guard = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.045, 0.07), MAT.gold);
+  guard.position.y = 0.08;
   sword.add(guard);
-  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.1, 6), MAT.nutCap);
-  grip.position.y = -0.01;
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.14, 6), MAT.nutCap);
+  grip.position.y = -0.02;
   sword.add(grip);
+  sword.rotation.x = -1.3;
 
   const beer = new THREE.Group();
   beer.position.set(0, -0.16, 0.08);
@@ -466,15 +467,15 @@ function startSnow(ms = 15000) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   const points = new THREE.Points(geo, new THREE.PointsMaterial({
-    map: puffTexture(), color: 0xb9c9dd, size: 2.8, transparent: true,
+    map: puffTexture(), color: 0x93abc9, size: 3.2, transparent: true,
     opacity: 0.9, depthWrite: false, sizeAttenuation: false,
   }));
   state.scene.add(points);
   // the snow bank that builds up along the bar over the first few seconds
   const bank = new THREE.Group();
   const moundGeo = new THREE.SphereGeometry(1, 10, 6);
-  const bankMat = new THREE.MeshBasicMaterial({ color: 0xd7e4f4, transparent: true,
-                                                opacity: 0.96, depthWrite: false });
+  const bankMat = new THREE.MeshBasicMaterial({ color: 0xc7d7ea, transparent: true,
+                                                opacity: 0.98, depthWrite: false });
   const bankSpan = Math.max(1200, state.W + 200);
   const count = 22;
   const mounds = [];
@@ -799,10 +800,10 @@ function animate(c, dt) {
   if (c.duel && c.sword) {
     const t = p * 3.2;
     c.sword.visible = true;
-    c.front[1].shoulder.rotation.x = -1.5 + Math.sin(t) * 0.9;
-    c.front[1].elbow.rotation.x = -0.7 + Math.sin(t + 1) * 0.5;
-    c.sword.rotation.z = Math.sin(t * 1.4) * 0.7;
-    c.sword.rotation.x = -0.5 + Math.cos(t) * 0.25;
+    c.front[1].shoulder.rotation.x = -1.2 + Math.sin(t) * 1.05;
+    c.front[1].elbow.rotation.x = -0.3 + Math.sin(t + 1) * 0.6;
+    c.sword.rotation.z = Math.sin(t * 1.3) * 0.9;
+    c.sword.rotation.x = -1.25 + Math.cos(t) * 0.4;
     c.root.position.x += Math.sin(t) * 0.4;
     c.hips.rotation.x = -0.15 + Math.sin(t * 2) * 0.08;
     c.neck.rotation.z = Math.sin(t) * 0.12;
@@ -1209,13 +1210,6 @@ function frame() {
       kickNut(c);
     }
     animate(c, dt);
-    if (c.duel && c.partner && c === state.resident && now > c.sparkAt) {
-      c.sparkAt = now + 380 + Math.random() * 240;
-      const mx = (c.x + c.partner.x) / 2;
-      addPuff(mx, FLOOR + 20, { color: '#ffe3b0', size: 5, life: 320, vy: 22, grow: 1.8 });
-      addPuff(mx + (Math.random() - 0.5) * 10, FLOOR + 22,
-              { color: '#fff1cc', size: 3, life: 260, vy: 26, grow: 1.4 });
-    }
     if (c.x > c.endX || c.y < -BAR) removeCritter(c);
   }
 
