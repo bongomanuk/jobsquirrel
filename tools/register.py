@@ -27,6 +27,7 @@ import tempfile
 from datetime import date, datetime
 
 import jd_guard as JD
+import stateio
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CSV_PATH = os.environ.get("APPLICATIONS_CSV", os.path.join(ROOT, "state", "applications.csv"))
@@ -182,16 +183,14 @@ def jd_path(company, role, key=""):
 
     folder = JD_DIR
     for cand in variants(key) + variants(make_key(company, role)):
-        for ext in (".md", ".md.gz"):
-            p = os.path.join(folder, cand + ext)
-            if os.path.isfile(p):
-                return p
+        found = stateio.resolve(os.path.join(folder, cand + ".md"))
+        if found:
+            return found
     slug = _slug(company or "")
     if slug:
-        for ext in (".md", ".md.gz"):
-            p = os.path.join(folder, slug + ext)
-            if os.path.isfile(p):
-                return p
+        found = stateio.resolve(os.path.join(folder, slug + ".md"))
+        if found:
+            return found
     return ""
 
 

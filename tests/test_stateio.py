@@ -155,6 +155,32 @@ def test_jd_guard_finds_a_packed_ad(tmp_path, monkeypatch):
     assert jd_guard.has_jd("acme")
 
 
+def test_alias_symlink_survives_its_target_being_packed(tmp_path, monkeypatch):
+    """A company-role alias must resolve when storage packs the real ad.
+
+    storage.py packs the target file and deliberately leaves the alias symlink
+    alone, which used to make the alias dangle. The register audit and the
+    drawer must still see the packed advert through it.
+    """
+    import jd_guard
+    import register
+
+    jd = _write(tmp_path / "job-descriptions" / "li_123.md", "job ad " * 80)
+    with gzip.open(str(jd) + ".gz", "wt", encoding="utf-8") as fh:
+        fh.write("job ad " * 80)
+    jd.unlink()
+    os.symlink("li_123.md", tmp_path / "job-descriptions" / "acme-role.md")
+
+    monkeypatch.setattr(jd_guard, "JD_DIR", tmp_path / "job-descriptions")
+    monkeypatch.setattr(register, "JD_DIR", str(tmp_path / "job-descriptions"))
+
+    alias = tmp_path / "job-descriptions" / "acme-role.md"
+    assert stateio.resolve(str(alias)) == str(jd) + ".gz"
+    assert stateio.read_text(str(alias)) == "job ad " * 80
+    assert jd_guard.has_jd("acme-role")
+    assert register.jd_path("Acme", "Role", "acme-role") == str(jd) + ".gz"
+
+
 def test_dashboard_lists_and_reads_packed_roles(tmp_path, monkeypatch):
     import dashboard
 

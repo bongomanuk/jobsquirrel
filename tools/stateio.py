@@ -34,12 +34,28 @@ def variants(path: str) -> tuple[str, str]:
 
 
 def resolve(path: str) -> str | None:
-    """The file that actually exists for `path` (plain preferred), or None."""
+    """The file that actually exists for `path` (plain preferred), or None.
+
+    A role-key symlink is a common alias (e.g. a company-role name pointing at
+    the LinkedIn-id file). When storage.py packs the target, the alias is left
+    dangling, so follow its target and accept the packed twin too.
+    """
     plain, packed = variants(path)
     if os.path.exists(plain):
         return plain
     if os.path.exists(packed):
         return packed
+    if os.path.islink(plain):
+        try:
+            target = os.readlink(plain)
+        except OSError:
+            target = ""
+        if target:
+            if not os.path.isabs(target):
+                target = os.path.join(os.path.dirname(plain), target)
+            for cand in (target, target + SUFFIX):
+                if os.path.exists(cand):
+                    return cand
     return None
 
 

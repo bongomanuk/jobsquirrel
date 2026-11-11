@@ -69,18 +69,10 @@ STATUSES = ["SUBMITTED", "IN_PROGRESS", "INTERVIEW", "OFFER", "REJECTED",
 # ---------------------------------------------------------------- helpers
 def _read(path, cap=400_000):
     # Task logs are gzipped once they are old enough and state artifacts can be
-    # packed by tools/storage.py; read whichever form exists rather than restoring
-    # the file, so simply browsing the grid never undoes the saving.
-    target = path
-    if not path.endswith(".gz") and not os.path.exists(path):
-        if os.path.exists(path + ".gz"):
-            target = path + ".gz"
-    try:
-        opener = gzip.open if target.endswith(".gz") else open
-        with opener(target, "rt", encoding="utf-8", errors="ignore") as fh:
-            return fh.read()[:cap]
-    except (OSError, EOFError):
-        return ""
+    # packed by tools/storage.py; an artifact may also be an alias symlink to a
+    # file that was packed afterwards. stateio follows both without restoring
+    # anything, so simply browsing the grid never undoes the saving.
+    return stateio.read_text(path)[:cap]
 
 
 def _rows(path):
@@ -2141,7 +2133,11 @@ def grid():
         co, role = r["company"], r["role"]
         ck = (co.lower(), role.lower())
         seen.add(ck)
-        key = km.get(ck) or _slug(f"{co}-{role}")
+        # The register row's key is the canonical identity (a queue key is only
+        # an alias). Using the queue key first used to invent a company-role
+        # slug for a row keyed by a LinkedIn id, so the drawer and the Ad column
+        # looked for an ad that was saved under the row's real key.
+        key = (r.get("key") or "").strip() or km.get(ck) or _slug(f"{co}-{role}")
         notes = r.get("notes", "")
         cvrel = _prepared_cv_note(notes, key, cv_index) or cvmap.get(key, "") or subm_cv.get(ck, "")
         content_key = _content_key_for(cvrel, key)
