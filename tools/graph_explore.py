@@ -1210,16 +1210,19 @@ def playground(key="", text="", hops=2, kind="cv"):
             skill_titles = [str(t) for t in cap_titles[:10]]
         skill_text = "Core skills: " + " · ".join(_nice_skill(t) for t in skill_titles[:10]) + "."
 
+        # The playground builds a FULL CV, not a sample: every role in the record,
+        # every achievement it holds, all the evidenced skills, education,
+        # certifications and languages. The graph decides the order of the
+        # evidence inside each block and which requirements are covered, not which
+        # parts of the candidate's career get shown.
         exp = [e for e in (cv.get("experience") or []) if isinstance(e, dict)]
-        ranked = sorted(exp, key=lambda e: -hits(
-            f"{e.get('employer', '')} {e.get('title', '')} {' '.join(e.get('bullets') or [])}"))
-        roles = ranked[:3] or exp[:3]
+        roles = exp
         role_blocks, role_steps = [], []
         for e in roles:
             bullets = [str(b) for b in (e.get("bullets") or [])]
-            br = sorted(enumerate(bullets), key=lambda ib: -hits(ib[1]))
-            keep = sorted(i for i, _ in br[:3])
-            chosen = [bullets[i] for i in keep] or bullets[:2]
+            # keep the writer's order (it reads as a career, not a keyword dump);
+            # the ranking only decides which line is quoted in the letter
+            chosen = [b for b in bullets if b.strip()]
             sentences, all_cites = [], []
             emp = str(e.get("employer") or "")
             for b in chosen:
@@ -1258,10 +1261,12 @@ def playground(key="", text="", hops=2, kind="cv"):
         ]
         skill_sentence = {"text": skill_text, "cites": skill_titles[:10], "step": 0,
                           "section": "Core skills", "group": "", "trace": []}
-        skill_lines = [str(line).strip() for line in (cv.get("skills") or [])
-                       if line and hits(line) > 0][:2]
-        if not skill_lines:
-            skill_lines = [str(line).strip() for line in (cv.get("skills") or []) if line][:2]
+        all_skills = [str(line).strip() for line in (cv.get("skills") or []) if line]
+        matched_skills = [line for line in all_skills if hits(line) > 0]
+        rest_skills = [line for line in all_skills if line not in matched_skills]
+        # the advert's own skills first, then the rest of the record so the CV is
+        # complete rather than a shortlist of whatever the advert happened to name
+        skill_lines = (matched_skills + rest_skills)[:10]
         skill_sentences = [skill_sentence]
         for line in skill_lines:
             text = line.rstrip('.') + '.'
@@ -1272,8 +1277,9 @@ def playground(key="", text="", hops=2, kind="cv"):
 
         edu = [str(x) for x in (cv.get("education") or []) if x]
         certs = [str(x) for x in (cv.get("certifications") or []) if x]
+        langs = [str(x) for x in (cv.get("languages") or []) if x]
         edu_sentences = []
-        for label, lines in (("Education", edu), ("Certifications", certs)):
+        for label, lines in (("Education", edu), ("Certifications", certs), ("Languages", langs)):
             if lines:
                 text = f"{label}: " + " · ".join(lines)
                 edu_sentences.append({"text": text,
@@ -1286,7 +1292,8 @@ def playground(key="", text="", hops=2, kind="cv"):
                    "nodes": [], "links": [], "trace": []}]
         n = 0
 
-        def add_step(query, sentences_, nodes_, trace_=None, terms=None, explain="", hub=None):
+        def add_step(query, sentences_, nodes_, trace_=None, terms=None, explain="", hub=None,
+                     label=None):
             nonlocal n
             n += 1
             for s_ in sentences_:
@@ -1317,7 +1324,7 @@ def playground(key="", text="", hops=2, kind="cv"):
                     edge_pairs.add((hop["from"], hop["to"]))
                     edge_pairs.add((hop["to"], hop["from"]))
             steps_.append({"n": n, "kind": "write", "query": query,
-                           "label": sentences_[0]["section"] if sentences_ else "Document",
+                           "label": label or (sentences_[0]["section"] if sentences_ else "Document"),
                            "write": " ".join(s_["text"] for s_ in sentences_)[:700],
                            "nodes": ids_, "focus": ids_,
                            "links": [{"from": x["from"], "to": x["to"]} for x in tr],
@@ -1466,7 +1473,7 @@ def playground(key="", text="", hops=2, kind="cv"):
                         break
                 role_terms = terms_of(" ".join(s["text"] for s in sentences_))
                 add_step(f"Expand {emp} and keep the achievements that match",
-                         sentences_, cites_, trace_=trace, terms=role_terms, hub=hub,
+                         sentences_, cites_, trace_=trace, terms=role_terms, hub=hub, label=emp,
                          explain=f"{len(sentences_)} achievements cited for {emp}; each line keeps "
                                  f"its graph edge, so the claim can be traced back.")
             if edu_sentences:

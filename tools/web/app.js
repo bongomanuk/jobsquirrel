@@ -5217,9 +5217,13 @@ function kgPlayUIHTML() {
       <div class="kg-pane-h"><span>Output</span><b id="kg-play-out-title">document</b>
         <span style="flex:1"></span><span id="kg-play-status" class="muted mini kg-play-status"></span></div>
       <div id="kg-play-progress" class="kg-play-progress"></div>
-      <div id="kg-play-query" class="kg-play-query"></div>
-      <div id="kg-play-because" class="kg-play-because"></div>
-      <div id="kg-play-trail" class="kg-play-trail"></div>
+      <div class="kg-play-now"><span class="kg-play-now-k">now</span>
+        <span id="kg-play-query" class="kg-play-query"></span></div>
+      <details class="kg-play-why">
+        <summary>why this line</summary>
+        <div id="kg-play-because" class="kg-play-because"></div>
+        <div id="kg-play-trail" class="kg-play-trail"></div>
+      </details>
       <div id="kg-play-doc" class="kg-play-doc"><span class="muted mini">The document will be built here, sentence by sentence.</span></div>
     </section>
   </div>`;

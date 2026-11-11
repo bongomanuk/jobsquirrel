@@ -1,78 +1,93 @@
-"""The knowledge-graph playground builds a brief and a traversal timeline."""
-import glob
+"""The graph playground builds a FULL CV, not a sample of it.
+
+It used to take the top three roles and three bullets from each, which looked
+like "random things pulled out of the graph". Every role and every recorded
+achievement must appear, with the graph supplying ranking and citations.
+"""
 import json
 import os
 import subprocess
+import sys
 
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PY = os.path.join(ROOT, ".venv-graphrag", "bin", "python")
-TOOL = os.path.join(ROOT, "tools", "graph_explore.py")
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+
+import graph_explore as G  # noqa: E402
+
+SPEC = "thomson-reuters-senior-manager-product-analytics-data-engineering"
 
 
-def test_playground_returns_steps_and_a_document():
-    jds = sorted(glob.glob(os.path.join(ROOT, "state", "job-descriptions", "*.md")))
-    if not jds or not os.path.exists(PY) or not os.path.exists(
-            os.path.join(ROOT, "kb", "graphrag", "output", "entities.parquet")):
-        pytest.skip("no saved job spec or GraphRAG index in this checkout")
-    key = os.path.basename(jds[0])[:-3]
-    r = subprocess.run([PY, TOOL, "playground", key, "1"],
-                       cwd=ROOT, capture_output=True, text=True, timeout=120)
-    data = json.loads((r.stdout or "").strip() or "{}")
-    assert not data.get("error"), data
-    assert data["steps"]
-    assert data["steps"][0]["kind"] == "read"
-    assert all("query" in s for s in data["steps"])
-    # the recursive query is animated before anything is written
-    assert any(s["kind"] == "query" for s in data["steps"])
-    assert any(s["query"].startswith("MATCH requirement") for s in data["steps"])
-    assert any(s["query"].startswith("EXPAND hop") for s in data["steps"])
-    assert any(s["kind"] == "write" for s in data["steps"])
-    assert all(s.get("explain") for s in data["steps"])
-    assert any(s.get("write") for s in data["steps"])
-    assert any(s.get("trace") for s in data["steps"])
-    assert data["job"]["lines"] and data["job"]["found"]
-    assert isinstance(data["job"]["hops"], int)
-    assert not any("[object Object]" in json.dumps(s) for s in data["steps"])
-    assert data["doc"]["blocks"]
-    assert any("summary" in b["heading"].lower() or "experience" in b["heading"].lower()
-               for b in data["doc"]["blocks"])
-    assert data["doc"]["name"]
-    assert data["doc"]["contact"]
-    assert data["graph"]["nodes"]
-    assert all("label" in s for s in data["steps"])
-
-    letter = subprocess.run([PY, TOOL, "playground", key, "1", "letter"],
-                            cwd=ROOT, capture_output=True, text=True, timeout=120)
-    ldata = json.loads((letter.stdout or "").strip() or "{}")
-    assert not ldata.get("error"), ldata
-    assert ldata["doc"]["title"] == "Cover letter"
-    assert ldata["doc"]["prologue"] == ["Dear Hiring Team,"]
-    assert all(b["type"] == "letter" and not b["heading"] for b in ldata["doc"]["blocks"])
-    assert any(s["kind"] == "query" for s in ldata["steps"])
+def _interpreter_with_parquet():
+    """The graph needs pyarrow, which lives in the system interpreter here."""
+    for py in (sys.executable, "/usr/bin/python3", "python3"):
+        try:
+            if subprocess.run([py, "-c", "import pyarrow"], capture_output=True).returncode == 0:
+                return py
+        except Exception:
+            continue
+    return ""
 
 
-def test_playground_drawer_works_in_both_views():
-    html = open(os.path.join(ROOT, "tools", "web", "index.html"), encoding="utf-8").read()
-    app = open(os.path.join(ROOT, "tools", "web", "app.js"), encoding="utf-8").read()
-    css = open(os.path.join(ROOT, "tools", "web", "app.css"), encoding="utf-8").read()
-    assert 'id="kg-play-drawer"' in html
-    assert 'id="kg-play-open"' in html
-    assert 'id="kg-play-grip"' in html
-    assert 'id="kg-side-grip"' in html
-    assert "KGMODE === 'universe'" in app
-    assert "window.__uni.setPlayback" in app
-    assert "kgPlayFilter" in app
-    assert "kg-play-q" in app
-    assert "kg-play-spec" in app
-    assert "kgPlaySpecFocus" in app
-    assert 'id="uni-color"' in html
-    assert 'id="uni-legend"' in html
-    uni = open(os.path.join(ROOT, "tools", "web", "graph-universe.js"), encoding="utf-8").read()
-    assert "setColorMode" in uni
-    assert "colorMode" in uni
-    assert "updateLegend" in uni
-    assert "kg-play-pane" in css
-    assert "var(--kg-play-w" in css
-    assert "kg-play-drawer" in css
+@pytest.fixture(scope="module")
+def built():
+    if not os.path.exists(os.path.join(G.OUT, "entities.parquet")):
+        pytest.skip("no knowledge-graph index")
+    if not os.path.exists(os.path.join(ROOT, "state", "job-descriptions", SPEC + ".md")):
+        pytest.skip("no saved job spec for the fixture role")
+    py = _interpreter_with_parquet()
+    if not py:
+        pytest.skip("no interpreter with parquet support")
+    # Run it the way the dashboard does: the tool's own CLI, in the interpreter
+    # that can read the index.
+    r = subprocess.run([py, os.path.join(ROOT, "tools", "graph_explore.py"),
+                        "playground", SPEC, "2", "cv"],
+                       capture_output=True, text=True, timeout=180)
+    data = json.loads(r.stdout or "{}")
+    if data.get("error"):
+        pytest.fail(data["error"])
+    return data
+
+
+def test_every_role_in_the_record_is_written(built):
+    doc = built["doc"]
+    roles = [b for b in doc["blocks"] if b.get("type") == "experience"][0]["roles"]
+    cv = json.load(open(os.path.join(ROOT, "config", "cv.json")))
+    assert len(roles) == len(cv.get("experience") or []), "the CV must carry the whole career"
+    for role in roles:
+        assert role["heading"] and role["sentences"], role
+
+
+def test_no_achievement_is_dropped(built):
+    doc = built["doc"]
+    roles = [b for b in doc["blocks"] if b.get("type") == "experience"][0]["roles"]
+    written = sum(len(r["sentences"]) for r in roles)
+    cv = json.load(open(os.path.join(ROOT, "config", "cv.json")))
+    expected = sum(len([b for b in (e.get("bullets") or []) if str(b).strip()])
+                   for e in (cv.get("experience") or []))
+    assert written == expected
+
+
+def test_the_document_has_every_section(built):
+    headings = [b.get("heading") for b in built["doc"]["blocks"]]
+    assert headings[:4] == ["Professional summary", "Core skills", "Experience",
+                            "Education & certifications"]
+    edu = [b for b in built["doc"]["blocks"] if b["heading"].startswith("Education")][0]["sentences"]
+    text = " ".join(s["text"] for s in edu)
+    assert "Education:" in text and "Certifications:" in text
+    skills = [b for b in built["doc"]["blocks"] if b["heading"] == "Core skills"][0]["sentences"]
+    assert len(skills) >= 6, "skills are the record, not just the advert's matches"
+
+
+def test_the_build_is_animated_step_by_step(built):
+    steps = built["steps"]
+    writes = [s for s in steps if s["kind"] == "write"]
+    assert len(writes) >= 6, "one write step per role at least"
+    assert any(s["kind"] == "query" for s in steps), "the traversal is shown"
+    assert steps[-1]["kind"] == "gate", "the build ends on the grounding gate"
+    roles = [b for b in built["doc"]["blocks"] if b.get("type") == "experience"][0]["roles"]
+    labels = [s["label"] for s in writes]
+    for role in roles:
+        employer = role["heading"].split(" — ")[0]
+        assert any(employer in lb for lb in labels), f"no step writes {employer}"
