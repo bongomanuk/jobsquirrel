@@ -996,9 +996,8 @@ body.knowledge-open .modal{z-index:60}
 .uni-meta{font-size:10px;color:var(--muted);margin-bottom:8px}
 .uni-side-hint{font-size:11px;line-height:1.6;color:var(--muted)}
 .uni-side-hint b{color:#e4e8ee}
-.uni-legend{position:absolute;right:14px;bottom:64px;z-index:3;width:198px;max-height:44vh;overflow:auto;
-  background:rgba(9,13,20,.86);border:1px solid var(--line);border-radius:10px;padding:9px 10px;
-  backdrop-filter:blur(8px);font-size:10px;color:#d3d9e2}
+.uni-legend{margin-top:12px;padding-top:10px;border-top:1px solid var(--line);
+  max-height:38vh;overflow:auto;font-size:10px;color:#d3d9e2}
 .uni-legend.hide{display:none}
 .uni-legend-h{font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
   color:var(--accent);margin:0 0 6px}

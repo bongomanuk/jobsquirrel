@@ -1147,7 +1147,7 @@ function flyToCluster(c) {
 }
 
 function setSide(n) {
-  const box = document.getElementById('uni-side');
+  const box = document.getElementById('uni-side-body');
   if (!box) return;
   if (!n) {
     box.innerHTML = `<div class="uni-side-hint">
@@ -1172,7 +1172,7 @@ function setSide(n) {
 }
 
 function renderNodeSide(d) {
-  const box = document.getElementById('uni-side');
+  const box = document.getElementById('uni-side-body');
   if (!box) return;
   const layers = (d.subgraph && d.subgraph.layers || [])
     .map(x => `<span class="kg-tag">${x.distance}: ${x.nodes}</span>`).join(' ');
@@ -1203,7 +1203,7 @@ function renderNodeSide(d) {
 }
 
 function setSideCluster(c) {
-  const box = document.getElementById('uni-side');
+  const box = document.getElementById('uni-side-body');
   if (!box) return;
   box.innerHTML = `<div class="uni-kind">island</div>
     <h3>${esc(islandTitle(c))}</h3>

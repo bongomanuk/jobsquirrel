@@ -330,9 +330,11 @@
       <div id="uni-labels" class="uni-labels"></div>
       <div id="uni-tip" class="uni-tip hide"></div>
       <aside id="uni-side" class="uni-side">
-        <div class="uni-side-hint">Click a star to inspect it. Drag to orbit · scroll to zoom · right-drag to pan · WASD/QE to fly · double-click a star to travel there.</div>
+        <div id="uni-side-body">
+          <div class="uni-side-hint">Click a star to inspect it. Drag to orbit · scroll to zoom · right-drag to pan · WASD/QE to fly · double-click a star to travel there.</div>
+        </div>
+        <section id="uni-legend" class="uni-legend hide" aria-label="Colour legend"></section>
       </aside>
-      <aside id="uni-legend" class="uni-legend hide" aria-label="Colour legend"></aside>
       <div class="uni-hud">
         <label for="uni-focus">focus</label>
         <input id="uni-focus" type="range" min="1" max="3" step="1" value="2" title="How many hops from the selected node stay bright">
