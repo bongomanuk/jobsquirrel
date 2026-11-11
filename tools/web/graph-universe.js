@@ -1551,7 +1551,7 @@ export function highlightNeighbourhood(idOrTitle, hops = 2) {
   const apply = () => setPlayback([...ids], [...shown], labelList());
   clearPlayback();
   apply();
-  focusOn([...ids], 1300);
+  frameStarSet([...ids], 800);
   let step = 0;
   const tick = () => {
     step++;
@@ -1560,7 +1560,7 @@ export function highlightNeighbourhood(idOrTitle, hops = 2) {
     addLinks(levelLinks[step]);
     apply();
     pulsePath(levelLinks[step].slice(0, 12), 260);
-    focusOn([...ids], 1300 + step * 420);
+    frameStarSet([...ids], 800);
     setTimeout(tick, 760);
   };
   setTimeout(tick, 450);
@@ -1586,6 +1586,18 @@ export function view(theta, phi, radius) {
 
 export function focusSelected() {
   if (S.selected) flyTo(S.selected.pos.clone(), 240 + Math.min(700, (S.selected.degree || 1) * 4.5), 800);
+}
+
+/* Frame the whole set, not a fixed radius, so the root never leaves the view. */
+export function frameStarSet(ids, dur = 900) {
+  const pts = [...new Set(ids || [])].map(id => S.byId.get(id)).filter(p => p && p.pos);
+  if (!pts.length) return;
+  const c = new THREE.Vector3();
+  pts.forEach(p => c.add(p.pos));
+  c.divideScalar(pts.length);
+  let maxD = 0;
+  pts.forEach(p => { maxD = Math.max(maxD, c.distanceTo(p.pos)); });
+  flyTo(c, Math.max(320, Math.min(16000, maxD * 2.2)), dur);
 }
 
 export function focusOn(ids, radius, dur = 900) {

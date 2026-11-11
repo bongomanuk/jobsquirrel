@@ -600,7 +600,7 @@ export function highlightNeighbourhood(id, hops = 2, opts = {}) {
   clearPlayback();
   select(id);
   apply();
-  flyTo(id, Math.max(420, 380 * maxHops));
+  frameIds([id], 700);
   let step = 0;
   const tick = () => {
     step++;
@@ -608,6 +608,7 @@ export function highlightNeighbourhood(id, hops = 2, opts = {}) {
     for (const n of levels[step]) ids.add(n);
     for (const l of levelLinks[step]) shown.add(l);
     apply();
+    frameIds([...ids], 800);
     pulsePath(levelLinks[step].slice(0, 12), 240);
     setTimeout(tick, opts.step || 720);
   };
@@ -637,6 +638,23 @@ function tickPulse(now) {
     S.pulse = null;
     S.pulseDot.visible = false;
   }
+}
+
+/* Frame a set of nodes by its bounding box, so the root stays in shot. */
+export function frameIds(ids, dur = 900) {
+  const pts = [...new Set(ids || [])].map(id => S.byId.get(id)).filter(n => n && n.pos);
+  if (!pts.length) return;
+  const c = new THREE.Vector3();
+  pts.forEach(n => c.add(n.pos));
+  c.divideScalar(pts.length);
+  let maxD = 0;
+  pts.forEach(n => { maxD = Math.max(maxD, c.distanceTo(n.pos)); });
+  const base = S.orbit.radius || 420;
+  S.fly = {
+    from: S.orbit.target.clone(), to: c, fromR: S.orbit.radius,
+    toR: Math.max(380, Math.min(4000, maxD * 2.2)),
+    t0: performance.now(), dur,
+  };
 }
 
 export function flyTo(id, radius) {
