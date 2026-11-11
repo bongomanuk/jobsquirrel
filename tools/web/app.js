@@ -5207,26 +5207,87 @@ function kgPlayUIHTML() {
       <button class="small" onclick="App.kgPlayStop()">Stop</button>
     </div>
   </div>
-  <div class="kg-play-stage">
+  <div class="kg-play-stage" id="kg-play-stage">
     <section class="kg-play-pane kg-play-in">
       <div class="kg-pane-h"><span>Input</span><b id="kg-play-in-title">job spec</b>
         <span style="flex:1"></span><span id="kg-play-cov" class="kg-play-cov"></span></div>
       <div id="kg-play-spec" class="kg-play-spec"><span class="muted mini">The advert appears here, with the requirements the query is reading.</span></div>
     </section>
+    <div class="kg-split" data-split="1" title="Drag to resize"></div>
     <section class="kg-play-pane kg-play-out">
-      <div class="kg-pane-h"><span>Output</span><b id="kg-play-out-title">document</b>
+      <div class="kg-pane-h"><span>Document</span><b id="kg-play-out-title">CV</b>
         <span style="flex:1"></span><span id="kg-play-status" class="muted mini kg-play-status"></span></div>
       <div id="kg-play-progress" class="kg-play-progress"></div>
-      <div class="kg-play-now"><span class="kg-play-now-k">now</span>
-        <span id="kg-play-query" class="kg-play-query"></span></div>
-      <details class="kg-play-why">
-        <summary>why this line</summary>
-        <div id="kg-play-because" class="kg-play-because"></div>
-        <div id="kg-play-trail" class="kg-play-trail"></div>
-      </details>
       <div id="kg-play-doc" class="kg-play-doc"><span class="muted mini">The document will be built here, sentence by sentence.</span></div>
     </section>
+    <div class="kg-split" data-split="2" title="Drag to resize"></div>
+    <aside class="kg-play-rail">
+      <div class="kg-pane-h"><span>Build</span><b>how this CV is made</b></div>
+      <div class="kg-play-now"><span class="kg-play-now-k">now</span>
+        <span id="kg-play-query" class="kg-play-query"></span></div>
+      <div id="kg-play-because" class="kg-play-because"></div>
+      <div id="kg-play-trail" class="kg-play-trail"></div>
+      <div class="kg-play-rail-h">cited evidence</div>
+      <div id="kg-play-cites" class="kg-cites-list"></div>
+      <div id="kg-play-note" class="kg-play-note-rail"></div>
+    </aside>
   </div>`;
+}
+
+function kgPlaySplits() {
+  /* Every panel in the playground is resizable: drag the dividers between the
+     job spec, the document and the build rail. Widths persist per browser, and
+     a double-click on a divider restores the default layout. */
+  const stage = $('#kg-play-stage');
+  if (!stage || stage.dataset.wired) return;
+  stage.dataset.wired = '1';
+  const KEY = 'js.kgplay.cols';
+  const panes = [...stage.children].filter(el =>
+    el.classList.contains('kg-play-pane') || el.classList.contains('kg-play-rail'));
+  const save = () => {
+    const total = stage.getBoundingClientRect().width || 1;
+    try {
+      localStorage.setItem(KEY, JSON.stringify(
+        panes.map(p => +((p.getBoundingClientRect().width / total) * 100).toFixed(2))));
+    } catch (e) { /* private mode: not fatal */ }
+  };
+  try {
+    const v = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (Array.isArray(v) && v.length === panes.length) {
+      panes.forEach((p, i) => { p.style.flex = `0 0 ${v[i]}%`; });
+    }
+  } catch (e) { /* ignore a corrupt value */ }
+  stage.querySelectorAll('.kg-split').forEach(handle => {
+    handle.addEventListener('pointerdown', (ev) => {
+      const i = +(handle.dataset.split || 0);
+      const a = panes[i - 1], b = panes[i];
+      if (!a || !b) return;
+      ev.preventDefault();
+      const startX = ev.clientX;
+      const wa = a.getBoundingClientRect().width, wb = b.getBoundingClientRect().width;
+      try { handle.setPointerCapture(ev.pointerId); } catch (e) { /* older browser */ }
+      document.body.classList.add('kg-col-resizing');
+      const move = (e2) => {
+        const dx = e2.clientX - startX;
+        a.style.flex = `0 0 ${Math.max(150, wa + dx)}px`;
+        b.style.flex = `0 0 ${Math.max(170, wb - dx)}px`;
+      };
+      const up = () => {
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', up);
+        handle.removeEventListener('pointercancel', up);
+        document.body.classList.remove('kg-col-resizing');
+        save();
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', up);
+      handle.addEventListener('pointercancel', up);
+    });
+    handle.addEventListener('dblclick', () => {
+      panes.forEach(p => { p.style.flex = ''; });
+      try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+    });
+  });
 }
 
 function kgPlaySpec(d) {
@@ -5302,10 +5363,18 @@ function kgPlayRender(d) {
   const outTitle = $('#kg-play-out-title');
   if (outTitle) outTitle.textContent = (doc.title || 'Document') + (d.job && d.job.company ? ` · ${d.job.company}` : '');
   kgPlaySpec(d);
+  // Citations are REFERENCES, not content: a superscript number in the CV, with
+  // the evidence listed in the build rail beside it. The document itself must
+  // read as a CV, not as a CV with metadata threaded through it.
+  const CITE = new Map(), CITE_ORDER = [];
+  const citeNum = (id) => {
+    if (!CITE.has(id)) { CITE_ORDER.push(id); CITE.set(id, CITE_ORDER.length); }
+    return CITE.get(id);
+  };
   const citesOf = (s) => (s.cites || []).slice(0, 4).map(c =>
-    `<button class="kg-cite" data-id="${esc(c)}" onclick="App.kgPlayCite(this.dataset.id)">${esc(kgShort(c, 26))}</button>`).join('');
+    `<sup class="kg-cite-n" data-id="${esc(c)}" title="${esc(c)}" onclick="App.kgPlayCite(this.dataset.id)">${citeNum(c)}</sup>`).join('');
   const sentenceHTML = (s) => `<p class="kg-play-sentence kg-play-reveal" data-step="${esc(String(s.step == null ? 0 : s.step))}" data-text="${esc(s.text || '')}">` +
-    `<span class="kg-say"></span><span class="kg-caret">▍</span>${citesOf(s) ? `<span class="kg-play-cites">${citesOf(s)}</span>` : ''}</p>`;
+    `<span class="kg-say"></span><span class="kg-caret">▍</span><span class="kg-play-cites">${citesOf(s)}</span></p>`;
   let h = `<div class="kg-doc-head"><div class="kg-doc-name">${esc(doc.name || 'Tailored profile')}</div>` +
     (doc.contact && doc.contact.length ? `<div class="kg-doc-contact">${doc.contact.map(esc).join(' · ')}</div>` : '') +
     `<div class="kg-doc-target">${esc(doc.target || '')}</div></div>` +
@@ -5329,16 +5398,24 @@ function kgPlayRender(d) {
     }
     h += '</div>';
   });
-  if (doc.note) {
-    h += `<div class="kg-play-note kg-play-reveal" data-step="${esc(String(doc.note_step == null ? 999 : doc.note_step))}">${md(doc.note)}</div>`;
-  }
-  h += `<div class="row kg-play-actions"><button class="small" onclick="App.kgPlayReplay()">↻ Replay</button>` +
+  h += `<div class="row kg-play-actions doc-actions"><button class="small" onclick="App.kgPlayReplay()">↻ Replay</button>` +
     `<button class="small" onclick="App.kgPlayStop()">Stop</button></div>`;
   box.innerHTML = h;
+  // the rail: the note and the numbered evidence, never inside the document
+  const note = $('#kg-play-note');
+  if (note) note.innerHTML = doc.note ? `<div class="kg-play-note">${md(doc.note)}</div>` : '';
+  const list = $('#kg-play-cites');
+  if (list) {
+    list.innerHTML = CITE_ORDER.length
+      ? CITE_ORDER.map((id, i) => `<button class="kg-cite-row" data-id="${esc(id)}" title="${esc(id)}"` +
+          ` onclick="App.kgPlayCite(this.dataset.id)"><i>${i + 1}</i><span>${esc(id)}</span></button>`).join('')
+      : '<div class="muted mini">Nothing cited yet.</div>';
+  }
   const q = $('#kg-play-query'); if (q) q.textContent = '';
   const b = $('#kg-play-because'); if (b) b.textContent = '';
   const t = $('#kg-play-trail'); if (t) t.innerHTML = '';
   kgPlaySpecFocus([]);
+  kgPlaySplits();
 }
 
 async function kgTypeSentence(el, speed, run) {

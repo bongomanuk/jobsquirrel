@@ -853,7 +853,33 @@ body.knowledge-open{overflow:hidden}
 .kg-hop-sep{color:var(--muted);margin:0 1px}
 .kg-hop small{display:none}
 .kg-play-setup{flex:0 0 auto}
-.kg-play-stage{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr);gap:8px;margin-top:2px}
+.kg-play-stage{flex:1;min-height:0;display:flex;align-items:stretch;gap:0;margin-top:2px}
+.kg-play-pane{flex:1 1 0}
+.kg-play-in{flex:0 0 24%}
+.kg-play-out{flex:1 1 auto}
+.kg-play-rail{flex:0 0 28%}
+.kg-split{flex:0 0 9px;position:relative;cursor:col-resize;touch-action:none}
+.kg-split::after{content:'';position:absolute;top:2px;bottom:2px;left:3px;width:2px;border-radius:2px;
+  background:var(--line);opacity:.75;transition:background .15s,opacity .15s}
+.kg-split:hover::after,.kg-split:active::after{background:var(--accent);opacity:1}
+body.kg-col-resizing{cursor:col-resize;user-select:none}
+.kg-play-rail{display:flex;flex-direction:column;min-height:0;min-width:0;background:#0b0e13;
+  border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.kg-play-rail-h{font-size:9px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--muted);padding:6px 8px 3px;border-top:1px solid var(--line);margin-top:4px}
+.kg-cites-list{flex:1;min-height:64px;overflow:auto;padding:2px 6px 6px}
+.kg-cite-row{display:flex;gap:6px;align-items:baseline;width:100%;text-align:left;background:none;
+  border:0;border-radius:5px;padding:2px 4px;color:var(--muted);font-size:10.5px;line-height:1.35;cursor:pointer}
+.kg-cite-row:hover{background:rgba(148,163,184,.08);color:var(--fg)}
+.kg-cite-row i{flex:0 0 16px;font-style:normal;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums}
+.kg-cite-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kg-play-note-rail{padding:6px 8px;border-top:1px solid var(--line)}
+.kg-play-note-rail .kg-play-note{margin:0;font-size:9.5px;line-height:1.45;color:var(--muted)}
+.kg-play-cites{white-space:nowrap}
+.kg-cite-n{font-size:8px;vertical-align:super;color:var(--accent);cursor:pointer;padding:0 1px;font-weight:700}
+.kg-cite-n:hover{text-decoration:underline}
+.doc-actions{margin-top:12px;opacity:.5}
+.doc-actions:hover{opacity:1}
 .kg-play-pane{display:flex;flex-direction:column;min-height:0;min-width:0;background:#0b0e13;
   border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .kg-pane-h{display:flex;align-items:center;gap:6px;padding:5px 8px;border-bottom:1px solid var(--line);
