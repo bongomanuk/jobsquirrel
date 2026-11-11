@@ -355,7 +355,7 @@ sys.exit(0 if isinstance(d,dict) and sys.argv[2] in d else 1)' "${ROOT:-.}/state
     LETTER_GATE=""
     LETTER_RECORD=""
     LETTER_STATUS="letter: none (not required by the advert; generated only if the form demands it)"
-    LETTER_UPLOAD="(no cover letter unless step 1b generated one because the form required it)" 
+    LETTER_UPLOAD="(no cover letter unless step 1b generated one because the form required it)"
   fi
   runlog "START $(date +%H:%M:%S) $company | $role"
   prompt="$(build_prompt "$company" "$role" "$url" "$cv" "$ats" "$key" "$server")"
