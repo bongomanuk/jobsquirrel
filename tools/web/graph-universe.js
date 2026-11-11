@@ -19,7 +19,8 @@ const S = {
   playIds: new Set(), playLinks: new Set(), playLabels: new Set(), labelOnly: new Set(), pulse: null, pulseDot: null, trace: null,
   W: 1, H: 1, orbit: { theta: 0.7, phi: 1.12, radius: 3000, target: new THREE.Vector3() },
   drag: null, lastInteract: 0, auto: true, raf: 0, fly: null, keys: new Set(),
-  baseRadius: 3000, maxDist: 0, lastLabel: 0, focusDepth: 2, focusAmount: 0, focusAt: 0, focusHold: 4000, focusFade: 1200
+  baseRadius: 3000, maxDist: 0, lastLabel: 0, focusDepth: 2, focusAmount: 0, focusAt: 0, focusHold: 4000, focusFade: 1200,
+  colorMode: 'ontology'
 };
 
 const COLORS = {
@@ -27,7 +28,17 @@ const COLORS = {
   TECHNOLOGY: '#60a5fa', PROJECT: '#c084fc', PRODUCT: '#22d3ee', METRIC: '#fbbf24',
   CERTIFICATION: '#2dd4bf', EDUCATION: '#94a3b8', PLATFORM: '#a78bfa', CONCEPT: '#94a3b8'
 };
-const colorOf = n => new THREE.Color(n.color || COLORS[n.class] || COLORS[n.type] || '#94a3b8');
+const ISLAND_COLORS = ['#f87171', '#fb923c', '#fbbf24', '#4ade80', '#2dd4bf', '#60a5fa',
+  '#a78bfa', '#c084fc', '#22d3ee', '#f472b6', '#94a3b8', '#facc15'];
+const ontologyColor = n => new THREE.Color(COLORS[n.class] || COLORS[n.type] || n.color || '#94a3b8');
+const colorOf = (n, mode = S.colorMode) => {
+  if (mode === 'islands') {
+    const c = S.clusterOf.get(n.id);
+    return (c && (c.islandColor || c.color)) ? (c.islandColor || c.color).clone()
+      : new THREE.Color('#94a3b8');
+  }
+  return ontologyColor(n);
+};
 
 let TEX_GLOW = null, TEX_SOFT = null;
 
@@ -193,7 +204,9 @@ function layout(nodes) {
     const isUnlinked = key === 'unlinked';
     const cluster = {
       key, center, spread, list, size: list.length,
-      color: isUnlinked ? new THREE.Color('#94a3b8') : colorOf(dom),
+      color: isUnlinked ? new THREE.Color('#94a3b8') : ontologyColor(dom),
+      islandColor: isUnlinked ? new THREE.Color('#94a3b8')
+        : new THREE.Color(ISLAND_COLORS[gi % ISLAND_COLORS.length]),
       name: isUnlinked ? 'Unlinked evidence' : dom.title,
       title: isUnlinked ? 'Unlinked evidence' : ((titled && titled.community_title) || dom.title),
       top: dom, unlinked: isUnlinked
@@ -289,6 +302,38 @@ function relax(clusters) {
 }
 
 /* ---------------------------------------------------------------- scene ---- */
+
+function paintBaseLinkColors() {
+  if (!S.lines || !S.linkBaseColors) return;
+  const gold = new THREE.Color('#fbbf24');
+  const attr = S.lines.geometry.attributes.color;
+  S.links.forEach((l, i) => {
+    const a = S.byId.get(l.source), b = S.byId.get(l.target);
+    if (!a || !b || !a.pos || !b.pos || !a.colorObj || !b.colorObj) return;
+    const d = a.pos.distanceTo(b.pos);
+    const fade = Math.max(0.06, Math.min(1, 1.25 - d / 2400));
+    const c = l.grounded ? gold : a.colorObj.clone().lerp(b.colorObj, 0.5).multiplyScalar(fade);
+    S.linkBaseColors[i * 6] = c.r; S.linkBaseColors[i * 6 + 1] = c.g; S.linkBaseColors[i * 6 + 2] = c.b;
+    S.linkBaseColors[i * 6 + 3] = c.r; S.linkBaseColors[i * 6 + 4] = c.g; S.linkBaseColors[i * 6 + 5] = c.b;
+    attr.array[i * 6] = c.r; attr.array[i * 6 + 1] = c.g; attr.array[i * 6 + 2] = c.b;
+    attr.array[i * 6 + 3] = c.r; attr.array[i * 6 + 4] = c.g; attr.array[i * 6 + 5] = c.b;
+  });
+  attr.needsUpdate = true;
+}
+
+export function setColorMode(mode) {
+  S.colorMode = mode === 'islands' ? 'islands' : 'ontology';
+  S.nodes.forEach(n => { n.colorObj = colorOf(n); });
+  paintBaseLinkColors();
+  if (S.nebula) S.nebula.children.forEach(sp => {
+    const c = sp.userData.cluster;
+    if (c) sp.material.color.copy(S.colorMode === 'islands' ? c.islandColor : c.color);
+  });
+  if (S.coreColors) applySelection();
+  updateLOD(true);
+  S.labelDirty = true;
+  return S.colorMode;
+}
 
 function build(data) {
   clearScene();
@@ -409,6 +454,7 @@ function build(data) {
     });
     const sp = new THREE.Sprite(m);
     sp.userData.baseOpacity = m.opacity;
+    sp.userData.cluster = c;
     sp.position.copy(c.center);
     sp.scale.setScalar(c.spread * (c.size > 40 ? 7.5 : 6));
     ng.add(sp);
@@ -436,6 +482,7 @@ function build(data) {
   S.trace.visible = false;
   S.scene.add(S.trace);
 
+  paintBaseLinkColors();
   buildLabelPool();
   S.clustersRanked = [...S.clusters].sort((a, b) => b.size - a.size);
   S.activeClusters = null;
@@ -1232,6 +1279,15 @@ function bind() {
     rng.addEventListener('input', () => {
       S.labelRange = +rng.value || 0;
       show(); assignLabels(); updateLabels(true);
+    });
+  }
+  const cm = document.getElementById('uni-color');
+  if (cm) {
+    try { S.colorMode = localStorage.getItem('uni.color') === 'islands' ? 'islands' : 'ontology'; } catch (e) {}
+    cm.value = S.colorMode;
+    cm.addEventListener('change', () => {
+      const mode = setColorMode(cm.value);
+      try { localStorage.setItem('uni.color', mode); } catch (e) {}
     });
   }
   addEventListener('keydown', e => {

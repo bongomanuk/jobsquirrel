@@ -67,6 +67,10 @@ def test_playground_drawer_works_in_both_views():
     assert "kg-play-q" in app
     assert "kg-play-spec" in app
     assert "kgPlaySpecFocus" in app
+    assert 'id="uni-color"' in html
+    uni = open(os.path.join(ROOT, "tools", "web", "graph-universe.js"), encoding="utf-8").read()
+    assert "setColorMode" in uni
+    assert "colorMode" in uni
     assert "kg-play-pane" in css
     assert "var(--kg-play-w" in css
     assert "kg-play-drawer" in css
