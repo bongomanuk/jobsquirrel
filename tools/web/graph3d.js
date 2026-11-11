@@ -437,10 +437,10 @@ export async function show(data, opts = {}) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  const lmat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.AdditiveBlending });
+  const lmat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.27, depthWrite: false, blending: THREE.AdditiveBlending });
   S.lineMesh = new THREE.LineSegments(geo, lmat);
   S.group.add(S.lineMesh);
-  S.lineMesh.material.opacity = 0.2;
+  S.lineMesh.material.opacity = 0.27;
   paintLines(null, null);
   S.alpha = 0;
   S.fitted = true;
@@ -615,7 +615,7 @@ export function clearSelection() {
   S.selDist = null;
   S.focusAmount = 0;
   if (S.impact) S.impact.visible = true;
-  if (S.lineMesh) S.lineMesh.material.opacity = 0.2;
+  if (S.lineMesh) S.lineMesh.material.opacity = 0.27;
   if (S.marker) S.marker.visible = false;
   repaintNodes(null, null);
   paintLines(null, null);
@@ -787,7 +787,7 @@ function escapeHtml(s) {
 function paintLines(selected, dist) {
   if (!S.lineMesh) return;
   const col = S.lineColors;
-  const accent = new THREE.Color(ACCENT), base = new THREE.Color(0x93a4bd);
+  const accent = new THREE.Color(ACCENT), base = new THREE.Color(0xa9b8cd);
   const gold = new THREE.Color(0xe0b877);
   const amt = dist ? (S.focusAmount == null ? 1 : S.focusAmount) : 0;
   const playOn = S.playIds.size > 0;

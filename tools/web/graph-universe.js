@@ -510,7 +510,7 @@ function build(data) {
   lg.setAttribute('color', new THREE.BufferAttribute(lc, 3));
   S.linkBaseColors = lc.slice();
   S.lines = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({
-    vertexColors: true, transparent: true, opacity: 0.11, depthWrite: false,
+    vertexColors: true, transparent: true, opacity: 0.16, depthWrite: false,
     blending: THREE.AdditiveBlending
   }));
   S.scene.add(S.lines);
