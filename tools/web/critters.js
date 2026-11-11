@@ -44,6 +44,7 @@ const MAT = {
   blade: new THREE.MeshStandardMaterial({ color: 0xcfd8e3, roughness: 0.25, metalness: 0.85 }),
   foam: new THREE.MeshStandardMaterial({ color: 0xf7f0de, roughness: 1 }),
   snow: new THREE.MeshStandardMaterial({ color: 0xf3f8ff, roughness: 0.95 }),
+  snowball: new THREE.MeshStandardMaterial({ color: 0xd8e6f7, roughness: 0.9 }),
   leaf: new THREE.MeshStandardMaterial({ color: 0x506b52, roughness: 0.92 }),
   leaf2: new THREE.MeshStandardMaterial({ color: 0x5f7a5b, roughness: 0.92 }),
   leaf3: new THREE.MeshStandardMaterial({ color: 0x46604a, roughness: 0.92 }),
@@ -362,7 +363,7 @@ export function buildSquirrel(friend = false) {
 
 function makeNut() {
   const g = new THREE.Group();
-  const n = ball(0.09, MAT.nut, 0, 0, 0);
+  const n = ball(0.1, MAT.nut, 0, 0, 0);
   n.scale.set(1, 1.2, 1);
   g.add(n);
   const cap = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), MAT.nutCap);
@@ -374,7 +375,7 @@ function makeNut() {
 
 function makeSnowball() {
   const g = new THREE.Group();
-  const b = ball(0.08, MAT.snow, 0, 0, 0);
+  const b = ball(0.13, MAT.snowball, 0, 0, 0);
   b.scale.set(1.1, 1, 1.1);
   g.add(b);
   g.scale.setScalar(SCALE);
@@ -397,7 +398,7 @@ function addCritter(opts) {
     trickUntil: 0, social: false, tagUntil: 0, visitUntil: 0,
     partner: null, playUntil: 0, nextThrow: 0, sledOn: false, sledSpeed: 0, sprayAt: 0,
     bonkUntil: 0, sparkAt: 0, tree: null, forageX: 0, forageAt: 0, carried: false,
-    eatingUntil: 0, foraged: false,
+    eatingUntil: 0, foraged: false, throwUntil: 0,
   };
   state.critters.push(c);
   return c;
@@ -425,13 +426,14 @@ function kickNut(from) {
  * so the two of them can actually pelt each other rather than firing sideways. */
 function throwAt(from, to, kind = 'nut') {
   if (!from || !to || from === to) return;
+  from.throwUntil = performance.now() + 240;
   const mesh = kind === 'snow' ? makeSnowball() : makeNut();
   const dir = Math.sign(to.x - from.x) || 1;
   const x0 = from.x + dir * 9;
   const y0 = FLOOR + 17;
   const dx = to.x - x0;
   const dy = (FLOOR + 15) - y0;
-  const T = 0.42 + Math.abs(dx) / 1500;
+  const T = 0.3 + Math.abs(dx) / 2600;
   const vx = dx / T;
   const vy = (dy + 0.5 * 900 * T * T) / T;
   mesh.position.set(x0, y0, 0.25);
@@ -465,11 +467,24 @@ function startSnow(ms = 15000) {
     opacity: 0.9, depthWrite: false, sizeAttenuation: false,
   }));
   state.scene.add(points);
-  const drift = new THREE.Mesh(new THREE.PlaneGeometry(4000, 7),
-    new THREE.MeshBasicMaterial({ color: 0xc9d8ea, transparent: true, opacity: 0.32, depthWrite: false }));
-  drift.position.set(0, FLOOR + 2, 0.1);
-  state.scene.add(drift);
-  state.snow = { points, geo, vel, drift, until: now + ms };
+  // the snow bank that builds up along the bar over the first few seconds
+  const bank = new THREE.Group();
+  const moundGeo = new THREE.SphereGeometry(1, 10, 6);
+  const bankMat = new THREE.MeshBasicMaterial({ color: 0xd7e4f4, transparent: true,
+                                                opacity: 0.96, depthWrite: false });
+  const bankSpan = Math.max(1200, state.W + 200);
+  const count = 22;
+  const mounds = [];
+  for (let i = 0; i < count; i++) {
+    const m = new THREE.Mesh(moundGeo, bankMat);
+    m.position.set(-bankSpan / 2 + (i + 0.5) * (bankSpan / count), FLOOR + 1, 0.15);
+    m.scale.set((bankSpan / count) * 0.72, 0, 4);
+    m.userData.h = 4 + Math.random() * 5;
+    bank.add(m);
+    mounds.push(m);
+  }
+  state.scene.add(bank);
+  state.snow = { points, geo, vel, bank, mounds, born: now, until: now + ms };
   for (const t of state.trees) for (const c of t.caps) c.visible = true;
   document.body.dataset.snow = '1';
 }
@@ -479,9 +494,8 @@ function stopSnow() {
   state.scene.remove(state.snow.points);
   state.snow.points.geometry.dispose();
   state.snow.points.material.dispose();
-  state.scene.remove(state.snow.drift);
-  state.snow.drift.geometry.dispose();
-  state.snow.drift.material.dispose();
+  state.scene.remove(state.snow.bank);
+  state.snow.bank.traverse(o => { if (o.isMesh && o.geometry) o.geometry.dispose(); });
   state.snow = null;
   for (const t of state.trees) for (const c of t.caps) c.visible = false;
   delete document.body.dataset.snow;
@@ -525,8 +539,8 @@ function makeTree(def) {
       const blob = new THREE.Mesh(new THREE.IcosahedronGeometry(r * s, 0), tone);
       blob.position.set(dx * s, dy * s, 0);
       g.add(blob);
-      const cap = new THREE.Mesh(new THREE.IcosahedronGeometry(r * 0.92 * s, 0), MAT.snow);
-      cap.position.set(dx * s, (dy + r * 0.32) * s, 0.02);
+      const cap = new THREE.Mesh(new THREE.IcosahedronGeometry(r * 0.78 * s, 0), MAT.snow);
+      cap.position.set(dx * s, (dy + r * 0.55) * s, 0.04);
       cap.visible = false;
       g.add(cap);
       caps.push(cap);
@@ -540,8 +554,8 @@ function makeTree(def) {
       const cone = new THREE.Mesh(new THREE.ConeGeometry(r * s, h * s, 8), tone);
       cone.position.y = y * s;
       g.add(cone);
-      const cap = new THREE.Mesh(new THREE.ConeGeometry(r * 0.82 * s, h * 0.5 * s, 8), MAT.snow);
-      cap.position.y = (y + h * 0.2) * s;
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(r * 0.9 * s, h * 0.28 * s, 8), MAT.snow);
+      cap.position.y = (y + h * 0.34) * s;
       cap.visible = false;
       g.add(cap);
       caps.push(cap);
@@ -774,6 +788,11 @@ function animate(c, dt) {
   } else if (c.carried && c.heldNut) {
     c.heldNut.visible = true;
   }
+  if (c.throwUntil > now) {
+    c.front[1].shoulder.rotation.x = -2.2;
+    c.front[1].elbow.rotation.x = -0.35 + Math.sin((c.throwUntil - now) / 38) * 0.2;
+    c.neck.rotation.x = -0.05;
+  }
   if (c.beer) c.beer.visible = !!c.beerOn;
 }
 
@@ -791,6 +810,8 @@ function updateWeather(now, dt) {
       }
     }
     state.snow.geo.attributes.position.needsUpdate = true;
+    const build = Math.min(1, (now - state.snow.born) / 3200);
+    for (const m of state.snow.mounds) m.scale.y = m.userData.h * build;
     if (now > state.snow.until) stopSnow();
   }
   for (const f of [...state.fx]) {
@@ -906,7 +927,7 @@ function frame() {
       const d = c.meetX - c.x;
       if (Math.abs(d) > 34) c.x += Math.sign(d) * Math.min(Math.abs(d), 165 * dt);
       else if (!c.fightUntil) {
-        c.fightUntil = now + 3200;
+        c.fightUntil = now + 5200;
         c.duel = true;
       }
       if (c.fightUntil && now > c.fightUntil) {
@@ -919,7 +940,7 @@ function frame() {
       const d = c.meetX - c.x;
       if (Math.abs(d) > 20) c.x += Math.sign(d) * Math.min(Math.abs(d), 170 * dt);
       else if (!c.fightUntil) {
-        c.fightUntil = now + 2400;
+        c.fightUntil = now + 3200;
         c.roll = (Math.random() < 0.5 ? -1 : 1) * 9;
       }
       if (c.fightUntil && now > c.fightUntil) {
@@ -935,7 +956,7 @@ function frame() {
       }
       if (c.partner && now > c.nextThrow && now < (c.playUntil || Infinity) &&
           Math.abs(c.partner.x - c.x) < 260) {
-        c.nextThrow = now + 620 + Math.random() * 380;
+        c.nextThrow = now + 480 + Math.random() * 300;
         throwAt(c, c.partner, c.mode === 'snowfight' ? 'snow' : 'nut');
       }
       if (c.playUntil && now > c.playUntil) {
@@ -1043,8 +1064,10 @@ function frame() {
     animate(c, dt);
     if (c.duel && c.partner && c === state.resident && now > c.sparkAt) {
       c.sparkAt = now + 380 + Math.random() * 240;
-      addPuff((c.x + c.partner.x) / 2, FLOOR + 20,
-              { color: '#ffd9a0', size: 3.5, life: 240, vy: 20, grow: 1.6 });
+      const mx = (c.x + c.partner.x) / 2;
+      addPuff(mx, FLOOR + 20, { color: '#ffe3b0', size: 5, life: 320, vy: 22, grow: 1.8 });
+      addPuff(mx + (Math.random() - 0.5) * 10, FLOOR + 22,
+              { color: '#fff1cc', size: 3, life: 260, vy: 26, grow: 1.4 });
     }
     if (c.x > c.endX || c.y < -BAR) removeCritter(c);
   }
@@ -1069,6 +1092,10 @@ function frame() {
     n.x += n.vx * dt;
     n.y += n.vy * dt;
     n.rot += n.spin * dt;
+    if (n.kind === 'snow' && now - (n.trailAt || 0) > 90) {
+      n.trailAt = now;
+      addPuff(n.x, n.y, { color: '#cfe0f4', size: 3.4, life: 240, grow: 1.2 });
+    }
     if (!n.hit) {
       for (const c of state.critters) {
         if (c === n.from) continue;
@@ -1077,7 +1104,7 @@ function frame() {
           c.hopUntil = now + 340;
           c.bonkUntil = now + 650;
           if (n.kind === 'snow') {
-            addPuff(n.x, n.y, { color: '#ffffff', size: 8, life: 380, vy: 24, grow: 1.8 });
+            addPuff(n.x, n.y, { color: '#ffffff', size: 11, life: 500, vy: 24, grow: 1.8 });
           }
           n.vy = 120;
           n.vx *= -0.35;
@@ -1291,21 +1318,22 @@ function run(kind) {
 
 export function callCritters() { run('hold'); }
 
-function schedule() {
-  const delay = 38000 + Math.random() * 70000;
+const ROTATION = ['duel', 'snow', 'nuts', 'fight', 'forage', 'snow', 'hold',
+                  'chase', 'snow', 'wave', 'visit'];
+let rotation = 0;
+
+function snowDay() {
+  startSnow(22000);
+  setTimeout(() => run('snowfight'), 1200);
+  setTimeout(() => run('sled'), 9500);
+}
+
+function schedule(delay = 5200) {
   setTimeout(() => {
-    const r = Math.random();
-    if (r < 0.22) {
-      // a snow day: flakes, a snowball fight, then someone finds a sledge
-      startSnow(16000);
-      setTimeout(() => run('snowfight'), 1400);
-      setTimeout(() => run('sled'), 7400);
-    } else {
-      run(r < 0.28 ? 'wave' : r < 0.4 ? 'chase' : r < 0.5 ? 'hold' :
-          r < 0.6 ? 'duel' : r < 0.68 ? 'fight' : r < 0.76 ? 'nuts' :
-          r < 0.9 ? 'forage' : 'visit');
-    }
-    schedule();
+    const kind = ROTATION[rotation++ % ROTATION.length];
+    if (kind === 'snow') snowDay();
+    else run(kind);
+    schedule(kind === 'snow' ? 24000 : 16000 + Math.random() * 7000);
   }, delay);
 }
 
@@ -1314,17 +1342,15 @@ if (!optedOut && hasApp) {
   window.addEventListener('pointermove', pointerAt, { passive: true });
   window.addEventListener('pointerdown', petCheck, true);
   makeResident();
-  setTimeout(() => {
-    if (!document.hidden) run('chase');
-    schedule();
-  }, 8000);
   // A demo hook: ?critters=snow|forage|duel|nuts|sled|fight plays that scene
-  // once after the bar has settled.
+  // once after the bar has settled (and skips the usual rotation for the visit).
   const scene = new URLSearchParams(location.search).get('critters');
   if (scene) {
     setTimeout(() => {
-      if (scene === 'snow') startSnow(16000);
+      if (scene === 'snow') startSnow(22000);
       else run(scene);
     }, 1400);
+  } else {
+    schedule(5200);
   }
 }
