@@ -69,6 +69,11 @@ const FOCUS_GROUPS = [
 const NEEDS_STATUS = new Set(['MANUAL', 'OFFER']);
 // Sub-states that are genuinely waiting on the candidate, not the employer.
 const NEEDS_SUBSTATES = new Set(['assessment', 'assessment-overdue', 'stale', 'captcha', 'login', 'email', 'lead', 'verify', 'info', 'held-followup', 'today']);
+// A submitted/interviewed role is "ongoing" unless the candidate really owes
+// something. A pipeline sub-state (login, captcha, verify, email, stale) says
+// where the application is, not that the human has to act, so it must not drag
+// a submitted row into "needs" and make the grid look like nothing was sent.
+const CANDIDATE_SUBSTATES = new Set(['assessment', 'assessment-overdue', 'today', 'held-followup']);
 // Process/action order inside each status: the things that need you first.
 const SUBSTATE_ORDER = {
   QUEUED: ['queued'],
@@ -94,8 +99,9 @@ function bucketOf(r) {
   if (r.scam && ['high', 'medium'].includes(r.scam.level)) return 'scams';
   if (s === 'CLOSED' || s === 'REJECTED') return 'done';
   if (s === 'BLOCKED') return 'needs';
+  const live = ['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW'].includes(s);
   if (r.action || NEEDS_STATUS.has(s) || r.substate === 'invited' || r.queue === 'human' ||
-      NEEDS_SUBSTATES.has(r.substate)) return 'needs';
+      (live ? CANDIDATE_SUBSTATES.has(r.substate) : NEEDS_SUBSTATES.has(r.substate))) return 'needs';
   if (['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW'].includes(s)) return 'ongoing';
   if (s === 'PREPARED') return 'prepared';
   return 'pipeline';

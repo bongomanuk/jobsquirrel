@@ -18,6 +18,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 LOCK = threading.Lock()
 PAGE = None
@@ -90,6 +91,39 @@ def _as_ref(target: str):
     return int(m.group(1)) if m else None
 
 
+
+ERROR_TITLES = ("error 400", "bad request", "that\u2019s an error", "that's an error",
+                "error 403", "error 429", "error 500", "500 internal server error")
+
+
+def _repair_url(url: str) -> str:
+    """Undo a double-encoded query.
+
+    Job-board and careers links are routinely copied one layer too deep, so the
+    whole query arrives encoded: apply?jobId%3D...%26loc%3DGB. Google answers
+    that with a 400 page. If the query has no plain key=value pair but does have
+    %3D, decode it once.
+    """
+    try:
+        parts = urlsplit(url)
+    except Exception:
+        return url
+    q = parts.query
+    if q and "%3D" in q.upper() and "=" not in q.split("&", 1)[0]:
+        q = unquote(q)
+        url = urlunsplit((parts.scheme, parts.netloc, parts.path, q, parts.fragment))
+    return url
+
+
+def _error_page(title: str, body_text: str) -> str:
+    """Return a hint when the page is a bare error page, else ''."""
+    t = (title or "").strip().lower()
+    if any(t.startswith(e) or e in t for e in ERROR_TITLES):
+        return (f"the page is an error page ({title.strip()}), not the form. The URL "
+                "is probably malformed or double-encoded: go back to the application "
+                "URL and let the site redirect, and never hand-build a sign-in URL.")
+    return ""
+
 def dispatch(cmd: str, body: dict) -> dict:
     page = _page()
 
@@ -97,7 +131,7 @@ def dispatch(cmd: str, body: dict) -> dict:
         return {"ok": True, "url": page.url, "title": page.title()}
 
     if cmd == "nav":
-        url = (body.get("url") or "").strip()
+        url = _repair_url((body.get("url") or "").strip())
         page.goto(url, timeout=30000, wait_until="domcontentloaded")
         # Kill CSS animations/transitions: Ashby (and others) animate widgets,
         # which makes Playwright's actionability "stable" check time out forever.
@@ -105,6 +139,10 @@ def dispatch(cmd: str, body: dict) -> dict:
             page.add_style_tag(content="*{animation:none!important;transition:none!important;scroll-behavior:auto!important}")
         except Exception:
             pass
+        hint = _error_page(page.title(), "")
+        if hint:
+            return {"ok": False, "error": hint, "url": page.url,
+                    "title": page.title(), "repaired_url": url}
         return {"ok": True, "url": page.url, "title": page.title()}
 
     if cmd == "snap":
