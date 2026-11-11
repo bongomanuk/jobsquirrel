@@ -5328,7 +5328,12 @@ def _live_task_keys():
     keys = ()
     if WQ:
         try:
-            keys = tuple(sorted(WQ.live_tasks()))
+            # A live worker process is only "working now" while a run for this
+            # repo is actually active. A finished agent can linger for minutes
+            # after its task and keep its last log fresh, which used to leave a
+            # row spinning while the Activity pane already said idle.
+            if WQ.runner_active():
+                keys = tuple(sorted(WQ.live_tasks()))
         except Exception:
             keys = ()
     c.update(t=now, log=log_sig, keys=keys)

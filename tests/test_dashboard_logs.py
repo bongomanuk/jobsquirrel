@@ -9,6 +9,12 @@ import dashboard as D  # noqa: E402
 
 
 class FakeWQ:
+    def __init__(self, active=True):
+        self.active = active
+
+    def runner_active(self):
+        return self.active
+
     def live_tasks(self):
         return ["Acme|Engineer"]
 
@@ -45,6 +51,24 @@ def test_live_log_wins_over_packed_copy_and_is_marked_running(tmp_path, monkeypa
     assert [x["name"] for x in items] == ["Acme-Engineer"]
     assert items[0]["running"] is True
     assert items[0]["size"] == 5
+
+
+def test_finished_run_does_not_leave_a_row_running(tmp_path, monkeypatch):
+    """A lingering agent process after the queue finished must not read as RUN.
+
+    The grid used to keep a row on "Being worked on" for up to five minutes
+    while the Activity pane already said idle, because the finished worker's
+    log was still fresh.
+    """
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    (logs / "Acme-Engineer.log").write_text("live\n", encoding="utf-8")
+
+    monkeypatch.setattr(D, "LOGS", str(logs))
+    monkeypatch.setattr(D, "WQ", FakeWQ(active=False))
+    items = D.task_log_items()
+
+    assert items[0]["running"] is False
 
 
 def test_log_items_are_newest_first_and_limited(tmp_path, monkeypatch):
