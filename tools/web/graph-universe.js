@@ -321,6 +321,37 @@ function paintBaseLinkColors() {
   attr.needsUpdate = true;
 }
 
+function updateLegend() {
+  const box = document.getElementById('uni-legend');
+  if (!box || !S.nodes.length) return;
+  let html = '';
+  if (S.colorMode === 'islands') {
+    const cs = [...S.clusters].sort((a, b) => b.size - a.size).slice(0, 12);
+    html = `<div class="uni-legend-h">Islands</div>` + cs.map(c => {
+      const col = (c.islandColor || c.color).getStyle();
+      return `<div class="uni-legend-row"><i style="background:${col}"></i>` +
+        `<b>${esc(islandTitle(c))}</b><span>${c.size}</span></div>`;
+    }).join('') + (S.clusters.length > cs.length
+      ? `<div class="uni-legend-more">+${S.clusters.length - cs.length} more</div>` : '');
+  } else {
+    const counts = new Map(), reps = new Map();
+    for (const n of S.nodes) {
+      const cls = String(n.class || n.type || 'OTHER').toUpperCase();
+      counts.set(cls, (counts.get(cls) || 0) + 1);
+      if (!reps.has(cls)) reps.set(cls, n);
+    }
+    const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    html = `<div class="uni-legend-h">Ontology</div>` + rows.map(([cls, n]) => {
+      const rep = reps.get(cls);
+      const col = (rep && rep.colorObj ? rep.colorObj : new THREE.Color(COLORS[cls] || '#94a3b8')).getStyle();
+      return `<div class="uni-legend-row"><i style="background:${col}"></i>` +
+        `<b>${esc(cls)}</b><span>${n}</span></div>`;
+    }).join('');
+  }
+  box.innerHTML = html;
+  box.classList.remove('hide');
+}
+
 export function setColorMode(mode) {
   S.colorMode = mode === 'islands' ? 'islands' : 'ontology';
   S.nodes.forEach(n => { n.colorObj = colorOf(n); });
@@ -331,6 +362,7 @@ export function setColorMode(mode) {
   });
   if (S.coreColors) applySelection();
   updateLOD(true);
+  updateLegend();
   S.labelDirty = true;
   return S.colorMode;
 }
@@ -490,6 +522,7 @@ function build(data) {
   S.baseRadius = Math.max(2600, (S.maxDist || 2000) * 1.8);
   const st = document.getElementById('uni-stats');
   if (st) st.textContent = `${n} entities · ${S.clusters.length} islands`;
+  updateLegend();
   resetView();
   updateLOD(true);
 }
@@ -700,6 +733,9 @@ function assignLabels() {
     const el = S.clusterPool[ci];
     el._cluster = c;
     el.innerHTML = `<b>${esc(islandTitle(c))}</b><span>${c.size} ${c.size === 1 ? 'entity' : 'entities'}</span>`;
+    const lc = S.colorMode === 'islands' ? c.islandColor : c.color;
+    const lb = el.querySelector('b');
+    if (lb) lb.style.color = lc.getStyle();
     el.style.display = '';
     const w = el.offsetWidth || 130, h = el.offsetHeight || 30;
     for (const [dx, dy] of [[0, -38], [0, 38], [-90, 0], [90, 0], [0, 0]]) {
@@ -769,6 +805,8 @@ function assignLabels() {
     const el = S.labelPool[assigned.length];
     el._node = n;
     el.textContent = n.title;
+    const lab = n.colorObj || colorOf(n);
+    el.style.color = lab.getStyle();
     el.classList.toggle('extra', n === S.selected || n === S.hovered);
     el.classList.toggle('grounded', !!n.grounded);
     el.classList.toggle('sel', n === S.selected);

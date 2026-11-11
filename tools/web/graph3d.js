@@ -413,6 +413,7 @@ export async function show(data, opts = {}) {
       const el = document.createElement('span');
       el.className = 'kg3d-label ' + (n.kind || 'entity') + (n.grounded ? ' grounded' : '');
       el.dataset.id = n.id;
+      if (n.color) el.style.color = n.color;
       el.textContent = n.kind === 'entity' ? short(n.title, 28)
         : `${short(n.label || n.title, 24)} · ${n.size || ''}`.trim();
       bindLabel(el, n);
