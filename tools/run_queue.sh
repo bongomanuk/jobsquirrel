@@ -307,7 +307,7 @@ PYJSON
 }
 
 run_task() {
-  local line="$1" server="$2" company role url cv ats key log rc
+  local line="$1" server="$2" company role url cv ats key log rc lock
   # A tab is IFS whitespace, so a plain read collapses an empty URL/CV/ATS and
   # shifts the key into the URL. Split on a non-whitespace separator so every
   # field, including an empty one, stays in its place.
@@ -426,6 +426,10 @@ REVIEW RUN ENDS HERE. Do NOT open the browser, do NOT upload, do NOT run record_
     "${reason:+ ($reason)}" >> "$SUMMARY_FILE"
   runlog "$(tail -1 "$log" 2>/dev/null)"
   runlog "DONE  $(date +%H:%M:%S) $company | $role (rc=$rc)"
+  lock="$(_role_lock "$line")"
+  if [ -n "$lock" ]; then
+    { flock -x 7; grep -vxF "$lock" "$HOSTS" > "$HOSTS.tmp" 2>/dev/null; mv -f "$HOSTS.tmp" "$HOSTS"; } 7>>"$LOCK"
+  fi
   # The role is finished: its transcript is history, so pack it.
   python3 "$ROOT/tools/storage.py" --pack-log "$log" --quiet >/dev/null 2>&1 || true
   if [ -n "$reason" ]; then
@@ -442,6 +446,7 @@ export ROOT QUEUE DONE LOGS PARALLEL TASK_TIMEOUT RETRY_LIMIT LIGHT FIXED_CV ELI
 # Worker pool: $PARALLEL long-lived workers, each atomically claiming the next
 # pending role (flock-guarded) and running it to completion.
 CLAIMED="$ROOT/state/queue.claimed"
+HOSTS="$ROOT/state/queue.hosts"
 LOCK="$ROOT/state/queue.lock"
 RETRY_FILE="$ROOT/state/queue.retry"
 STOP_FILE="$ROOT/state/queue.stop"
@@ -453,6 +458,7 @@ rm -f "$STOP_FILE"
 # wiping the first instance's in-flight claims (used to scale workers up live).
 if [ "${RESET_CLAIMED:-1}" != "0" ]; then
   : > "$CLAIMED"
+  : > "$HOSTS"
   : > "$RETRY_FILE"
   : > "$TOKENFAIL_FILE"
 fi
@@ -467,6 +473,16 @@ _role_key() {
   local rest="$1"; rest="${rest#*$'\t'}"; printf '%s|%s' "${1%%$'\t'*}" "${rest%%$'\t'*}"
 }
 _legacy_key() { local rest="$1"; rest="${rest#*$'\t'}"; printf '%s|%s' "${1%%$'\t'*}" "${rest%%$'\t'*}"; }
+# One submission per employer at a time, and all LinkedIn Easy Apply roles
+# serialised on the shared LinkedIn account. Different employers can run in
+# parallel, which is safe for Ashby/Greenhouse/Teamtailor and per-tenant Workday.
+_role_lock() {
+  local ats co
+  ats="$(printf '%s' "$1" | awk -F'\t' '{print $5}' | tr '[:upper:]' '[:lower:]')"
+  case "$ats" in *linkedin*) printf 'linkedin'; return 0 ;; esac
+  co="$(printf '%s' "$1" | awk -F'\t' '{print $1}' | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-')"
+  printf 'company:%s' "${co:-unknown}"
+}
 _done_has() { grep -qxF "$1" "$2" 2>/dev/null; }
 _line_done() {
   _done_has "$(_role_key "$1")" "$DONE" && return 0
@@ -506,7 +522,7 @@ has_pending() {
 }
 
 pop_next() {
-  local line out="" best=-1 score
+  local line out="" best=-1 score lock
   {
     flock -x 9
     while IFS= read -r line; do
@@ -515,6 +531,8 @@ pop_next() {
       [ -z "${line%%$'\t'*}" ] && continue
       _line_done "$line" && continue
       grep -qxF "$(_role_key "$line")" "$CLAIMED" 2>/dev/null && continue
+      lock="$(_role_lock "$line")"
+      grep -qxF "$lock" "$HOSTS" 2>/dev/null && continue
       if [ "${PRIORITISE:-1}" = "1" ]; then
         score="$(_seniority "$line")"
         if [ "$score" -gt "$best" ]; then best="$score"; out="$line"; fi
@@ -522,7 +540,10 @@ pop_next() {
         out="$line"; break
       fi
     done < "$QUEUE"
-    [ -n "$out" ] && printf '%s\n' "$(_role_key "$out")" >> "$CLAIMED"
+    if [ -n "$out" ]; then
+      printf '%s\n' "$(_role_key "$out")" >> "$CLAIMED"
+      printf '%s\n' "$(_role_lock "$out")" >> "$HOSTS"
+    fi
   } 9>>"$LOCK"
   printf '%s' "$out"
 }

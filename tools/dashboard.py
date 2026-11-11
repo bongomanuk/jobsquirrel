@@ -4563,6 +4563,24 @@ def prepare_roles(keys):
     return {"ok": f"generating documents for {len(rows)} role(s) — watch the Activity pane (nothing is submitted)"}
 
 
+def _submission_parallel(rows):
+    """How many submit workers are safe for this batch.
+
+    run_queue.sh also locks per employer (and serialises all LinkedIn Easy
+    Apply), so this is an upper bound: different employers can run together,
+    the same employer cannot.
+    """
+    keys = set()
+    for r in rows:
+        ats = (r.get("ats") or "").lower()
+        if "linkedin" in ats:
+            keys.add("linkedin")
+        else:
+            co = re.sub(r"[^a-z0-9]+", "-", (r.get("company") or "").lower()).strip("-")
+            keys.add("company:" + (co or "unknown"))
+    return max(1, min(3, len(keys)))
+
+
 def prepare_submit_roles(keys, approval_token=""):
     """Prepare and submit the selected roles in one apply run.
 
@@ -4598,7 +4616,7 @@ def prepare_submit_roles(keys, approval_token=""):
         pass
     _spawn(f"prepare and submit {len(rows)} role(s)",
            ["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
-           {"PARALLEL": "1", "QUEUE": tmp, "DONE": tmp_done},
+           {"PARALLEL": str(_submission_parallel(rows)), "QUEUE": tmp, "DONE": tmp_done},
            roles=[{"company": r["company"], "role": r["role"], "key": r.get("key", "")} for r in rows])
     return {"ok": f"preparing and submitting {len(rows)} application(s) — watch the Activity pane (this sends them)"}
 
@@ -4634,7 +4652,7 @@ def submit_roles(keys, approval_token=""):
     # there. The outcome sets SUBMITTED/BLOCKED/CLOSED directly.
     _spawn(f"submit {len(rows)} prepared role(s)",
            ["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
-           {"PARALLEL": "1", "QUEUE": tmp, "DONE": tmp_done, "PREPARED": "1"},
+           {"PARALLEL": str(_submission_parallel(rows)), "QUEUE": tmp, "DONE": tmp_done, "PREPARED": "1"},
            roles=[{"company": r["company"], "role": r["role"], "key": r.get("key", "")} for r in rows])
     return {"ok": f"submitting {len(rows)} application(s) — watch the Activity pane (this sends them)"}
 
