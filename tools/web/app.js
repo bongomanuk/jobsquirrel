@@ -196,13 +196,14 @@ async function api(path, body) {
   try { return await (await fetch(path, o)).json(); } catch (e) { return { error: String(e) }; }
 }
 let _toastTimer = null;
-function toast(msg, bad) {
+let AUTOSAVE_T = 0;
+function toast(msg, bad, ms = 6000) {
   let t = document.getElementById('toast');
   if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
   t.className = 'toast ' + (bad ? 'bad' : 'ok') + ' show';   // one notification surface, never a stack
   t.textContent = plain(msg);
   clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => t.classList.remove('show'), 6000);
+  _toastTimer = setTimeout(() => t.classList.remove('show'), ms);
 }
 
 const CHAT_HIST_KEY = 'agent.history';
@@ -1527,16 +1528,22 @@ const App = {
       MISSK_ASKED.delete(key);      // allow the next open to retry a failed model call
     }
   },
-  saveInterviewStage: async () => {
+  saveInterviewStage: async (quiet = false) => {
     if (!CUR) return;
     const stage = (($('#d-ivstage') || {}).value || '');
     const d = await api('/api/role/interview-stage', { key: CUR.key, stage });
     if (!d || d.error) { toast((d && d.error) || 'could not save the stage', true); return; }
     CUR.interview_stage = stage;
     CUR.interview_stage_label = d.interview_stage_label || '';
-    toast(d.ok || 'interview stage saved');
-    await loadGrid();
-    if (CUR) openDetail(CUR);
+    if (quiet) {
+      toast('saved', false, 1200);
+      const lab = $('#d-ivstage-label'); if (lab) lab.textContent = CUR.interview_stage_label || 'not recorded';
+      loadGrid();
+    } else {
+      toast(d.ok || 'interview stage saved');
+      await loadGrid();
+      if (CUR) openDetail(CUR);
+    }
   },
   saveEvidence: async () => {
     const d = await api('/api/skills/evidence', { skill: $('#evid-skill').value, source: $('#evid-source').value,
@@ -1576,22 +1583,44 @@ const App = {
       LIVE_RUNNING = false; $('#peras').classList.add('hide'); liveTick();
     } else { openDock(true); }
   },
-  saveRow: async () => {
+  saveRow: async (quiet = false) => {
+    if (!CUR) return;
+    const st = $('#dt-status'), notes = $('#dt-notes');
     const d = await api('/api/register/row', {
       company: CUR.company, role: CUR.role, key: CUR.key,
-      status: $('#dt-status').value, notes: $('#dt-notes').value,
+      status: st ? st.value : undefined,
+      notes: notes ? notes.value : undefined,
       employment: $('#dt-emp') ? $('#dt-emp').value : undefined,
       work_model: $('#dt-work') ? $('#dt-work').value : undefined,
       salary: $('#dt-salary') ? $('#dt-salary').value : undefined
     });
-    toast(d.ok || d.error, !!d.error); if (!d.error) { loadGrid(); }
+    if (d.error) { toast(d.error, true); return; }
+    if (quiet) {
+      toast('saved', false, 1200);
+      if (st) {
+        const chipEl = document.querySelector('.dstatus .chip');
+        if (chipEl) { chipEl.textContent = st.value; chipEl.className = 'chip ' + st.value; }
+        CUR.status = st.value;
+      }
+      loadGrid();
+    } else {
+      toast(d.ok || 'saved');
+      loadGrid();
+    }
   },
-  saveAction: async () => {
+  queueSaveRow: () => {
+    clearTimeout(AUTOSAVE_T);
+    AUTOSAVE_T = setTimeout(() => App.saveRow(true), 900);
+  },
+  saveAction: async (quiet = false) => {
     const v = ($('#dt-action') && $('#dt-action').value || '').trim();
-    if (!v) return App.clearAction();
+    if (!v) return App.clearAction(quiet);
     const d = await api('/api/register/row', { company: CUR.company, role: CUR.role, action: v });
-    toast(d.ok || d.error, !!d.error);
-    if (!d.error) { CUR.action = v; if (DTAB === 0) dt(0); loadGrid(); }
+    if (d.error) { toast(d.error, true); return; }
+    CUR.action = v;
+    if (quiet) toast('saved', false, 1200);
+    else { toast(d.ok || 'saved'); if (DTAB === 0) dt(0); }
+    loadGrid();
   },
   clearScam: async (key, company, role) => {
     if (!confirm(`Clear the scam warning for ${company}: ${role}?\n\nOnly do this after verifying the employer independently.`)) return;
@@ -1599,10 +1628,13 @@ const App = {
     toast(d.ok || d.error, !!d.error);
     if (!d.error) { await loadGrid(); if (CUR) openDetail(CUR); }
   },
-  clearAction: async () => {
+  clearAction: async (quiet = false) => {
     const d = await api('/api/register/row', { company: CUR.company, role: CUR.role, action: '' });
-    toast(d.ok || d.error, !!d.error);
-    if (!d.error) { CUR.action = ''; if (DTAB === 0) dt(0); loadGrid(); }
+    if (d.error) { toast(d.error, true); return; }
+    CUR.action = '';
+    if (quiet) toast('cleared', false, 1200);
+    else { toast(d.ok || 'cleared'); if (DTAB === 0) dt(0); }
+    loadGrid();
   },
   loadDrafts: async () => {
     if (!CUR) return;
@@ -3224,12 +3256,11 @@ function summary(r) {
     ['technical', 'Technical interview'], ['panel', 'Panel / onsite'], ['final', 'Final round'], ['offer', 'Offer stage']];
   const interviewish = r.status === 'INTERVIEW' || ['SCHEDULED', 'INVITED'].includes(r.label || '');
   const stageSection = interviewish ? `<section class="dsec">
-      <div class="dsec-h"><b>Interview stage</b><span class="muted mini">${r.interview_stage_label && r.interview_stage ? esc(r.interview_stage_label) : 'not recorded'}</span></div>
+      <div class="dsec-h"><b>Interview stage</b><span class="muted mini" id="d-ivstage-label">${r.interview_stage_label && r.interview_stage ? esc(r.interview_stage_label) : 'not recorded'}</span></div>
       <div class="dsec-b">
-        <div class="dform-row"><select id="d-ivstage">${IV_STAGES.map(([v, l]) =>
-          `<option value="${v}"${(r.interview_stage || '') === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>
-          <button onclick="App.saveInterviewStage()">Save stage</button></div>
-        <div class="muted mini">Which round you are at. The status stays INTERVIEW/SCHEDULED; the stage is recorded in the register.</div>
+        <div class="dform-row"><select id="d-ivstage" onchange="App.saveInterviewStage(true)">${IV_STAGES.map(([v, l]) =>
+          `<option value="${v}"${(r.interview_stage || '') === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
+        <div class="muted mini">Which round you are at. Saves automatically; the status stays INTERVIEW/SCHEDULED.</div>
       </div>
     </section>` : '';
   return scamBox(scam) +
@@ -3240,9 +3271,9 @@ function summary(r) {
       <div class="dsec-h"><b>Next action</b>${act ? '' : '<span class="muted mini">optional</span>'}</div>
       <div class="dsec-b">
         ${act ? `<div class="daction">${esc(act)}</div>` : ''}
-        <div class="dform-row"><input id="dt-action" placeholder="Add a follow-up or a note for this role" value="${esc(act)}"></div>
+        <div class="dform-row"><input id="dt-action" placeholder="Add a follow-up or a note for this role" value="${esc(act)}" onchange="App.saveAction(true)"></div>
         <div class="dform-foot" style="justify-content:flex-start">
-          <button onclick="App.saveAction()">${act ? 'Update action' : 'Flag action'}</button>
+          <span class="muted mini">Saves when you leave the field.${act ? '' : ' Optional.'}</span>
           ${act ? '<button onclick="App.clearAction()">Clear</button>' : ''}
         </div>
       </div>
@@ -3283,12 +3314,12 @@ function summary(r) {
       <div class="dsec-h"><b>Role settings</b><span class="muted mini">status, type, pay and work model</span></div>
       <div class="dsec-b">
         <div class="dgrid2">
-          <label>Status<select id="dt-status">${reg.map(x => `<option ${x === r.status ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
-          <label>Type<select id="dt-emp">${['', 'full-time', 'part-time', 'contract', 'consultant', 'freelance', 'internship', 'temporary'].map(x => `<option value="${x}" ${x === (r.employment || '') ? 'selected' : ''}>${x || 'unknown'}</option>`).join('')}</select></label>
-          <label>Work model<select id="dt-work"><option value="">auto: ${esc(wl(r.work_detected))}</option>${['remote', 'hybrid', 'on-site'].map(x => `<option value="${x}" ${r.work_override && r.work_model === x ? 'selected' : ''}>${wl(x).toLowerCase()}</option>`).join('')}</select></label>
-          <label>Pay override<input id="dt-salary" value="${esc(r.salary_override ? (r.salary_raw || '') : '')}" placeholder="${esc(r.salary_raw && !r.salary_override ? 'auto: ' + r.salary_raw : 'e.g. EUR 90000/yr')}"></label>
+          <label>Status<select id="dt-status" onchange="App.saveRow(true)">${reg.map(x => `<option ${x === r.status ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+          <label>Type<select id="dt-emp" onchange="App.saveRow(true)">${['', 'full-time', 'part-time', 'contract', 'consultant', 'freelance', 'internship', 'temporary'].map(x => `<option value="${x}" ${x === (r.employment || '') ? 'selected' : ''}>${x || 'unknown'}</option>`).join('')}</select></label>
+          <label>Work model<select id="dt-work" onchange="App.saveRow(true)"><option value="">auto: ${esc(wl(r.work_detected))}</option>${['remote', 'hybrid', 'on-site'].map(x => `<option value="${x}" ${r.work_override && r.work_model === x ? 'selected' : ''}>${wl(x).toLowerCase()}</option>`).join('')}</select></label>
+          <label>Pay override<input id="dt-salary" value="${esc(r.salary_override ? (r.salary_raw || '') : '')}" placeholder="${esc(r.salary_raw && !r.salary_override ? 'auto: ' + r.salary_raw : 'e.g. EUR 90000/yr')}" onchange="App.saveRow(true)"></label>
         </div>
-        <div class="dform-foot"><span class="muted mini">Blank pay uses the ad figure.</span><button onclick="App.saveRow()">Save changes</button></div>
+        <div class="dform-foot" style="justify-content:flex-start"><span class="muted mini">Changes save automatically. Blank pay uses the ad figure.</span></div>
       </div>
     </section>` +
     `<section class="dsec">
@@ -3309,8 +3340,8 @@ function summary(r) {
       <div class="dsec-b">
         ${P.evidence ? `<div class="dnote">Submission evidence: ${esc(String(P.evidence).slice(0, 240))}</div>` : ''}
         ${hist ? `<ul class="hist">${hist}</ul>` : '<div class="muted mini">No notes yet.</div>'}
-        <label class="dlabel">Your notes<textarea id="dt-notes" style="min-height:140px">${esc(r.notes || '')}</textarea></label>
-        <div class="dform-foot"><button onclick="App.saveRow()">Save notes</button></div>
+        <label class="dlabel">Your notes<textarea id="dt-notes" style="min-height:140px" oninput="App.queueSaveRow()">${esc(r.notes || '')}</textarea></label>
+        <div class="dform-foot" style="justify-content:flex-start"><span class="muted mini">Changes save automatically.</span></div>
       </div>
     </details>` +
     (['BLOCKED', 'MANUAL'].includes(r.status) ? `<section class="dsec dsec-block">
