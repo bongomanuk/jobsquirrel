@@ -20,7 +20,7 @@ const S = {
   W: 1, H: 1, orbit: { theta: 0.7, phi: 1.12, radius: 3000, target: new THREE.Vector3() },
   drag: null, lastInteract: 0, auto: true, raf: 0, fly: null, keys: new Set(),
   baseRadius: 3000, maxDist: 0, lastLabel: 0, focusDepth: 2, focusAmount: 0, focusAt: 0, focusHold: 4000, focusFade: 1200,
-  colorMode: 'ontology'
+  colorMode: 'ontology', filters: [], filterIds: new Set()
 };
 
 const COLORS = {
@@ -321,16 +321,54 @@ function paintBaseLinkColors() {
   attr.needsUpdate = true;
 }
 
+function rebuildFilterIds() {
+  if (!S.filters.length) { S.filterIds = new Set(); return; }
+  S.filterIds = new Set(S.nodes.filter(n => S.filters.some(f =>
+    f.kind === 'class'
+      ? String(n.class || n.type || 'OTHER').toUpperCase() === f.key
+      : (S.clusterOf.get(n.id) || {}).key === f.key
+  )).map(n => n.id));
+}
+
+function clearFilters() {
+  S.filters = [];
+  S.filterIds = new Set();
+  applySelection(); assignLabels(); updateLabels(true);
+  updateLegend();
+}
+
+function toggleFilter(kind, key) {
+  if (!kind || !key) { clearFilters(); return; }
+  const i = S.filters.findIndex(f => f.kind === kind && f.key === key);
+  if (i >= 0) S.filters.splice(i, 1);
+  else S.filters.push({ kind, key });
+  rebuildFilterIds();
+  applySelection(); assignLabels(); updateLabels(true);
+  if (S.filterIds.size) focusOn([...S.filterIds], null, 900);
+  updateLegend();
+}
+
 function updateLegend() {
   const box = document.getElementById('uni-legend');
   if (!box || !S.nodes.length) return;
   let html = '';
+  if (S.filters.length) {
+    const chips = S.filters.map(f => {
+      const label = f.kind === 'class' ? f.key
+        : (islandTitle(S.clusters.find(c => c.key === f.key)) || f.key);
+      return `<span class="uni-filter-chip" data-kind="${esc(f.kind)}" data-key="${esc(f.key)}" ` +
+        `title="Remove this filter">${esc(label)}<i>×</i></span>`;
+    }).join('');
+    html += `<div class="uni-legend-filter"><span>Filtered:</span>${chips}` +
+      `<button class="uni-legend-clear" type="button" title="Remove all filters">clear all</button></div>`;
+  }
   if (S.colorMode === 'islands') {
     const cs = [...S.clusters].sort((a, b) => b.size - a.size).slice(0, 12);
-    html = `<div class="uni-legend-h">Islands</div>` + cs.map(c => {
+    html += `<div class="uni-legend-h">Islands</div>` + cs.map(c => {
       const col = (c.islandColor || c.color).getStyle();
-      return `<div class="uni-legend-row"><i style="background:${col}"></i>` +
-        `<b>${esc(islandTitle(c))}</b><span>${c.size}</span></div>`;
+      const on = S.filters.some(f => f.kind === 'island' && f.key === c.key);
+      return `<div class="uni-legend-row${on ? ' on' : ''}" data-kind="island" data-key="${esc(c.key)}" title="Filter to this island">` +
+        `<i style="background:${col}"></i><b>${esc(islandTitle(c))}</b><span>${c.size}</span></div>`;
     }).join('') + (S.clusters.length > cs.length
       ? `<div class="uni-legend-more">+${S.clusters.length - cs.length} more</div>` : '');
   } else {
@@ -341,11 +379,12 @@ function updateLegend() {
       if (!reps.has(cls)) reps.set(cls, n);
     }
     const rows = [...counts.entries()].sort((a, b) => b[1] - a[1]);
-    html = `<div class="uni-legend-h">Ontology</div>` + rows.map(([cls, n]) => {
+    html += `<div class="uni-legend-h">Ontology</div>` + rows.map(([cls, n]) => {
       const rep = reps.get(cls);
       const col = (rep && rep.colorObj ? rep.colorObj : new THREE.Color(COLORS[cls] || '#94a3b8')).getStyle();
-      return `<div class="uni-legend-row"><i style="background:${col}"></i>` +
-        `<b>${esc(cls)}</b><span>${n}</span></div>`;
+      const on = S.filters.some(f => f.kind === 'class' && f.key === cls);
+      return `<div class="uni-legend-row${on ? ' on' : ''}" data-kind="class" data-key="${esc(cls)}" title="Filter to this ontology class">` +
+        `<i style="background:${col}"></i><b>${esc(cls)}</b><span>${n}</span></div>`;
     }).join('');
   }
   box.innerHTML = html;
@@ -354,6 +393,7 @@ function updateLegend() {
 
 export function setColorMode(mode) {
   S.colorMode = mode === 'islands' ? 'islands' : 'ontology';
+  S.filters = []; S.filterIds = new Set();
   S.nodes.forEach(n => { n.colorObj = colorOf(n); });
   paintBaseLinkColors();
   if (S.nebula) S.nebula.children.forEach(sp => {
@@ -708,6 +748,12 @@ function assignLabels() {
     }
     if (S.playIds && S.playIds.size && S.playIds.has(n.id)) return !!onScreen(n);
     if (n === S.selected || n === S.hovered) return true;
+    if (S.filterIds && S.filterIds.size) {
+      if (!S.filterIds.has(n.id)) return false;
+      // An explicit legend filter is a request to see these nodes even when
+      // they are low-degree or sit outside the current label tier.
+      return !!onScreen(n);
+    }
     if (S.selDist && S.focusAmount > 0.05) {
       const d = S.selDist.get(n.id);
       if (d == null || d > 1) return false;
@@ -723,6 +769,7 @@ function assignLabels() {
   const prevSet = new Set(prevClusters.map(a => a.c));
   let ci = 0;
   const tryCluster = c => {
+    if (S.filterIds && S.filterIds.size) return false;
     if (S.labelOnly && S.labelOnly.size) return false;
     if (S.selDist) return false;
     if (S.activeClusters && !S.activeClusters.has(c)) return false;
@@ -1030,6 +1077,9 @@ function applySelection() {
       glow = inPlay ? (S.playLabels.has(n.id) ? 3.4 : 1.7) : 0.3;
       if (inPlay) lod = 1;
     }
+    if (S.filterIds && S.filterIds.size && !S.filterIds.has(n.id) && n !== S.selected) {
+      f *= 0.035; glow *= 0.04;
+    }
     const c = n.colorObj;
     let r = c.r * lod * Math.min(1, f), g = c.g * lod * Math.min(1, f), b = c.b * lod * Math.min(1, f);
     if (n === S.selected) {
@@ -1072,6 +1122,8 @@ function applySelection() {
       } else if (playOn) {
         f = inPlay ? 1 : 0.08;
       }
+      if (S.filterIds && S.filterIds.size &&
+          !(S.filterIds.has(l.source) && S.filterIds.has(l.target))) f *= 0.04;
       if (inPlay) {
         attr.array[i * 6] = 1.0; attr.array[i * 6 + 1] = 0.72; attr.array[i * 6 + 2] = 0.32;
         attr.array[i * 6 + 3] = 1.0; attr.array[i * 6 + 4] = 0.72; attr.array[i * 6 + 5] = 0.32;
@@ -1296,6 +1348,14 @@ function bind() {
     }
     clearTimeout(S.assignTimer); S.assignTimer = setTimeout(assignLabels, 300);
   }, { passive: false });
+  const legend = document.getElementById('uni-legend');
+  if (legend) legend.addEventListener('click', (e) => {
+    if (e.target.closest('.uni-legend-clear')) { clearFilters(); return; }
+    const chip = e.target.closest('.uni-filter-chip');
+    if (chip) { toggleFilter(chip.dataset.kind, chip.dataset.key); return; }
+    const row = e.target.closest('.uni-legend-row');
+    if (row) toggleFilter(row.dataset.kind, row.dataset.key);
+  });
   const focus = document.getElementById('uni-focus');
   if (focus) {
     S.focusDepth = +focus.value || S.focusDepth;
@@ -1330,6 +1390,7 @@ function bind() {
   }
   addEventListener('keydown', e => {
     if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    if (e.key === 'Escape' && S.filters.length) { clearFilters(); return; }
     const k = e.key.toLowerCase();
     if (['w', 'a', 's', 'd', 'q', 'e', 'shift'].includes(k)) { S.keys.add(k); S.auto = false; }
     if (k === 'escape') {
