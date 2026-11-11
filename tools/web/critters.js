@@ -1333,7 +1333,7 @@ function schedule(delay = 5200) {
     const kind = ROTATION[rotation++ % ROTATION.length];
     if (kind === 'snow') snowDay();
     else run(kind);
-    schedule(kind === 'snow' ? 24000 : 16000 + Math.random() * 7000);
+    schedule(kind === 'snow' ? 22000 : (rotation === 1 ? 9000 : 16000 + Math.random() * 6000));
   }, delay);
 }
 
