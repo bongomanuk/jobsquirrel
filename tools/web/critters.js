@@ -3,7 +3,10 @@
  * The squirrel scurries flat on all fours, sits up on its haunches to eat, and
  * has a small set of actions: look at the pointer, hop, wave, groom, stretch,
  * sleep, pull a face, kick acorns. He lives in the logo slot in the top bar and
- * returns there after every adventure.
+ * returns there after every adventure. On the right day the gang duels with
+ * little swords, pelts each other with nuts, forages in the grove (burying,
+ * digging up and nibbling the stash), and when it snows they sledge and throw
+ * snowballs.
  *
  * One transparent WebGL canvas spans the bar, so every squirrel and acorn is in
  * one scene. Nothing blocks clicks, the loop stops when nothing is happening,
@@ -24,6 +27,7 @@ const state = {
   critters: [], nuts: [], raf: 0, clock: null, W: 1,
   resident: null, perches: [],
   pointer: { x: 0, y: -999 }, lastPoke: 0,
+  snow: null, fx: [], trees: [], grove: null,
 };
 
 const MAT = {
@@ -39,6 +43,11 @@ const MAT = {
   beer: new THREE.MeshStandardMaterial({ color: 0xd9a45f, roughness: 0.4 }),
   blade: new THREE.MeshStandardMaterial({ color: 0xcfd8e3, roughness: 0.25, metalness: 0.85 }),
   foam: new THREE.MeshStandardMaterial({ color: 0xf7f0de, roughness: 1 }),
+  snow: new THREE.MeshStandardMaterial({ color: 0xf3f8ff, roughness: 0.95 }),
+  leaf: new THREE.MeshStandardMaterial({ color: 0x506b52, roughness: 0.92 }),
+  leaf2: new THREE.MeshStandardMaterial({ color: 0x5f7a5b, roughness: 0.92 }),
+  leaf3: new THREE.MeshStandardMaterial({ color: 0x46604a, roughness: 0.92 }),
+  sled: new THREE.MeshStandardMaterial({ color: 0xb5654a, roughness: 0.75 }),
   tongue: new THREE.MeshStandardMaterial({ color: 0xd97b8a, roughness: 0.7 }),
 };
 
@@ -78,6 +87,7 @@ function makeCanvas() {
   ground.receiveShadow = true;
   state.scene.add(ground);
   state.ground = ground;
+  placeGrove();
   window.addEventListener('resize', resize);
   return c;
 }
@@ -98,6 +108,7 @@ function resize() {
     state.camera.top = BAR / 2; state.camera.bottom = -BAR / 2;
     state.camera.updateProjectionMatrix();
   }
+  if (state.scene) placeGrove();
 }
 
 function ball(r, m, x, y, z) {
@@ -107,6 +118,41 @@ function ball(r, m, x, y, z) {
 }
 function limb(r, len, m) {
   return new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, 8), m);
+}
+
+/* A soft round sprite for snow spray, impacts and little sword sparks. */
+let TEX_PUFF = null;
+function puffTexture() {
+  if (TEX_PUFF) return TEX_PUFF;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grd.addColorStop(0, 'rgba(255,255,255,.95)');
+  grd.addColorStop(.45, 'rgba(255,255,255,.45)');
+  grd.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 64, 64);
+  TEX_PUFF = new THREE.CanvasTexture(c);
+  return TEX_PUFF;
+}
+
+function addPuff(x, y, opts = {}) {
+  if (!state.scene) return;
+  const mat = new THREE.SpriteMaterial({
+    map: puffTexture(),
+    color: opts.color || '#ffffff',
+    transparent: true, opacity: opts.opacity || 0.85, depthWrite: false,
+  });
+  const sp = new THREE.Sprite(mat);
+  const size = opts.size || 6;
+  sp.position.set(x, y, 0.35);
+  sp.scale.setScalar(size);
+  state.scene.add(sp);
+  state.fx.push({
+    sp, born: performance.now(), life: opts.life || 450, base: size,
+    vx: opts.vx || 0, vy: opts.vy || 0, grow: opts.grow == null ? 1.1 : opts.grow,
+  });
 }
 
 /* A squirrel rig. Ground at y = 0, facing +Z.
@@ -249,6 +295,18 @@ export function buildSquirrel(friend = false) {
   cap.position.y = 0.04;
   acorn.add(cap);
 
+  // a nut in the mouth, for carrying one to a cache or nibbling one dug up
+  const heldNut = new THREE.Group();
+  heldNut.position.set(0, -0.09, 0.17);
+  heldNut.visible = false;
+  const hnut = ball(0.065, MAT.nut, 0, 0, 0);
+  hnut.scale.set(1, 1.25, 1);
+  heldNut.add(hnut);
+  const hcap = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), MAT.nutCap);
+  hcap.position.y = 0.04;
+  heldNut.add(hcap);
+  head.add(heldNut);
+
   const sword = new THREE.Group();
   sword.position.set(0, -0.16, 0.02);
   sword.rotation.x = -0.5;
@@ -278,11 +336,28 @@ export function buildSquirrel(friend = false) {
   handle.rotation.z = -0.4;
   beer.add(handle);
 
+  // a little wooden sledge, hidden until a snow day
+  const sled = new THREE.Group();
+  sled.position.set(0, 0.015, 0.06);
+  sled.visible = false;
+  const board = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.06, 1.08), MAT.sled);
+  board.position.y = 0.04;
+  sled.add(board);
+  for (const s of [-1, 1]) {
+    const runner = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.055, 1.16), MAT.blade);
+    runner.position.set(0.2 * s, -0.03, 0.02);
+    sled.add(runner);
+    const strut = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.07, 0.07), MAT.sled);
+    strut.position.set(0.2 * s, 0.01, -0.3);
+    sled.add(strut);
+  }
+  root.add(sled);
+
 
   root.traverse(o => { if (o.isMesh) o.castShadow = true; });
   root.scale.setScalar(SCALE);
   return { root, hips, chest, neck, head, tail: [tail1, tail2, tail3],
-           front, hind, tongue, beer, sword, acorn };
+           front, hind, tongue, beer, sword, acorn, sled, heldNut };
 }
 
 function makeNut() {
@@ -293,6 +368,15 @@ function makeNut() {
   const cap = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), MAT.nutCap);
   cap.position.y = 0.05;
   g.add(cap);
+  g.scale.setScalar(SCALE);
+  return g;
+}
+
+function makeSnowball() {
+  const g = new THREE.Group();
+  const b = ball(0.08, MAT.snow, 0, 0, 0);
+  b.scale.set(1.1, 1, 1.1);
+  g.add(b);
   g.scale.setScalar(SCALE);
   return g;
 }
@@ -311,6 +395,9 @@ function addCritter(opts) {
     adventuring: false, look: { x: 0, y: 0 }, pose: '', poseUntil: 0,
     mode: 'travel', meetX: 0, drinkUntil: 0, clinkAt: 0, clink: false, fightUntil: 0, roll: 0, duel: false,
     trickUntil: 0, social: false, tagUntil: 0, visitUntil: 0,
+    partner: null, playUntil: 0, nextThrow: 0, sledOn: false, sledSpeed: 0, sprayAt: 0,
+    bonkUntil: 0, sparkAt: 0, tree: null, forageX: 0, forageAt: 0, carried: false,
+    eatingUntil: 0, foraged: false,
   };
   state.critters.push(c);
   return c;
@@ -330,8 +417,195 @@ function kickNut(from) {
   state.nuts.push({
     mesh: nut, x: from.x + 6, y: FLOOR + 4, born: performance.now(),
     vx: 140 + Math.random() * 160, vy: 180 + Math.random() * 170,
-    spin: (Math.random() - 0.5) * 14, rot: 0,
+    spin: (Math.random() - 0.5) * 14, rot: 0, kind: 'nut', from, hit: false,
   });
+}
+
+/* A thrown nut or snowball: solved for a gravity arc that lands on the target,
+ * so the two of them can actually pelt each other rather than firing sideways. */
+function throwAt(from, to, kind = 'nut') {
+  if (!from || !to || from === to) return;
+  const mesh = kind === 'snow' ? makeSnowball() : makeNut();
+  const dir = Math.sign(to.x - from.x) || 1;
+  const x0 = from.x + dir * 9;
+  const y0 = FLOOR + 17;
+  const dx = to.x - x0;
+  const dy = (FLOOR + 15) - y0;
+  const T = 0.42 + Math.abs(dx) / 1500;
+  const vx = dx / T;
+  const vy = (dy + 0.5 * 900 * T * T) / T;
+  mesh.position.set(x0, y0, 0.25);
+  state.scene.add(mesh);
+  state.nuts.push({
+    mesh, x: x0, y: y0, vx, vy, kind, from, born: performance.now(), hit: false,
+    spin: (Math.random() - 0.5) * 10, rot: 0,
+  });
+}
+
+/* ---------- snow ---------- */
+function startSnow(ms = 15000) {
+  const now = performance.now();
+  ensureLoop();
+  if (state.snow) { state.snow.until = Math.max(state.snow.until, now + ms); return; }
+  const n = 170;
+  const span = Math.max(1200, state.W / 2 + 80);
+  const pos = new Float32Array(n * 3);
+  const vel = [];
+  for (let i = 0; i < n; i++) {
+    pos[i * 3] = (Math.random() - 0.5) * span;
+    pos[i * 3 + 1] = FLOOR + Math.random() * (BAR + 30);
+    pos[i * 3 + 2] = -8 + Math.random() * 8;
+    vel.push({ fall: 16 + Math.random() * 30, drift: (Math.random() - 0.5) * 14,
+               sway: Math.random() * 6.28 });
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const points = new THREE.Points(geo, new THREE.PointsMaterial({
+    map: puffTexture(), color: 0xb9c9dd, size: 2.8, transparent: true,
+    opacity: 0.9, depthWrite: false, sizeAttenuation: false,
+  }));
+  state.scene.add(points);
+  const drift = new THREE.Mesh(new THREE.PlaneGeometry(4000, 7),
+    new THREE.MeshBasicMaterial({ color: 0xc9d8ea, transparent: true, opacity: 0.32, depthWrite: false }));
+  drift.position.set(0, FLOOR + 2, 0.1);
+  state.scene.add(drift);
+  state.snow = { points, geo, vel, drift, until: now + ms };
+  for (const t of state.trees) for (const c of t.caps) c.visible = true;
+  document.body.dataset.snow = '1';
+}
+
+function stopSnow() {
+  if (!state.snow) return;
+  state.scene.remove(state.snow.points);
+  state.snow.points.geometry.dispose();
+  state.snow.points.material.dispose();
+  state.scene.remove(state.snow.drift);
+  state.snow.drift.geometry.dispose();
+  state.snow.drift.material.dispose();
+  state.snow = null;
+  for (const t of state.trees) for (const c of t.caps) c.visible = false;
+  delete document.body.dataset.snow;
+}
+
+/* ---------- trees and the winter larder ---------- */
+function baseNut() {
+  const g = new THREE.Group();
+  const b = ball(0.12, MAT.nut, 0, 0, 0);
+  b.scale.set(1, 1.2, 1);
+  g.add(b);
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), MAT.nutCap);
+  cap.position.y = 0.05;
+  g.add(cap);
+  return g;
+}
+
+function syncTree(t) {
+  if (!t) return;
+  t.nuts.forEach((n, i) => { n.visible = i < Math.min(4, t.cache); });
+}
+
+const GROVE = [
+  { dx: -44, z: -2.4, s: 0.72, kind: 'fir', tone: 2 },
+  { dx: -24, z: -1.7, s: 0.94, kind: 'fir', tone: 0 },
+  { dx: -2, z: -2.1, s: 1.12, kind: 'round', tone: 0 },
+  { dx: 21, z: -1.5, s: 0.84, kind: 'fir', tone: 1 },
+  { dx: 41, z: -2.6, s: 0.62, kind: 'fir', tone: 2 },
+];
+
+function makeTree(def) {
+  const g = new THREE.Group();
+  const s = def.s || 1;
+  const tone = [MAT.leaf, MAT.leaf2, MAT.leaf3][def.tone % 3] || MAT.leaf;
+  const caps = [];
+  if (def.kind === 'round') {
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * s, 0.16 * s, 1.0 * s, 7), MAT.nutCap);
+    trunk.position.y = 0.5 * s;
+    g.add(trunk);
+    for (const [dx, dy, r] of [[0, 1.18, 0.56], [-0.3, 1.0, 0.4], [0.3, 1.02, 0.42]]) {
+      const blob = new THREE.Mesh(new THREE.IcosahedronGeometry(r * s, 0), tone);
+      blob.position.set(dx * s, dy * s, 0);
+      g.add(blob);
+      const cap = new THREE.Mesh(new THREE.IcosahedronGeometry(r * 0.92 * s, 0), MAT.snow);
+      cap.position.set(dx * s, (dy + r * 0.32) * s, 0.02);
+      cap.visible = false;
+      g.add(cap);
+      caps.push(cap);
+    }
+  } else {
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.09 * s, 0.14 * s, 0.9 * s, 7), MAT.nutCap);
+    trunk.position.y = 0.45 * s;
+    g.add(trunk);
+    const tiers = [[0.55, 0.8, 0.95], [0.44, 0.7, 1.32], [0.3, 0.55, 1.62]];
+    for (const [r, h, y] of tiers) {
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(r * s, h * s, 8), tone);
+      cone.position.y = y * s;
+      g.add(cone);
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(r * 0.82 * s, h * 0.5 * s, 8), MAT.snow);
+      cap.position.y = (y + h * 0.2) * s;
+      cap.visible = false;
+      g.add(cap);
+      caps.push(cap);
+    }
+  }
+  const nuts = [];
+  for (let i = 0; i < 4; i++) {
+    const n = baseNut();
+    n.position.set((-0.5 + i * 0.34) * s, 0.06, 0.34 + (i % 2) * 0.08);
+    n.visible = false;
+    g.add(n);
+    nuts.push(n);
+  }
+  g.position.set(def.dx, FLOOR, def.z || -1.6);
+  g.scale.setScalar(SCALE * 0.82);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  const tree = { ...def, group: g, caps, nuts, cache: Math.floor(Math.random() * 3), x: def.dx };
+  syncTree(tree);
+  return tree;
+}
+
+function groveX(w) {
+  return w < 1000 ? null : Math.round(-w * 0.16);
+}
+
+function placeGrove() {
+  if (!state.scene) return;
+  const x = groveX(state.W);
+  if (x == null) { if (state.grove) state.grove.group.visible = false; return; }
+  if (!state.grove) {
+    const group = new THREE.Group();
+    const trees = GROVE.map(d => {
+      const t = makeTree(d);
+      group.add(t.group);
+      return t;
+    });
+    state.scene.add(group);
+    state.grove = { group, trees };
+    state.trees = trees;
+  }
+  state.grove.group.visible = true;
+  state.grove.group.position.x = x;
+  state.trees.forEach(t => { t.x = x + t.dx; });
+  if (state.snow) state.trees.forEach(t => t.caps.forEach(c => { c.visible = true; }));
+}
+
+function startForage(c, tree, how = 'auto', side = 0) {
+  if (!c || !tree) return;
+  const bury = how === 'bury' || (how === 'auto' && Math.random() < 0.5);
+  c.mode = 'forage';
+  c.tree = tree;
+  c.forageX = tree.x + (side || (c.x < tree.x ? -22 : 22));
+  c.forageAt = 0;
+  c.playUntil = performance.now() + 11000;
+  c.carried = bury;
+  c.eatingUntil = 0;
+  c.foraged = false;
+  c.forageAt = 0;
+  if (c.heldNut) { c.heldNut.visible = bury; c.heldNut.scale.setScalar(1); }
+  c.social = true;
+  if (c === state.resident) {
+    c.target = c.forageX;
+    c.nextAction = performance.now() + 12000;
+  }
 }
 
 /* ---------- animation ---------- */
@@ -474,15 +748,73 @@ function animate(c, dt) {
   } else if (isResident) {
     c.root.position.y = FLOOR;
   }
+  if (c.sledOn) {
+    c.hips.rotation.x = -0.55;
+    c.front.forEach(f => { f.shoulder.rotation.x = -1.35; f.elbow.rotation.x = -0.35; });
+    c.hind.forEach(h => { h.hip.rotation.x = -0.5; h.knee.rotation.x = 1.1; });
+    c.tail[0].rotation.x = -0.8 + Math.sin(p * 2) * 0.08;
+    c.tail[1].rotation.x = -0.35;
+    c.tail[2].rotation.x = -0.2;
+    c.root.rotation.z = Math.sin(p * 1.7) * 0.05;
+  }
+  if (c.bonkUntil > now) {
+    const k = Math.sin((c.bonkUntil - now) / 55);
+    c.neck.rotation.z = k * 0.4;
+    c.neck.rotation.x = 0.18;
+    c.root.rotation.z = k * 0.14;
+  }
+  if (c.eatingUntil > now) {
+    c.front.forEach(f => { f.shoulder.rotation.x = -2.05; f.elbow.rotation.x = -1.85; });
+    c.neck.rotation.x = -0.1 + Math.sin(p * 11) * 0.05;
+    c.head.rotation.x = Math.sin(p * 11) * 0.05;
+    if (c.heldNut) {
+      c.heldNut.visible = true;
+      c.heldNut.scale.setScalar(Math.max(0.15, (c.eatingUntil - now) / 2400));
+    }
+  } else if (c.carried && c.heldNut) {
+    c.heldNut.visible = true;
+  }
   if (c.beer) c.beer.visible = !!c.beerOn;
 }
 
 /* ---------- frame loop ---------- */
+function updateWeather(now, dt) {
+  if (state.snow) {
+    const pos = state.snow.geo.attributes.position.array;
+    for (let i = 0; i < state.snow.vel.length; i++) {
+      const v = state.snow.vel[i];
+      pos[i * 3 + 1] -= v.fall * dt;
+      pos[i * 3] += Math.sin(now * 0.001 + v.sway) * v.drift * dt;
+      if (pos[i * 3 + 1] < FLOOR - 4) {
+        pos[i * 3 + 1] = BAR / 2 + 20;
+        pos[i * 3] = (Math.random() - 0.5) * Math.max(1200, state.W / 2 + 80);
+      }
+    }
+    state.snow.geo.attributes.position.needsUpdate = true;
+    if (now > state.snow.until) stopSnow();
+  }
+  for (const f of [...state.fx]) {
+    const age = now - f.born;
+    if (age >= f.life) {
+      state.scene.remove(f.sp);
+      f.sp.material.dispose();
+      state.fx = state.fx.filter(x => x !== f);
+      continue;
+    }
+    const k = age / f.life;
+    f.sp.position.x += f.vx * dt;
+    f.sp.position.y += f.vy * dt;
+    f.sp.material.opacity = 0.85 * (1 - k);
+    f.sp.scale.setScalar(f.base * (1 + f.grow * k));
+  }
+}
+
 function frame() {
   state.raf = 0;
   if (!state.renderer || document.hidden) return;
   const dt = Math.min(0.05, state.clock.getDelta());
   const now = performance.now();
+  updateWeather(now, dt);
 
   const res = state.resident;
   if (res) {
@@ -514,13 +846,16 @@ function frame() {
       else if (r < 0.60) { res.pose = 'stretch'; res.poseUntil = now + 1400; }
       else if (r < 0.67) { res.pose = 'kick'; res.poseUntil = now + 900; kickNut(res); }
       else if (r < 0.74) { res.waveOn = true; res.waveUntil = now + 1600; }
-      else if (r < 0.86) {
+      else if (r < 0.82) {
         const el = state.perches[Math.floor(Math.random() * state.perches.length)];
         if (el) {
           const r2 = el.getBoundingClientRect();
           res.target = Math.max(-state.W / 2 + 60, Math.min(state.W / 2 - 80,
             r2.left + r2.width / 2 - state.W / 2));
         }
+      } else if (r < 0.94 && state.trees.length && (!state.grove || state.grove.group.visible)) {
+        const t = state.trees[Math.floor(Math.random() * state.trees.length)];
+        startForage(res, t, t.cache > 0 && Math.random() < 0.55 ? 'dig' : 'bury');
       } else {
         res.target = res.home;
       }
@@ -528,7 +863,7 @@ function frame() {
     if (res.waveUntil && now > res.waveUntil) { res.waveOn = false; res.waveUntil = 0; }
     const d = res.target - res.x;
     if (Math.abs(d) > 1.2) {
-      res.speed = res.adventuring ? 150 : 55;
+      res.speed = (res.adventuring || res.mode === 'forage' || res.mode === 'nuts' || res.mode === 'snowfight') ? 150 : 55;
       res.x += Math.sign(d) * Math.min(Math.abs(d), res.speed * dt);
     } else if (res.adventuring) {
       res.adventuring = false;
@@ -592,6 +927,71 @@ function frame() {
         else c.mode = 'leave';
       }
     }
+    if (c.mode === 'nuts' || c.mode === 'snowfight') {
+      if (c !== state.resident) {
+        const d = (c.meetX || 0) - c.x;
+        c.speed = Math.abs(d) > 44 ? 165 : 0;
+        if (Math.abs(d) > 44) c.x += Math.sign(d) * Math.min(Math.abs(d), 165 * dt);
+      }
+      if (c.partner && now > c.nextThrow && now < (c.playUntil || Infinity) &&
+          Math.abs(c.partner.x - c.x) < 260) {
+        c.nextThrow = now + 620 + Math.random() * 380;
+        throwAt(c, c.partner, c.mode === 'snowfight' ? 'snow' : 'nut');
+      }
+      if (c.playUntil && now > c.playUntil) {
+        c.playUntil = 0;
+        c.partner = null;
+        if (c === state.resident) { c.mode = 'travel'; c.target = c.home; c.social = false; }
+        else c.mode = 'leave';
+      }
+    }
+    if (c.mode === 'sled') {
+      c.x += (c.sledSpeed || 250) * dt;
+      c.y = FLOOR + 2 + Math.sin(c.x * 0.03) * 1.6;
+      if (now > c.sprayAt) {
+        c.sprayAt = now + 90;
+        addPuff(c.x - 14, FLOOR + 3, { color: '#c9d8ea', size: 5, life: 420,
+                                       vx: -40, vy: 26, grow: 2 });
+      }
+      if (c.x > c.endX) { removeCritter(c); continue; }
+    }
+    if (c.mode === 'forage') {
+      if (c !== state.resident) {
+        const d = c.forageX - c.x;
+        c.speed = Math.abs(d) > 3 ? 150 : 0;
+        if (Math.abs(d) > 3) c.x += Math.sign(d) * Math.min(Math.abs(d), 150 * dt);
+      }
+      if (!c.foraged && Math.abs(c.forageX - c.x) <= 3 && !c.forageAt && !c.eatingUntil) {
+        c.forageAt = now + 650;
+      }
+      if (c.forageAt && now >= c.forageAt) {
+        c.forageAt = 0;
+        c.foraged = true;
+        const t = c.tree;
+        if (c.carried) {
+          c.carried = false;
+          if (c.heldNut) c.heldNut.visible = false;
+          if (t) { t.cache = Math.min(4, t.cache + 1); syncTree(t); }
+        } else if (t && t.cache > 0) {
+          t.cache -= 1;
+          syncTree(t);
+          c.eatingUntil = now + 2600;
+          if (c.heldNut) { c.heldNut.visible = true; c.heldNut.scale.setScalar(1); }
+        }
+        addPuff(c.x + 7, FLOOR + 3, { color: state.snow ? '#eaf3ff' : '#8a6a4a',
+                                      size: 5, life: 400, vy: 18, grow: 1.8 });
+      }
+      if (c.eatingUntil && now > c.eatingUntil) {
+        c.eatingUntil = 0;
+        if (c.heldNut) c.heldNut.visible = false;
+      }
+      if (c.playUntil && now > c.playUntil) {
+        c.playUntil = 0;
+        c.tree = null;
+        if (c === state.resident) { c.mode = 'travel'; c.target = c.home; c.social = false; }
+        else c.mode = 'leave';
+      }
+    }
     if (c.mode === 'drink') {
       c.beerOn = now < c.drinkUntil;
       c.clink = now > c.clinkAt && now < c.clinkAt + 400;
@@ -624,6 +1024,10 @@ function frame() {
     const moving = c.resident ? Math.abs(c.target - c.x) > 1.2 : !c.held && c.speed > 0;
     let want = Math.PI / 2;
     if (c.mode === 'drink') want = -Math.PI / 2;
+    else if (c.partner && (c.mode === 'duel' || c.mode === 'fight' ||
+                           c.mode === 'nuts' || c.mode === 'snowfight')) {
+      want = c.partner.x < c.x ? -Math.PI / 2 : Math.PI / 2;
+    }
     else if (c.waveOn) want = 0;
     else if (moving) want = (c.resident ? Math.sign(c.target - c.x) : 1) > 0 ? Math.PI / 2 : -Math.PI / 2;
     else if (c.resident) {
@@ -637,6 +1041,11 @@ function frame() {
       kickNut(c);
     }
     animate(c, dt);
+    if (c.duel && c.partner && c === state.resident && now > c.sparkAt) {
+      c.sparkAt = now + 380 + Math.random() * 240;
+      addPuff((c.x + c.partner.x) / 2, FLOOR + 20,
+              { color: '#ffd9a0', size: 3.5, life: 240, vy: 20, grow: 1.6 });
+    }
     if (c.x > c.endX || c.y < -BAR) removeCritter(c);
   }
 
@@ -660,11 +1069,31 @@ function frame() {
     n.x += n.vx * dt;
     n.y += n.vy * dt;
     n.rot += n.spin * dt;
+    if (!n.hit) {
+      for (const c of state.critters) {
+        if (c === n.from) continue;
+        if (Math.abs(n.x - c.x) < 11 && n.y > FLOOR + 3 && n.y < FLOOR + 32) {
+          n.hit = true;
+          c.hopUntil = now + 340;
+          c.bonkUntil = now + 650;
+          if (n.kind === 'snow') {
+            addPuff(n.x, n.y, { color: '#ffffff', size: 8, life: 380, vy: 24, grow: 1.8 });
+          }
+          n.vy = 120;
+          n.vx *= -0.35;
+          break;
+        }
+      }
+    }
     if (n.y < FLOOR + 3) {
       n.y = FLOOR + 3;
       n.vy = -n.vy * 0.42;
       n.vx *= 0.88;
       if (Math.abs(n.vy) < 40) { n.vy = 0; n.vx *= 0.9; }
+      if (n.kind === 'snow' && !n.puffed) {
+        n.puffed = true;
+        addPuff(n.x, FLOOR + 3, { color: '#ffffff', size: 6, life: 300, vy: 12, grow: 1.5 });
+      }
     }
     n.mesh.position.set(n.x, n.y, 0.2);
     n.mesh.rotation.z = n.rot;
@@ -674,7 +1103,7 @@ function frame() {
     }
   }
 
-  if (state.critters.length || state.nuts.length) {
+  if (state.critters.length || state.nuts.length || state.snow || state.fx.length) {
     state.renderer.render(state.scene, state.camera);
     document.body.dataset.critters = String(state.critters.length);
     state.raf = requestAnimationFrame(frame);
@@ -695,6 +1124,9 @@ function stopAll() {
   for (const c of [...state.critters]) removeCritter(c);
   for (const n of [...state.nuts]) { state.scene && state.scene.remove(n.mesh); }
   state.nuts = [];
+  for (const f of [...state.fx]) { state.scene && state.scene.remove(f.sp); }
+  state.fx = [];
+  if (state.snow) stopSnow();
   state.resident = null;
   if (state.canvas) state.canvas.style.display = 'none';
 }
@@ -709,6 +1141,16 @@ window.addEventListener('critters-toggle', (e) => {
   const off = !!(e.detail && e.detail.off);
   if (off) { optedOut = true; stopAll(); }
   else if (optedOut) startAll();
+});
+
+// A small hook for the UI (and for checking a scene without waiting for the
+// random schedule): nuts | duel | fight | snowfight | sled | snow.
+window.addEventListener('critters-play', (e) => {
+  if (optedOut || document.hidden) return;
+  const kind = (e.detail && e.detail.kind) || 'nuts';
+  if (kind === 'snow') { startSnow(16000); return; }
+  if (kind === 'stop-snow') { stopSnow(); return; }
+  run(kind);
 });
 
 function makeResident() {
@@ -758,19 +1200,70 @@ function run(kind) {
     f.mode = 'meet';
     f.meetX = (lead ? lead.x : 0) + 58;
   } else if (kind === 'duel') {
+    const stage = Math.round(-w * 0.28);
     const f = addCritter({ ...base, x: -w / 2 - 60, friend: true, holdAt: 0 });
     f.mode = 'duel';
-    f.meetX = (lead ? lead.x : 0) + 78;
+    f.meetX = stage + 48;
     if (lead) {
       lead.mode = 'duel';
-      lead.meetX = (f.meetX || 0) - 78;
+      lead.meetX = stage - 48;
+      lead.target = lead.meetX;
+      lead.social = true;
+      lead.nextAction = performance.now() + 12000;
       lead.duel = true;
+      lead.partner = f;
+      f.partner = lead;
     }
   } else if (kind === 'fight') {
+    const stage = Math.round(-w * 0.28);
     const f = addCritter({ ...base, x: -w / 2 - 60, friend: true, holdAt: 0 });
     f.mode = 'fight';
-    f.meetX = (lead ? lead.x : 0) + 34;
-    if (lead) { lead.mode = 'fight'; lead.meetX = (f.meetX || 0) - 34; }
+    f.meetX = stage + 34;
+    if (lead) {
+      lead.mode = 'fight';
+      lead.meetX = stage - 34;
+      lead.target = lead.meetX;
+      lead.social = true;
+      lead.nextAction = performance.now() + 12000;
+      lead.partner = f;
+      f.partner = lead;
+    }
+  } else if (kind === 'nuts' || kind === 'snowfight') {
+    if (kind === 'snowfight' && !state.snow) startSnow(16000);
+    const f = addCritter({ ...base, x: -w / 2 - 60, friend: true, holdAt: 0 });
+    const stage = Math.round(-w * 0.28);
+    const until = performance.now() + 11000;
+    f.mode = kind;
+    f.meetX = stage + 64;
+    f.nextThrow = performance.now() + 850;
+    f.playUntil = until;
+    if (lead) {
+      lead.mode = kind;
+      lead.meetX = stage - 64;
+      lead.target = lead.meetX;
+      lead.partner = f;
+      f.partner = lead;
+      lead.social = true;
+      lead.nextAction = performance.now() + 12000;
+      lead.nextThrow = performance.now() + 1050;
+      lead.playUntil = until;
+    }
+  } else if (kind === 'sled') {
+    startSnow(13000);
+    const f = addCritter({ x: -w / 2 - 50, endX: w / 2 + 90, friend: true, speed: 0 });
+    f.mode = 'sled';
+    f.sledOn = true;
+    if (f.sled) f.sled.visible = true;
+    f.sledSpeed = 230 + Math.random() * 60;
+    f.sprayAt = 0;
+  } else if (kind === 'forage') {
+    if (!state.trees.length || (state.grove && !state.grove.group.visible)) return;
+    const withNuts = state.trees.filter(t => t.cache > 0);
+    const pool = withNuts.length ? withNuts : state.trees;
+    const tree = pool[Math.floor(Math.random() * pool.length)];
+    const f = addCritter({ ...base, x: -w / 2 - 60, friend: true, holdAt: 0 });
+    startForage(f, tree, tree.cache > 0 ? 'dig' : 'bury', -22);
+    if (lead) startForage(lead, tree, tree.cache > 0 ? 'bury' : 'dig', 22);
   } else if (kind === 'chase') {
     const f = addCritter({ ...base, x: -w / 2 - 60, friend: true, holdAt: 0 });
     f.mode = 'visit';
@@ -799,10 +1292,19 @@ function run(kind) {
 export function callCritters() { run('hold'); }
 
 function schedule() {
-  const delay = 46000 + Math.random() * 70000;
+  const delay = 38000 + Math.random() * 70000;
   setTimeout(() => {
     const r = Math.random();
-    run(r < 0.12 ? 'wave' : r < 0.3 ? 'chase' : r < 0.52 ? 'hold' : r < 0.68 ? 'duel' : r < 0.86 ? 'fight' : 'visit');
+    if (r < 0.22) {
+      // a snow day: flakes, a snowball fight, then someone finds a sledge
+      startSnow(16000);
+      setTimeout(() => run('snowfight'), 1400);
+      setTimeout(() => run('sled'), 7400);
+    } else {
+      run(r < 0.28 ? 'wave' : r < 0.4 ? 'chase' : r < 0.5 ? 'hold' :
+          r < 0.6 ? 'duel' : r < 0.68 ? 'fight' : r < 0.76 ? 'nuts' :
+          r < 0.9 ? 'forage' : 'visit');
+    }
     schedule();
   }, delay);
 }
@@ -816,4 +1318,13 @@ if (!optedOut && hasApp) {
     if (!document.hidden) run('chase');
     schedule();
   }, 8000);
+  // A demo hook: ?critters=snow|forage|duel|nuts|sled|fight plays that scene
+  // once after the bar has settled.
+  const scene = new URLSearchParams(location.search).get('critters');
+  if (scene) {
+    setTimeout(() => {
+      if (scene === 'snow') startSnow(16000);
+      else run(scene);
+    }, 1400);
+  }
 }
