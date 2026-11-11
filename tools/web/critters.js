@@ -314,14 +314,14 @@ export function buildSquirrel(friend = false) {
   const sword = new THREE.Group();
   // a good stout stick, gripped at the right paw and held up for a scrap
   sword.position.set(0.16, 0.1, 0.4);
-  sword.rotation.set(-1.1, 0, -0.25);
+  sword.rotation.set(1.05, 0, -0.25);
   sword.visible = false;
   chest.add(sword);
-  const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.065, 1.0, 6), MAT.stick);
-  stick.position.y = 0.5;
+  const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.065, 0.85, 6), MAT.stick);
+  stick.position.y = 0.425;
   sword.add(stick);
   const twig = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.03, 0.24, 5), MAT.stick);
-  twig.position.set(0.04, 0.9, 0);
+  twig.position.set(0.04, 0.78, 0);
   twig.rotation.z = 0.7;
   sword.add(twig);
   sword.add(ball(0.045, MAT.stick, 0, 0.06, 0));
@@ -827,18 +827,18 @@ function animate(c, dt) {
     c.front[1].elbow.rotation.x = attacking ? -0.7 : -1.15;
     if (attacking) {
       const k = 1 - Math.max(0, c.attackUntil - now) / 320;
-      c.sword.rotation.x = -2.1 + k * 1.75;
+      c.sword.rotation.x = 0.35 + k * 1.5;
       c.sword.rotation.z = -0.25 + Math.sin(k * Math.PI) * 0.25;
       c.root.position.x = c.x + dir * 5;
       c.hips.rotation.x = -0.2;
       c.neck.rotation.z = -dir * 0.06;
     } else if (blocking) {
-      c.sword.rotation.x = -0.55;
+      c.sword.rotation.x = 1.45;
       c.sword.rotation.z = 0.45;
       c.root.position.x = c.x - dir * 2;
       c.hips.rotation.x = -0.08;
     } else {
-      c.sword.rotation.x = -1.55 + Math.sin(now / 90) * 0.06;
+      c.sword.rotation.x = 1.0 + Math.sin(now / 90) * 0.06;
       c.sword.rotation.z = -0.2;
       c.root.position.x = c.x;
       c.hips.rotation.x = -0.1;
@@ -1432,10 +1432,10 @@ function run(kind) {
     const stage = Math.round(-w * 0.28);
     const f = addCritter({ ...base, x: -w / 2 - 60, friend: true, holdAt: 0 });
     f.mode = 'duel';
-    f.meetX = stage + 26;
+    f.meetX = stage + 32;
     if (lead) {
       lead.mode = 'duel';
-      lead.meetX = stage - 26;
+      lead.meetX = stage - 32;
       lead.target = lead.meetX;
       lead.social = true;
       lead.nextAction = performance.now() + 12000;
