@@ -5380,18 +5380,19 @@ function kgSelect(id) {
   if (n.kind === 'community' || n.kind === 'type') {
     const isComm = n.kind === 'community';
     const keys = n.keywords || [];
+    const actions = `<div class="row" style="margin:8px 0;flex-wrap:wrap">
+      ${isComm
+        ? `<button class="small" data-id="${n.community}" onclick="App.graphCommunity(this.dataset.id)">Open community</button>`
+        : `<button class="small" data-id="${esc(n.type)}" onclick="App.graphTypeEntities(this.dataset.id)">Open topic</button>`}
+      <button class="small" onclick="App.kgHighlightSubgraph()" title="Animate the subgraph around this node, one hop at a time">Highlight subgraph</button>
+      <button class="small" onclick="App.kgClearHighlight()">Clear highlight</button>
+    </div>`;
     body.innerHTML = `<h4>${esc(n.title || n.label)}</h4>
       <div class="muted mini">${isComm ? 'Community' : 'Topic'} · ${n.size} entities${isComm && n.level != null ? ` · level ${n.level}` : ''}</div>
+      ${actions}
       <p class="kg-desc">${esc(n.description || 'No summary.')}</p>
       ${keys.length ? `<div class="kg-tags">${keys.map(k => `<span class="kg-tag">${esc(k)}</span>`).join('')}</div>` : ''}
-      ${srcHtml}
-      <div class="row" style="margin-top:10px;flex-wrap:wrap">
-        ${isComm
-          ? `<button class="small" data-id="${n.community}" onclick="App.graphCommunity(this.dataset.id)">Open community</button>`
-          : `<button class="small" data-id="${esc(n.type)}" onclick="App.graphTypeEntities(this.dataset.id)">Open topic</button>`}
-        <button class="small" onclick="App.kgHighlightSubgraph()" title="Animate the subgraph around this node, one hop at a time">Highlight subgraph</button>
-        <button class="small" onclick="App.kgClearHighlight()">Clear highlight</button>
-      </div>`;
+      ${srcHtml}`;
     return;
   }
   const neigh = new Set([id]);
@@ -5401,22 +5402,23 @@ function kgSelect(id) {
   }
   const neighbours = [...neigh].filter(x => x !== id).map(x => KG.byId.get(x)).filter(Boolean)
     .sort((a, b) => (b.degree || 0) - (a.degree || 0));
+  const actions = `<div class="row" style="margin:8px 0;flex-wrap:wrap">
+    <button class="small" data-title="${esc(n.title)}" onclick="App.editNode(this.dataset.title)">Edit details</button>
+    <button class="small" data-id="${esc(n.title)}" onclick="App.graphEgo(this.dataset.id)">Focus ego network</button>
+    <button class="small" onclick="App.kgHighlightSubgraph()" title="Animate the subgraph around this node, one hop at a time">Highlight subgraph</button>
+    <button class="small" onclick="App.kgClearHighlight()" title="Clear the highlighted subgraph">Clear highlight</button>
+    ${n.community != null ? `<button class="small" data-id="${n.community}" onclick="App.graphCommunity(this.dataset.id)">Open community</button>` : ''}
+  </div>`;
   body.innerHTML = `<h4>${esc(n.title)}</h4>
     <div class="muted mini">${esc(n.class_label || n.type)} · degree ${n.degree} · frequency ${n.frequency}${n.importance != null ? ` · impact ${Math.round((n.importance || 0) * 100)}%` : ''}</div>
+    ${actions}
     <p class="kg-desc">${esc(n.description || 'No description.')}</p>
     ${srcHtml}
     <h4 style="margin:10px 0 2px">Neighbours (${neighbours.length})</h4>
     <div class="kg-neigh">${neighbours.length ? neighbours.map(x =>
       `<button data-id="${esc(x.id)}" onclick="App.graphSelect(this.dataset.id)">${esc(kgTrunc(x.title, 42))}
         <span class="muted">${esc(x.class_label || x.type)}</span></button>`).join('') :
-      '<span class="muted mini">None visible in this view.</span>'}</div>
-    <div class="row" style="margin-top:10px;flex-wrap:wrap">
-      <button class="small" data-title="${esc(n.title)}" onclick="App.editNode(this.dataset.title)">Edit details</button>
-      <button class="small" data-id="${esc(n.title)}" onclick="App.graphEgo(this.dataset.id)">Focus ego network</button>
-      <button class="small" onclick="App.kgHighlightSubgraph()" title="Animate the subgraph around this node, one hop at a time">Highlight subgraph</button>
-      <button class="small" onclick="App.kgClearHighlight()" title="Clear the highlighted subgraph">Clear highlight</button>
-      ${n.community != null ? `<button class="small" data-id="${n.community}" onclick="App.graphCommunity(this.dataset.id)">Open community</button>` : ''}
-    </div>`;
+      '<span class="muted mini">None visible in this view.</span>'}</div>`;
 }
 
 function kgClear() {

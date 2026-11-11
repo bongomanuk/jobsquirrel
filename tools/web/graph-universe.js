@@ -1239,21 +1239,22 @@ function renderNodeSide(d) {
   const conns = (d.connections || []).slice(0, 8).map(c =>
     `<div class="uni-conn">${esc(c.source)} to ${esc(c.target)} <span>${c.weight}</span></div>`).join('')
     || '<span class="muted mini">No strong local connections.</span>';
+  const actions = `<div class="uni-actions">
+      <button class="small" data-title="${esc(d.title)}" onclick="App.editNode(this.dataset.title)">Edit details</button>
+      <button class="small" onclick="window.__uni && window.__uni.focusSelected()">Fly here</button>
+      <button class="small" data-title="${esc(d.title)}" onclick="window.__uni && window.__uni.highlightNeighbourhood(this.dataset.title, 2)" title="Animate the subgraph around this node, one hop at a time">Highlight subgraph</button>
+    </div>`;
   box.innerHTML = `<div class="uni-kind">${esc(d.class_label || d.type || 'entity')} · impact ${Math.round((d.importance || 0) * 100)}%${d.grounded ? ' · grounded' : ''}</div>
     <h3>${esc(d.title)}</h3>
     <div class="uni-meta">${d.degree || 0} links · ${d.frequency || 0} mention${d.frequency === 1 ? '' : 's'} · ${esc(d.community_title || ((d.degree || 0) === 0 ? 'unlinked evidence' : 'no community'))}</div>
+    ${actions}
     <p>${esc(d.description || 'No description in the index.')}</p>
     ${(d.degree || 0) === 0 ? '<p class="muted mini">No relationship was extracted for this entity, so it sits in the Unlinked evidence island. It stays available to search and role evidence.</p>' : ''}
     ${d.evidence ? `<div class="uni-evidence"><b>Evidence</b>${esc(d.evidence)}</div>` : ''}
     <div class="uni-subgraph"><b>Subgraph</b> ${d.subgraph ? d.subgraph.nodes : 1} nodes · ${d.subgraph ? d.subgraph.links : 0} links · depth ${d.subgraph ? d.subgraph.max_depth : 0}<div>${layers}</div><div class="muted mini" style="margin-top:3px">Highlight shows the selected node and its ${(S.focusDepth || 1) === 1 ? 'direct neighbours' : `nearest ${S.focusDepth} hops`}; the counts cover the whole connected subgraph. The dimming fades after a few seconds; the selected node stays marked.</div></div>
     <h4>Sources</h4>${sources}
     <h4>Neighbours</h4><div class="uni-neigh-list">${neigh}</div>
-    <h4>Strongest connections</h4>${conns}
-    <div class="uni-actions">
-      <button class="small" data-title="${esc(d.title)}" onclick="App.editNode(this.dataset.title)">Edit details</button>
-      <button class="small" onclick="window.__uni && window.__uni.focusSelected()">Fly here</button>
-      <button class="small" data-title="${esc(d.title)}" onclick="window.__uni && window.__uni.highlightNeighbourhood(this.dataset.title, 2)" title="Animate the subgraph around this node, one hop at a time">Highlight subgraph</button>
-    </div>`;
+    <h4>Strongest connections</h4>${conns}`;
 }
 
 function setSideCluster(c) {
