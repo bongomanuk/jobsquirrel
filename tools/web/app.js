@@ -1733,7 +1733,7 @@ let GRID_TIMER = null, LIVE_TIMER = null, LIVE_RUNNING = false, IDLE_TICKS = 0, 
 let EVENTS = null, EVENTS_OK = false, STATE_REV = '', LIVE_REV = '', REV_TIMER = null;
 let GROUPED = localStorage.getItem('grid.grouped') !== '0';
 async function loadGrid() {
-  const sc = document.querySelector('.scroll'), y = sc ? sc.scrollTop : 0;
+  const sc = document.querySelector('#gridpanel .gridwrap'), y = sc ? sc.scrollTop : 0;
   const g = await api('/api/grid');
   if (Array.isArray(g)) GRID = g;          // keep the last good grid through a transient error
   publishGridStats();
@@ -2109,7 +2109,7 @@ let ROW_RECTS = null;
 function captureRows() {
   ROW_RECTS = null;
   if (prefersReduced() || document.hidden) return;
-  const sc = document.querySelector('#gridpanel .scroll');
+  const sc = document.querySelector('#gridpanel .gridwrap');
   const prev = new Map();
   document.querySelectorAll('#rows tr[data-key]').forEach(tr => {
     const r = tr.getBoundingClientRect();
@@ -2124,7 +2124,7 @@ function captureRows() {
 function animateRows() {
   const prev = ROW_RECTS; ROW_RECTS = null;
   if (!prev || !prev.size || prefersReduced()) return;
-  const sc = document.querySelector('#gridpanel .scroll');
+  const sc = document.querySelector('#gridpanel .gridwrap');
   const dyScroll = (prev.scroll || 0) - (sc ? sc.scrollTop : 0);
   let fresh = 0;
   document.querySelectorAll('#rows tr[data-key]').forEach(tr => {

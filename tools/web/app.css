@@ -374,6 +374,12 @@ html[data-theme="light"] .toolbar-more{box-shadow:0 14px 34px rgba(20,26,36,.16)
 .grid-toolbar button.small{height:28px;padding:0 9px;font-size:12.5px}
 .grid-toolbar input{height:28px;min-height:28px;font-size:12.5px;background:var(--surface2);border-color:transparent}
 .grid-toolbar input:focus{border-color:var(--accent);background:#0b0e13}
+/* The applications grid keeps its header and toolbar fixed and scrolls only the
+   rows: the panel owns the height and the gridwrap is the sole scroller. */
+#gridpanel>.scroll{display:flex;flex-direction:column;overflow:hidden}
+#gridpanel main{display:flex;flex-direction:column;flex:1;min-height:0;padding-bottom:0}
+#gridpanel .gridcard{display:flex;flex-direction:column;flex:1;min-height:0}
+#gridpanel .gridwrap{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
 .gridwrap{overflow-x:auto;border:0}
 /* the grid shrinks with the pane but never wraps: fixed layout + ellipsis */
 #grid{table-layout:fixed;background:none;border:0;border-radius:0;overflow:visible}
