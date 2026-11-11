@@ -220,7 +220,12 @@ GENERIC_WORD = {"sound", "international", "solutions", "systems", "digital", "me
                 "cloud", "platform", "architect", "devops", "consultant", "consulting",
                 "engineer", "engineering", "manager",
                 "director", "lead", "senior", "analyst", "specialist", "operations",
-                "network", "it", "ai", "ml"}
+                "network", "it", "ai", "ml",
+                # Common English words that also appear inside job titles. On
+                # their own they must not resolve a company: an email about a
+                # "(Customer Identity)" role is not "Customer First AB". The
+                # full company phrase still matches.
+                "customer", "first"}
 # ATS vendor names: never treat these as the employer.
 ATS_VENDORS = {"ashby", "ashbyhq", "teamtailor", "greenhouse", "lever", "hire",
                "workday", "myworkday", "successfactors", "join", "pinpoint", "workable",

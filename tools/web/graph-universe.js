@@ -16,6 +16,7 @@ const S = {
   labelPool: [], clusterPool: [], labelAssigned: [], clusterAssigned: [], widths: new Map(),
   labelRange: 3200, lastAssign: 0, measureCtx: null, activeClusters: null, lodKey: '', lastLOD: 0,
   selected: null, hovered: null, highlight: new Set(),
+  playIds: new Set(), playLinks: new Set(), playLabels: new Set(), labelOnly: new Set(), pulse: null, pulseDot: null, trace: null,
   W: 1, H: 1, orbit: { theta: 0.7, phi: 1.12, radius: 3000, target: new THREE.Vector3() },
   drag: null, lastInteract: 0, auto: true, raf: 0, fly: null, keys: new Set(),
   baseRadius: 3000, maxDist: 0, lastLabel: 0, focusDepth: 2, focusAmount: 0, focusAt: 0, focusHold: 4000, focusFade: 1200
@@ -421,6 +422,19 @@ function build(data) {
   }));
   S.marker.visible = false;
   S.scene.add(S.marker);
+  S.pulseDot = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTexture(), color: new THREE.Color('#fde68a'), transparent: true,
+    opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending
+  }));
+  S.pulseDot.visible = false;
+  S.scene.add(S.pulseDot);
+  // a dedicated overlay for the current query's edges: the universe graph is
+  // the full KB, so synthetic citation edges used by the build are not in it.
+  S.trace = new THREE.LineSegments(new THREE.BufferGeometry(),
+    new THREE.LineBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.85,
+      depthWrite: false, blending: THREE.AdditiveBlending }));
+  S.trace.visible = false;
+  S.scene.add(S.trace);
 
   buildLabelPool();
   S.clustersRanked = [...S.clusters].sort((a, b) => b.size - a.size);
@@ -434,13 +448,14 @@ function build(data) {
 }
 
 function clearScene() {
-  [S.core, S.halo, S.major, S.impact, S.lines, S.nebula, S.marker, S.hits].forEach(x => {
+  [S.core, S.halo, S.major, S.impact, S.lines, S.nebula, S.marker, S.pulseDot, S.trace, S.hits].forEach(x => {
     if (!x) return;
     S.scene.remove(x);
     x.traverse ? x.traverse(o => { o.geometry && o.geometry.dispose(); o.material && o.material.dispose(); })
                : (x.geometry && x.geometry.dispose(), x.material && x.material.dispose());
   });
-  S.core = S.halo = S.major = S.impact = S.lines = S.nebula = S.marker = S.hits = null;
+  S.core = S.halo = S.major = S.impact = S.lines = S.nebula = S.marker = S.pulseDot = S.trace = S.hits = null;
+  S.pulse = null;
   S.labelAssigned = []; S.clusterAssigned = [];
   S.labelPool.forEach(el => { el._node = null; el.style.display = 'none'; });
   S.clusterPool.forEach(el => { el._cluster = null; el.style.display = 'none'; });
@@ -509,6 +524,7 @@ function lodPlan() {
     for (const c of S.clusters) if (c.center.distanceTo(S.orbit.target) <= rng) act.add(c);
   }
   if (S.selected) { const c = S.clusterOf.get(S.selected.id); if (c) act.add(c); }
+  for (const id of S.playIds) { const c = S.clusterOf.get(id); if (c) act.add(c); }
   return act;
 }
 
@@ -605,6 +621,12 @@ function assignLabels() {
     return !S.activeClusters || !cl || S.activeClusters.has(cl);
   };
   const eligible = n => {
+    if (S.labelOnly && S.labelOnly.size) {
+      // during the playground build, only the evidence the current step used
+      // is labelled, even if its island sits outside the current LOD plan.
+      return S.labelOnly.has(n.id) && !!onScreen(n);
+    }
+    if (S.playIds && S.playIds.size && S.playIds.has(n.id)) return !!onScreen(n);
     if (n === S.selected || n === S.hovered) return true;
     if (S.selDist && S.focusAmount > 0.05) {
       const d = S.selDist.get(n.id);
@@ -621,6 +643,7 @@ function assignLabels() {
   const prevSet = new Set(prevClusters.map(a => a.c));
   let ci = 0;
   const tryCluster = c => {
+    if (S.labelOnly && S.labelOnly.size) return false;
     if (S.selDist) return false;
     if (S.activeClusters && !S.activeClusters.has(c)) return false;
     if (c.center.distanceTo(target) > range * 1.2) return false;
@@ -809,6 +832,7 @@ function loop(now) {
   }
   S.camera.lookAt(S.orbit.target);
   S.camera.updateMatrixWorld();
+  if (S.pulse) tickPulse(now);
 
   if (!S.fly && now - (S.lastLOD || 0) > 420) { S.lastLOD = now; updateLOD(); }
   if (S.stars) S.stars.rotation.y += 0.00002;
@@ -898,22 +922,28 @@ function applySelection() {
   const amt0 = sel ? (S.focusAmount == null ? 1 : S.focusAmount) : 0;
   S.nodes.forEach((n, i) => {
     const cl = S.clusterOf.get(n.id);
+    const playOn = S.playIds.size > 0;
+    const inPlay = playOn && S.playIds.has(n.id);
     let lod = (!S.activeClusters || !cl || S.activeClusters.has(cl)) ? 1 : 0.04;
     let f = 1, glow = 1;
     if (sel && amt0 > 0) {
       const d = sel.get(n.id);
       const D = S.focusDepth || 2;
       let ff = 1, gg = 1;
-      if (d == null) { ff = 0.006; gg = 0; }
+      if (d == null) { ff = inPlay ? 0.8 : 0.006; gg = inPlay ? 1.25 : 0; }
       else if (d === 0) { ff = 1; gg = 2.0; }
       else if (d === 1) { ff = 1; gg = 1.55; }
       else if (d <= D) { ff = Math.max(0.45, 0.68 - (d - 2) * 0.15); gg = 1.12; }
-      else { ff = 0.012; gg = 0; }
+      else { ff = inPlay ? 0.8 : 0.012; gg = inPlay ? 1.2 : 0; }
       f = 1 - amt0 * (1 - ff);
       glow = 1 + amt0 * (gg - 1);
       // Keep the focused neighbours lit even when their island is outside the
       // current level of detail; otherwise the subgraph stays invisible.
       if (d != null && d <= D) lod = 1;
+    } else if (playOn) {
+      f = inPlay ? 1 : 0.14;
+      glow = inPlay ? (S.playLabels.has(n.id) ? 3.4 : 1.7) : 0.3;
+      if (inPlay) lod = 1;
     }
     const c = n.colorObj;
     let r = c.r * lod * Math.min(1, f), g = c.g * lod * Math.min(1, f), b = c.b * lod * Math.min(1, f);
@@ -944,15 +974,25 @@ function applySelection() {
     const base = S.linkBaseColors;
     for (let i = 0; i < S.links.length; i++) {
       const l = S.links[i];
+      const pair = [l.source, l.target].sort().join("\u0000");
+      const inPlay = S.playLinks.has(pair);
       let f = 1;
+      const playOn = S.playIds.size > 0;
       if (sel && amt0 > 0) {
         const a = sel.get(l.source), b = sel.get(l.target);
         const D = S.focusDepth || 2;
         const ff = (a === 0 || b === 0) ? 1
           : (a != null && b != null && a <= D && b <= D) ? 0.28 : 0.01;
         f = 1 - amt0 * (1 - ff);
+      } else if (playOn) {
+        f = inPlay ? 1 : 0.08;
       }
-      for (let k = 0; k < 6; k++) attr.array[i * 6 + k] = base[i * 6 + k] * f;
+      if (inPlay) {
+        attr.array[i * 6] = 1.0; attr.array[i * 6 + 1] = 0.72; attr.array[i * 6 + 2] = 0.32;
+        attr.array[i * 6 + 3] = 1.0; attr.array[i * 6 + 4] = 0.72; attr.array[i * 6 + 5] = 0.32;
+      } else {
+        for (let k = 0; k < 6; k++) attr.array[i * 6 + k] = base[i * 6 + k] * f;
+      }
     }
     attr.needsUpdate = true;
   }
@@ -1244,6 +1284,70 @@ export async function reload() {
   await load();
 }
 
+function drawTrace(links) {
+  if (!S.trace) return;
+  const pts = [];
+  for (const l of links || []) {
+    const a = S.byId.get(l.from || l.source);
+    const b = S.byId.get(l.to || l.target);
+    if (!a || !b) continue;
+    pts.push(a.pos.x, a.pos.y, a.pos.z, b.pos.x, b.pos.y, b.pos.z);
+  }
+  const g = new THREE.BufferGeometry();
+  if (pts.length) g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  S.trace.geometry.dispose();
+  S.trace.geometry = g;
+  S.trace.visible = pts.length > 0;
+}
+
+export function setPlayback(ids, links, labels) {
+  S.playIds = new Set(ids || []);
+  S.playLinks = new Set((links || []).map(l => [l.from || l.source, l.to || l.target].sort().join("\u0000")));
+  S.highlight = new Set(labels || ids || []);
+  S.labelOnly = new Set(labels || []);
+  drawTrace(links);
+  applySelection();
+  assignLabels();
+  updateLabels(true);
+}
+
+export function clearPlayback() {
+  S.playIds = new Set();
+  S.playLinks = new Set();
+  S.highlight.clear();
+  S.labelOnly.clear();
+  S.pulse = null;
+  if (S.pulseDot) S.pulseDot.visible = false;
+  drawTrace([]);
+  applySelection();
+  assignLabels();
+  updateLabels(true);
+}
+
+export function pulsePath(links, dur = 700) {
+  const pairs = (links || []).map(l => ({ a: S.byId.get(l.from || l.source),
+                                          b: S.byId.get(l.to || l.target) }))
+    .filter(p => p.a && p.b);
+  if (!pairs.length || !S.pulseDot) return;
+  S.pulse = { pairs, t0: performance.now(), dur };
+  S.pulseDot.visible = true;
+}
+
+function tickPulse(now) {
+  if (!S.pulse || !S.pulseDot) return;
+  const p = S.pulse, n = p.pairs.length;
+  const elapsed = now - p.t0;
+  const idx = Math.min(n - 1, Math.floor(elapsed / p.dur));
+  const t = Math.min(1, Math.max(0, (elapsed - idx * p.dur) / p.dur));
+  const pair = p.pairs[idx];
+  S.pulseDot.position.lerpVectors(pair.a.pos, pair.b.pos, t);
+  S.pulseDot.scale.setScalar(130 + 80 * Math.sin(t * Math.PI));
+  if (elapsed >= n * p.dur) {
+    S.pulse = null;
+    S.pulseDot.visible = false;
+  }
+}
+
 export function selectByTitle(title) {
   const n = S.nodes.find(x => x.title.toLowerCase() === String(title).toLowerCase());
   if (n) select(n);
@@ -1262,6 +1366,18 @@ export function view(theta, phi, radius) {
 
 export function focusSelected() {
   if (S.selected) flyTo(S.selected.pos.clone(), 240 + Math.min(700, (S.selected.degree || 1) * 4.5), 800);
+}
+
+export function focusOn(ids, radius, dur = 900) {
+  const pts = [...new Set(ids || [])].map(id => S.byId.get(id)).filter(Boolean);
+  if (!pts.length) return;
+  const box = new THREE.Box3();
+  pts.forEach(p => box.expandByPoint(p.pos));
+  const c = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3()).length() || 700;
+  // fit the whole evidence set, however widely the islands are spread
+  const r = Math.max(300, Math.min(9000, radius || size * 1.25));
+  flyTo(c, r, dur);
 }
 
 export function search(q) {

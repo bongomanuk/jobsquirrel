@@ -335,6 +335,8 @@ class KgTabs extends Component {
 
   build() {
     const tabs = ['details', 'classes', 'roles', 'sources', 'add'];
+    const labels = { details: 'Details', classes: 'Classes', roles: 'Roles',
+      sources: 'Sources', add: 'Add' };
     return div(
       { key: 'tabs', style: { display: 'contents' } },
       ...tabs.map((t) => button(
@@ -343,7 +345,7 @@ class KgTabs extends Component {
           className: this.active === t ? 'on' : '',
           onclick: () => App.kgSide(t),
         },
-        text(t === 'details' ? 'Details' : t === 'classes' ? 'Classes' : t === 'roles' ? 'Roles' : t === 'sources' ? 'Sources' : 'Add'),
+        text(labels[t] || t),
       )),
     );
   }

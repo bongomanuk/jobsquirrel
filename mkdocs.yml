@@ -84,6 +84,7 @@ nav:
       - Knowledge base: KNOWLEDGE-BASE.md
       - Knowledge graph: KNOWLEDGE-GRAPH.md
       - Product spec: PRODUCT-SPEC.md
+      - Application states: STATE-MODEL.md
       - Cascade integration: CASCADE.md
       - Storage: STORAGE.md
   - Safety:

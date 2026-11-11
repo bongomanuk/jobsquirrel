@@ -308,9 +308,11 @@ Clicking a row opens a drawer with a single tab strip that never wraps:
 ### 9.5 Settings panel
 - Sections: **Accounts** (status + Gmail/Calendar authorisation), **Secrets** (the encrypted
   store: agent keys, GraphRAG, Google OAuth, per-site logins and custom entries, masked),
-  **AI & agent** (which agent CLI + model picker + API-token env, and the GraphRAG LLM settings),
-  **Knowledge base** (list / upload / delete sources, rebuild the index), **GraphRAG** (a status card
-  and launcher for the full-page Knowledge workspace), **Agent permissions**
+  **AI & agent** (role tabs for the main agent and subagents; each picks a provider and
+  model, and only the selected provider's key/endpoint fields are shown, plus Gmail-review
+  toggles and advanced env), **Knowledge base** (list / upload / delete sources, rebuild the
+  index), **GraphRAG** (graph status, the builder's model environment and a launcher for the
+  full-page Knowledge workspace), **Agent permissions**
   (per-category allow/ask/deny), **CAPTCHA** (private build: provider, model, timeout, key),
   **Profile & CV** (edit files, regenerate), **Logs** (browse and tail task logs, or open the
   standalone page), **Backup & data**, and **About** (full health checks from `doctor.py`, the

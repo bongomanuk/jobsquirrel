@@ -99,7 +99,38 @@ ACRONYM_STOP = set("""AI ML IT IS US UK EU CEO CTO CFO COO VP HR PR QA KPI ROI O
 OS ARR MRR PTO UFC NYC LATAM EMEA APAC B2B B2C YOY EOD ASAP FYI FAQ PDF URL HTTP
 HTTPS API CPU GPU RAM SSD IO N/A TBD WFH I/O
 YOU LL WE OUR THE AND FOR ARE NOT NEW ALL GET SEE WHY HOW WHO ITS YES NOW THIS
-THAT HAVE WILL WITH YOUR FROM THEY WHAT WHEN WHERE""".split())
+THAT HAVE WILL WITH YOUR FROM THEY WHAT WHEN WHERE
+SEK EUR USD GBP NOK DKK CHF CAD AUD
+BCG GOT BACK""".split())
+
+
+def clean_jd(jd_text):
+    """Keep the advert body only: drop the saved header, metadata and the
+    related-jobs tail that job boards append."""
+    text = str(jd_text or "")
+    parts = text.split("\n---\n", 1)
+    if len(parts) == 2 and len(parts[1].strip()) >= 80:
+        text = parts[1]
+    low = text.lower()
+    cut = len(text)
+    for marker in ("our other open positions", "other open positions", "related jobs",
+                   "similar jobs", "people also viewed", "jobs you may be interested in",
+                   "recommended jobs", "more jobs from", "see more jobs"):
+        i = low.find(marker)
+        if i > 60:
+            cut = min(cut, i)
+    text = text[:cut]
+    kept = []
+    for line in text.splitlines():
+        s = line.strip()
+        low_s = s.lower()
+        if re.match(r"^(annons id|source|fetched|scope|type|company|role|location|pay|"
+                    r"schedule|url|apply|ats\b|canonical posting|job id)\s*:", low_s):
+            continue
+        if re.match(r"^https?://", low_s):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
 
 
 def docx_text(path):
@@ -108,13 +139,14 @@ def docx_text(path):
 
 
 def extract(jd_text):
+    jd_text = clean_jd(jd_text)
     low = jd_text.lower()
     found = []
     for term in TECH_TERMS:
         if re.search(r"(?<![a-z0-9])" + re.escape(term.lower()) + r"(?![a-z0-9])", low):
             found.append(term)
     # Acronyms / all-caps terms (e.g. ERP, API, CRM) that recur in the ad.
-    words = re.findall(r"\b[A-Z][A-Z0-9.+#/&-]{1,5}\b", jd_text)
+    words = re.findall(r"\b[A-Z][A-Z0-9.+#/&-]*[A-Z0-9+#]\b", jd_text)
     freq = {}
     for w in words:
         if w.upper() in ACRONYM_STOP or w.upper() in GENERIC:
@@ -127,7 +159,7 @@ def extract(jd_text):
         if w.lower() not in seen:
             found.append(w)
             seen.add(w.lower())
-    return found
+    return list(dict.fromkeys(found))
 
 
 def main():

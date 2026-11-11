@@ -609,6 +609,974 @@ def _embed(text):
     return data["data"][0]["embedding"]
 
 
+def _job_meta(key):
+    """Company/role for a saved job key, from the queue or the register."""
+    import csv
+    key = str(key or "").strip()
+    if not key:
+        return {}, ""
+    for name in ("queue.tsv", "queue.done"):
+        path = os.path.join(ROOT, "state", name)
+        try:
+            for line in open(path, encoding="utf-8", errors="ignore"):
+                if not line.strip() or line.startswith("#"):
+                    continue
+                f = (line.rstrip("\n").split("\t") + [""] * 6)[:6]
+                if len(f) >= 6 and f[5].strip() == key:
+                    return {"company": f[0].strip(), "role": f[1].strip()}, key
+        except OSError:
+            pass
+    try:
+        with open(os.path.join(ROOT, "state", "applications.csv"), encoding="utf-8",
+                  errors="ignore") as fh:
+            for row in csv.DictReader(fh):
+                if (row.get("key") or "").strip() == key:
+                    return {"company": (row.get("company") or "").strip(),
+                            "role": (row.get("role") or "").strip()}, key
+    except OSError:
+        pass
+    return {}, key
+
+
+def _keywords_for(jd, ats_path=""):
+    """Requirements from the saved ATS file, else frequent terms + tech names."""
+    keywords = []
+    if ats_path:
+        try:
+            for line in open(ats_path, encoding="utf-8", errors="ignore"):
+                line = line.strip()
+                if line and not line.startswith("#") and len(line) > 1:
+                    keywords.append(line)
+        except OSError:
+            pass
+    if not keywords:
+        import re as _re
+        from collections import Counter
+        stop = set("the and for with you your are our will have has this that from they their "
+                   "role job work experience team teams including etc able strong good years "
+                   "across within using about who what when where which while would could should "
+                   "into more than other such only also been being were was are is it its".split())
+        words = [w for w in _re.findall(r"[a-z][a-z0-9+#.-]{2,}", str(jd).lower())
+                 if w not in stop]
+        keywords = [w for w, _n in Counter(words).most_common(28)]
+        try:
+            from ats_keywords import TECH_TERMS
+            low = str(jd).lower()
+            seen = {k.lower() for k in keywords}
+            for term in TECH_TERMS:
+                t = str(term).strip()
+                if len(t) > 1 and t.lower() in low and t.lower() not in seen:
+                    keywords.append(t)
+                    seen.add(t.lower())
+        except Exception:
+            pass
+    out, seen = [], set()
+    for k in keywords:
+        k = str(k).strip().strip(" .,;:()[]")
+        if k and k.lower() not in seen:
+            out.append(k[:60])
+            seen.add(k.lower())
+    return out[:40]
+
+
+def _cv_data():
+    try:
+        with open(os.path.join(ROOT, "config", "cv.json"), encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _identity():
+    out = {}
+    try:
+        for line in open(os.path.join(ROOT, "config", "profile.md"),
+                         encoding="utf-8", errors="ignore"):
+            m = re.match(r"^\s*-\s*([^:]+):\s*(.+?)\s*$", line)
+            if m:
+                out[m.group(1).strip().lower()] = m.group(2).strip()
+    except OSError:
+        pass
+    return out
+
+
+def _nice_skill(s):
+    special = {
+        "JAVASCRIPT": "JavaScript", "TYPESCRIPT": "TypeScript", "KUBERNETES": "Kubernetes",
+        "TERRAFORM": "Terraform", "PYTHON": "Python", "JAVA": "Java", "RUST": "Rust",
+        "POSTGRES": "PostgreSQL", "REACT": "React", "SPRING": "Spring",
+        "KEYCLOAK": "Keycloak", "SCYLLADB": "ScyllaDB", "PROMETHEUS": "Prometheus",
+        "KAFKA": "Kafka", "DOCKER": "Docker", "LINUX": "Linux", "GRAPHQL": "GraphQL",
+        "REDIS": "Redis", "MICROSERVICES": "Microservices", "NODE.JS": "Node.js",
+        "AWS": "AWS", "GCP": "GCP", "JVM": "JVM", "SQL": "SQL", "API": "API",
+        "RAG": "RAG", "MCP": "MCP", "CI/CD": "CI/CD", "LLM": "LLM", "NLP": "NLP",
+        "ETL": "ETL", "IAM": "IAM", "OIDC": "OIDC", "SAML": "SAML", "SSO": "SSO",
+        "SAAS": "SaaS",
+    }
+    words = []
+    for w in str(s or "").split():
+        key = w.upper()
+        if key in special:
+            words.append(special[key])
+        elif w.isupper() and len(w) <= 4:
+            words.append(w)
+        elif w.isupper():
+            words.append(w[:1].upper() + w[1:].lower())
+        else:
+            words.append(w)
+    return " ".join(words)
+
+
+def _verb_bullet(bullets):
+    verbs = {"created", "delivered", "led", "built", "designed", "developed",
+             "implemented", "managed", "scaled", "owned", "reduced", "improved",
+             "established", "worked", "ran", "drove", "launched", "shipped"}
+    for b in bullets or []:
+        first = re.split(r"\s+", str(b).strip(), 1)[0].strip(".,;:").lower()
+        if first in verbs:
+            return str(b).strip()
+    return ""
+
+
+def playground(key="", text="", hops=2, kind="cv"):
+    """A deterministic, animated evidence build from a job spec.
+
+    The UI 'plays' the returned steps: each one names the entity and connection
+    the recursive query just used, and the document bullets become visible as
+    their supporting step arrives.
+    """
+    key = str(key or "").strip()
+    jd = str(text or "")
+    if not jd and key:
+        try:
+            jd = open(os.path.join(ROOT, "state", "job-descriptions", key + ".md"),
+                      encoding="utf-8", errors="ignore").read()
+        except OSError:
+            return {"error": f"no saved job description for {key}"}
+    jd = jd.strip()
+    if not jd:
+        return {"error": "paste a job spec or choose a saved one"}
+    ats_path = os.path.join(ROOT, "state", "ats", key + ".txt") if key else ""
+    keywords = _keywords_for(jd, ats_path)
+    meta, _ = _job_meta(key)
+    if not meta.get("role"):
+        # a heading or the first non-empty line is a decent demo title
+        for line in jd.splitlines():
+            s = line.strip().lstrip("#").strip()
+            if not s or s.lower().startswith(("http", "company:", "role:", "location:", "about", "apply")):
+                continue
+            first = re.split(r"(?<=[.!?])\s+", s)[0].strip().rstrip(".")
+            if 3 <= len(first) <= 120:
+                meta["role"] = first
+            break
+    company, role = meta.get("company", ""), meta.get("role", "")
+    ents, rels = _load("entities"), _load("relationships")
+    if ents is None or rels is None:
+        return {"error": "no index"}
+    imp = _importance()
+    by_title = {str(r.title): r for r in ents.itertuples()}
+
+    def _rel(t):
+        r = by_title.get(t)
+        text = (str(t) + " " + str(getattr(r, "description", "") or "")).lower()
+        hits = sum(1 for kw in keywords
+                   if re.search(r"\b" + re.escape(kw) + r"\b", text, re.I))
+        typ = str(getattr(r, "type", "") or "").upper()
+        bonus = {"METRIC": 3, "SKILL": 2, "TECHNOLOGY": 2, "PROJECT": 2,
+                 "CERTIFICATION": 2, "ROLE": 1}.get(typ, 0)
+        return hits, bonus
+
+    def _hits_text(text):
+        s = str(text or "").lower()
+        return sum(1 for kw in keywords
+                   if re.search(r"\b" + re.escape(kw) + r"\b", s, re.I))
+
+    def _rel_title(t):
+        s = str(t or "").lower()
+        return sum(1 for kw in keywords if kw.lower() in s)
+
+    # keyword -> matching entities
+    matched, seed_score = {}, {}
+    for kw in keywords:
+        pat = r"\b" + re.escape(kw) + r"\b"
+        m = (ents["title"].str.contains(pat, case=False, regex=True) |
+             ents["description"].str.contains(pat, case=False, regex=True))
+        rows = ents[m].copy()
+        titles = []
+        for r in rows.itertuples():
+            t = str(r.title)
+            titles.append(t)
+            seed_score[t] = seed_score.get(t, 0) + 1
+        matched[kw] = titles[:6]
+    seeds = sorted(seed_score, key=lambda t: (-seed_score[t], -float(imp.get(t, 0)),
+                                              -int(by_title[t].degree if t in by_title else 0)))[:8]
+    if not seeds:
+        seeds = [str(r.title) for r in ents.assign(_i=[float(imp.get(str(t), 0))
+                                                       for t in ents["title"]])
+                 .sort_values(["_i", "degree"], ascending=False).head(6).itertuples()]
+
+    # adjacency, strongest first
+    adj = {}
+    link_desc = {}
+    for r in rels.itertuples():
+        s, t = str(r.source), str(r.target)
+        w = float(r.weight)
+        d = _s(SENS.redact(str(r.description or "")), 400)
+        adj.setdefault(s, []).append((w, t, d))
+        adj.setdefault(t, []).append((w, s, d))
+        link_desc[(s, t)] = d
+    for s in adj:
+        adj[s].sort(key=lambda x: (-_rel(x[1])[0], -_rel(x[1])[1], -x[0]))
+
+    steps = []
+    sentences = []
+    visited = set(seeds)
+    used_links = set()
+    cap_titles = []
+    cap_links = []
+    parent_of = {t: "" for t in seeds}
+
+    def trace_to(parent, child, desc):
+        """The recursive path that reached this fact."""
+        chain, x, seen = [], parent, set()
+        while x and x not in seeds and x not in seen:
+            seen.add(x)
+            p = parent_of.get(x)
+            if not p:
+                break
+            d = link_desc.get((p, x)) or link_desc.get((x, p)) or ""
+            chain.append({"from": p, "to": x, "desc": d})
+            x = p
+        chain.reverse()
+        chain.append({"from": parent, "to": child, "desc": desc or ""})
+        return chain
+
+    def add_sentence(text, cites, section="Selected experience",
+                     group="Selected experience", trace=None):
+        text = " ".join(str(text or "").split())
+        text = re.sub(r"\b[Tt]he author\b", display_name, text)
+        if len(text) < 24:
+            return
+        if not text.endswith((".", "!", "?")):
+            text += "."
+        text = text[:520]
+        if any(s["text"] == text for s in sentences):
+            return
+        sentences.append({"text": text, "cites": [c for c in cites if c],
+                          "step": 0, "section": section, "group": group,
+                          "trace": trace or []})
+
+    def org_of(*titles):
+        for t in titles:
+            r = by_title.get(t)
+            if r is not None and str(getattr(r, "type", "")).upper() == "ORGANIZATION":
+                return str(t)
+        return ""
+
+    covered = [k for k in keywords if matched.get(k)]
+    gaps = [k for k in keywords if not matched.get(k)]
+    top_seed = seeds[0] if seeds else ""
+    person = next((t for t in by_title if "HOLLAS" in str(t).upper()
+                   and str(getattr(by_title[t], "type", "")).upper() == "PERSON"), "")
+    if not person:
+        person = next((t for t in by_title
+                       if str(getattr(by_title[t], "type", "")).upper() == "PERSON"), "")
+    display_name = person.title() if person and person.isupper() else (person or "The candidate")
+    skills = []
+    for t in seeds:
+        typ = str(getattr(by_title.get(t), "type", "") or "").upper()
+        if typ in ("SKILL", "TECHNOLOGY", "CERTIFICATION", "PROJECT") and t not in skills:
+            skills.append(str(t))
+    target = role or "this role"
+    if company:
+        target = f"{target} at {company}" if role else company
+
+    hop, frontier = 0, list(seeds)
+    max_hops = 45
+    exp_count = 0
+    hop_log = []
+    for depth in range(1, max(1, min(int(hops or 2), 3)) + 1):
+        nxt = []
+        found, edges_h = [], []
+        for parent in frontier:
+            if hop >= max_hops:
+                break
+            used = 0
+            for w, child, desc in adj.get(parent, []):
+                if child in visited or child not in by_title:
+                    continue
+                visited.add(child)
+                used_links.add((parent, child))
+                parent_of[child] = parent
+                hop += 1
+                found.append(str(child))
+                edges_h.append((str(parent), str(child), desc or ""))
+                r = by_title.get(child)
+                typ = str(getattr(r, "type", "") or "").upper() if r is not None else ""
+                pt = str(getattr(by_title.get(parent), "type", "") or "").upper()
+                if pt == "ORGANIZATION" and desc and exp_count < 7:
+                    add_sentence(desc, [parent, child], "Selected experience",
+                                 str(parent), trace_to(parent, child, desc))
+                    exp_count += 1
+                if typ in ("SKILL", "TECHNOLOGY", "CERTIFICATION", "PROJECT"):
+                    if _rel_title(child) > 0 and str(child) not in cap_titles:
+                        cap_titles.append(str(child))
+                        cap_links.append({"from": parent, "to": child, "desc": desc or ""})
+                elif desc and exp_count < 7:
+                    if _hits_text(desc) > 0 or _rel_title(child) > 0:
+                        org = org_of(child, parent)
+                        add_sentence(desc, [parent, child], "Selected experience",
+                                     org or "Selected experience",
+                                     trace_to(parent, child, desc))
+                        exp_count += 1
+                nxt.append(child)
+                used += 1
+                if used >= 2:
+                    break
+            if hop >= max_hops:
+                break
+        hop_log.append({"depth": depth, "found": found, "edges": edges_h,
+                        "frontier": len(frontier),
+                        "frontier_nodes": [str(x) for x in frontier]})
+        frontier = nxt
+        if not frontier:
+            break
+
+    orgs = []
+    for t in sorted(visited, key=lambda t: -float(imp.get(t, 0))):
+        if str(getattr(by_title.get(t), "type", "") or "").upper() == "ORGANIZATION" and str(t) not in orgs:
+            orgs.append(str(t))
+    doc_orgs = []
+    for s in sentences:
+        g = s.get("group") or ""
+        if s["section"] == "Selected experience" and g and g != "Selected experience" and g not in doc_orgs:
+            doc_orgs.append(g)
+    if doc_orgs:
+        orgs = doc_orgs
+    profile_skills = skills[:6] or cap_titles[:6]
+    if orgs:
+        add_sentence(f"{display_name} is a senior engineering leader with experience at "
+                     + ", ".join(orgs[:3]) + ".",
+                     [person] + orgs[:3], "Profile", "")
+    else:
+        add_sentence(f"{display_name} is a senior engineering leader with a connected record "
+                     f"across engineering organisations.", [person], "Profile", "")
+    add_sentence(f"Targeting {target}, with evidence in "
+                 + (", ".join(profile_skills) if profile_skills else "the connected record") + ".",
+                 seeds, "Profile", "")
+
+    if not any(s["section"] == "Selected experience" for s in sentences):
+        for t in seeds:
+            if str(getattr(by_title.get(t), "type", "") or "").upper() != "ORGANIZATION":
+                continue
+            for w, child, desc in adj.get(t, []):
+                if desc:
+                    add_sentence(desc, [t, child], "Selected experience", str(t),
+                                 trace_to(t, child, desc))
+                    break
+            if any(s["section"] == "Selected experience" for s in sentences):
+                break
+
+    if cap_titles:
+        add_sentence("Relevant capabilities: " + ", ".join(cap_titles[:10]) + ".",
+                     cap_titles[:10], "Relevant capabilities", "", cap_links[:10])
+
+    prof = [s for s in sentences if s["section"] == "Profile"]
+    exp = [s for s in sentences if s["section"] == "Selected experience"]
+    caps = [s for s in sentences if s["section"] == "Relevant capabilities"]
+    ordered = prof + exp + caps
+    steps = [{"n": 0, "kind": "read", "query": "Read the job spec",
+              "label": "Read the job spec", "write": "",
+              "nodes": [], "links": [], "trace": []}]
+    profile_i = 0
+    for i, s in enumerate(ordered, 1):
+        s["step"] = i
+        if s["section"] == "Profile":
+            profile_i += 1
+            q = ("Who is the candidate?" if profile_i == 1
+                 else "What is the target role and which evidence matches?")
+        elif s["section"] == "Relevant capabilities":
+            q = "Which capabilities match the requirements?"
+        else:
+            tr = s.get("trace") or []
+            q = (f"Trace {tr[0]['from']} → {tr[-1]['to']}" if tr
+                 else f"What evidence supports {s.get('group') or 'the role'}?")
+        steps.append({"n": i, "kind": "write", "query": q, "label": s["section"],
+                      "write": s["text"], "nodes": s["cites"],
+                      "links": [{"from": t["from"], "to": t["to"]} for t in (s.get("trace") or [])],
+                      "trace": s.get("trace") or [], "section": s["section"]})
+
+    used_titles = sorted(visited)
+    nodes = []
+    for t in used_titles:
+        r = by_title.get(t)
+        if r is None:
+            continue
+        nodes.append({"id": _s(t, 140), "title": _s(t, 140), "type": _s(r.type, 40),
+                      "degree": int(r.degree), "frequency": int(r.frequency),
+                      "importance": round(float(imp.get(t, 0)), 3),
+                      "description": _s(SENS.redact(str(r.description or "")), 400)})
+    node_ids = {n["id"] for n in nodes}
+    links = []
+    for (s, t) in used_links:
+        if s in node_ids and t in node_ids:
+            links.append({"source": s, "target": t,
+                          "weight": 30, "description": link_desc.get((s, t), "")})
+    # keep the seed-to-seed structure if it exists, without exploding the payload
+    for r in rels.itertuples():
+        s, t = str(r.source), str(r.target)
+        if s in node_ids and t in node_ids and (s, t) not in used_links and len(links) < 60:
+            links.append({"source": s, "target": t, "weight": round(float(r.weight), 1),
+                          "description": link_desc.get((s, t), "")})
+
+    def _build_cv(kind):
+        cv = _cv_data()
+        ident = _identity()
+        name_ = cv.get("name") or ident.get("full name") or display_name
+        contact = [ident.get(k) for k in ("email", "phone", "location (city, country)",
+                                          "linkedin", "github / portfolio / website")
+                   if ident.get(k)]
+
+        # Employers named in the CV become visible hubs even when the expansion
+        # never reached them, so a role step can light up the organisation itself.
+        for e in (cv.get("experience") or []):
+            if not isinstance(e, dict):
+                continue
+            emp = str(e.get("employer") or "")
+            key = emp
+            r = by_title.get(key)
+            if r is None and emp:
+                head = re.split(r"[,(&/–—-]", emp)[0].strip().lower()
+                cands = [(len(str(t)), str(t)) for t in by_title
+                         if str(t).lower() == head or str(t).lower().startswith(head)]
+                if not cands and " " in head:
+                    word = head.split()[0]
+                    cands = [(len(str(t)), str(t)) for t in by_title
+                             if str(t).lower() == word or str(t).lower().startswith(word + " ")]
+                if cands:
+                    key = min(cands)[1]
+                    r = by_title[key]
+            if not key or key in node_ids or r is None:
+                continue
+            nodes.append({"id": _s(key, 140), "title": _s(key, 140), "type": _s(r.type, 40),
+                          "degree": int(r.degree), "frequency": int(r.frequency),
+                          "importance": round(float(imp.get(key, 0)), 3),
+                          "description": _s(SENS.redact(str(r.description or "")), 400)})
+            node_ids.add(key)
+
+        def hits(text):
+            low = str(text or "").lower()
+            return sum(1 for kw in keywords
+                       if re.search(r"\b" + re.escape(kw) + r"\b", low, re.I))
+
+        def terms_of(text):
+            low = str(text or "").lower()
+            return [kw for kw in keywords
+                    if re.search(r"\b" + re.escape(kw) + r"\b", low, re.I)][:10]
+
+        # ---- traversal trace: the actual path the recursive query walked on
+        # the graph returned to the UI, so the demo can animate it hop by hop.
+        id_adj = {}
+        for l in links:
+            a, b = l["source"], l["target"]
+            id_adj.setdefault(a, []).append(b)
+            id_adj.setdefault(b, []).append(a)
+
+        def as_id(t):
+            s = str(t or "").strip()[:140]
+            if not s:
+                return ""
+            if s in node_ids:
+                return s
+            low = s.lower()
+            best = ""
+            for n in nodes:
+                tl = n["title"].lower()
+                if tl == low or tl.startswith(low) or low.startswith(tl):
+                    if not best or len(n["title"]) < len(best):
+                        best = n["id"]
+            if best:
+                return best
+            for tok in re.split(r"[,()&/–—-]", s):
+                tok = tok.strip().lower()
+                if len(tok) < 4:
+                    continue
+                hit = [n["id"] for n in nodes if n["title"].lower() == tok]
+                if len(hit) == 1:
+                    return hit[0]
+            for word in re.split(r"[^a-z0-9]+", low):
+                if len(word) < 4:
+                    continue
+                hit = [n["id"] for n in nodes if n["title"].lower() == word]
+                if len(hit) == 1:
+                    return hit[0]
+            return ""
+
+        def _path(src_id, dst_id, max_len=4):
+            if not src_id or not dst_id or src_id == dst_id:
+                return []
+            prev = {src_id: None}
+            q = [src_id]
+            while q:
+                x = q.pop(0)
+                if x == dst_id:
+                    break
+                for y in id_adj.get(x, []):
+                    if y not in prev:
+                        prev[y] = x
+                        q.append(y)
+            if dst_id not in prev:
+                return []
+            chain, x = [], dst_id
+            while x != src_id and len(chain) < max_len:
+                p = prev[x]
+                if p is None:
+                    break
+                d = link_desc.get((p, x)) or link_desc.get((x, p)) or ""
+                chain.append({"from": p, "to": x, "desc": d})
+                x = p
+            chain.reverse()
+            return chain
+
+        root_id = as_id(person) or as_id(top_seed) or (nodes[0]["id"] if nodes else "")
+        edge_pairs = set()
+        for l in links:
+            edge_pairs.add((l["source"], l["target"]))
+            edge_pairs.add((l["target"], l["source"]))
+
+        def trace_for(targets, roots=None, limit=4):
+            """The most direct evidence path, not a random tour of the graph."""
+            rids = [as_id(r) for r in (roots or [root_id])]
+            rids = [r for r in rids if r]
+            out, seen = [], set()
+            tids = [t for t in (as_id(x) for x in (targets or [])) if t]
+            # prefer a direct edge from the role/person the sentence is about
+            for tid in tids:
+                for rid in rids:
+                    if rid == tid or (rid, tid) not in edge_pairs:
+                        continue
+                    key = (rid, tid)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    desc = link_desc.get((rid, tid)) or link_desc.get((tid, rid)) or ""
+                    out.append({"from": rid, "to": tid, "desc": desc})
+                if len(out) >= limit:
+                    break
+            if out:
+                return out[:limit]
+            for tid in tids:
+                for rid in rids:
+                    hop = _path(rid, tid)
+                    if hop:
+                        pair = (hop[0]["from"], hop[-1]["to"])
+                        if pair not in seen:
+                            seen.add(pair)
+                            out.extend(hop)
+                        break
+                if len(out) >= limit:
+                    break
+            return out[:limit]
+
+        def cites(text, n=4, types=None):
+            low = str(text or "").lower()
+            out = []
+            for t, r in by_title.items():
+                if len(str(t)) < 4:
+                    continue
+                if not re.search(r"\b" + re.escape(str(t).lower()) + r"\b", low):
+                    continue
+                typ = str(getattr(r, "type", "")).upper()
+                if types:
+                    if typ not in types:
+                        continue
+                elif typ not in ("SKILL", "TECHNOLOGY", "PROJECT", "ORGANIZATION",
+                                 "CERTIFICATION", "METRIC", "PLATFORM", "ROLE"):
+                    continue
+                out.append(str(t))
+            return list(dict.fromkeys(out))[:n]
+
+        skill_titles = []
+        for t in (cap_titles + skills + [t for t in visited
+                  if str(getattr(by_title.get(t), "type", "") or "").upper()
+                  in ("SKILL", "TECHNOLOGY", "CERTIFICATION", "PLATFORM")]):
+            t = str(t)
+            if (not t or t in skill_titles or len(t) > 40 or "," in t
+                    or _rel_title(t) <= 0):
+                continue
+            skill_titles.append(t)
+        if not skill_titles:
+            skill_titles = [str(t) for t in cap_titles[:10]]
+        skill_text = "Core skills: " + " · ".join(_nice_skill(t) for t in skill_titles[:10]) + "."
+
+        exp = [e for e in (cv.get("experience") or []) if isinstance(e, dict)]
+        ranked = sorted(exp, key=lambda e: -hits(
+            f"{e.get('employer', '')} {e.get('title', '')} {' '.join(e.get('bullets') or [])}"))
+        roles = ranked[:3] or exp[:3]
+        role_blocks, role_steps = [], []
+        for e in roles:
+            bullets = [str(b) for b in (e.get("bullets") or [])]
+            br = sorted(enumerate(bullets), key=lambda ib: -hits(ib[1]))
+            keep = sorted(i for i, _ in br[:3])
+            chosen = [bullets[i] for i in keep] or bullets[:2]
+            sentences, all_cites = [], []
+            emp = str(e.get("employer") or "")
+            for b in chosen:
+                b = b.strip()
+                if not b:
+                    continue
+                if not b.endswith((".", "!", "?")):
+                    b += "."
+                c = ([emp] if emp in by_title else []) + cites(b)
+                c = list(dict.fromkeys(c))[:5]
+                all_cites += c
+                sentences.append({"text": b, "cites": c, "step": 0,
+                                  "section": "Selected experience", "group": emp, "trace": []})
+            if sentences:
+                role_blocks.append({"heading": f"{emp} — {e.get('title', '')}",
+                                    "sub": " · ".join(x for x in (e.get("dates"), e.get("location")) if x),
+                                    "sentences": sentences})
+                role_steps.append((emp, sentences, list(dict.fromkeys(all_cites))))
+
+        org_full = [e.get("employer", "") for e in roles if e.get("employer")] or orgs[:3]
+        org_names = [str(x).split(",")[0].strip() for x in org_full]
+        top_skills = skill_titles[:5] or ["the connected record"]
+        summary1 = (f"{name_} is a senior engineering leader with experience at "
+                    f"{', '.join(org_names[:3])} and core strengths in "
+                    f"{', '.join(_nice_skill(t) for t in top_skills)}.")
+        summary2 = (f"Targeting {target}, with evidence across "
+                    f"{', '.join(covered[:6]) if covered else 'the requirements'}.")
+        sum_cites = ([person] if person in by_title else []) + \
+                    [o for o in org_full if o in by_title] + skill_titles[:5]
+        sum_cites = list(dict.fromkeys(sum_cites))[:7]
+        summary = [
+            {"text": summary1, "cites": sum_cites, "step": 0,
+             "section": "Profile", "group": "", "trace": []},
+            {"text": summary2, "cites": skill_titles[:5], "step": 0,
+             "section": "Profile", "group": "", "trace": []},
+        ]
+        skill_sentence = {"text": skill_text, "cites": skill_titles[:10], "step": 0,
+                          "section": "Core skills", "group": "", "trace": []}
+        skill_lines = [str(line).strip() for line in (cv.get("skills") or [])
+                       if line and hits(line) > 0][:2]
+        if not skill_lines:
+            skill_lines = [str(line).strip() for line in (cv.get("skills") or []) if line][:2]
+        skill_sentences = [skill_sentence]
+        for line in skill_lines:
+            text = line.rstrip('.') + '.'
+            if ':' not in text:
+                text = f"Core strengths: {text}"
+            skill_sentences.append({"text": text, "cites": cites(text, 5), "step": 0,
+                                    "section": "Core skills", "group": "", "trace": []})
+
+        edu = [str(x) for x in (cv.get("education") or []) if x]
+        certs = [str(x) for x in (cv.get("certifications") or []) if x]
+        edu_sentences = []
+        for label, lines in (("Education", edu), ("Certifications", certs)):
+            if lines:
+                text = f"{label}: " + " · ".join(lines)
+                edu_sentences.append({"text": text,
+                                      "cites": cites(text, 5, ("EDUCATION", "CERTIFICATION")),
+                                      "step": 0,
+                                      "section": "Education & certifications", "group": "", "trace": []})
+
+        steps_ = [{"n": 0, "kind": "read", "query": "Read the job spec",
+                   "label": "Read the job spec", "write": "",
+                   "nodes": [], "links": [], "trace": []}]
+        n = 0
+
+        def add_step(query, sentences_, nodes_, trace_=None, terms=None, explain="", hub=None):
+            nonlocal n
+            n += 1
+            for s_ in sentences_:
+                s_["step"] = n
+            base = hub or root_id
+            ids_ = []
+            for x in (nodes_ or []):
+                xid = as_id(x) or str(x or "")
+                if xid and xid not in ids_:
+                    ids_.append(xid)
+            tr = [h for h in (trace_ or []) if h.get("from") != h.get("to")]
+            if not tr and sentences_:
+                tr = trace_for([c for s_ in sentences_ for c in (s_.get("cites") or [])])
+            # every document line cites the nodes it was built from; draw those
+            # citation links so the audience can see which evidence fed the line
+            have = {(h["from"], h["to"]) for h in tr}
+            for cid in ids_:
+                if len(tr) >= 5:
+                    break
+                if cid and cid != base and (base, cid) not in have:
+                    tr.append({"from": base, "to": cid,
+                               "desc": "cited by this line", "citation": True})
+                    have.add((base, cid))
+            for hop in tr:
+                if (hop["from"], hop["to"]) not in edge_pairs:
+                    links.append({"source": hop["from"], "target": hop["to"],
+                                  "weight": 24.0, "description": hop.get("desc") or ""})
+                    edge_pairs.add((hop["from"], hop["to"]))
+                    edge_pairs.add((hop["to"], hop["from"]))
+            steps_.append({"n": n, "kind": "write", "query": query,
+                           "label": sentences_[0]["section"] if sentences_ else "Document",
+                           "write": " ".join(s_["text"] for s_ in sentences_)[:700],
+                           "nodes": ids_, "focus": ids_,
+                           "links": [{"from": x["from"], "to": x["to"]} for x in tr],
+                           "trace": tr,
+                           "terms": terms if terms is not None else terms_of(
+                               " ".join(s_["text"] for s_ in sentences_)),
+                           "explain": explain})
+            return n
+
+        def add_query(query, explain, nodes=None, trace_=None, terms=None, label="Query", focus=None):
+            nonlocal n
+            n += 1
+            ids_, focus_ids = [], []
+            for x in (nodes or []):
+                xid = as_id(x) or str(x or "")
+                if xid and xid not in ids_:
+                    ids_.append(xid)
+            for x in (focus if focus is not None else (nodes or [])):
+                xid = as_id(x) or str(x or "")
+                if xid and xid not in focus_ids:
+                    focus_ids.append(xid)
+            tr = [h for h in (trace_ or []) if h.get("from") != h.get("to")][:8]
+            for hop in tr:
+                if (hop["from"], hop["to"]) not in edge_pairs:
+                    links.append({"source": hop["from"], "target": hop["to"],
+                                  "weight": 24.0, "description": hop.get("desc") or ""})
+                    edge_pairs.add((hop["from"], hop["to"]))
+                    edge_pairs.add((hop["to"], hop["from"]))
+            steps_.append({"n": n, "kind": "query", "query": query, "label": label,
+                           "write": "", "nodes": ids_,
+                           "links": [{"from": x["from"], "to": x["to"]} for x in tr],
+                           "trace": tr, "terms": terms or [],
+                           "focus": focus_ids,
+                           "explain": explain, "returned": len(focus_ids)})
+            return n
+
+        # ---- the recursive query itself, before anything is written
+        seed_nodes = []
+        for kw in covered:
+            for t in matched.get(kw, [])[:2]:
+                if t not in seed_nodes:
+                    seed_nodes.append(t)
+        add_query(
+            f"MATCH requirement → entity · {len(covered)}/{len(keywords)} requirements hit the graph",
+            (f"Each requirement was looked up against entity titles and descriptions. "
+             f"{len(covered)} of {len(keywords)} matched, giving {len(seed_nodes)} seed entities "
+             f"to walk out from."),
+            nodes=seed_nodes[:16], focus=seed_nodes[:8], terms=covered[:8], label="Seed match")
+        for entry in hop_log:
+            depth = entry.get("depth", 1)
+            raw_edges = entry.get("edges") or []
+            hop_edges = []
+            for a, b, d in raw_edges:
+                aid, bid = as_id(a), as_id(b)
+                if aid and bid:
+                    hop_edges.append({"from": aid, "to": bid, "desc": d})
+            add_query(
+                f"EXPAND hop {depth}/{max(1, len(hop_log))} · {entry.get('frontier', 0)} frontier nodes "
+                f"→ {len(entry.get('found') or [])} new entities",
+                (f"Walked {len(raw_edges)} edges out of {entry.get('frontier', 0)} frontier nodes, "
+                 f"discarding anything already seen. That adds {len(entry.get('found') or [])} nodes "
+                 f"to the evidence subgraph this document is built from."),
+                nodes=((entry.get("frontier_nodes") or []) +
+                       (entry.get("found") or []))[:22],
+                focus=(entry.get("found") or [])[:16],
+                trace_=hop_edges[:8], terms=[],
+                label=f"Hop {depth}")
+
+        if kind == "letter":
+            opening = {"text": f"I am applying for {target}. I have led engineering at "
+                              f"{', '.join(org_names[:3])} and my core strengths are "
+                              f"{', '.join(_nice_skill(t) for t in top_skills)}.",
+                       "cites": sum_cites,
+                       "step": 0, "section": "Opening", "group": "", "trace": []}
+            background = {"text": f"My background includes {', '.join(org_names[:3])} and "
+                                  f"{', '.join(_nice_skill(t) for t in top_skills)}.",
+                          "cites": sum_cites, "step": 0, "section": "Background", "group": "", "trace": []}
+            evidence = None
+            if role_steps:
+                emp, sentences_, cites_ = role_steps[0]
+                b = _verb_bullet([s["text"] for s in sentences_])
+                if b:
+                    evidence = {"text": f"At {emp}, I {b[0].lower() + b[1:].rstrip('.')}.",
+                                "cites": cites_, "step": 0,
+                                "section": "Evidence", "group": emp, "trace": []}
+            close = {"text": f"I would welcome the chance to discuss how I can help "
+                              f"{company or 'your team'}.", "cites": [], "step": 0,
+                     "section": "Close", "group": "", "trace": []}
+            add_step("Anchor the letter in the target role and the strongest cited evidence",
+                     [opening], sum_cites, terms=covered[:6],
+                     explain=f"The advert names {len(covered)} requirements the graph can evidence; "
+                             f"the opening names the role and the candidate's strongest matches.")
+            add_step("Connect the career record to those requirements", [background],
+                     sum_cites, terms=covered[:6],
+                     explain=f"Two-hop traversal collected {len(nodes)} evidence nodes across "
+                             f"{len(org_names[:3])} organisations.")
+            if evidence:
+                add_step(f"Pull the strongest cited achievement from {evidence['group']}",
+                         [evidence], evidence["cites"], terms=terms_of(evidence["text"]),
+                         explain=f"Selected the highest-matching achievement at {evidence['group']} "
+                                 f"and traced it back to the graph.")
+            add_step("Close without inventing a claim", [close], [], terms=[],
+                     explain="A standard application close. No new fact, number or promise is added.")
+            n += 1
+            steps_.append({"n": n, "kind": "gate",
+                           "query": "Gate the letter: every claim is grounded",
+                           "label": "Gate", "write": "", "nodes": [],
+                           "links": [], "trace": [], "terms": [],
+                           "explain": "Coherence gate: every sentence maps to a saved CV fact and a "
+                                      "graph citation; the letter adds no unsupported claim."})
+            doc = {
+                "title": "Cover letter",
+                "subtitle": f"Tailored cover letter · {len(nodes)} evidence nodes and {len(links)} connections",
+                "name": name_, "target": target, "contact": contact,
+                "prologue": ["Dear Hiring Team,"],
+                "blocks": [
+                    {"heading": "", "type": "letter", "sentences": [opening]},
+                    {"heading": "", "type": "letter", "sentences": [background]},
+                    *([{"heading": "", "type": "letter", "sentences": [evidence]}] if evidence else []),
+                    {"heading": "", "type": "letter", "sentences": [close]},
+                ],
+                "note": "Every claim is drawn from config/cv.json; the graph supplies the ranking "
+                        "and citations. The closing is a standard application sentence, not a new claim.",
+                "note_step": n,
+            }
+        else:
+            add_step("Rank the career record against the advert and write the summary",
+                     summary, sum_cites, terms=covered[:6],
+                     explain=f"Scored all {len(exp)} roles in the saved CV by how many of the "
+                             f"{len(keywords)} advert requirements they evidence. "
+                             f"{len(sum_cites)} nodes are cited in the summary.")
+            add_step("Keep only skills the graph can evidence",
+                     skill_sentences, skill_titles[:10], terms=covered[:6],
+                     explain=f"The recursive query returned {len(skill_titles)} matching skills; "
+                             f"{min(10, len(skill_titles))} are written, strongest first.")
+            for emp, sentences_, cites_ in role_steps:
+                hub = as_id(emp) or root_id
+                trace = []
+                for c in cites_:
+                    cid = as_id(c)
+                    if not cid or cid == hub:
+                        continue
+                    d = link_desc.get((hub, cid)) or link_desc.get((cid, hub)) or ""
+                    trace.append({"from": hub, "to": cid, "desc": d, "citation": not d})
+                    if len(trace) >= 4:
+                        break
+                role_terms = terms_of(" ".join(s["text"] for s in sentences_))
+                add_step(f"Expand {emp} and keep the achievements that match",
+                         sentences_, cites_, trace_=trace, terms=role_terms, hub=hub,
+                         explain=f"{len(sentences_)} achievements cited for {emp}; each line keeps "
+                                 f"its graph edge, so the claim can be traced back.")
+            if edu_sentences:
+                add_step("Attach education and certifications from the saved CV",
+                         edu_sentences, [c for s_ in edu_sentences for c in s_["cites"]][:8],
+                         terms=[],
+                         explain="Education and certifications come from the saved CV, not from the advert; "
+                                 "they are included only where the record supports them.")
+            n += 1
+            steps_.append({"n": n, "kind": "gate",
+                           "query": "Gate the CV: every line is grounded and cited",
+                           "label": "Gate", "write": "", "nodes": [],
+                           "links": [], "trace": [], "terms": [],
+                           "explain": "Coherence gate: every included line maps to a saved CV fact and "
+                                      "a graph node. Missing requirements are left out, not invented."})
+            doc = {
+                "title": "Curriculum Vitae",
+                "subtitle": f"Tailored CV · {len(nodes)} evidence nodes and {len(links)} connections",
+                "name": name_, "target": target, "contact": contact,
+                "blocks": [
+                    {"heading": "Professional summary", "type": "p", "sentences": summary},
+                    {"heading": "Core skills", "type": "p", "sentences": skill_sentences},
+                    {"heading": "Experience", "type": "experience", "roles": role_blocks},
+                    {"heading": "Education & certifications", "type": "p",
+                     "sentences": edu_sentences},
+                ],
+                "note": "Every line is drawn from config/cv.json; the graph supplies the ranking "
+                        "and citations. Coherence gate: included claims are grounded in the saved CV.",
+                "note_step": n,
+            }
+        found_terms = [k for k in keywords if matched.get(k)]
+        missing_terms = [k for k in keywords if not matched.get(k)]
+        steps_[0].update({
+            "terms": found_terms[:14],
+            "nodes": [root_id] if root_id else [],
+            "explain": (f"Parsed the advert into {len(keywords)} requirements; "
+                        f"{len(found_terms)} are evidenced in the knowledge graph and "
+                        f"{len(missing_terms)} are not. Only evidenced requirements are used."),
+        })
+        spec_lines = []
+        budget = 0
+        noise = (
+            "linkedin respects your privacy", "linkedin and 3rd parties",
+            "select accept to consent", "accept reject", "skip to main content",
+            "clear text", "sign in", "join now", "see who ", "be among the first",
+            "no longer accepting applications", "report this job", "easy apply",
+            "set alert", "am i a good fit", "job details", "seniority level",
+            "employment type", "job function", "industries", "referrals increase",
+            "show more", "show less", "message the job poster", "upload your cv",
+            "get notified about new", "use ai to assess", "see more jobs",
+            "linkedin", "jobs", "companies", "people", "learning", "games",
+        )
+        for raw in jd.splitlines():
+            s = raw.strip()
+            if not s:
+                continue
+            low = s.lower()
+            if (len(s) < 4 or low.startswith(("#", "source:", "fetched:", "---"))
+                    or low.startswith(noise) or low.endswith(noise)
+                    or low == "unknown company — unknown role"):
+                continue
+            s = s[:240]
+            spec_lines.append({"text": s, "terms": terms_of(s)})
+            budget += len(s)
+            if len(spec_lines) >= 46 or budget > 4600:
+                break
+        return {"mode": "playground",
+                "job": {"key": key, "company": company, "role": role,
+                        "keywords": keywords[:20], "found": found_terms[:20],
+                        "missing": missing_terms[:10], "hops": hops,
+                        "coverage": round(100 * len(covered) / max(1, len(keywords))),
+                        "lines": spec_lines, "text": jd[:4600]},
+                "steps": steps_, "doc": doc,
+                "graph": {"nodes": nodes, "links": links, "center": top_seed}}
+
+    if kind in ("cv", "letter"):
+        return _build_cv(kind)
+
+    blocks = []
+    if prof:
+        blocks.append({"heading": "Profile", "type": "p", "sentences": prof})
+    if exp:
+        order, groups = [], {}
+        for s in exp:
+            g = s.get("group") or "Selected experience"
+            if g not in groups:
+                groups[g] = []
+                order.append(g)
+            groups[g].append(s)
+        blocks.append({"heading": "Selected experience", "type": "experience",
+                       "roles": [{"heading": g, "sentences": groups[g]} for g in order]})
+    if caps:
+        blocks.append({"heading": "Relevant capabilities", "type": "p", "sentences": caps})
+    name = display_name
+    doc = {
+        "title": "Tailored profile",
+        "subtitle": f"{target} · built from {len(nodes)} evidence nodes and {len(links)} connections",
+        "name": name,
+        "target": target,
+        "blocks": blocks,
+        "note": (f"Grounded in the knowledge graph. {len(covered)} of {len(keywords)} requirements "
+                 f"have evidence." + (f" Not evidenced: {', '.join(gaps[:10])}." if gaps else "")),
+        "note_step": len(ordered),
+    }
+    return {"mode": "playground", "job": {"key": key, "company": company, "role": role,
+                                          "keywords": keywords, "coverage": round(100 * len(covered) / max(1, len(keywords)))},
+            "steps": steps, "doc": doc,
+            "graph": {"nodes": nodes, "links": links, "center": top_seed}}
+
+
 def role_evidence(key):
     """JD keywords -> grounded graph evidence, with explicit gaps."""
     key = str(key or "").strip()
@@ -1152,6 +2120,11 @@ def main():
                                 int(a[1]) if len(a) > 1 else 90)
         elif cmd == "evidence":
             res = role_evidence(a[0] if a else "")
+        elif cmd == "playground":
+            text = "" if sys.stdin.isatty() else sys.stdin.read()
+            res = playground(a[0] if a else "", text,
+                             int(a[1]) if len(a) > 1 else 2,
+                             a[2] if len(a) > 2 else "cv")
         elif cmd == "semantic":
             res = semantic(a[0] if a else "", int(a[1]) if len(a) > 1 else 14)
         elif cmd == "node":

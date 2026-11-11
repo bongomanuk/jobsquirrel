@@ -26,6 +26,7 @@ const S = {
   linePos: null, lineColors: null, labelEls: new Map(), top: new Set(),
   selected: null, hovered: null, hidden: new Set(), opts: {}, paused: true,
   raf: 0, alpha: 1, fitted: false, focusDepth: 1, focusAmount: 0, focusAt: 0, focusHold: 4000, focusFade: 1200, hitEls: new Map(), lastInteract: Date.now(), W: 1, H: 1, orbit: { theta: 0.72, phi: 1.12, radius: 260, target: new THREE.Vector3() },
+  playIds: new Set(), playLinks: new Set(), playLabels: new Set(), fly: null, pulse: null, pulseDot: null,
   drag: null, lastTap: null, glowTex: null
 };
 
@@ -146,6 +147,12 @@ function init() {
   }));
   S.marker.visible = false;
   S.scene.add(S.marker);
+  S.pulseDot = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: glowTexture(), color: new THREE.Color('#fde68a'), transparent: true,
+    opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending
+  }));
+  S.pulseDot.visible = false;
+  S.scene.add(S.pulseDot);
   const mc = document.createElement('canvas');
   S.measureCtx = mc.getContext('2d');
   const starGeo = new THREE.BufferGeometry();
@@ -246,8 +253,13 @@ export async function show(data, opts = {}) {
   S.selDist = null;
   S.focusAmount = 0;
   if (S.marker) S.marker.visible = false;
+  if (S.pulseDot) { S.pulseDot.visible = false; S.pulse = null; }
   if (S.impact) S.impact.visible = true;
   S.hidden = new Set();
+  S.playIds = new Set();
+  S.playLinks = new Set();
+  S.playLabels = new Set();
+  S.fly = null;
   S.visibleLabels = new Set();
   S.labelAnchors = new Map();
   S.interacting = false;
@@ -467,17 +479,23 @@ function repaintNodes(id, dist) {
   const alpha = S.ptGeo.attributes.alpha, size = S.ptGeo.attributes.size;
   const amt = dist ? (S.focusAmount == null ? 1 : S.focusAmount) : 0;
   const D = S.focusDepth || 1;
+  const playOn = S.playIds.size > 0;
   S.nodes.forEach((n, i) => {
     const d = dist ? dist.get(n.id) : null;
+    const inPlay = playOn && S.playIds.has(n.id);
     let ff = 1, boost = 0;
     if (dist && amt > 0) {
-      if (d == null) ff = 0.006;
+      if (d == null) ff = inPlay ? 0.9 : 0.06;
       else if (d === 0) { ff = 1; boost = 1.1; }
       else if (d <= D) { ff = 1; boost = 0.7; }
-      else ff = 0.012;
+      else ff = inPlay ? 0.9 : 0.08;
+    } else if (playOn) {
+      ff = inPlay ? 1 : 0.11;
     }
-    alpha.array[i] = S.hidden.has(n.type) ? 0 : (id ? 1 - amt * (1 - ff) : 1);
-    size.array[i] = n.r * (n.id === id ? 1.8 : 1) * (1 + amt * boost);
+    if (inPlay) boost = Math.max(boost, (S.playLabels && S.playLabels.has(n.id)) ? 0.95 : 0.4);
+    alpha.array[i] = S.hidden.has(n.type) ? 0 :
+      (id ? 1 - amt * (1 - ff) : (playOn ? ff : 1));
+    size.array[i] = n.r * (n.id === id ? 1.8 : 1) * (1 + amt * boost + (inPlay ? 0.25 : 0));
   });
   alpha.needsUpdate = true;
   size.needsUpdate = true;
@@ -515,6 +533,80 @@ export function setFocusDepth(d) {
     paintLines(S.selected, S.selDist);
     updateLabels(nearSet(S.selDist), true);
   }
+}
+
+/* Playback: keep the path already used by the document build lit while the
+   next step focuses a new node. The playground drives this from app.js. */
+export function setPlayback(ids, links, labels) {
+  S.playIds = new Set(ids || []);
+  S.playLinks = new Set((links || []).map(l => [l.from || l.source, l.to || l.target].sort().join("\u0000")));
+  S.playLabels = new Set(labels || ids || []);
+  const sel = S.selected;
+  const dist = sel ? (S.selDist || graphDistances(sel)) : null;
+  repaintNodes(sel, dist);
+  if (S.lineMesh) paintLines(sel, dist);
+  S.labelDirty = true;
+  updateLabels(S.playLabels.size ? new Set(S.playLabels) : null, true);
+}
+
+export function clearPlayback() {
+  S.playIds = new Set();
+  S.playLinks = new Set();
+  S.playLabels = new Set();
+  S.pulse = null;
+  if (S.pulseDot) S.pulseDot.visible = false;
+  const sel = S.selected;
+  const dist = sel ? (S.selDist || graphDistances(sel)) : null;
+  repaintNodes(sel, dist);
+  if (S.lineMesh) paintLines(sel, dist);
+  S.labelDirty = true;
+  updateLabels(null, true);
+}
+
+export function pulsePath(links, dur = 420) {
+  const pairs = (links || []).map(l => ({ a: S.byId.get(l.from || l.source),
+                                          b: S.byId.get(l.to || l.target) }))
+    .filter(p => p.a && p.b);
+  if (!pairs.length || !S.pulseDot) return;
+  S.pulse = { pairs, t0: performance.now(), dur };
+  S.pulseDot.visible = true;
+}
+
+function tickPulse(now) {
+  if (!S.pulse || !S.pulseDot) return;
+  const p = S.pulse, n = p.pairs.length;
+  const elapsed = now - p.t0;
+  const idx = Math.min(n - 1, Math.floor(elapsed / p.dur));
+  const t = Math.min(1, Math.max(0, (elapsed - idx * p.dur) / p.dur));
+  const pair = p.pairs[idx];
+  S.pulseDot.position.lerpVectors(pair.a.pos, pair.b.pos, t);
+  S.pulseDot.scale.setScalar(20 + 14 * Math.sin(t * Math.PI));
+  if (elapsed >= n * p.dur) {
+    S.pulse = null;
+    S.pulseDot.visible = false;
+  }
+}
+
+export function flyTo(id, radius) {
+  const n = S.byId.get(id);
+  if (!n) return;
+  const base = S.orbit.radius || 420;
+  S.fly = {
+    from: S.orbit.target.clone(), to: n.pos.clone(),
+    fromR: S.orbit.radius,
+    toR: Math.max(380, Math.min(radius || base * 0.92, base)),
+    t0: performance.now(), dur: 900,
+  };
+}
+
+function tickFly() {
+  if (!S.fly) return;
+  const f = S.fly, t = Math.min(1, (performance.now() - f.t0) / f.dur);
+  const e = 1 - Math.pow(1 - t, 3);
+  S.orbit.target.lerpVectors(f.from, f.to, e);
+  S.orbit.radius = f.fromR + (f.toR - f.fromR) * e;
+  applyCamera();
+  if (t >= 1) S.fly = null;
 }
 
 export function clearSelection() {
@@ -602,6 +694,7 @@ function bindControls() {
   c.addEventListener('pointerdown', e => {
     S.lastInteract = Date.now();
     S.lastUser = Date.now();
+    S.fly = null;
     S.interacting = true;
     try { c.setPointerCapture(e.pointerId); } catch (_) {}
     S.drag = { x: e.clientX, y: e.clientY, mode: (e.button === 2 || e.shiftKey) ? 'pan' : 'rotate', moved: false };
@@ -661,6 +754,7 @@ function bindControls() {
     e.preventDefault();
     S.lastInteract = Date.now();
     S.lastUser = Date.now();
+    S.fly = null;
     S.interacting = true;
     clearTimeout(S.interactTimer);
     S.interactTimer = setTimeout(() => {
@@ -695,15 +789,25 @@ function paintLines(selected, dist) {
   const accent = new THREE.Color(ACCENT), base = new THREE.Color(0x93a4bd);
   const gold = new THREE.Color(0xfbbf24);
   const amt = dist ? (S.focusAmount == null ? 1 : S.focusAmount) : 0;
+  const playOn = S.playIds.size > 0;
   S.links.forEach((l, i) => {
     const da = dist ? (dist.get(l.source) ?? 99) : 99;
     const db = dist ? (dist.get(l.target) ?? 99) : 99;
     const D = S.focusDepth || 1;
+    const pair = [l.source, l.target].sort().join('\u0000');
+    const inPlay = S.playLinks.has(pair);
     const baseC = l.grounded ? gold.clone() : base.clone();
     let focusC = baseC;
-    if (selected && (l.source === selected || l.target === selected)) focusC = accent;
+    if (inPlay) focusC = accent;
+    else if (selected && (l.source === selected || l.target === selected)) focusC = accent;
     else if (dist) focusC = baseC.clone().multiplyScalar((da <= D && db <= D) ? 0.5 : 0.01);
-    const c = amt > 0 ? baseC.clone().lerp(focusC, amt) : baseC;
+    let c;
+    if (inPlay) c = baseC.clone().lerp(accent, Math.max(amt, 0.85));
+    else if (playOn) c = baseC.clone().multiplyScalar(0.1);
+    else {
+      const mix = amt;
+      c = mix > 0 ? baseC.clone().lerp(focusC, mix) : baseC;
+    }
     col[i * 6] = c.r; col[i * 6 + 1] = c.g; col[i * 6 + 2] = c.b;
     col[i * 6 + 3] = c.r; col[i * 6 + 4] = c.g; col[i * 6 + 5] = c.b;
   });
@@ -752,6 +856,7 @@ function updateLabels(neigh, relayout = false) {
     S.labelAnchors.forEach((a, id) => {
       const n = S.byId.get(id), el = S.labelEls.get(id);
       if (!n || !el) return;
+      if (S.playLabels.size && !S.playLabels.has(id)) { el.style.display = 'none'; return; }
       if (S.hidden.has(n.type) || (S.selDist && S.focusAmount > 0.05 && ((S.selDist.get(id) ?? 99) > (S.focusDepth || 1)))) { el.style.display = 'none'; return; }
       const p = n.pos.clone().project(S.camera);
       if (p.z > 1 || p.z < -1) { el.style.display = 'none'; return; }
@@ -768,6 +873,10 @@ function updateLabels(neigh, relayout = false) {
   const candidates = [];
   S.nodes.forEach(n => {
     if (S.hidden.has(n.type)) return;
+    if (S.playLabels.size && !S.playLabels.has(n.id)) {
+      const el = S.labelEls.get(n.id); if (el) el.style.display = 'none';
+      return;
+    }
     if (S.selDist && S.focusAmount > 0.05 && ((S.selDist.get(n.id) ?? 99) > (S.focusDepth || 1))) {
       const el = S.labelEls.get(n.id); if (el) el.style.display = 'none';
       return;
@@ -929,7 +1038,9 @@ function animate() {
   S.raf = requestAnimationFrame(animate);
   if (S.paused || !S.renderer) return;
   tickFocus(performance.now());
-  if (!S.drag && !S.interacting && Date.now() - S.lastUser > 2800) {
+  if (S.fly) tickFly();
+  if (S.pulse) tickPulse(performance.now());
+  if (!S.fly && !S.drag && !S.interacting && Date.now() - S.lastUser > 2800) {
     S.orbit.theta += 0.0007;
     applyCamera();
     const now0 = Date.now();

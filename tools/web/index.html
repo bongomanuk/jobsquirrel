@@ -287,6 +287,7 @@
       onkeydown="if(event.key==='Enter')App.kgSearch(this.value)">
     <button id="kg-search-btn" class="kg-btn" onclick="App.kgSearch($('#kg-q').value)">Search</button>
     <button id="kg-semantic" class="kg-btn" onclick="App.kgSemantic($('#kg-q').value)" title="Natural-language semantic search over the graph embeddings"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"></use></svg> Semantic</button>
+    <button id="kg-play-open" class="kg-btn kg-play-open" onclick="App.kgPlayOpen()" title="Watch the graph build a tailored profile from a job spec"><svg class="ic" aria-hidden="true"><use href="#i-sparkle"></use></svg> Playground</button>
     <button id="kg-tab-types" class="kg-btn" onclick="App.graphTypes()">Topics</button>
     <button id="kg-tab-comm" class="kg-btn" onclick="App.graphTop()">Communities</button>
     <button id="kg-all" class="kg-btn" onclick="App.graphAll()" style="display:none">All</button>
@@ -314,6 +315,7 @@
       <div id="kg-tip" class="kg3d-tip hide"></div>
     </div>
     <aside id="kg-side" class="kg-side">
+      <div id="kg-side-grip" class="kg-side-grip" title="Drag to resize the side panel"></div>
       <div class="kg-side-tabs">
         <button data-t="details" onclick="App.kgSide('details')">Details</button>
         <button data-t="classes" onclick="App.kgSide('classes')">Classes</button>
@@ -346,6 +348,18 @@
         <span class="muted">gold label = grounded</span>
       </div>
     </div>
+    <div id="kg-play-hud" class="kg-play-hud hide" aria-live="polite"></div>
+    <aside id="kg-play-drawer" class="kg-play-drawer hide" aria-label="Graph playground">
+      <div id="kg-play-grip" class="kg-play-grip" title="Drag to resize"></div>
+      <div class="kg-play-drawer-h">
+        <b>Graph playground</b>
+        <span class="muted mini">watch a document built from evidence</span>
+        <span style="flex:1"></span>
+        <button class="small" onclick="App.kgPlaySetup()" title="Show or hide the job-spec setup">Setup</button>
+        <button class="small" onclick="App.kgPlayClose()" title="Close the playground">✕</button>
+      </div>
+      <div id="kg-play-body" class="kg-play-body"></div>
+    </aside>
   </div>
   <div id="kg-legend" class="kg-legend"></div>
 </section>
@@ -461,6 +475,7 @@
   <div class="row"><b style="flex:1">Add evidence for a skill</b><button onclick="evidClose()"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button></div>
   <p class="muted mini">Record where you <i>actually</i> have this skill. It's saved to the knowledge base
     and will show up in future tailored CVs (rebuild the graph to apply it now).</p>
+  <div id="evid-explain" class="evid-explain"></div>
   <div class="row"><span class="muted" style="min-width:86px">Skill</span><input id="evid-skill" style="flex:1"></div>
   <div class="row" style="margin-top:6px"><span class="muted" style="min-width:86px">Where from</span>
     <input id="evid-source" placeholder="employer / project / cert (e.g. Acme AB, ExampleCorp, spare time)" style="flex:1"></div>

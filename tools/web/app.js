@@ -119,7 +119,8 @@ const md = (s) => {
   t = t.replace(/^(?!<h\d|<ul|<li|<\/?ul|<pre|<\/?pre|<blockquote|<hr|\s*$)(.+)$/gm, '<p>$1</p>');
   return t;
 };
-let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] }, CUR_PERM = null, PERM_BUSY = false, DRAFT_SENDING = false;
+let GRID = [], SORT = { k: 'date', dir: -1 }, D = {}, P = {}, chatOffset = 0, CHAT_TIMER = null, CHAT = { segments: [] }, CHAT_BASE = 0, CUR_PERM = null, PERM_BUSY = false, DRAFT_SENDING = false;
+let MISSK_ASKED = new Set();
 let SEL = new Set(), SEL_ANCHOR = '';              // selected roles, by company|role identity
 const selId = (r) => r ? String(r.company || '').trim().toLowerCase() + '|' + String(r.role || '').trim().toLowerCase() : '';
 let BUILD = '', LIVE_TASKS = [];
@@ -135,18 +136,19 @@ function noteAction(label, keys) {
     return r ? `${r.company}: ${r.role}` : k;
   });
   LOCAL_ACT = { label, names, at: Date.now(), done: false };
-  App.showActivity();
+  openDock(true);                         // the durable card lives in the Agent console
   liveTick();
 }
 
 function starting(label, keys) {
   LIVE_RUNNING = true;
-  $('#peras').classList.add('hide');      // background work lives in Activity, not a blocking modal
+  $('#peras').classList.add('hide');      // the durable result belongs in the Agent console
   (keys || []).forEach(k => PENDING.add(k));
   const rc = $('#runctl'); if (rc) rc.classList.remove('hide');
   const l = $('#live'); if (l) l.innerHTML = NUT + esc('● ' + (label || 'working') + ': starting…');
-  ACT = { name: label || 'working', running: true, summary: {}, log: [] };
-  ACT_SIG = ''; ACT_IGNORE = LAST_ACT_NAME;
+  ACT = { name: label || 'working', label: label || 'working', running: true, summary: {}, log: [] };
+  ACT_SIG = ''; ACT_START_AT = Date.now() / 1000;
+  ACT_AT = chatAbsLen(); ACT_SEQ = CARD_SEQ++; ACT_KEY = 'local|run';
   CHAT_STICK = true;
   renderChat();
   document.querySelectorAll('#a-prepare,#a-submit,#a-reconcile,#a-prepare-shown,#a-submit-shown,#a-match,#d-body [data-act]')
@@ -355,7 +357,7 @@ const App = {
     if (d.error) {
       LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now(), done: true };
       PENDING.clear(); LIVE_RUNNING = false; liveTick();
-    } else { App.showActivity(); }
+    } else { openDock(true); }
   },
   cf: async (target) => {
     document.querySelectorAll('#cf-tabs a').forEach(a => a.classList.toggle('on', a.dataset.t === target));
@@ -538,120 +540,127 @@ const App = {
   checkUpdates: () => updateCheck(true),
   updateNow: () => updateDialog(),
   aiAdd: () => {
-    const k = $('#ai-env-k').value.trim(), v = $('#ai-env-v').value;
-    if (!k) { toast('name the key first', true); return; }
-    const box = $('#ai-env'); if (box.querySelector('span.muted')) box.innerHTML = '';
-    const row = document.createElement('div'); row.className = 'row'; row.style.margin = '3px 0';
-    row.innerHTML = `<code style="min-width:190px">${esc(k)}</code>
-      <input data-env="${esc(k)}" value="${esc(v)}" style="flex:1" onchange="App.saveAI()">
-      <button class="small" onclick="App.aiDel('${esc(k)}')" title="remove">✕</button>`;
-    box.appendChild(row); $('#ai-env-k').value = ''; $('#ai-env-v').value = '';
-    App.saveAI();
+    const k = ($('#ai-env-k') || {}).value || '', v = ($('#ai-env-v') || {}).value || '';
+    if (!k.trim()) { toast('name the key first', true); return; }
+    App.aiSaveEnv({ [k.trim()]: v });
   },
-  aiDel: (k) => {
-    const el = document.querySelector(`#ai-env input[data-env="${k}"]`);
-    if (el) el.closest('.row').remove();
-    App.saveAI({ envExtra: { [k]: '' } });
-  },
-  useOpenRouter: async () => {
-    const key = ($('#ai-or-key') && $('#ai-or-key').value || '').trim();
-    const env = key ? { OPENROUTER_API_KEY: key } : {};
-    const pick = ($('#ai-model-sel') && $('#ai-model-sel').value || '').trim();
-    const model = pick && pick.includes('/') && !/^(opencode|opencode-go|claude)/.test(pick)
-      ? pick : 'deepseek/deepseek-v4.1-flash';
-    const d = await api('/api/agent/config', { agent: 'openrouter', model,
-      models: { openrouter: model }, env });
-    toast(d.ok || d.error, !!d.error);
-    if (!d.error) App.settings('ai');
-  },
-  useLocal: async () => {
-    const url = (($('#ai-local-url') && $('#ai-local-url').value.trim()) || 'http://127.0.0.1:8080/v1').replace(/\/$/, '');
-    const key = ($('#ai-local-key') && $('#ai-local-key').value.trim()) || '';
-    const env = { LOCAL_LLM_BASE_URL: url };
-    if (key) env.LOCAL_LLM_API_KEY = key;
-    let d = await api('/api/agent/config', { agent: 'local', model: '', models: {}, env });
-    if (d.error) return toast(d.error, true);
-    const m = await api('/api/agent/models?agent=local');
-    const model = ((m && m.models) || [])[0] || 'lfm3-1.7b-heretic';
-    d = await api('/api/agent/config', { agent: 'local', model, models: { local: model }, env });
-    toast(d.ok || d.error, !!d.error);
-    if (!d.error) { loadChatModel(); App.settings('ai'); }
-  },
+  aiDel: (k) => App.aiSaveEnv({ [k]: '' }),
   aiStatus: (msg, bad) => {
     const el = $('#ai-msg');
     if (el) { el.textContent = msg; el.className = 'muted mini' + (bad ? ' bad' : ''); }
     if (bad) toast(msg, true);
   },
-  aiFillModels: async (a) => {
-    const sel = $('#ai-model-sel'); if (!sel) return;
-    const seq = ++AI_MODEL_SEQ;
-    const who = (a && (a.which || a.agent)) || '';
-    let m = { models: [], source: '' };
-    try { m = await api('/api/agent/models?agent=' + encodeURIComponent(who)); } catch (e) { return; }
-    if (seq !== AI_MODEL_SEQ) return;
-    const cur = (a && a.model) || '';
-    const list = m.models || [];
-    sel.innerHTML = modelOptionsHTML(m.groups || [], cur, list);
-    const custom = $('#ai-model-custom');
-    if (custom) custom.value = (cur && !list.includes(cur)) ? cur : '';
-    sel.title = m.source ? `models from ${m.source}` : 'type a model id instead';
-    const sub = $('#ai-subagent-model');
-    if (sub) {
-      const keep = (a && a.subagent_model) || '';
-      sub.innerHTML = '<option value="">Same as main agent</option>' +
-        modelOptionsHTML(m.groups || [], keep, list);
-      sub.value = keep;
-      sub.title = m.source ? `models from ${m.source}` : 'model for subagents';
-    }
+  /* Role tabs: only one role's panel is visible; the other provider's fields
+     are never rendered, so the page stays short and focused. */
+  aiSetRole: (role) => {
+    AI_ROLE = role === 'subagent' ? 'subagent' : 'main';
+    document.querySelectorAll('#ai-roles button').forEach(b =>
+      b.classList.toggle('on', b.dataset.role === AI_ROLE));
+    aiRenderPane();
   },
-  saveSubagents: async () => {
-    const n = Math.max(1, Math.min(6, parseInt((($('#ai-parallel') || {}).value || '3'), 10) || 3));
-    const sub = ((($('#ai-subagent-model') || {}).value || '')).trim();
-    const d = await api('/api/agent/config', { parallel: n, subagent_model: sub });
-    toast(d.error ? d.error : `subagents: up to ${n} at once, model ${sub || 'same as the main agent'}`, !!d.error);
-    if (!d.error) App.settings('ai');
-    return d;
-  },
-  saveAI: async (opts = {}) => {
-    const has = (k) => Object.prototype.hasOwnProperty.call(opts, k);
-    const env = Object.assign({}, opts.envExtra || {});
-    document.querySelectorAll('#ai-env input[data-env]').forEach(i => { if (i.value) env[i.dataset.env] = i.value; });
-    const orKey = ($('#ai-or-key') && $('#ai-or-key').value || '').trim();
-    if (orKey) env.OPENROUTER_API_KEY = orKey;
-    const localUrl = ($('#ai-local-url') && $('#ai-local-url').value.trim() || '');
-    if (localUrl) env.LOCAL_LLM_BASE_URL = localUrl.replace(/\/$/, '');
-    const localKey = ($('#ai-local-key') && $('#ai-local-key').value.trim() || '');
-    if (localKey) env.LOCAL_LLM_API_KEY = localKey;
-    let agent = has('agent') ? String(opts.agent || '').trim() : (($('#ai-agent') && $('#ai-agent').value) || '').trim();
-    if (agent === '__custom__') agent = ($('#ai-agent-custom') && $('#ai-agent-custom').value.trim()) || '';
-    let model = has('model') ? String(opts.model || '').trim()
-      : ((($('#ai-model-custom') && $('#ai-model-custom').value.trim()) || ($('#ai-model-sel') && $('#ai-model-sel').value) || '').trim());
-    if (!agent) model = '';
-    const models = agent && model ? { [agent]: model } : {};
-    const d = await api('/api/agent/config', { agent, model, models, env });
-    if (d.error) { App.aiStatus(d.error, true); return d; }
-    const saved = d.config || {};
-    const iu = $('#ai-inuse'); if (iu) iu.textContent = saved.agent || agent || 'auto';
-    const top = $('#chat-model');
-    if (top) {
-      top.dataset.agent = saved.agent || agent || '';
-      top.dataset.configured = saved.agent || agent || '';
-      const target = saved.model || model;
-      if (target) {
-        let opt = Array.from(top.options).find(o => o.value === target);
-        if (!opt) { opt = document.createElement('option'); opt.value = target; opt.textContent = target; top.appendChild(opt); }
-        top.value = target;
-      }
+  aiPickProvider: (sel) => {
+    const role = sel.dataset.role;
+    const row = $('#ai-custom-row'), inp = $('#ai-custom-agent');
+    if (sel.value === '__custom__') {
+      if (row) row.classList.remove('hide');
+      const card = $('#ai-provider-card');
+      if (card) card.classList.add('hide');
+      if (inp) { inp.dataset.role = role; inp.focus(); }
+      return;
     }
+    if (row) row.classList.add('hide');
+    const card = $('#ai-provider-card');
+    if (card) card.classList.remove('hide');
+    App.aiSetProvider(role, sel.value);
+  },
+  aiSaveCustom: async (inp) => {
+    const role = inp.dataset.role || 'main';
+    const cmd = (inp.value || '').trim();
+    if (!cmd) return;
+    const body = role === 'main'
+      ? { agent: cmd, model: '' }
+      : { subagent_agent: cmd, subagent_model: '' };
+    const d = await api('/api/agent/config', body);
+    if (d.error) return App.aiStatus(d.error, true);
+    await aiReload();
     App.aiStatus('saved');
-    loadChatModel(true);
-    return d;
+  },
+  aiSetProvider: async (role, value) => {
+    value = String(value || '');
+    let body;
+    if (role === 'main') {
+      let model = (AI_CFG && AI_CFG.models && AI_CFG.models[value]) || '';
+      if (!model && value === 'openrouter') model = 'deepseek/deepseek-v4.1-flash';
+      if (!model && value === 'local') {
+        const m = await aiLoadModels('local', true);
+        model = ((m && m.models) || [])[0] || '';
+      }
+      body = { agent: value, model, models: model ? { [value]: model } : {} };
+    } else {
+      const main = (AI_CFG && AI_CFG.agent) || '';
+      const model = (!value || value === main)
+        ? '' : (((AI_CFG && AI_CFG.models) || {})[value] || '');
+      body = { subagent_agent: value, subagent_model: model };
+    }
+    const d = await api('/api/agent/config', body);
+    if (d.error) return App.aiStatus(d.error, true);
+    await aiReload();
+    App.aiStatus('saved');
+  },
+  aiSetModel: async (role, value) => {
+    value = String(value || '').trim();
+    const body = role === 'main'
+      ? { agent: (AI_CFG && AI_CFG.agent) || '', model: value,
+          models: ((AI_CFG && AI_CFG.agent) && value) ? { [AI_CFG.agent]: value } : {} }
+      : { subagent_model: value };
+    const d = await api('/api/agent/config', body);
+    if (d.error) return App.aiStatus(d.error, true);
+    await aiReload();
+    App.aiStatus('saved');
+  },
+  aiRefreshModels: async (role) => {
+    const eff = aiEffectiveAgent(role);
+    App.aiStatus('refreshing models…');
+    await aiLoadModels(eff, true);
+    if (CF_SEC !== 'ai') return;
+    await aiRenderPane();
+    App.aiStatus('models refreshed');
+  },
+  aiSetParallel: async () => {
+    const n = Math.max(1, Math.min(6, parseInt((($('#ai-parallel') || {}).value || '3'), 10) || 3));
+    const d = await api('/api/agent/config', { parallel: n });
+    if (d.error) return App.aiStatus(d.error, true);
+    await aiReload();
+    App.aiStatus(`subagents: up to ${n} at once`);
+  },
+  aiSaveEnvKey: (inp) => {
+    const k = inp.dataset.key, v = (inp.value || '').trim();
+    if (!k || !v) { inp.value = ''; return; }     // blank keeps the stored value
+    App.aiSaveEnv({ [k]: v });
+  },
+  aiSaveEnvValue: (inp) => {
+    const k = inp.dataset.key;
+    if (!k) return;
+    App.aiSaveEnv({ [k]: (inp.value || '').trim() });
+  },
+  aiEnvDel: (k) => {
+    if (!window.confirm(`Remove ${k}?`)) return;
+    App.aiSaveEnv({ [k]: '' });
+  },
+  aiSaveEnv: async (vars) => {
+    const d = await api('/api/agent/config', { env: vars });
+    if (d.error) return App.aiStatus(d.error, true);
+    Object.keys(AI_MODELS).forEach(k => { delete AI_MODELS[k]; });  // keys/endpoints changed
+    await aiReload();
+    App.aiStatus('saved');
   },
   saveGR: async () => {
-    const vars = {}; document.querySelectorAll('#ai-gr input[data-gr]').forEach(i => { if (i.value) vars[i.dataset.gr] = i.value; });
+    const vars = {};
+    document.querySelectorAll('#gr-env input[data-gr]').forEach(i => { if (i.value) vars[i.dataset.gr] = i.value; });
     const d = await api('/api/graphrag/env', { vars });
-    if (d.error) return App.aiStatus(d.error, true);
-    App.aiStatus('GraphRAG saved');
+    if (d.error) { toast(d.error, true); return; }
+    toast('graph settings saved');
+    App.settings('graph');
   },
   saveGmailReview: async () => {
     const el = $('#gmail-review-enabled'), model = $('#gmail-review-model'), auto = $('#gmail-review-auto');
@@ -683,6 +692,8 @@ const App = {
   },
   openKnowledge: async (mode) => {
     const page = $('#knowledge'); if (!page) return;
+    applyKgSideWidth();
+    applyKgPlayWidth();
     stopLogs();
     const cfg = $('#cfg'); if (cfg) cfg.classList.add('hide');
     page.classList.remove('hide');
@@ -1019,6 +1030,131 @@ const App = {
     toast(d.error ? d.error : 'fact added: rebuild the graph to index it', !!d.error);
     if (!d.error) { $('#kg-fact-skill').value = ''; $('#kg-fact-source').value = ''; $('#kg-fact-detail').value = ''; }
   },
+  kgPlayOpen: async () => {
+    const dr = $('#kg-play-drawer'); if (!dr) return;
+    dr.classList.remove('playing');
+    const page = $('#knowledge'); if (page) page.classList.add('play-open');
+    applyKgPlayWidth();
+    dr.classList.remove('hide');
+    const body = $('#kg-play-body');
+    if (body) body.innerHTML = '<span class="muted mini">reading saved job specs…</span>';
+    const s = await api('/api/kg/play/sources');
+    KG_PLAY.sources = (s && s.sources) || [];
+    if (KG_PLAY.key && !KG_PLAY.sources.some(x => x.key === KG_PLAY.key)) KG_PLAY.key = '';
+    if (body) body.innerHTML = kgPlayUIHTML();
+  },
+  kgPlaySetup: () => {
+    const dr = $('#kg-play-drawer'); if (dr) dr.classList.toggle('playing');
+  },
+  kgPlayClose: () => {
+    const dr = $('#kg-play-drawer'); if (dr) { dr.classList.add('hide'); dr.classList.remove('playing'); }
+    const page = $('#knowledge'); if (page) page.classList.remove('play-open');
+    KG_PLAY.run++;
+    KG_PLAY.playing = false;
+    kgPlayHud('');
+    if (window.__kg3d) window.__kg3d.clearPlayback();
+    if (window.__uni) window.__uni.clearPlayback();
+  },
+  kgPlayFilter: () => {
+    const inp = $('#kg-play-q'), box = $('#kg-play-results');
+    if (!inp || !box) return;
+    const q = inp.value.trim().toLowerCase();
+    const chosen = (KG_PLAY.sources || []).find(x => x.key === KG_PLAY.key);
+    if (KG_PLAY.key && (!chosen || inp.value.trim() !== chosen.label)) KG_PLAY.key = '';
+    const src = KG_PLAY.sources || [];
+    let rows = q
+      ? src.filter(x => (`${x.label} ${x.company || ''} ${x.role || ''} ${x.key}`).toLowerCase().includes(q))
+      : src.slice(0, 12);
+    rows = rows.slice(0, 30);
+    box.innerHTML = rows.length
+      ? rows.map(x => `<button class="kg-play-result" data-key="${esc(x.key)}" onclick="App.kgPlayPick(this.dataset.key)">
+          <b>${esc(x.company || '—')}</b><span>${esc(x.role || x.key)}</span></button>`).join('')
+      : '<div class="kg-play-empty">No saved job spec matches that.</div>';
+    box.classList.add('on');
+  },
+  kgPlayPick: (key) => {
+    const x = (KG_PLAY.sources || []).find(s => s.key === key);
+    if (!x) return;
+    KG_PLAY.key = key;
+    const inp = $('#kg-play-q'); if (inp) inp.value = x.label;
+    const sel = $('#kg-play-selected'); if (sel) sel.textContent = 'Selected: ' + x.label;
+    const t = $('#kg-play-text'); if (t) t.value = '';
+    App.kgPlayCloseResults();
+  },
+  kgPlayPickFirst: () => {
+    const b = document.querySelector('#kg-play-results .kg-play-result');
+    if (b) App.kgPlayPick(b.dataset.key);
+  },
+  kgPlayClear: () => {
+    KG_PLAY.key = '';
+    const inp = $('#kg-play-q'); if (inp) { inp.value = ''; inp.focus(); }
+    const sel = $('#kg-play-selected');
+    if (sel) sel.textContent = 'No saved spec selected — paste one below.';
+    App.kgPlayCloseResults();
+  },
+  kgPlayCloseResults: () => {
+    const box = $('#kg-play-results'); if (box) box.classList.remove('on');
+  },
+  kgPlay: async () => {
+    const key = KG_PLAY.key || '';
+    const text = key ? '' : (($('#kg-play-text') || {}).value || '').trim();
+    const hops = (($('#kg-play-hops') || {}).value || '2');
+    const kind = (($('#kg-play-kind') || {}).value || 'cv');
+    if (!key && !text) { toast('search and choose a saved job spec, or paste one', true); return; }
+    const go = $('#kg-play-go'); if (go) { go.disabled = true; go.textContent = '… building'; }
+    const status = $('#kg-play-status'); if (status) status.textContent = 'reading the graph…';
+    kgPlayHud(`<b>Reading</b><span>extracting requirements and matching them to the graph…</span>`);
+    const docBox = $('#kg-play-doc');
+    if (docBox) docBox.innerHTML = `<div class="kg-play-loading"><span class="spin">${ic('loader')}</span> Reading the job spec, ranking evidence and assembling the ${kind === 'letter' ? 'cover letter' : 'CV'}…</div>`;
+    const d = await api('/api/kg/play', { key, text, hops, kind });
+    if (go) { go.disabled = false; go.innerHTML = '▶ Play build'; }
+    if (!d || d.error) {
+      if (status) status.textContent = (d && d.error) || 'could not build the brief';
+      if (docBox) docBox.innerHTML = '<span class="muted mini">The document will be built here, sentence by sentence.</span>';
+      toast((d && d.error) || 'the playground could not build a brief', true);
+      return;
+    }
+    KG_PLAY = { ...KG_PLAY, data: d, step: -1, playing: true, run: KG_PLAY.run + 1 };
+    const kgRun = KG_PLAY.run;
+    const dr = $('#kg-play-drawer'); if (dr) dr.classList.add('playing');
+    const uni = KGMODE === 'universe';
+    if (uni) {
+      await App.setKGMode('universe');
+      const us = $('#uni-stats');
+      if (us) us.textContent = `${(d.graph.nodes || []).length} evidence nodes · ${(d.graph.links || []).length} links`;
+    } else {
+      await App.setKGMode('map');
+      await kgRender({ nodes: d.graph.nodes, links: d.graph.links, mode: 'ego',
+                       center: d.graph.center }, { keepSide: true });
+      setTimeout(() => { if (KG_PLAY.run === kgRun && window.__kg3d) window.__kg3d.fit(); }, 600);
+      const st = $('#kg-stats');
+      if (st) st.textContent = `${(d.graph.nodes || []).length} evidence nodes · ${(d.graph.links || []).length} connections`;
+    }
+    const cr = $('#kg-crumbs');
+    if (cr) cr.innerHTML = `<span class="kg-crumb on">Playground · ${esc(kgShort(d.job.role || d.job.key || 'pasted spec', 46))}</span>`;
+    kgPlayRender(d);
+    await kgPlayRun(kgRun);
+  },
+  kgPlayStop: () => {
+    KG_PLAY.run++;
+    KG_PLAY.playing = false;
+    const s = $('#kg-play-status'); if (s) s.textContent = 'stopped';
+    kgPlayHud('');
+    if (window.__kg3d) window.__kg3d.clearPlayback();
+    if (window.__uni) window.__uni.clearPlayback();
+  },
+  kgPlayReplay: () => {
+    if (!KG_PLAY.data) return;
+    KG_PLAY.run++;
+    KG_PLAY.playing = true;
+    kgPlayRender(KG_PLAY.data);
+    kgPlayRun(KG_PLAY.run);
+  },
+  kgPlayCite: (id) => {
+    if (!id) return;
+    if (KGMODE === 'universe') { if (window.__uni) window.__uni.selectByTitle(id); }
+    else if (window.__kg3d) { window.__kg3d.select(id); window.__kg3d.flyTo(id); }
+  },
   kgUpload: async () => {
     const inp = $('#kg-kb-file'), grp = ($('#kg-kb-group') || {}).value || 'imported';
     if (!inp || !inp.files.length) { toast('choose file(s) first', true); return; }
@@ -1226,7 +1362,7 @@ const App = {
     clearInterval(CHAT_TIMER); CHAT_TIMER = null;
     ACT = null; ACT_SIG = ''; ACT_KEY = ''; ACT_AT = 0; CARD_SEQ = 1;
     CHAT_OPEN.clear();
-    CHAT = { segments: [], running: false }; DONE_CARDS = []; DELEGATED_DONE_SEEN = null;
+    CHAT = { segments: [], running: false }; CHAT_BASE = 0; DONE_CARDS = []; DELEGATED_DONE_SEEN = null;
     setSpin(false); renderChat(); toast('agent history cleared');
   },
   open: (i) => openDetail(GRID[i]),
@@ -1259,9 +1395,9 @@ const App = {
     starting('preparing documents', keys);
     noteAction('Preparing documents', keys);
     const d = await api('/api/prepare', { keys });
-    toast(d.error ? d.error : `preparing ${n} role(s) in the background: watch Activity`, !!d.error);
+    toast(d.error ? d.error : `preparing ${n} role(s): the summary will appear in the Agent console`, !!d.error);
     if (d.error) { LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now(), done: true }; liveTick(); PENDING.clear(); LIVE_RUNNING = false; }
-    else { App.showActivity(); }
+    else { openDock(true); }
   },
   prepareThis: (key) => App.prepareRoles([key]),
   prepareShown: () => App.prepareRoles(VISIBLE),
@@ -1274,9 +1410,9 @@ const App = {
     starting('submitting applications', keys);
     noteAction('Submitting prepared documents', keys);
     const d = await api('/api/submit', { keys, approval_token: 'APPROVE_RUN_QUEUE' });
-    toast(d.error ? d.error : `submitting ${n} application(s) in the background: watch Activity`, !!d.error);
+    toast(d.error ? d.error : `submitting ${n} application(s): the summary will appear in the Agent console`, !!d.error);
     if (d.error) { LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now(), done: true }; liveTick(); PENDING.clear(); LIVE_RUNNING = false; }
-    else { App.showActivity(); }
+    else { openDock(true); }
   },
   prepareSubmit: async (keys) => {
     const n = (keys || []).length;
@@ -1286,11 +1422,11 @@ const App = {
     starting('preparing and submitting applications', keys);
     noteAction('Preparing and submitting applications', keys);
     const d = await api('/api/prepare-submit', { keys, approval_token: 'APPROVE_RUN_QUEUE' });
-    toast(d.error ? d.error : `preparing and submitting ${n} application(s) in the background: watch Activity`, !!d.error);
+    toast(d.error ? d.error : `preparing and submitting ${n} application(s): the summary will appear in the Agent console`, !!d.error);
     if (d.error) {
       LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now(), done: true };
       liveTick(); PENDING.clear(); LIVE_RUNNING = false;
-    } else { App.showActivity(); }
+    } else { openDock(true); }
   },
   prepareSubmitThis: (key) => App.prepareSubmit([key]),
   submitThis: (key) => App.submitRoles([key], 'this role'),
@@ -1340,7 +1476,54 @@ const App = {
   openPage: async (company, role) => { const d = await api('/api/open', { company, role }); toast(d.ok || d.error, !!d.error); },
   addEvidence: (skill, key) => {
     $('#evid-skill').value = skill || ''; $('#evid-source').value = ''; $('#evid-detail').value = '';
+    const box = $('#evid-explain');
+    const cached = ((D.match || {}).missing_detail || []).find(x => x && x.term === skill);
+    if (box) {
+      box.innerHTML = (cached && cached.note
+        ? `<b>${esc(cached.label || skill)}</b><p>${esc(cached.note)}</p>`
+        : `<b>${esc(skill)}</b>`) + '<span class="muted mini">reading the advert…</span>';
+      api('/api/skill/explain', { key: key || (CUR && (CUR.jd_key || CUR.key)) || '', term: skill }).then(d => {
+        if (!box) return;
+        if (!d || d.error || !d.plain) {
+          box.innerHTML = (cached && cached.note
+            ? `<b>${esc(cached.label || skill)}</b><p>${esc(cached.note)}</p>`
+            : `<b>${esc(skill)}</b><p class="muted">No explanation available; check the advert text below.</p>`);
+          return;
+        }
+        box.innerHTML = `<b>${esc(d.label || skill)}</b>` +
+          (d.kind && d.kind !== 'skill' ? ` <span class="etag">${esc(d.kind)}</span>` : '') +
+          `<p>${md(d.plain)}</p>`;
+      });
+    }
     $('#evid').classList.remove('hide'); $('#evid-source').focus();
+  },
+  explainMissing: async (r) => {
+    if (!r) return;
+    const rows = (D.match || {}).missing_detail || [];
+    if (!rows.some(x => x && x.kind === 'unknown')) return;
+    const key = r.jd_key || r.key;
+    if (!key || MISSK_ASKED.has(key)) return;
+    MISSK_ASKED.add(key);
+    const load = $('#missk-loading');
+    if (load) load.textContent = 'reading the advert with the model…';
+    const d = await api('/api/role/skills', { key });
+    if (d && d.terms && d.terms.length) {
+      D.match = { ...(D.match || {}), missing_detail: d.terms };
+      if (CUR && CUR.key === r.key && DTAB === 0) dt(0);
+    } else {
+      MISSK_ASKED.delete(key);      // allow the next open to retry a failed model call
+    }
+  },
+  saveInterviewStage: async () => {
+    if (!CUR) return;
+    const stage = (($('#d-ivstage') || {}).value || '');
+    const d = await api('/api/role/interview-stage', { key: CUR.key, stage });
+    if (!d || d.error) { toast((d && d.error) || 'could not save the stage', true); return; }
+    CUR.interview_stage = stage;
+    CUR.interview_stage_label = d.interview_stage_label || '';
+    toast(d.ok || 'interview stage saved');
+    await loadGrid();
+    if (CUR) openDetail(CUR);
   },
   saveEvidence: async () => {
     const d = await api('/api/skills/evidence', { skill: $('#evid-skill').value, source: $('#evid-source').value,
@@ -1368,7 +1551,7 @@ const App = {
     if (!await warn(LONG.update, 'This may take a while', 'Start update')) return;
     starting('updating the knowledge graph');
     const d = await api('/api/action/run', { command: 'kb_update', approval_token: '' });
-    toast(d.ok || d.error, !!d.error); if (!d.error) { App.showActivity(); } else { LIVE_RUNNING = false; liveTick(); }
+    toast(d.ok || d.error, !!d.error); if (!d.error) { openDock(true); } else { LIVE_RUNNING = false; liveTick(); }
   },
   rebuildKB: async () => {
     if (!await warn(LONG.rebuild, 'This may take a while', 'Start rebuild')) return;
@@ -1378,7 +1561,7 @@ const App = {
     if (d.error) {
       LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now(), done: true };
       LIVE_RUNNING = false; $('#peras').classList.add('hide'); liveTick();
-    } else { App.showActivity(); }
+    } else { openDock(true); }
   },
   saveRow: async () => {
     const d = await api('/api/register/row', {
@@ -1528,7 +1711,7 @@ const App = {
     $('#chatmsg').value = msg; App.chat();
   },
 };
-let CF = 'cv.json', CUR = null, CF_SEC = 'accounts', DRAFT = null, AI_MODEL_SEQ = 0;
+let CF = 'cv.json', CUR = null, CF_SEC = 'accounts', DRAFT = null;
 let ROUTING = false, ROUTE_BOOTED = false;
 let KG_LIVE_TIMER = null, KG_LIVE_NAV = null, KG_LAST_SEARCH = null;
 let ROLE_DATA = { segments: [], running: false, pending: 0 }, ROLE_TIMER = null;
@@ -1787,6 +1970,7 @@ function renderStateGraph() {
         if (fs) fs.value = child.dataset.sub;
       } else return;
       BUCKET = 'all'; BUCKET_BEFORE_SEARCH = null;
+      saveStateFilter();
       renderBuckets(); renderRows();
       return;
     }
@@ -1820,6 +2004,7 @@ function renderStateGraph() {
       if (fs && fs.value.startsWith(st + ':')) fs.value = '';
     }
     BUCKET = 'all'; BUCKET_BEFORE_SEARCH = null;
+    saveStateFilter();
     renderBuckets(); renderRows();
   });
   body.addEventListener('keydown', (e) => {
@@ -1912,6 +2097,7 @@ function clearFilterInputs() {
   const fa = document.getElementById('faction'); if (fa) fa.checked = false;
   const q = document.getElementById('q'); if (q) q.value = '';
   const f = document.getElementById('filters'); if (f) f.open = false;
+  saveStateFilter();
 }
 
 const prefersReduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -2052,7 +2238,7 @@ function renderRows() {
       `<td data-col="role"${T(r.role + (r.employment ? '  ·  ' + r.employment : '') + '  ·  job title')}>${esc(r.role)}${r.employment && r.employment !== 'full-time' ? ` <span class="etag">${esc(r.employment)}</span>` : ''}${r.repost ? ` <span class="etag repost"${T('Repost of ' + r.repost.role + ' (' + (r.repost.status || 'applied') + (r.repost.date ? ', ' + r.repost.date : '') + '). You can apply again; this is not a blocker.')}>repost</span>` : ''}${gtags ? `<div class="gtags">${gtags}</div>` : ''}</td>` +
       `<td data-col="level">${levelBadge(r)}</td>` +
       `<td data-col="ats" class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
-      `<td data-col="status">${chip(r.label || r.status)}${subLineHTML(r) || (r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : '')}</td><td data-col="match">${mbadge(r)}</td>` +
+      `<td data-col="status">${chip(r.label || r.status)}${r.interview_stage_label && r.interview_stage ? `<span class="stagechip">${esc(r.interview_stage_label)}</span>` : ''}${subLineHTML(r) || (r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : '')}</td><td data-col="match">${mbadge(r)}</td>` +
       `<td data-col="salary">${payBadge(r)}</td><td data-col="work">${workBadge(r)}</td>` +
       `<td data-col="queue"${T(QUEUE_HELP[r.queue] || 'Not in any queue')}>${['pending', 'human', 'retry'].includes(r.queue)
         ? `<span class="badge ${r.queue === 'human' ? 'bad' : r.queue === 'retry' ? 'mid' : 'good'}">${esc(r.queue)}</span>`
@@ -2936,6 +3122,7 @@ async function openDetail(r) {
   if (r.spec) jobs.push(api('/api/roles/' + encodeURIComponent(r.jd_key || r.key)));
   const [p, d] = await Promise.all(jobs); P = p || {}; D = d || {};
   dt(DTAB);
+  if (DTAB === 0) App.explainMissing(r);
 }
 window.dt = (i) => {
   const r = CUR, map = [summary, discuss, prov, spec, ats, grounding, tailored];
@@ -2983,10 +3170,31 @@ function summary(r) {
   const matchBadges = (m.alignment ? `<span class="badge ${m.alignment === 'PASS' ? 'good' : 'bad'}">alignment ${m.alignment}</span>` : '') +
     (m.coverage != null ? `<span class="badge ${m.coverage >= 70 ? 'good' : 'mid'}">coverage ${m.coverage}%</span>` : '') ||
     '<span class="muted mini">no match data yet</span>';
-  const missing = (m.missing || []).map(x => {
-    const ev = (m.evidenced || []).some(e => e.toLowerCase() === x.toLowerCase());
-    return `<a class="missk${ev ? ' evidenced' : ''}" title="${ev ? 'you have recorded evidence: re-prepare this role to apply it' : 'click to record where you have this skill'}" onclick='App.addEvidence(${JSON.stringify(x)},${JSON.stringify(r.key)})'>${ev ? '✓ ' : ''}${esc(x)}</a>`;
+  const detail = (m.missing_detail && m.missing_detail.length)
+    ? m.missing_detail
+    : (m.missing || []).map(t => ({ term: t, label: '', kind: 'skill', note: '' }));
+  const OFF = new Set(['not-a-skill', 'company', 'currency', 'code']);
+  const usable = detail.filter(x => x && !OFF.has(x.kind));
+  const pending = detail.some(x => x && x.kind === 'unknown');
+  const missing = usable.map(x => {
+    const term = x.term || '';
+    const label = x.label || term;
+    const ev = (m.evidenced || []).some(e => e.toLowerCase() === term.toLowerCase());
+    const why = x.note ? ` — ${x.note}` : '';
+    return `<a class="missk${ev ? ' evidenced' : ''}" title="${esc((ev ? 'recorded evidence; re-prepare to apply it' : 'click to record where you have this skill') + why)}" onclick='App.addEvidence(${JSON.stringify(term)},${JSON.stringify(r.jd_key || r.key)})'>${ev ? '✓ ' : ''}${esc(label)}</a>`;
   }).join('');
+  const IV_STAGES = [['', 'not recorded'], ['screen', 'Recruiter screen'], ['hiring-manager', 'Hiring manager'],
+    ['technical', 'Technical interview'], ['panel', 'Panel / onsite'], ['final', 'Final round'], ['offer', 'Offer stage']];
+  const interviewish = r.status === 'INTERVIEW' || ['SCHEDULED', 'INVITED'].includes(r.label || '');
+  const stageSection = interviewish ? `<section class="dsec">
+      <div class="dsec-h"><b>Interview stage</b><span class="muted mini">${r.interview_stage_label && r.interview_stage ? esc(r.interview_stage_label) : 'not recorded'}</span></div>
+      <div class="dsec-b">
+        <div class="dform-row"><select id="d-ivstage">${IV_STAGES.map(([v, l]) =>
+          `<option value="${v}"${(r.interview_stage || '') === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>
+          <button onclick="App.saveInterviewStage()">Save stage</button></div>
+        <div class="muted mini">Which round you are at. The status stays INTERVIEW/SCHEDULED; the stage is recorded in the register.</div>
+      </div>
+    </section>` : '';
   return scamBox(scam) +
     (scam && ['high', 'medium'].includes(scam.level)
       ? `<div class="dform-foot" style="justify-content:flex-start;margin:-2px 0 10px"><button class="small" onclick='App.clearScam(${JSON.stringify(r.jd_key || r.key)},${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Only after you have verified the employer independently">Clear scam warning</button></div>`
@@ -3001,7 +3209,7 @@ function summary(r) {
           ${act ? '<button onclick="App.clearAction()">Clear</button>' : ''}
         </div>
       </div>
-    </section>` +
+    </section>` + stageSection +
     `<section class="dsec">
       <div class="dsec-h"><b>Status</b>${known ? '' : '<span class="muted mini">runner derived</span>'}</div>
       <div class="dsec-b">
@@ -3049,7 +3257,7 @@ function summary(r) {
       <div class="dsec-h"><b>Match</b><span class="dsec-badges">${matchBadges}</span></div>
       <div class="dsec-b">
         ${kbGap ? '<div class="dnote warn">The grounding report flags requirements with no direct evidence. Check the missing skills before treating this as a fit.</div>' : ''}
-        ${missing ? `<div class="dnote"><span class="muted mini">Missing skills. Click one to record where you have it.</span><div class="missk-wrap">${missing}</div></div>` : ''}
+        ${missing ? `<div class="dnote"><span class="muted mini">Missing skills. Click one to record where you have it.</span><div class="missk-wrap" id="missk-wrap">${missing}</div>${pending ? '<span class="muted mini" id="missk-loading">reading the advert…</span>' : ''}</div>` : ''}
         ${(m.evidenced || []).length ? `<div class="dform-foot"><span class="muted mini">${m.evidenced.length} skill(s) have evidence. Re-prepare to fold them into the CV.</span><button class="small" onclick='App.prepareThis(${JSON.stringify(r.key)})'>${ic('refresh')} Re-prepare</button></div>` : ''}
         <div class="dform-row"><input id="dt-addkw" placeholder="Add a requirement from the job ad"></div>
         <div class="dform-foot" style="justify-content:flex-start">
@@ -3325,13 +3533,27 @@ async function liveTick() {
   }
   const done = d.delegated_done || [];
   const doneIds = new Set(done.map(x => x.id));
+  // A card added before the server learned the full summary is updated in
+  // place, so the Agent console gets the finished task's answer without a
+  // reload (the Activity pane is live-only now).
+  const doneById = new Map(done.map(x => [x.id, x]));
+  let cardsDirty = false;
+  DONE_CARDS.forEach(c => {
+    const n = doneById.get(c.id);
+    if (!n) return;
+    if ((n.summary || '') !== (c.summary || '') || (n.result || '') !== (c.result || '')) {
+      Object.assign(c, n);
+      cardsDirty = true;
+    }
+  });
+  if (cardsDirty) renderChat();
   if (DELEGATED_DONE_SEEN === null) {
     DELEGATED_DONE_SEEN = doneIds;                      // page load: no old result card
   } else {
     const freshDone = done.filter(x => !DELEGATED_DONE_SEEN.has(x.id));
     DELEGATED_DONE_SEEN = doneIds;
     if (freshDone.length) {
-      const at = (CHAT.segments || []).length;
+      const at = chatAbsLen();
       DONE_CARDS.push(...freshDone.slice(-3).map(x => ({ ...x, at, seq: CARD_SEQ++ })));
       renderChat();
       if (!document.hidden) toast(`Background task finished: ${freshDone[0].title || 'subagent'}`);
@@ -3376,13 +3598,15 @@ async function liveTick() {
         const line = (sm.headline || sm.notable && sm.notable[0] || 'the run stopped without submitting').slice(0, 240);
         LOCAL_ACT = { label: line, names: [], at: Date.now(), done: true };
         if (!document.hidden) toast('run finished with a problem: ' + line, true);
-        App.showActivity(); liveTick();
+        openDock(true); liveTick();
       }
       // Say what actually finished. An update is not a job run, and reporting
       // it as one made the software-update flow look like the pipeline had
-      // applied to a role.
+      // applied to a role. A reconcile says what it found or changed.
+      const newLine = (a.overview || []).find(x => /^new this run/i.test(x));
       if (!wasProblem) {
         if (/^update\b/i.test(was)) toast('software updated: restart the dashboard to load the new code');
+        else if (newLine) toast(newLine);
         else toast(was === 'queue run' ? 'run finished: grid refreshed' : 'finished: grid refreshed');
       }
     }
@@ -3400,26 +3624,28 @@ async function liveTick() {
     $('#peras-body').innerHTML = h;
   }
   const sm = a.summary || {};
-  LAST_ACT_NAME = a.name || '';
   // Keep the action card after it finishes: the summary is the point. The live
   // transcript is emptied by /api/live, so the card must not depend on it.
   const hasSummary = (a.overview || []).length ||
     (sm.headline && sm.headline !== 'no output') || (sm.notable || []).length;
   const sig = a.name ? [a.name, a.running, (a.log || []).length,
     (a.overview || []).join('|'), sm.headline || '', (sm.notable || []).join('|')].join('|') : '';
-  if ((LIVE_RUNNING || ACT) && sig !== ACT_SIG &&
-      (!ACT_IGNORE || a.running || a.name !== ACT_IGNORE)) {
-    ACT_IGNORE = '';
+  // A poll can still show the previous action for a moment after a new run was
+  // requested. Compare start times so the new card is not overwritten by old
+  // output; the durable summary belongs in the Agent console, not Activity.
+  const stale = ACT_START_AT && a.t0 && a.t0 < ACT_START_AT - 3;
+  if ((LIVE_RUNNING || ACT) && sig !== ACT_SIG && !stale) {
     ACT_SIG = sig;
-    ACT = a.name && (a.running || (a.log || []).length || hasSummary) ? a : null;
+    ACT = a.name && (a.running || (a.log || []).length || hasSummary)
+      ? { ...a, label: aname || a.name } : null;
     const key = ACT ? [a.name, a.running ? 'run' : 'done'].join('|') : '';
     if (ACT && key !== ACT_KEY) {
       // Place the card when the run starts, not when it finishes. A repeated
       // action name gets a new position when it comes back as a running run.
-      const starting = a.running || !ACT_KEY;
+      const starting = !ACT_KEY;
       ACT_KEY = key;
       if (starting) {
-        ACT_AT = (CHAT.segments || []).length;
+        ACT_AT = chatAbsLen();
         ACT_SEQ = CARD_SEQ++;
       }
     } else if (!ACT) {
@@ -3457,13 +3683,6 @@ async function liveTick() {
         `<span class="muted">running…</span></div>`;
       roster = runRoster(a, localNames);
       tech.push(...(a.log || []));
-    } else if (a.name && a.finished) {
-      // Report the outcome of the task that just finished, and nothing older.
-      const bits = [...((sm.notable || [])), sm.headline || ''].filter(Boolean);
-      const outcome = bits.find(x => /^\s*STATUS\s/i.test(x)) || sm.headline || '';
-      head += `<div class="act-h">${ic('check')} ${esc(aname || 'task')} <span class="muted">finished</span></div>`;
-      roster = runRoster(a, localNames);
-      if (!roster && outcome) head += `<div class="mini">${esc(outcome.slice(0, 500))}</div>`;
     }
     const tasks = d.running_tasks || (d.running || []).map(x => ({ label: x, log: '' }));
     if (tasks.length) {
@@ -3476,6 +3695,7 @@ async function liveTick() {
     }
     const human = humanActivity((d.tail || []).map(x => x.k === 'phase' ? '[p] ' + x.t : x.t));
     if (human.length) rest += '<ul class="act-list act-now">' + human.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
+    if (!head && !rest && !tasks.length) rest = '<span class="muted mini">Nothing running.</span>';
     (d.tail || []).forEach(x => tech.push((x.k === 'phase' ? '[phase] ' : '') + (x.t || '')));
     if (tech.length) rest += `<details class="act-raw"><summary>Technical details · ${tech.length} lines ` +
       `<button class="small" onclick="event.preventDefault();event.stopPropagation();App.openRawLog()" ` +
@@ -3807,8 +4027,75 @@ function initEdgeSplit(split) {
     split.addEventListener('pointermove', move); split.addEventListener('pointerup', up);
   });
 }
+function applyKgSideWidth() {
+  const page = $('#knowledge'); if (!page) return;
+  let w = parseInt(localStorage.getItem('kg.side') || '0', 10);
+  if (!w || w < 240) w = 320;
+  page.style.setProperty('--kg-side-w', Math.round(w) + 'px');
+}
+function setKgSideWidth(w) {
+  const page = $('#knowledge'); if (!page) return;
+  const max = Math.min(window.innerWidth * 0.72, 760);
+  w = Math.max(240, Math.min(max, Math.round(w)));
+  page.style.setProperty('--kg-side-w', w + 'px');
+  try { localStorage.setItem('kg.side', String(w)); } catch (e) {}
+}
+function initKgSideResize() {
+  const grip = $('#kg-side-grip'), side = $('#kg-side');
+  if (!grip || !side) return;
+  grip.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    grip.classList.add('drag');
+    try { grip.setPointerCapture(e.pointerId); } catch (_) {}
+    const startX = e.clientX, startW = side.getBoundingClientRect().width;
+    const move = (ev) => setKgSideWidth(startW - (ev.clientX - startX));
+    const up = () => {
+      grip.classList.remove('drag');
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      grip.removeEventListener('pointercancel', up);
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+    grip.addEventListener('pointercancel', up);
+  });
+}
+function applyKgPlayWidth() {
+  const page = $('#knowledge'); if (!page) return;
+  let w = parseInt(localStorage.getItem('kg.playw') || '0', 10);
+  if (!w || w < 560) w = 900;
+  page.style.setProperty('--kg-play-w', Math.round(w) + 'px');
+}
+function setKgPlayWidth(w) {
+  const page = $('#knowledge'); if (!page) return;
+  const max = Math.min(window.innerWidth * 0.82, 1200);
+  w = Math.max(420, Math.min(max, Math.round(w)));
+  page.style.setProperty('--kg-play-w', w + 'px');
+  try { localStorage.setItem('kg.playw', String(w)); } catch (e) {}
+}
+function initKgPlayResize() {
+  const grip = $('#kg-play-grip'), panel = $('#kg-play-drawer');
+  if (!grip || !panel) return;
+  grip.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    grip.classList.add('drag');
+    try { grip.setPointerCapture(e.pointerId); } catch (_) {}
+    const startX = e.clientX, startW = panel.getBoundingClientRect().width;
+    const move = (ev) => setKgPlayWidth(startW - (ev.clientX - startX));
+    const up = () => {
+      grip.classList.remove('drag');
+      grip.removeEventListener('pointermove', move);
+      grip.removeEventListener('pointerup', up);
+      grip.removeEventListener('pointercancel', up);
+    };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+    grip.addEventListener('pointercancel', up);
+  });
+}
 function setPanel(key, props) {
   if (!PANELS[key]) return;
+  const wasOpen = PANELS[key].open;
   if (key === 'grid' && props.open === false) props.open = true;
   if (key === 'detail' && props.open === false && ROLE_TIMER) { clearInterval(ROLE_TIMER); ROLE_TIMER = null; }
   if (key === 'detail' && props.open === false) {
@@ -3824,6 +4111,14 @@ function setPanel(key, props) {
   localStorage.setItem(key + '.pos', PANELS[key].pos);
   localStorage.setItem(key + '.open', PANELS[key].open ? '1' : '0');
   layoutPanels();
+  if (key === 'agent' && PANELS.agent.open && !wasOpen) {
+    // A hidden panel has no height, so its last render left scrollTop at 0.
+    // Opening the console should show the newest output, not the oldest.
+    requestAnimationFrame(() => {
+      renderChat();
+      const el = $('#chat'); if (el) { el.scrollTop = el.scrollHeight; CHAT_STICK = true; }
+    });
+  }
   if (key === 'states' && window.__paintStates) window.__paintStates();
   if (key === 'activity' && PANELS.activity.open) liveTick();
 }
@@ -3941,7 +4236,7 @@ function catchUp() {
 window.addEventListener('focus', catchUp);
 // The Cascade island loads as a module after this script; once it is mounted,
 // render the current Activity view into it (and drop the vanilla fallback).
-window.addEventListener('cascade-ready', () => { try { liveTick(); loadGrid().then(routeBoot); if (CUR) openDetail(CUR); } catch (e) {} });
+window.addEventListener('cascade-ready', () => { try { restoreStateFilter(); liveTick(); loadGrid().then(routeBoot); if (CUR) openDetail(CUR); } catch (e) {} });
 window.addEventListener('popstate', () => { setTimeout(() => { try { routeFromUrl(); } catch (e) {} }, 0); });
 // The module and the first grid fetch race; keep trying the route for a short
 // while after boot instead of depending on the order of those two events.
@@ -3991,16 +4286,23 @@ function initPanels() {
   if (rowsEl) rowsEl.addEventListener('mousedown', (ev) => App.rowDown(ev));
   document.querySelectorAll('.panel-close').forEach(b => b.onclick = () => setPanel(b.dataset.panel, { open: false }));
   layoutPanels();
+  applyKgSideWidth();
+  applyKgPlayWidth();
+  initKgSideResize();
+  initKgPlayResize();
   if (window.__paintStates) window.__paintStates();
 }
 async function chatPoll() {
   const d = await api('/api/chat/stream?since=' + chatOffset);
-  if (d.segments) { CHAT = d; renderChat(); }
+  if (d.segments) { CHAT = d; CHAT_BASE = d.base || 0; renderChat(); }
   chatOffset = d.offset || chatOffset;
   setSpin(!!d.running);
   const active = d.running || (d.pending || 0) > 0;      // keep polling while a turn runs OR messages wait
   if (active && !CHAT_TIMER) CHAT_TIMER = setInterval(chatPoll, 1200);
   else if (!active && CHAT_TIMER) { clearInterval(CHAT_TIMER); CHAT_TIMER = null; renderChat(); }
+}
+function chatAbsLen() {
+  return (CHAT_BASE || 0) + ((CHAT && CHAT.segments && CHAT.segments.length) || 0);
 }
 function cmdLine(cmd) {
   let first = String(cmd || '').split('\n')[0].replace(/\s+/g, ' ').trim();
@@ -4048,7 +4350,7 @@ document.addEventListener('toggle', e => {
 }, true);
 let CHAT_STICK = true;                                        // follow new output only if the reader is at the bottom
 function chatAtBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 60; }
-let ACT = null, ACT_SIG = '', ACT_IGNORE = '', LAST_ACT_NAME = '', LOCAL_ACT = null;
+let ACT = null, ACT_SIG = '', ACT_START_AT = 0, LOCAL_ACT = null;
 // Where an action card belongs in the transcript. A card is not pinned to the
 // bottom: it is inserted after the chat segments that existed when it started
 // (or finished), so the console stays chronological.
@@ -4064,9 +4366,16 @@ let DELEGATED_DONE_SEEN = null;                         // finished subagent ids
 let DONE_CARDS = [];                                    // {.., at, seq}: finished subagent results, in order
 let CHAT_TURN_RUNNING = false, LIVE_BUSY = false;       // chat turn + any action/subagent running
 function doneCard(d) {
+  const logLink = d.log
+    ? ` <a href="#" data-log="${esc(d.log)}" data-title="${esc(d.title || 'Background task')}"` +
+      ` onclick="event.preventDefault();openTaskLog(this.dataset.log,this.dataset.title)">Full log</a>`
+    : '';
+  const summary = (d.summary && d.summary !== d.result)
+    ? `<div class="md">${md(d.summary)}</div>` : '';
   return `<div class="c-act"><div class="c-user">✓ ${esc(d.title || 'background task')} <span class="muted">finished</span></div>` +
     (d.result ? `<div class="c-status">${esc(d.result)}</div>` : '') +
-    `<div class="mini muted">Background task finished. <a href="#" onclick="event.preventDefault();App.showActivity()">Activity</a></div></div>`;
+    summary +
+    `<div class="mini muted">Background task finished.${logLink}</div></div>`;
 }
 const normLab = (s) => String(s || '').replace(/[\u2014\u2013]/g, '-').replace(/\s+/g, ' ').trim().toLowerCase();
 
@@ -4177,7 +4486,7 @@ function rosterHTML(roster) {
 
 function actionCard(a) {
   const sm = a.summary || {}, ov = a.overview || [];
-  let h = `<div class="c-user">${a.running ? `<span class="spin">${ic('loader')}</span> ` : ''}${esc(a.name)} <span class="muted">${a.running ? 'running…' : 'done'}</span></div>`;
+  let h = `<div class="c-user">${a.running ? `<span class="spin">${ic('loader')}</span> ` : ''}${esc(a.label || a.name)} <span class="muted">${a.running ? 'running…' : 'done'}</span></div>`;
   if (ov.length) {
     h += '<div class="act-h" style="margin-top:6px">Where we are</div>';
     h += '<ul class="act-list">' + ov.map(x => `<li>${esc(x)}</li>`).join('') + '</ul>';
@@ -4330,19 +4639,28 @@ function renderChat() {
     i++;
   }
   const cards = [];
-  if (ACT) cards.push({ at: Math.min(ACT_AT, segs.length), seq: ACT_SEQ, html: actionCard(ACT) });
+  // Positions are absolute (the server keeps only the newest window of
+  // segments), so subtract the window base before placing a card.
+  const base = CHAT_BASE || 0;
+  const cardAt = (abs) => {
+    const n = Number(abs);
+    return Math.max(0, Math.min((Number.isFinite(n) ? n : chatAbsLen()) - base, segs.length));
+  };
+  if (ACT) cards.push({ at: cardAt(ACT_AT), seq: ACT_SEQ, html: actionCard(ACT) });
   DONE_CARDS.forEach(d => cards.push({
-    at: Math.min(Number.isFinite(d.at) ? d.at : segs.length, segs.length),
-    seq: d.seq || 0, html: doneCard(d),
+    at: cardAt(d.at), seq: d.seq || 0, html: doneCard(d),
   }));
   cards.sort((a, b) => a.at - b.at || a.seq - b.seq);
   let h = '', ci = 0;
   const emit = (upto) => { while (ci < cards.length && cards[ci].at <= upto) h += cards[ci++].html; };
   for (const c of chunks) { emit(c.start); h += c.html; }
   emit(segs.length);
+  const follow = CHAT_STICK || chatAtBottom(el);                // decide before the DOM is replaced
+  const keepTop = el.scrollTop;
   el.innerHTML = h;
   el.querySelectorAll('details[data-k]').forEach(d => { d.open = CHAT_OPEN.has(d.getAttribute('data-k')); });
-  if (CHAT_STICK) el.scrollTop = el.scrollHeight;             // never yank the reader back down
+  if (follow) el.scrollTop = el.scrollHeight;                    // otherwise never yank the reader back down
+  else el.scrollTop = keepTop;
 }
 /* ---------- per-role chat (drawer → Discuss) ---------- */
 function roleSegsHTML(segs, running) {
@@ -4576,6 +4894,7 @@ async function setKB(b) {
 const KGNS = 'http://www.w3.org/2000/svg';
 let KG = null;
 let KGMODE = 'map';
+let KG_PLAY = { run: 0, data: null, sources: null, step: -1, playing: false };
 const KG_COLORS = {
   TECHNOLOGY: '#7f9ec8', SKILL: '#8fbb9f', METRIC: '#d3a45f', PROJECT: '#b3a3cf',
   PRODUCT: '#8fb9c4', ORGANIZATION: '#cf9a9a', ROLE: '#eab308', PLATFORM: '#8b5cf6',
@@ -4645,7 +4964,7 @@ function kgDefaultHint() {
 
 let KGR_SIG = '', KGR_AT = 0, KGR_BUSY = false;
 
-async function kgRender(d) {
+async function kgRender(d, opts = {}) {
   const sig = JSON.stringify({ m: d.mode || '', c: d.center || '', t: d.type || '',
     n: (d.nodes || []).length,
     ids: (d.nodes || []).slice(0, 4).map(n => n.id) });
@@ -4710,18 +5029,303 @@ async function kgRender(d) {
         `<span class="kg-chip on" data-type="${esc(t)}" onclick="App.graphType(this.dataset.type)"><i style="background:${colors[t]}"></i>${esc(t)} ${c}</span>`).join('');
     }
   }
-  const body = $('#kg-side-body');
-  if (body) {
-    body.className = 'kg-side-body muted mini';
-    body.innerHTML = isType
-      ? 'Each node is an ontology class; the links aggregate relationships between classes. Click a class to see the individual entities behind it.'
-      : isComm
-        ? 'Each node is a community in the generated hierarchy. Click one for its summary and sources; double-click to drill into its sub-communities.'
-        : 'Each node is an entity from your documents. Click it for its description and source documents; double-click for its ego network.';
+  if (!opts.keepSide) {
+    const body = $('#kg-side-body');
+    if (body) {
+      body.className = 'kg-side-body muted mini';
+      body.innerHTML = isType
+        ? 'Each node is an ontology class; the links aggregate relationships between classes. Click a class to see the individual entities behind it.'
+        : isComm
+          ? 'Each node is a community in the generated hierarchy. Click one for its summary and sources; double-click to drill into its sub-communities.'
+          : 'Each node is an entity from your documents. Click it for its description and source documents; double-click for its ego network.';
+    }
+    document.querySelectorAll('.kg-side-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === 'details'));
   }
-  document.querySelectorAll('.kg-side-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === 'details'));
   kgViewButtons();
   } finally { KGR_BUSY = false; KGR_AT = performance.now(); }
+}
+
+function kgPlayUIHTML() {
+  const sel = (KG_PLAY.sources || []).find(x => x.key === KG_PLAY.key);
+  return `<div class="kg-play-setup">
+    <p class="muted mini">Pick a saved job spec or paste one. The graph runs a real recursive traversal, shows which advert requirement each step answers, and writes the document from the evidence it finds. No model calls.</p>
+    <label class="kg-play-label" for="kg-play-q">Saved job spec</label>
+    <div class="kg-play-picker">
+      <input id="kg-play-q" autocomplete="off" value="${esc(sel ? sel.label : '')}"
+        placeholder="Search saved job specs by company, role or keyword…"
+        oninput="App.kgPlayFilter()" onfocus="App.kgPlayFilter()"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();App.kgPlayPickFirst()}if(event.key==='Escape')App.kgPlayCloseResults()">
+      <button class="kg-play-clear" id="kg-play-clear" onclick="App.kgPlayClear()" title="Clear the saved selection">✕</button>
+      <div id="kg-play-results" class="kg-play-results"></div>
+    </div>
+    <div id="kg-play-selected" class="kg-play-selected">${sel ? 'Selected: ' + esc(sel.label) : 'No saved spec selected — paste one below.'}</div>
+    <textarea id="kg-play-text" placeholder="Paste a job spec here…" style="width:100%;height:56px;margin:6px 0"></textarea>
+    <div class="kg-play-controls">
+      <label class="mini muted">Document
+        <select id="kg-play-kind" class="mini"><option value="cv" selected>CV</option><option value="letter">Cover letter</option></select>
+      </label>
+      <label class="mini muted">Depth
+        <select id="kg-play-hops" class="mini"><option value="1">1 hop</option><option value="2" selected>2 hops</option><option value="3">3 hops</option></select>
+      </label>
+      <label class="mini muted">Pace
+        <select id="kg-play-speed" class="mini"><option value="3600" selected>Demo</option><option value="2200">Normal</option><option value="1100">Fast</option></select>
+      </label>
+      <span style="flex:1"></span>
+      <button id="kg-play-go" class="small kg-play-go" onclick="App.kgPlay()">▶ Play build</button>
+      <button class="small" onclick="App.kgPlayStop()">Stop</button>
+    </div>
+  </div>
+  <div class="kg-play-stage">
+    <section class="kg-play-pane kg-play-in">
+      <div class="kg-pane-h"><span>Input</span><b id="kg-play-in-title">job spec</b>
+        <span style="flex:1"></span><span id="kg-play-cov" class="kg-play-cov"></span></div>
+      <div id="kg-play-spec" class="kg-play-spec"><span class="muted mini">The advert appears here, with the requirements the query is reading.</span></div>
+    </section>
+    <section class="kg-play-pane kg-play-out">
+      <div class="kg-pane-h"><span>Output</span><b id="kg-play-out-title">document</b>
+        <span style="flex:1"></span><span id="kg-play-status" class="muted mini kg-play-status"></span></div>
+      <div id="kg-play-progress" class="kg-play-progress"></div>
+      <div id="kg-play-query" class="kg-play-query"></div>
+      <div id="kg-play-because" class="kg-play-because"></div>
+      <div id="kg-play-trail" class="kg-play-trail"></div>
+      <div id="kg-play-doc" class="kg-play-doc"><span class="muted mini">The document will be built here, sentence by sentence.</span></div>
+    </section>
+  </div>`;
+}
+
+function kgPlaySpec(d) {
+  const box = $('#kg-play-spec');
+  const job = (d && d.job) || {};
+  const inTitle = $('#kg-play-in-title');
+  if (inTitle) inTitle.textContent = job.company ? `${job.company} — ${job.role || 'job spec'}` : (job.role || 'job spec');
+  const cov = $('#kg-play-cov');
+  if (cov) cov.textContent = `${(job.found || []).length}/${(job.keywords || []).length} requirements evidenced · ${job.hops || 2} hops`;
+  if (!box) return;
+  const terms = (job.found || job.keywords || []).filter(Boolean);
+  const pat = terms.slice().sort((a, b) => b.length - a.length)
+    .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const re = pat ? new RegExp('(' + pat + ')', 'gi') : null;
+  const lines = job.lines && job.lines.length ? job.lines : [{ text: job.text || '', terms: [] }];
+  box.innerHTML = lines.map(l => {
+    const txt = typeof l === 'string' ? l : (typeof (l && l.text) === 'string' ? l.text : '');
+    const safe = esc(txt);
+    const html = re ? safe.replace(re, '<mark class="kg-term">$1</mark>') : safe;
+    return `<div class="kg-spec-line" data-terms="${esc((((l && l.terms) || []).join('|')).toLowerCase())}">${html}</div>`;
+  }).join('');
+}
+
+function kgPlaySpecFocus(terms) {
+  const box = $('#kg-play-spec');
+  if (!box) return;
+  const set = new Set((terms || []).map(t => String(t).toLowerCase()));
+  box.classList.toggle('lit', set.size > 0);
+  box.querySelectorAll('mark.kg-term').forEach(m => {
+    m.classList.toggle('on', set.has(m.textContent.trim().toLowerCase()));
+  });
+  box.querySelectorAll('.kg-spec-line').forEach(line => {
+    const own = (line.dataset.terms || '').split('|').filter(Boolean);
+    const hit = set.size && own.some(t => set.has(t));
+    line.classList.toggle('dim', set.size > 0 && !hit);
+    line.classList.toggle('on', !!hit);
+  });
+}
+
+function kgPlayHud(html) {
+  const h = $('#kg-play-hud'); if (!h) return;
+  if (!html) { h.classList.add('hide'); h.innerHTML = ''; return; }
+  h.innerHTML = html;
+  h.classList.remove('hide');
+}
+
+function kgPlayTrail(trace) {
+  const box = $('#kg-play-trail');
+  if (!box) return;
+  const hops = (trace || []).slice(0, 8);
+  if (!hops.length) { box.innerHTML = '<span class="muted mini">reading the advert…</span>'; return; }
+  // A star of citations from one node reads better as one hub with many
+  // targets; a genuine walk reads as a chain.
+  if (hops.every(h => h.from === hops[0].from) && hops.length > 1) {
+    box.innerHTML = `<span class="kg-hop"><b>${esc(kgShort(hops[0].from, 24))}</b><i>→</i>` +
+      hops.map(h => `<b>${esc(kgShort(h.to, 22))}</b>`).join('<span class="kg-hop-sep">·</span>') + `</span>`;
+    return;
+  }
+  box.innerHTML = hops.map((h, i) =>
+    `<span class="kg-hop" title="${esc(h.desc || '')}">` +
+    `${i === 0 ? `<b>${esc(kgShort(h.from, 24))}</b>` : ''}` +
+    `<i>→</i><b>${esc(kgShort(h.to, 24))}</b>` +
+    (h.desc && !h.citation ? `<small>${esc(kgShort(h.desc, 46))}</small>` : '') + `</span>`).join('');
+}
+
+function kgPlayRender(d) {
+  const prog = $('#kg-play-progress');
+  if (prog) prog.innerHTML = (d.steps || []).map(s =>
+    `<i class="k-${esc(s.kind || 'write')}" title="${esc(s.label || '')}"></i>`).join('');
+  const box = $('#kg-play-doc'); if (!box) return;
+  const doc = d.doc || {};
+  const kind = (($('#kg-play-kind') || {}).value || 'cv');
+  const outTitle = $('#kg-play-out-title');
+  if (outTitle) outTitle.textContent = (doc.title || 'Document') + (d.job && d.job.company ? ` · ${d.job.company}` : '');
+  kgPlaySpec(d);
+  const citesOf = (s) => (s.cites || []).slice(0, 4).map(c =>
+    `<button class="kg-cite" data-id="${esc(c)}" onclick="App.kgPlayCite(this.dataset.id)">${esc(kgShort(c, 26))}</button>`).join('');
+  const sentenceHTML = (s) => `<p class="kg-play-sentence kg-play-reveal" data-step="${esc(String(s.step == null ? 0 : s.step))}" data-text="${esc(s.text || '')}">` +
+    `<span class="kg-say"></span><span class="kg-caret">▍</span>${citesOf(s) ? `<span class="kg-play-cites">${citesOf(s)}</span>` : ''}</p>`;
+  let h = `<div class="kg-doc-head"><div class="kg-doc-name">${esc(doc.name || 'Tailored profile')}</div>` +
+    (doc.contact && doc.contact.length ? `<div class="kg-doc-contact">${doc.contact.map(esc).join(' · ')}</div>` : '') +
+    `<div class="kg-doc-target">${esc(doc.target || '')}</div></div>` +
+    `<div class="kg-play-title">${esc(doc.title || 'Curriculum Vitae')}</div>` +
+    `<div class="muted mini">${esc(doc.subtitle || '')}</div>`;
+  (doc.prologue || []).forEach(line => { h += `<p class="kg-doc-prologue">${esc(line)}</p>`; });
+  (doc.blocks || []).forEach(block => {
+    h += `<div class="kg-doc-block${block.type === 'letter' ? ' kg-doc-letter' : ''}">`;
+    if (block.heading && block.type !== 'letter') {
+      h += `<h4>${esc(block.heading || '')}</h4>`;
+    }
+    if (block.type === 'experience') {
+      (block.roles || []).forEach(role => {
+        const firstStep = (role.sentences && role.sentences[0] && role.sentences[0].step) || 0;
+        h += `<div class="kg-doc-role"><div class="kg-doc-role-h kg-play-reveal" data-step="${esc(String(firstStep))}" data-head="1">${esc(role.heading || '')}</div>` +
+          (role.sub ? `<div class="kg-doc-role-sub kg-play-reveal" data-step="${esc(String(firstStep))}" data-head="1">${esc(role.sub)}</div>` : '') +
+          (role.sentences || []).map(sentenceHTML).join('') + '</div>';
+      });
+    } else {
+      h += (block.sentences || []).map(sentenceHTML).join('');
+    }
+    h += '</div>';
+  });
+  if (doc.note) {
+    h += `<div class="kg-play-note kg-play-reveal" data-step="${esc(String(doc.note_step == null ? 999 : doc.note_step))}">${md(doc.note)}</div>`;
+  }
+  h += `<div class="row kg-play-actions"><button class="small" onclick="App.kgPlayReplay()">↻ Replay</button>` +
+    `<button class="small" onclick="App.kgPlayStop()">Stop</button></div>`;
+  box.innerHTML = h;
+  const q = $('#kg-play-query'); if (q) q.textContent = '';
+  const b = $('#kg-play-because'); if (b) b.textContent = '';
+  const t = $('#kg-play-trail'); if (t) t.innerHTML = '';
+  kgPlaySpecFocus([]);
+}
+
+async function kgTypeSentence(el, speed, run) {
+  const text = el.getAttribute('data-text') || '';
+  const say = el.querySelector('.kg-say');
+  if (!say || !text) return;
+  el.classList.add('on');
+  const parts = text.split(/(\s+)/);
+  const per = Math.max(14, Math.min(70, speed / Math.max(1, parts.length)));
+  const doc = $('#kg-play-doc');
+  const keepVisible = () => {
+    if (!doc) return;
+    const dr = doc.getBoundingClientRect(), er = el.getBoundingClientRect();
+    if (er.bottom > dr.bottom - 16 || er.top < dr.top + 4) {
+      doc.scrollTo({ top: Math.max(0, doc.scrollTop + (er.top - dr.top) - 12), behavior: 'smooth' });
+    }
+  };
+  keepVisible();
+  let buf = '';
+  for (let n = 0; n < parts.length; n++) {
+    if (KG_PLAY.run !== run) return;
+    const w = parts[n];
+    buf += w;
+    say.textContent = buf;
+    if (!/^\s+$/.test(w)) await new Promise(r => setTimeout(r, per));
+    if (n % 3 === 0) keepVisible();
+  }
+  say.innerHTML = md(text);
+  el.classList.add('done');
+  keepVisible();
+}
+
+async function kgPlayRun(run) {
+  const d = KG_PLAY.data; if (!d) return;
+  const steps = d.steps || [];
+  const speed = Math.max(800, parseInt((($('#kg-play-speed') || {}).value || '3600'), 10) || 3600);
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const seenNodes = new Set(), seenLinks = [];
+  const qEl = $('#kg-play-query');
+  const whyEl = $('#kg-play-because');
+  const lastFocus = new Set();
+  let lastTerms = [];
+  kgPlaySpec(d);
+  for (let i = 0; i < steps.length; i++) {
+    if (KG_PLAY.run !== run) return;
+    const st = steps[i];
+    KG_PLAY.step = i;
+    document.querySelectorAll('#kg-play-progress i').forEach((el, j) => el.classList.toggle('on', j <= i));
+    const query = st.query || st.label || 'Reading the graph';
+    if (qEl) qEl.textContent = `Q${i}/${steps.length - 1} · ${query}`;
+    const hudKind = st.kind === 'read' ? 'READ' : st.kind === 'query' ? 'QUERY' : st.kind === 'gate' ? 'GATE' : 'WRITE';
+    const hudBody = st.kind === 'query'
+      ? `${st.returned || 0} nodes lit${(st.trace || []).length ? ` · ${(st.trace || []).length} edges traversed` : ''}`
+      : st.kind === 'read'
+        ? `${(d.job.found || []).length}/${(d.job.keywords || []).length} requirements evidenced in the graph`
+        : st.kind === 'gate'
+          ? 'every sentence grounded and cited'
+          : `citing ${(st.nodes || []).length} evidence nodes${(st.trace || []).length ? ` · ${(st.trace || []).length} links` : ''}`;
+    kgPlayHud(`<b>${esc(hudKind)} ${i}/${steps.length - 1} · ${esc(st.label || '')}</b><span>${esc(hudBody)}</span>`);
+    const status = $('#kg-play-status');
+    if (status) status.textContent = st.kind === 'read' ? 'reading the advert…' : 'writing…';
+    (st.nodes || []).forEach(n => seenNodes.add(n));
+    (st.links || []).forEach(l => seenLinks.push(l));
+    const focusIds = new Set(st.focus || st.nodes || []);
+    (st.trace || []).forEach(t => { focusIds.add(t.from); focusIds.add(t.to); });
+    lastFocus.clear();
+    focusIds.forEach(id => lastFocus.add(id));
+    if (whyEl) {
+      let terms = (st.terms || []);
+      if (st.kind === 'query' && !terms.length) terms = lastTerms;
+      else lastTerms = terms;
+      whyEl.innerHTML = (st.explain ? `<span class="kg-why">${esc(st.explain)}</span>` : '') +
+        (terms.length ? `<span class="kg-why-terms">Spec asks for: ${terms.slice(0, 6).map(t => `<mark>${esc(t)}</mark>`).join(' ')}</span>` : '');
+      kgPlaySpecFocus(terms);
+    } else {
+      kgPlaySpecFocus(st.terms || []);
+    }
+    kgPlayTrail(st.trace);
+    const playSet = st.kind === 'query' ? (st.nodes || []) : [...seenNodes];
+    const linkSet = st.links || [];
+    if (KGMODE === 'universe') {
+      if (window.__uni) {
+        window.__uni.setPlayback(playSet, linkSet, [...focusIds]);
+        if (focusIds.size) window.__uni.focusOn([...focusIds], null, 1100);
+        if ((st.trace || []).length) window.__uni.pulsePath(st.trace, Math.max(220, Math.min(520, speed / 8)));
+      }
+    } else if (window.__kg3d) {
+      window.__kg3d.setPlayback(playSet, linkSet, [...focusIds]);
+      if ((st.trace || []).length) window.__kg3d.pulsePath(st.trace, Math.max(220, Math.min(460, speed / 8)));
+    }
+    // let the viewer read the question and see the graph light up first
+    await sleep(st.kind === 'read' ? speed * 0.6
+      : st.kind === 'query' ? speed * 0.55
+      : Math.min(1300, Math.max(600, speed * 0.32)));
+    if (KG_PLAY.run !== run) return;
+    const items = [...document.querySelectorAll(`#kg-play-doc .kg-play-reveal[data-step="${st.n}"]`)];
+    if (items.length) {
+      const per = Math.max(900, Math.floor(speed * 0.9 / items.length));
+      for (const el of items) {
+        if (KG_PLAY.run !== run) return;
+        if (el.dataset.head === '1') { el.classList.add('on'); continue; }
+        await kgTypeSentence(el, per, run);
+      }
+    } else {
+      await sleep(st.kind === 'query' ? speed * 0.45 : st.kind === 'read' ? 400 : 500);
+    }
+  }
+  if (KG_PLAY.run !== run) return;
+  document.querySelectorAll('#kg-play-doc .kg-play-reveal').forEach(el => el.classList.add('on'));
+  KG_PLAY.playing = false;
+  if (KGMODE === 'universe') {
+    if (window.__uni) window.__uni.setPlayback((d.graph.nodes || []).map(n => n.id), d.graph.links || [], [...lastFocus]);
+  } else if (window.__kg3d) {
+    window.__kg3d.setPlayback((d.graph.nodes || []).map(n => n.id), d.graph.links || [], [...lastFocus]);
+    setTimeout(() => { if (KG_PLAY.run === run && window.__kg3d) window.__kg3d.fit(); }, 650);
+  }
+  const status = $('#kg-play-status');
+  if (status) status.textContent = `complete · ${(d.graph.nodes || []).length} nodes · ${(d.graph.links || []).length} links`;
+  if (qEl) qEl.textContent = 'Document complete — every line traced to a graph node';
+  if (whyEl) whyEl.innerHTML = `<span class="kg-why">${esc(d.doc && d.doc.note || '')}</span>`;
+  kgPlayHud(`<b>Build complete</b><span>${(d.graph.nodes || []).length} evidence nodes · ${(d.graph.links || []).length} connections · every line cited</span>`);
+  kgPlayTrail([]);
+  kgPlaySpecFocus([]);
 }
 
 function kgSelect(id) {
@@ -4797,9 +5401,13 @@ function kgVisibility() {
 }
 
 async function setGraph(b) {
-  const d = await api('/api/graph?kind=stats');
+  const [d, g] = await Promise.all([api('/api/graph?kind=stats'), api('/api/graphrag/env')]);
   if (CF_SEC !== 'graph') return;
   const built = d && d.entities;
+  const vars = (g && g.vars) || {};
+  const envRows = ((g && g.keys) || []).map(k =>
+    `<div class="row" style="margin:3px 0"><code style="min-width:210px">${esc(k)}</code>
+      <input data-gr="${esc(k)}" placeholder="${esc(vars[k] || '')} (blank = keep)" style="flex:1" onchange="App.saveGR()"></div>`).join('');
   b.innerHTML = `<p class="muted">The knowledge graph is a full-page workspace, not a settings pane: a hierarchy of
       communities you can drill through to the entities and relationships behind every generated document.</p>
     <div class="muted mini">${built
@@ -4808,6 +5416,14 @@ async function setGraph(b) {
     <div class="row" style="margin-top:10px">
       <button onclick="App.openKnowledge()">Open the knowledge graph</button>
       <button class="small" onclick="App.rebuildKB()" title="Full re-index of the knowledge graph: can take 20-30+ minutes">Rebuild graph</button>
+    </div>
+    <h4>Model environment</h4>
+    <div class="ai-pcard">
+      <p class="muted mini">The graph builder's completion and embedding endpoints. These values are materialised into
+        <code>kb/graphrag/.env</code>; the model wiring itself is in <code>kb/graphrag/settings.yaml</code>.
+        GraphRAG is independent of the agent roles above.</p>
+      <div id="gr-env">${envRows || '<span class="muted mini">no .env yet: run the knowledge-base setup</span>'}</div>
+      ${envRows ? '<div class="muted mini" style="margin-top:6px">Changes save on blur and are stored in the secrets store.</div>' : ''}
     </div>
     <p class="muted mini" style="margin-top:10px">Search communities and entities, drill from the highest-level community down to
       individual entities, and open any entity's ego network. The graph fills the page and keeps the job grid out of the way.</p>`;
@@ -5062,109 +5678,250 @@ async function setPerms(b) {
         `<option value="${v}" ${(d.policy[c] === v) ? 'selected' : ''}>${v}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table>
     <div class="row" style="margin-top:10px"><span class="muted mini">Changes save immediately. Applies to every agent (opencode, Claude Code, any <code>AGENT=</code>).</span></div>`;
 }
-async function setAI(b) {
-  const [a, g, gr] = await Promise.all([api('/api/agent/config'), api('/api/graphrag/env'), api('/api/gmail/review')]);
+/* ---------- Settings: AI & agent ----------
+   A role picks a provider + model; only the selected provider's settings are
+   rendered. Keys and endpoints are shared by every role that uses them. */
+
+let AI_CFG = null, AI_ROLE = 'main';
+const AI_MODELS = {};
+const AI_PROVIDERS = [
+  { id: 'opencode', label: 'OpenCode' },
+  { id: 'openrouter', label: 'OpenRouter' },
+  { id: 'local', label: 'Local LLM' },
+  { id: 'claude', label: 'Claude Code' },
+];
+const AI_PROVIDER_KEYS = ['OPENROUTER_API_KEY', 'OPENCODE_API_KEY', 'LOCAL_LLM_BASE_URL',
+  'LOCAL_LLM_API_KEY', 'LLAMACPP_BASE_URL', 'ANTHROPIC_API_KEY'];
+
+function aiKnown(id) { return AI_PROVIDERS.some(p => p.id === id); }
+function aiEffectiveAgent(role) {
+  if (!AI_CFG) return '';
+  if (role === 'subagent') return AI_CFG.subagent_agent || AI_CFG.agent || '';
+  return AI_CFG.agent || '';
+}
+function aiHasKey(k) { return !!(AI_CFG && (AI_CFG.env_keys || []).includes(k)); }
+function aiMasked(k) { return (AI_CFG && AI_CFG.env && AI_CFG.env[k]) || ''; }
+
+async function aiLoadModels(provider, force) {
+  const key = String(provider || '');
+  const hit = AI_MODELS[key];
+  if (!force && hit && Date.now() - hit.t < 120000) return hit;
+  let m = { models: [], groups: [], source: '' };
+  try { m = await api('/api/agent/models?agent=' + encodeURIComponent(key)); } catch (e) { /* empty */ }
+  AI_MODELS[key] = Object.assign({ t: Date.now() }, m || {});
+  return AI_MODELS[key];
+}
+
+async function aiReload() {
+  const d = await api('/api/agent/config');
   if (CF_SEC !== 'ai') return;
-  const detected = (a.detected || []);
-  const orKey = (a.env || {}).OPENROUTER_API_KEY || '';
-  const knownAgents = [['', 'Auto (OpenCode, else Claude)'], ['opencode', 'OpenCode'],
-    ['openrouter', 'OpenRouter'], ['local', 'Local LLM (OpenAI-compatible)'], ['claude', 'Claude Code']];
-  const customAgent = a.agent && !knownAgents.some(([v]) => v === a.agent) ? a.agent : '';
-  const agentOpts = knownAgents.map(([v, label]) =>
-    `<option value="${v}"${a.agent === v ? ' selected' : ''}>${label}</option>`).join('') +
-    `<option value="__custom__"${customAgent ? ' selected' : ''}>Custom…</option>`;
-  const envRows = (a.env_keys || []).filter(k => !['OPENROUTER_API_KEY', 'LOCAL_LLM_BASE_URL', 'LOCAL_LLM_API_KEY', 'LLAMACPP_BASE_URL'].includes(k)).map(k =>
-    `<div class="row" style="margin:3px 0"><code style="min-width:190px">${esc(k)}</code>
-      <input data-env="${esc(k)}" placeholder="${esc(a.env[k])} (blank = keep)" style="flex:1" onchange="App.saveAI()">
-      <button class="small" onclick="App.aiDel('${esc(k)}')" title="remove">✕</button></div>`).join('');
-  const grRows = (g.keys || []).map(k =>
-    `<div class="row" style="margin:3px 0"><code style="min-width:190px">${esc(k)}</code>
-      <input data-gr="${esc(k)}" placeholder="${esc(g.vars[k])} (blank = keep)" style="flex:1" onchange="App.saveGR()"></div>`).join('');
-  b.innerHTML = `<p class="muted">Which LLM/agent runs the pipeline. Changes save automatically. Keys live in the central
-      secrets store (<code>${esc(a.secrets_path || '')}</code>, 0600) and are shown masked.</p>
-    <div class="row" style="margin:6px 0"><b>Detected:</b>
-      ${detected.length ? detected.map(x => `<span class="pill">${esc(x)}</span>`).join(' ')
-        : '<span class="muted">none on PATH</span>'}
-      <span class="muted">· in use: <b id="ai-inuse">${esc(a.which || '?')}</b></span>
-      <span id="ai-msg" class="muted mini"></span></div>
-    ${detected.length ? '' : `<div class="muted mini" style="margin-bottom:8px">Install one, then set the command below:
-      <code>npm i -g opencode-ai</code> (opencode) or <code>npm i -g @anthropic-ai/claude-code</code> (Claude Code),
-      or set a custom command.</div>`}
-    <div class="row" style="margin-top:8px"><span class="muted">Agent</span>
-      <select id="ai-agent" style="min-width:200px">${agentOpts}</select>
-      <input id="ai-agent-custom" value="${esc(customAgent)}" placeholder="custom command" style="flex:1; display:${customAgent ? '' : 'none'}">
-      <span class="muted">Model</span>
-      <select id="ai-model-sel" style="min-width:220px"></select>
-      <input id="ai-model-custom" placeholder="or type a model id" style="flex:1"></div>
-    <div class="muted mini">Pick <b>OpenCode</b> or <b>OpenRouter</b> here. The model list comes from the selected provider (OpenCode's list or OpenRouter's catalogue); anything else can be typed.
-      Applies to chat, role chats and queue/API runs; <code>MODEL=...</code> overrides for one run.</div>
-    <div class="row" style="margin-top:8px"><b>Subagents</b>
-      <label class="mini" title="How many document-preparation workers may run at once (1-6)">at most
-        <input id="ai-parallel" type="number" min="1" max="6" value="${esc(String(a.parallel || 3))}" style="width:56px"> at once</label>
-      <span class="muted">model</span>
-      <select id="ai-subagent-model" style="min-width:220px"></select>
-      <button class="small" onclick="App.saveSubagents()">Save subagents</button>
+  if (!d || d.error) { App.aiStatus((d && d.error) || 'could not read the agent settings', true); return; }
+  AI_CFG = d;
+  const st = $('#ai-status');
+  if (st) st.innerHTML = aiStatusHTML();
+  await aiRenderPane();
+  loadChatModel(true);
+}
+
+function aiStatusHTML() {
+  const a = AI_CFG || {};
+  const detected = a.detected || [];
+  return `<span class="pill ${a.which ? 'ok' : 'bad'}">in use: ${esc(a.which || 'not detected')}</span>
+    <span class="muted mini">${detected.length ? 'installed: ' + detected.map(esc).join(', ') : 'no agent CLI on PATH'}</span>
+    <span id="ai-msg" class="muted mini"></span>`;
+}
+
+function aiProviderOptions(role, value) {
+  const custom = !!value && !aiKnown(value);
+  const picked = custom ? '__custom__' : (value || '');
+  const head = role === 'subagent'
+    ? `<option value=""${picked === '' ? ' selected' : ''}>Same as main agent</option>`
+    : `<option value=""${picked === '' ? ' selected' : ''}>Auto (OpenCode, else Claude)</option>`;
+  return head +
+    AI_PROVIDERS.map(p => `<option value="${p.id}"${picked === p.id ? ' selected' : ''}>${p.label}</option>`).join('') +
+    `<option value="__custom__"${picked === '__custom__' ? ' selected' : ''}>Custom command…</option>`;
+}
+
+function aiKeyField(k, label, ph, optional) {
+  const has = aiHasKey(k);
+  const mask = aiMasked(k);
+  return `<div class="ai-kv"><label>${esc(label)}</label>
+    <input type="password" autocomplete="new-password" data-key="${k}"
+      placeholder="${has ? '•••• ' + esc(mask) + ' (blank = keep)' : esc(ph || '')}"
+      onchange="App.aiSaveEnvKey(this)">
+    <span class="pill ${has ? 'ok' : 'unknown'}">${has ? 'set' : (optional ? 'optional' : 'not set')}</span>
+    ${has ? `<button class="small" title="remove" onclick="App.aiEnvDel('${k}')">✕</button>` : '<span></span>'}</div>`;
+}
+
+function aiProviderCardHTML(role, provider) {
+  if (!provider) {
+    return `<div class="ai-pcard">
+      <div class="ai-pcard-h"><b>Automatic</b><span class="pill">detected</span></div>
+      <p class="muted mini">Uses OpenCode if it is installed, otherwise Claude Code. Choose a provider above to pin it and edit its settings.</p>
+    </div>`;
+  }
+  if (!aiKnown(provider)) {
+    return `<div class="ai-pcard">
+      <div class="ai-pcard-h"><b>Custom command</b><span class="pill">custom</span></div>
+      <p class="muted mini">Run as <code>cmd "&lt;prompt&gt;"</code>. It must accept one prompt argument and run headless.</p>
+    </div>`;
+  }
+  const p = AI_PROVIDERS.find(x => x.id === provider);
+  let body = '', state = '<span class="pill unknown">no key needed</span>';
+  if (provider === 'opencode') {
+    const ok = (AI_CFG.detected || []).includes('opencode');
+    state = `<span class="pill ${ok ? 'ok' : 'bad'}">${ok ? 'installed' : 'missing'}</span>`;
+    body = `${ok ? '' : `<p class="muted mini">Install it with <code>npm i -g opencode-ai</code>, then reopen Settings.</p>`}
+      <p class="muted mini">OpenCode runs the model and the local tools; the list comes from <code>opencode models</code>.</p>
+      ${aiKeyField('OPENCODE_API_KEY', 'API key', 'optional: for OpenCode Zen / Go', true)}`;
+  } else if (provider === 'openrouter') {
+    const ok = aiHasKey('OPENROUTER_API_KEY');
+    state = `<span class="pill ${ok ? 'ok' : 'bad'}">${ok ? 'key set' : 'no key'}</span>`;
+    body = `<p class="muted mini">OpenRouter serves the model; OpenCode is only the local tool runner.</p>
+      ${aiKeyField('OPENROUTER_API_KEY', 'API key', 'sk-or-v1-…')}
+      <p class="muted mini" style="margin-top:2px">Create a key at
+        <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys ↗</a>.</p>`;
+  } else if (provider === 'local') {
+    const url = (AI_CFG.env || {}).LOCAL_LLM_BASE_URL || 'http://127.0.0.1:8080/v1';
+    state = '<span class="pill">local</span>';
+    body = `<p class="muted mini">Any OpenAI-compatible server on this machine; the model list is read from <code>/v1/models</code>.</p>
+      <div class="ai-kv"><label>Base URL</label>
+        <input data-key="LOCAL_LLM_BASE_URL" value="${esc(url)}" placeholder="http://127.0.0.1:8080/v1"
+          onchange="App.aiSaveEnvValue(this)"><span></span><span></span></div>
+      ${aiKeyField('LOCAL_LLM_API_KEY', 'API key', 'optional', true)}`;
+  } else if (provider === 'claude') {
+    const ok = (AI_CFG.detected || []).includes('claude');
+    state = `<span class="pill ${ok ? 'ok' : 'bad'}">${ok ? 'installed' : 'missing'}</span>`;
+    body = `${ok ? '' : `<p class="muted mini">Install it with <code>npm i -g @anthropic-ai/claude-code</code>, then reopen Settings.</p>`}
+      <p class="muted mini">Uses the Claude Code CLI and its aliases (<code>sonnet</code>, <code>opus</code>, <code>haiku</code>).</p>
+      ${aiKeyField('ANTHROPIC_API_KEY', 'API key', 'optional: Claude Code usually stores its own login', true)}`;
+  }
+  return `<div class="ai-pcard">
+    <div class="ai-pcard-h"><b>${esc(p.label)}</b>${state}</div>${body}</div>`;
+}
+
+function aiPaneHTML(role) {
+  const cfg = AI_CFG || {};
+  const isSub = role === 'subagent';
+  const roles = cfg.roles || {};
+  const r = (isSub ? roles.subagent : roles.main) || {};
+  const eff = aiEffectiveAgent(role);
+  const custom = !!r.agent && !aiKnown(r.agent);
+  const data = AI_MODELS[eff] || { models: [], groups: [], source: '' };
+  const list = data.models || [];
+  const current = r.model || '';
+  const customModel = current && !list.includes(current) ? current : '';
+  const mainAgent = cfg.agent || '';
+  const sameProvider = !r.agent || r.agent === mainAgent;
+  const placeholder = isSub && sameProvider ? 'Same as main agent' : 'Provider default';
+  return `<div class="ai-fields">
+      <div class="ai-field">
+        <label>Provider</label>
+        <select id="ai-provider" data-role="${role}" onchange="App.aiPickProvider(this)">${aiProviderOptions(role, r.agent || '')}</select>
+        <div class="muted mini">${isSub ? 'Leave on “same as main” to share the main provider.'
+          : 'Runs chat, role chats, Gmail review and queue/apply runs.'}</div>
+      </div>
+      <div class="ai-field">
+        <label>Model</label>
+        <select id="ai-model" data-role="${role}" onchange="App.aiSetModel('${role}', this.value)">${modelOptionsHTML(data.groups || [], current, list, placeholder)}</select>
+        <input id="ai-model-custom" placeholder="or type a model id" value="${esc(customModel)}" onchange="App.aiSetModel('${role}', this.value)">
+        <div class="ai-modelbar">
+          <span class="muted mini">${data.source ? 'from ' + esc(data.source) : 'model list unavailable - type an id'}</span>
+          <button class="small" onclick="App.aiRefreshModels('${role}')">${ic('refresh')} Refresh</button>
+        </div>
+      </div>
     </div>
-    <div class="muted mini">Used for document preparation and background tasks. Leave the model on “same as main agent” to share it. Submissions always run one at a time (one ATS session).</div>
-    <div class="row" style="margin-top:8px"><b>OpenRouter</b>
-      <input id="ai-or-key" type="password" autocomplete="new-password" placeholder="${orKey ? esc(orKey) + ' (blank = keep)' : 'sk-or-v1-…'}" style="flex:1" onchange="App.saveAI()">
-      <button onclick="App.useOpenRouter()">Use OpenRouter</button>
-      <span class="muted mini">OpenRouter serves the model; OpenCode is only the local tool runner. The key is stored with the other env values.</span></div>
-    <div class="row" style="margin-top:8px"><b>Local LLM</b>
-      <input id="ai-local-url" placeholder="http://127.0.0.1:8080/v1" value="${esc((a.env || {}).LOCAL_LLM_BASE_URL || 'http://127.0.0.1:8080/v1')}" style="flex:1" onchange="App.saveAI()">
-      <input id="ai-local-key" type="password" autocomplete="new-password" placeholder="optional API key" style="max-width:180px" onchange="App.saveAI()">
-      <button onclick="App.useLocal()">Use local LLM</button>
-      <span class="muted mini">Any OpenAI-compatible endpoint; the model list comes from its /v1/models.</span></div>
-    <div class="row" style="margin-top:8px"><b>Gmail review</b>
+    <div id="ai-custom-row" class="ai-custom${custom ? '' : ' hide'}">
+      <label>Custom command</label>
+      <input id="ai-custom-agent" data-role="${role}" value="${esc(custom ? r.agent : '')}" placeholder="mycli run --fast" onchange="App.aiSaveCustom(this)">
+    </div>
+    <div id="ai-provider-card">${aiProviderCardHTML(role, eff)}</div>
+    ${isSub ? `<div class="ai-subrow">
+      <label class="mini" title="How many document-preparation workers may run at once (1-6)">At most
+        <input id="ai-parallel" type="number" min="1" max="6" value="${esc(String(cfg.parallel || 3))}" style="width:56px" onchange="App.aiSetParallel()"> workers at once</label>
+      <span class="muted mini">Submissions always run one at a time (one ATS session).</span>
+    </div>` : ''}`;
+}
+
+function aiUpdateModelSelect(role, data) {
+  const sel = $('#ai-model');
+  if (!sel || sel.dataset.role !== role) return;
+  const cfg = AI_CFG || {};
+  const roles = cfg.roles || {};
+  const r = (role === 'subagent' ? roles.subagent : roles.main) || {};
+  const list = (data && data.models) || [];
+  const same = role === 'subagent' && (!r.agent || r.agent === (cfg.agent || ''));
+  const placeholder = same ? 'Same as main agent' : 'Provider default';
+  sel.innerHTML = modelOptionsHTML((data && data.groups) || [], r.model || '', list, placeholder);
+  const custom = $('#ai-model-custom');
+  if (custom && document.activeElement !== custom) {
+    custom.value = (r.model && !list.includes(r.model)) ? r.model : '';
+  }
+  const src = $('#ai-pane .ai-modelbar .mini');
+  if (src && data && data.source) src.textContent = 'from ' + data.source;
+}
+
+async function aiRenderPane() {
+  const pane = $('#ai-pane');
+  if (!pane || !AI_CFG || CF_SEC !== 'ai') return;
+  const role = AI_ROLE;
+  pane.innerHTML = aiPaneHTML(role);
+  document.querySelectorAll('#ai-roles button').forEach(b =>
+    b.classList.toggle('on', b.dataset.role === role));
+  const eff = aiEffectiveAgent(role);
+  if (!AI_MODELS[eff]) {
+    const data = await aiLoadModels(eff);
+    if (CF_SEC !== 'ai' || AI_ROLE !== role) return;
+    aiUpdateModelSelect(role, data);
+  }
+}
+
+async function setAI(b) {
+  const [a, gr] = await Promise.all([api('/api/agent/config'), api('/api/gmail/review')]);
+  if (CF_SEC !== 'ai') return;
+  if (!a || a.error) {
+    b.innerHTML = `<p class="bad">${esc((a && a.error) || 'could not read the agent settings')}</p>`;
+    return;
+  }
+  AI_CFG = a;
+  AI_ROLE = 'main';
+  const envRows = (a.env_keys || []).filter(k => !AI_PROVIDER_KEYS.includes(k)).map(k =>
+    `<div class="row" style="margin:3px 0"><code style="min-width:190px">${esc(k)}</code>
+      <input data-key="${esc(k)}" placeholder="${esc(a.env[k])} (blank = keep)" style="flex:1" onchange="App.aiSaveEnvKey(this)">
+      <button class="small" onclick="App.aiDel('${esc(k)}')" title="remove">✕</button></div>`).join('');
+  b.innerHTML = `<p class="muted">Choose what runs the agent. Pick a provider and only that provider's settings are shown;
+      each role can use a different provider or model.</p>
+    <div id="ai-status" class="ai-status">${aiStatusHTML()}</div>
+    <div id="ai-roles" class="ai-roles" role="tablist">
+      <button type="button" class="on" data-role="main" onclick="App.aiSetRole('main')">
+        <span class="ai-role-t">Main agent</span>
+        <span class="ai-role-s">chat · role chats · queue &amp; apply</span></button>
+      <button type="button" data-role="subagent" onclick="App.aiSetRole('subagent')">
+        <span class="ai-role-t">Subagents</span>
+        <span class="ai-role-s">document prep · background tasks</span></button>
+    </div>
+    <p class="muted mini" style="margin:2px 0 8px">Provider keys and endpoints are shared by every role that uses them.</p>
+    <div id="ai-pane"></div>
+
+    <h4>Gmail review</h4>
+    <div class="ai-pcard">
       <label class="mini"><input type="checkbox" id="gmail-review-enabled" onchange="App.saveGmailReview()" ${gr && gr.enabled !== false ? 'checked' : ''}> capture unclassified/ambiguous emails</label>
-      <label class="mini"><input type="checkbox" id="gmail-review-model" onchange="App.saveGmailReview()" ${gr && gr.use_model !== false ? 'checked' : ''}> use the selected model for review suggestions</label>
+      <label class="mini"><input type="checkbox" id="gmail-review-model" onchange="App.saveGmailReview()" ${gr && gr.use_model !== false ? 'checked' : ''}> use the main agent and model for review suggestions</label>
       <label class="mini"><input type="checkbox" id="gmail-review-auto" onchange="App.saveGmailReview()" ${gr && gr.auto_model ? 'checked' : ''}> automatically ask it for new review items</label>
-      <span class="muted mini">Changes save immediately. New items only; the existing backlog is never auto-processed. Suggestions use the agent/model above and never change status automatically.</span></div>
-    <h4 style="margin:14px 0 4px">API keys / env</h4>
-    <div id="ai-env">${envRows || '<span class="muted mini">none set</span>'}</div>
-    <div class="row" style="margin-top:6px">
-      <input id="ai-env-k" list="ai-known" placeholder="KEY name" style="max-width:220px">
-      <datalist id="ai-known">${(a.known_keys || []).map(k => `<option>${esc(k)}</option>`).join('')}</datalist>
-      <input id="ai-env-v" placeholder="value" style="flex:1"><button onclick="App.aiAdd()">＋ Add</button></div>
-    <div class="row" style="margin-top:10px"><span class="muted mini">Agent/model are saved automatically and read by every runner via tools/agent_run.sh.</span></div>
-    <h4 style="margin:18px 0 4px">GraphRAG LLM (stored in Secrets, mirrored to <code>kb/graphrag/.env</code>)</h4>
-    <div id="ai-gr">${grRows || '<span class="muted mini">no .env yet</span>'}</div>
-    <div class="row" style="margin-top:8px"><span class="muted mini">Changes save immediately. Used by the knowledge graph (same OPENCODE_API_KEY works for both).</span></div>`;
-  const initialModel = $('#ai-model-sel');
-  if (initialModel) initialModel.innerHTML = modelOptionsHTML(
-    a.model ? [{ label: 'current', models: [a.model] }] : [], a.model || '', a.model ? [a.model] : []);
-  App.aiFillModels(a);
-  const ag = $('#ai-agent'), ci = $('#ai-agent-custom');
-  if (ag) ag.onchange = async () => {
-    const isCustom = ag.value === '__custom__';
-    if (ci) ci.style.display = isCustom ? '' : 'none';
-    const who = isCustom ? ((ci && ci.value.trim()) || '') : ag.value;
-    if (isCustom && !who) return;
-    let model = (a.models || {})[who] || '';
-    if (!model && who === 'openrouter') model = 'deepseek/deepseek-v4.1-flash';
-    if (!model && who === 'local') {
-      try { const mm = await api('/api/agent/models?agent=local'); model = ((mm && mm.models) || [])[0] || ''; } catch (e) {}
-    }
-    const nextModels = Object.assign({}, a.models || {});
-    if (model) nextModels[who] = model;
-    App.aiFillModels({ which: who, agent: who, model, models: nextModels });
-    const d = await App.saveAI({ agent: who, model });
-    if (!d.error) App.aiFillModels({ which: who, agent: who,
-      model: (d.config && d.config.model) || model, models: (d.config && d.config.models) || nextModels });
-  };
-  if (ci) ci.onchange = () => {
-    if (ag && ag.value === '__custom__' && ci.value.trim()) App.saveAI({ agent: ci.value.trim() });
-  };
-  const sel = $('#ai-model-sel');
-  if (sel) sel.onchange = () => {
-    const custom = $('#ai-model-custom');
-    if (custom) custom.value = '';
-    App.saveAI();
-  };
-  const customModel = $('#ai-model-custom');
-  if (customModel) customModel.onchange = () => {
-    if (customModel.value.trim()) App.saveAI();
-  };
+      <p class="muted mini" style="margin:6px 0 0">Changes save immediately. New items only; suggestions never change a status automatically.</p>
+    </div>
+
+    <details class="ai-adv">
+      <summary>Advanced · extra environment variables</summary>
+      <p class="muted mini">Provider keys live in the cards above. Anything else a runner needs can go here; values are stored in the
+        encrypted secrets store (<code>${esc(a.secrets_path || '')}</code>) and shown masked.</p>
+      <div id="ai-env">${envRows || '<span class="muted mini">none set</span>'}</div>
+      <div class="row" style="margin-top:6px">
+        <input id="ai-env-k" list="ai-known" placeholder="KEY name" style="max-width:220px">
+        <datalist id="ai-known">${(a.known_keys || []).map(k => `<option>${esc(k)}</option>`).join('')}</datalist>
+        <input id="ai-env-v" placeholder="value" style="flex:1"><button onclick="App.aiAdd()">＋ Add</button></div>
+    </details>`;
+  await aiRenderPane();
 }
 function setProfile(b) {
   b.innerHTML = `<p class="muted">Your ground-truth CV, role-family templates and rules. Changes save automatically on blur; JSON is validated before saving and a <code>.bak</code> is kept.</p>
@@ -5278,14 +6035,49 @@ $('#q').oninput = () => {
   else if (!has && BUCKET_BEFORE_SEARCH) { BUCKET = BUCKET_BEFORE_SEARCH; BUCKET_BEFORE_SEARCH = null; renderBuckets(); }
   renderRows();
 };
+/* The state filter is a deliberate choice, so keep it across reloads instead of
+   letting form restoration leave the select and the rows out of sync. */
+const STATE_FILTER_KEY = 'grid.statefilter';
+function saveStateFilter() {
+  try {
+    sessionStorage.setItem(STATE_FILTER_KEY, JSON.stringify({
+      st: ($('#fstatus') || {}).value || '',
+      fs: ($('#fsubstate') || {}).value || '',
+    }));
+  } catch (e) { /* private mode */ }
+}
+function restoreStateFilter() {
+  try {
+    const o = JSON.parse(sessionStorage.getItem(STATE_FILTER_KEY) || '{}');
+    if (o.st) { const el = $('#fstatus'); if (el) el.value = o.st; }
+    if (o.fs) { const el = $('#fsubstate'); if (el) el.value = o.fs; }
+    if (o.st) BUCKET = 'all';
+  } catch (e) { /* ignore a corrupt value */ }
+}
+
 ['#fstatus', '#fqueue', '#ftype', '#faction'].forEach(sel => {
   const el = $(sel); if (!el) return;
-  el.onchange = () => { if (BUCKET !== 'focus') BUCKET = 'all'; renderBuckets(); renderRows(); };
+  el.onchange = () => { if (BUCKET !== 'focus') BUCKET = 'all'; saveStateFilter(); renderBuckets(); renderRows(); };
 });
+/* Browsers restore form controls (notably a state chip's <select>) after the
+   first render. Re-apply whatever is actually selected so a reload cannot show
+   PREPARED selected while the rows are unfiltered. */
+function syncRestoredFilters() {
+  if (!GRID || !GRID.length) return;
+  restoreStateFilter();
+  const st = ($('#fstatus') || {}).value || '';
+  if (st) BUCKET = 'all';
+  renderSubstateFilter();
+  renderBuckets();
+  renderRows();
+  if (window.__paintStates) window.__paintStates();
+}
+window.addEventListener('pageshow', () => setTimeout(syncRestoredFilters, 0));
+window.addEventListener('load', () => setTimeout(syncRestoredFilters, 40));
 const fgroup = $('#fgroup');
 if (fgroup) fgroup.onchange = () => { if (fgroup.value) BUCKET = 'all'; renderBuckets(); renderRows(); };
 const fsubstate = $('#fsubstate');
-if (fsubstate) fsubstate.onchange = () => { if (fsubstate.value) BUCKET = 'all'; renderBuckets(); renderRows(); };
+if (fsubstate) fsubstate.onchange = () => { if (fsubstate.value) BUCKET = 'all'; saveStateFilter(); renderBuckets(); renderRows(); };
 const groupsBtn = $('#groups');
 if (groupsBtn) groupsBtn.onclick = () => groupsOpen();
 ['#fseniority', '#fpay', '#ffit', '#fwork'].forEach(sel => {
@@ -5321,9 +6113,9 @@ function modelShort(m) {
   const s = String(m || '');
   return s.includes('/') ? s.split('/').slice(1).join('/') : s;
 }
-function modelOptionsHTML(groups, cur, flat) {
+function modelOptionsHTML(groups, cur, flat, placeholder) {
   const list = flat || (groups || []).reduce((a, g) => a.concat(g.models || []), []);
-  let h = '<option value="">agent default</option>';
+  let h = `<option value="">${esc(placeholder || 'agent default')}</option>`;
   if (cur && !list.includes(cur)) h += `<option value="${esc(cur)}" selected>${esc(cur)} (current)</option>`;
   for (const g of groups || []) {
     if (!g.models || !g.models.length) continue;
@@ -5453,7 +6245,7 @@ if (kgInput) {
   });
 }
 
-initPanels(); initGridCols(); syncGroupingButton(); loadGroups(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel(); startEvents();
+initPanels(); initGridCols(); syncGroupingButton(); restoreStateFilter(); loadGroups(); loadGrid(); gridTick(); liveTick(); healthPill(); chatPoll(); updateCheck(); loadChatModel(); startEvents();
 if (location.hash === '#knowledge') setTimeout(() => App.openKnowledge('map'), 400);
 if (location.hash === '#universe') setTimeout(() => App.openKnowledge('universe'), 400);
 // Clicking or dragging in the graph must not select text.

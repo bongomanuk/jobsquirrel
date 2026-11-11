@@ -14,6 +14,7 @@ application. The queue is work to do; a finished queue row is not a state.
 | `SUBMITTED` | The application was sent and confirmed, with a matching provenance row. An ATS status such as Under Consideration stays here: it is still waiting, not a new stage. | `record_submission.py`, or an approved email with the documents |
 | `IN_PROGRESS` | An active process step is underway: an assessment, background checks, or a live recruiter conversation. Mere employer review stays `SUBMITTED`. | reconciliation, a manual update |
 | `INTERVIEW` | An interview is invited, scheduled or held. Its sub-state says which. | reconciliation, a manual update |
+
 | `OFFER` | An offer was received. | a manual update |
 | `REJECTED` | The employer declined. | reconciliation, a manual update |
 | `BLOCKED` | A wall stopped the run: a CAPTCHA or login, a gate failure, a missing advert, an email-only ATS, or an unclear eligibility rule. It is work for you, not a rejection. | the runner or the agent, with the exact reason |
@@ -24,6 +25,12 @@ There is no `NO RESULT` application state. A run that cannot produce an
 application records `BLOCKED` or `CLOSED` with the exact reason. A finished
 queue row that never became a register row is a **queue leftover**, not an
 application; see below.
+
+`INTERVIEW` rows also carry **`interview_stage`** in the register: `screen`,
+`hiring-manager`, `technical`, `panel`, `final` or `offer` (empty when not
+recorded). The sub-state says *what is happening* (invited, scheduled, today,
+held); the stage says *which round* it is. The drawer records it without
+changing the status, and the grid shows it as a small chip.
 
 ## The normal path
 

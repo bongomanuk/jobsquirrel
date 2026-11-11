@@ -39,7 +39,7 @@ SUBMISSIONS_PATH = os.environ.get("SUBMISSIONS_CSV", os.path.join(ROOT, "state",
 DRAFTS_DIR = os.environ.get("DRAFTS_DIR", os.path.join(ROOT, "state", "drafts"))
 JD_DIR = os.environ.get("JOB_DESCRIPTIONS_DIR", os.path.join(ROOT, "state", "job-descriptions"))
 FIELDS = ["date", "company", "role", "ats", "status", "letter", "notes", "employment",
-          "action", "key", "apply_url"]
+          "action", "key", "apply_url", "interview_stage"]
 STATUSES = ["QUEUED", "SUBMITTED", "INTERVIEW", "OFFER", "REJECTED", "BLOCKED", "MANUAL",
             "PREPARED", "IN_PROGRESS", "CLOSED"]
 # Statuses that count as a live process - an application we have sent and are
@@ -335,6 +335,29 @@ def delete(company, role):
             save(kept)
             render(silent=True)
         return removed
+
+
+def set_interview_stage(company, role, stage, note=""):
+    """Record the current interview stage without changing the register status.
+
+    The stage is orthogonal to INTERVIEW/SCHEDULED: the substate says whether you
+    are invited, booked or waiting, and this says which round it is.
+    """
+    stage = (stage or "").strip()
+    with locked():
+        rows = load()
+        k = _key(company, role)
+        n = 0
+        for r in rows:
+            if _key(r["company"], r["role"]) == k:
+                r["interview_stage"] = stage
+                if note:
+                    r["notes"] = (r["notes"] + " | " if r["notes"] else "") + note
+                n += 1
+        if n:
+            save(rows)
+            render(silent=True)
+        return n
 
 
 def set_row(company, role, status="", note="", employment=None, action=None, repost=False):
@@ -879,6 +902,8 @@ def render(silent=False):
         lines.append("|---|---|---|---|---|---|---|")
         for r in group:
             note = r["notes"]
+            if r.get("interview_stage"):
+                note = (note + " " if note else "") + f"stage: {r['interview_stage']}"
             if r["letter"]:
                 note = (note + " " if note else "") + f"letter: `{r['letter']}`"
             action = (r.get("action") or "").replace("|", "·")

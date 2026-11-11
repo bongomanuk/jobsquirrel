@@ -19,12 +19,22 @@ G="$(gr)"
 [ -f "$GR/settings.yaml" ] || { echo "missing kb/graphrag/settings.yaml" >&2; exit 1; }
 [ -f "$GR/output/entities.parquet" ] || { echo "no existing index — run a full build first (tools/setup_kb.sh)" >&2; exit 1; }
 
+# GraphRAG's settings reference ${OPENCODE_API_KEY}; load it from the encrypted
+# store when the caller did not export it (same as tools/setup_kb.sh).
+if [ -z "${OPENCODE_API_KEY:-}" ]; then
+  OPENCODE_API_KEY="$(python3 "$ROOT/tools/secrets_store.py" --get graphrag OPENCODE_API_KEY 2>/dev/null || true)"
+  export OPENCODE_API_KEY
+fi
+
 echo "== ingest kb/sources -> kb/graphrag/input =="
 python3 "$ROOT/tools/kb_ingest.py" --sources "$ROOT/kb/sources" --out "$GR/input" --clean \
   || { echo "ingest failed" >&2; exit 1; }
 
 echo "== graphrag update (incremental; only new/changed docs) =="
-"$G" update --root "$GR" --method standard-update || { echo "graphrag update failed" >&2; exit 1; }
+# graphrag update appends "-update" to the method itself, so passing
+# "standard-update" asks for the unregistered "standard-update-update" and runs
+# an empty pipeline. Use the base method; the update command adds the suffix.
+"$G" update --root "$GR" --method standard || { echo "graphrag update failed" >&2; exit 1; }
 
 # Promote the updated index so queries use it.
 # GraphRAG v2 wrote a flat update_output/; v3 writes update_output/<timestamp>/{delta,previous}

@@ -15,6 +15,7 @@ import glob
 import gzip
 import hashlib
 from functools import lru_cache
+from datetime import date
 import html as _html
 import json
 import mimetypes
@@ -37,6 +38,7 @@ from urllib.parse import urlparse, parse_qs, quote
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import stateio  # noqa: E402  transparent gzip for state/ artifacts
 import scam_check  # noqa: E402  recruitment-scam signals
+import skill_context  # noqa: E402  readable missing-skill labels from the advert
 import secrets_store as SS  # noqa: E402  central 0600 store, outside the repo
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1160,6 +1162,24 @@ def set_role_meta(key, work_model=None, salary=None):
     _save_meta(force=True)
 
 
+def set_interview_stage(key, stage):
+    """Record which interview round a role is at (or clear it)."""
+    import register as REG
+    key = os.path.basename(str(key or ""))[:120]
+    stage = str(stage or "").strip()
+    if stage not in INTERVIEW_STAGES:
+        return {"error": "unknown interview stage"}
+    row = next((r for r in REG.load() if r.get("key") == key), None)
+    if not row:
+        return {"error": "role not found in the register"}
+    label = INTERVIEW_STAGES.get(stage, stage)
+    note = (f"{date.today().isoformat()} interview stage: {label}" if stage
+            else f"{date.today().isoformat()} interview stage cleared")
+    n = REG.set_interview_stage(row["company"], row["role"], stage, note=note)
+    return {"ok": (f"interview stage: {label}" if stage else "interview stage cleared"),
+            "updated": n, "interview_stage": stage, "interview_stage_label": label}
+
+
 def _pay_work_fields(key, notes, status, cov, target):
     """The grid's pay/work/focus fields for one row."""
     meta = _role_meta(key, notes)
@@ -1395,6 +1415,10 @@ def match_score(key, cache=True):
         hit = [k for k in kws if k.lower() in hay]
         res["coverage"] = round(100 * len(hit) / len(kws))
         res["missing"] = [k for k in kws if k.lower() not in hay][:24]
+    try:
+        res["missing_detail"] = skill_context.resolve(key, res.get("missing") or [])
+    except Exception:
+        res["missing_detail"] = []
     _MATCH_CACHE[key] = res
     _load_cov()
     _COV.setdefault(key, {})["align"] = res["alignment"]
@@ -1448,9 +1472,31 @@ def match_info(key):
         missing = miss[:24]
         ev = _evidenced_skills()
         evidenced = [k for k in missing if k.strip().lower() in ev]
-    return {"key": key, "coverage": cov, "missing": missing, "evidenced": evidenced,
+    try:
+        missing_detail = skill_context.resolve(key, missing)
+    except Exception:
+        missing_detail = []
+    # Junk tokens must not depress coverage: a currency code or a company name
+    # from the page chrome is not a requirement.
+    junk = sum(1 for d in missing_detail
+               if d.get("kind") in ("not-a-skill", "company", "currency", "code"))
+    if cov is not None and junk:
+        total = max(1, len(kws) - junk)
+        cov = round(100 * (len(kws) - len(missing)) / total)
+    return {"key": key, "coverage": cov, "missing": missing,
+            "missing_detail": missing_detail, "evidenced": evidenced,
             "alignment": (_COV.get(key, {}) or {}).get("align", ""),
             "archetype": os.path.basename(_archetype_for(key) or "")}
+
+
+def explain_missing_skills(key):
+    """Resolve the role's missing keywords with the advert, using the model for
+    anything the deterministic context pass could not identify."""
+    key = os.path.basename(str(key or ""))[:120]
+    info = match_info(key)
+    terms = [t for t in (info.get("missing") or []) if t]
+    rows = skill_context.resolve(key, terms, use_ai=True, refresh=False, timeout=60)
+    return {"key": key, "terms": rows}
 
 
 def ats_add(key, term):
@@ -1705,6 +1751,17 @@ def _deadline_time(notes):
             except (OverflowError, ValueError):
                 pass
     return best
+
+
+INTERVIEW_STAGES = {
+    "": "not recorded",
+    "screen": "Recruiter screen",
+    "hiring-manager": "Hiring manager",
+    "technical": "Technical interview",
+    "panel": "Panel / onsite",
+    "final": "Final round",
+    "offer": "Offer stage",
+}
 
 
 def _interview_label(status, notes):
@@ -2098,11 +2155,14 @@ def grid():
         employment = ((r.get("employment") or "").strip().lower()
                       or _employment_from_jd(jd_key) or _employment_from_notes(notes))
         sub = _substate(status, notes, r.get("action", ""), label)
+        stage = (r.get("interview_stage") or "").strip()
+        stage_label = INTERVIEW_STAGES.get(stage, stage)
         sen = seniority_of(role, _read(os.path.join(STATE, "job-descriptions", jd_key + ".md"))[:4000])
         if status == "INTERVIEW":
-            hint = sub[2]
+            hint = sub[2] + (f" Stage: {stage_label}." if stage else "")
         out.append({"date": r.get("date", ""), "company": co, "role": role, "ats": r.get("ats", ""),
                     "status": status, "label": label, "interview_at": interview_at, "key": key,
+                    "interview_stage": stage, "interview_stage_label": stage_label,
                     "substate": sub[0], "substate_label": sub[1], "substate_hint": sub[2],
                     "employment": employment,
                     "seniority": sen[0], "seniority_label": sen[1], "seniority_rank": sen[2],
@@ -2403,6 +2463,7 @@ def live():
             "build": _web_build(),
             "action": {"name": act_name, "running": act_running,
                        "finished": bool(act_name and not act_running),
+                       "t0": _ACT.get("t0", 0),
                        "summary": summarize_action(act_name, act_lines, act_running),
                        "overview": action_overview(act_name, act_lines, act_running),
                        "roles": _ACT.get("roles") or [],
@@ -2470,6 +2531,8 @@ def action_overview(name, lines, running):
     elif running:
         tail = [l.strip() for l in lines if l.strip()]
         out.append("new this run: reconciling…" + (f" ({tail[-1][:100]})" if tail else ""))
+    change_word = ("proposed: " if hit and hit.group(1) == "dry run"
+                   else ("changed: " if hit else "new: "))
     changes, in_sec = [], False
     for line in lines:
         s = line.strip()
@@ -2480,7 +2543,7 @@ def action_overview(name, lines, running):
             if s.startswith("=="):
                 break
             if s and s != "(none)":
-                changes.append("new: " + " ".join(s.split())[:140])
+                changes.append(change_word + " ".join(s.split())[:140])
     if changes:
         out.extend(changes[:5])
         if len(changes) > 5:
@@ -2850,10 +2913,13 @@ def role_chat_stream(key):
         segs = chat_parse_claude(text)
     else:
         segs = chat_parse(text)
-    if len(segs) > 300:
+    total = len(segs)
+    base = max(0, total - 300)
+    if total > 300:
         segs = segs[-300:]
     q = _ROLE.get(k, {}).get("queue") or []
-    return {"segments": segs, "running": _role_running(k), "pending": len(q),
+    return {"segments": segs, "base": base, "total": total,
+            "running": _role_running(k), "pending": len(q),
             "done": not _role_running(k) and not q}
 
 
@@ -2975,12 +3041,20 @@ def load_agent_cfg():
             parallel = int(d.get("parallel") or 3)
         except (TypeError, ValueError):
             parallel = 3
+        sub_agent = str(d.get("subagent_agent") or "").strip()[:200]
+        sub_model = str(d.get("subagent_model") or "").strip()[:200]
+        if sub_agent and not sub_model:
+            sub_model = models.get(sub_agent, "")
         return {"agent": agent, "model": model, "models": models, "env": env,
                 "parallel": max(1, min(6, parallel)),
-                "subagent_model": str(d.get("subagent_model") or "").strip()[:200]}
+                "subagent_agent": sub_agent, "subagent_model": sub_model,
+                "roles": {"main": {"agent": agent, "model": model},
+                          "subagent": {"agent": sub_agent, "model": sub_model}}}
     except (OSError, ValueError):
         return {"agent": "", "model": "", "models": {}, "env": _stored_agent_env(),
-                "parallel": 3, "subagent_model": ""}
+                "parallel": 3, "subagent_agent": "", "subagent_model": "",
+                "roles": {"main": {"agent": "", "model": ""},
+                          "subagent": {"agent": "", "model": ""}}}
 
 
 def save_agent_cfg(d):
@@ -3008,25 +3082,35 @@ def save_agent_cfg(d):
         if not k:
             continue
         try:
-            SS.put("agent", k, "" if v in ("", None) else str(v)[:8192])
+            if v in ("", None):
+                SS.delete("agent", k)
+            else:
+                SS.put("agent", k, str(v)[:8192])
         except SS.SecretsError as exc:
             return {"agent": agent, "model": model, "models": models,
                     "env": _stored_agent_env(), "error": str(exc)}
-    # Subagent settings: worker count and an optional different model.
+    # Subagent settings: worker count, an optional different provider and model.
+    # An empty provider means "same as the main agent"; an empty model means the
+    # provider's default (or, when the provider is inherited, the main model).
     try:
         parallel = int(d.get("parallel", prev.get("parallel", 3)) or 3)
     except (TypeError, ValueError):
         parallel = 3
     parallel = max(1, min(6, parallel))
+    sub_agent = str(d.get("subagent_agent", prev.get("subagent_agent", "")) or "").strip()[:200]
     sub_model = str(d.get("subagent_model", prev.get("subagent_model", "")) or "").strip()[:200]
+    if sub_agent and sub_model:
+        models[sub_agent] = sub_model            # remember it for that provider
     # agent.json keeps the non-secret choice only; keys live in the store.
     out = {"agent": agent, "model": model, "models": models,
-           "parallel": parallel, "subagent_model": sub_model}
+           "parallel": parallel, "subagent_agent": sub_agent, "subagent_model": sub_model}
     os.makedirs(os.path.dirname(AGENT_CFG_FILE), exist_ok=True)
     fd = os.open(AGENT_CFG_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         json.dump(out, fh, indent=2)
     out["env"] = _stored_agent_env()
+    out["roles"] = {"main": {"agent": agent, "model": model},
+                    "subagent": {"agent": sub_agent, "model": sub_model}}
     _MODEL_CACHE.update(t=0.0, key="", data={})
     if (prev.get("agent"), prev.get("model")) != (out["agent"], out["model"]):
         # A new provider/model must not resume a conversation built for the old
@@ -3252,7 +3336,12 @@ def agent_config():
     except (OSError, subprocess.SubprocessError):
         pass
     return {"agent": cfg["agent"], "model": cfg["model"], "models": cfg.get("models", {}),
-            "parallel": cfg.get("parallel", 3), "subagent_model": cfg.get("subagent_model", ""),
+            "parallel": cfg.get("parallel", 3),
+            "subagent_agent": cfg.get("subagent_agent", ""),
+            "subagent_model": cfg.get("subagent_model", ""),
+            "roles": cfg.get("roles") or {"main": {"agent": cfg["agent"], "model": cfg["model"]},
+                                          "subagent": {"agent": cfg.get("subagent_agent", ""),
+                                                       "model": cfg.get("subagent_model", "")}},
             "env": {k: (v if re.search(r"BASE_URL$", k) else _mask(v)) for k, v in cfg["env"].items()},
             "env_keys": sorted(cfg["env"]), "detected": detected, "which": which,
             "config_path": AGENT_CFG_FILE, "secrets_path": SS.path(),
@@ -3333,9 +3422,20 @@ def agent_env(subagent=False, **extra):
         env.setdefault("JOBSQUIRREL_URL", DASH["url"])
     env.setdefault("JOBSQUIRREL_TOKEN", SESSION_TOKEN)
     cfg = load_agent_cfg()                        # user-configured agent/model/token
+    models = cfg.get("models") or {}
+    if subagent:
+        role_agent = (cfg.get("subagent_agent") or "").strip()
+        role_model = (cfg.get("subagent_model") or "").strip()
+        if role_agent:
+            # A different provider for subagents: use the model saved for it,
+            # never the main agent's model id (it may not exist there).
+            role_model = role_model or (models.get(role_agent) or "")
+            cfg = dict(cfg, agent=role_agent, model=role_model)
+        else:
+            cfg = dict(cfg, model=role_model or cfg.get("model"))
     if cfg.get("agent"):
         env["AGENT"] = cfg["agent"]               # the dashboard choice wins over a stray AGENT=1
-    model = (cfg.get("subagent_model") if subagent else "") or cfg.get("model")
+    model = cfg.get("model")
     if model and not extra.get("MODEL"):
         env["MODEL"] = model                      # subagents may use their own model
     for k, v in cfg.get("env", {}).items():
@@ -3822,13 +3922,24 @@ def chat_parse(text):
 
 def chat_parse_json(text):
     """Parse opencode `--format json` events into typed segments."""
-    segs, tokens, cost = [], None, None
+    segs, pending = [], None
+    local = (load_agent_cfg().get("agent") or "") == "local"
+
+    def flush_tokens():
+        nonlocal pending
+        if pending is None:
+            return
+        total, cost = pending
+        cost_txt = "" if local else (f" · ${cost:.4f}" if isinstance(cost, (int, float)) else "")
+        segs.append({"t": "status", "body": f"{total} tokens{cost_txt}"})
+        pending = None
     for ln in text.splitlines():
         s = ln.strip()
         if CHAT_STATUS.match(s):
             segs.append({"t": "status", "body": s[1:].strip()})
             continue
         if s.startswith(">"):
+            flush_tokens()                       # the previous turn is complete
             segs.append({"t": "user", "body": s[1:].strip()})
             continue
         if not s.startswith("{"):
@@ -3866,13 +3977,10 @@ def chat_parse_json(text):
             segs.append({"t": "tool", "tool": p.get("tool", ""), "cmd": str(cmd), "body": str(out)})
         elif t == "step_finish":
             tk = p.get("tokens") or {}
-            tokens = tk.get("total", tokens)
-            if p.get("cost") is not None:
-                cost = p.get("cost")
-    if tokens is not None:
-        local = (load_agent_cfg().get("agent") or "") == "local"
-        cost_txt = "" if local else (f" · ${cost:.4f}" if isinstance(cost, (int, float)) else "")
-        segs.append({"t": "status", "body": f"{tokens} tokens{cost_txt}"})
+            total = tk.get("total")
+            if total is not None:
+                pending = (total, p.get("cost"))
+    flush_tokens()                               # the last turn's token count
     for s in segs:
         if s["t"] == "tool":
             _compress_tool(s)
@@ -3881,13 +3989,24 @@ def chat_parse_json(text):
 
 def chat_parse_claude(text):
     """Parse Claude Code `--output-format stream-json` events into typed segments."""
-    segs, tokens, cost = [], None, None
+    segs, pending = [], None
+
+    def flush_tokens():
+        nonlocal pending
+        if pending is None:
+            return
+        tokens, cost = pending
+        parts = ([f"{tokens} tokens"] if tokens else []) + ([f"${cost:.4f}"] if isinstance(cost, (int, float)) else [])
+        if parts:
+            segs.append({"t": "status", "body": " · ".join(parts)})
+        pending = None
     for ln in text.splitlines():
         s = ln.strip()
         if CHAT_STATUS.match(s):
             segs.append({"t": "status", "body": s[1:].strip()})
             continue
         if s.startswith(">"):
+            flush_tokens()                       # the previous turn is complete
             segs.append({"t": "user", "body": s[1:].strip()})
             continue
         if not s.startswith("{"):
@@ -3916,14 +4035,13 @@ def chat_parse_claude(text):
                         segs[-1]["body"] = str(c or "")
         elif t == "result":
             u = e.get("usage") or {}
+            tokens = None
             if u.get("input_tokens") is not None or u.get("output_tokens") is not None:
                 tokens = (u.get("input_tokens") or 0) + (u.get("output_tokens") or 0)
-            if e.get("total_cost_usd") is not None:
-                cost = e.get("total_cost_usd")
-    if tokens is not None or cost is not None:
-        parts = ([f"{tokens} tokens"] if tokens else []) + ([f"${cost:.4f}"] if isinstance(cost, (int, float)) else [])
-        if parts:
-            segs.append({"t": "status", "body": " · ".join(parts)})
+            cost = e.get("total_cost_usd")
+            if tokens is not None or cost is not None:
+                pending = (tokens, cost)
+    flush_tokens()                               # the last turn's token count
     for s in segs:
         if s["t"] == "tool":
             _compress_tool(s)
@@ -3971,10 +4089,13 @@ def chat_stream(run_id, since):
         segs = chat_parse_claude(text)
     else:
         segs = chat_parse(text)
-    if len(segs) > 400:
+    total = len(segs)
+    base = max(0, total - 400)
+    if total > 400:
         segs = segs[-400:]
     pending = len(_CHAT.get("queue") or [])
-    return {"segments": segs, "offset": size, "running": running, "pending": pending,
+    return {"segments": segs, "base": base, "total": total, "offset": size,
+            "running": running, "pending": pending,
             "done": not running and not pending}
 
 
@@ -4091,7 +4212,7 @@ def _cap_log(path):
     return True
 
 
-def _spawn(purpose, argv, env=None, roles=None):
+def _spawn(purpose, argv, env=None, roles=None, role="main"):
     """Run a command detached, logged to the activity pane (state/logs/dashboard-action.log)."""
     os.makedirs(LOGS, exist_ok=True)
     if _cap_log(os.path.join(LOGS, "dashboard-action.log")):
@@ -4100,7 +4221,7 @@ def _spawn(purpose, argv, env=None, roles=None):
     logf = open(os.path.join(LOGS, "dashboard-action.log"), "a", encoding="utf-8")
     logf.write(f"\n=== {time.strftime('%Y-%m-%dT%H:%M:%S')} {purpose} ===\n")
     logf.flush()
-    proc = subprocess.Popen(argv, cwd=ROOT, env=agent_env(subagent=True, ROOT=ROOT, **(env or {})),
+    proc = subprocess.Popen(argv, cwd=ROOT, env=agent_env(subagent=(role == "subagent"), ROOT=ROOT, **(env or {})),
                             stdout=logf, stderr=subprocess.STDOUT, start_new_session=True)
     _ACT.update(name=purpose, proc=proc, offset=logf.tell(), t0=time.time(),
                 roles=list(roles or []))
@@ -4200,6 +4321,63 @@ def _delegated_result(log):
     return ""
 
 
+def _delegated_prose(line):
+    """True for a human-readable line, false for commands, JSON and tables."""
+    s = (line or "").strip()
+    if len(s) < 8 or not re.search(r"[A-Za-z]", s):
+        return False
+    if s.startswith(("$ ", "{", "[", "|", "==", "---", "```", ">", "<")):
+        return False
+    if re.match(r"^\d+\s*/\s*\d+", s) or re.match(r"^\d{4}-\d{2}-\d{2}", s):
+        return False
+    return s.count("|") < 2
+
+
+def _delegated_summary(log, max_lines=24, max_chars=2000):
+    """The final prose answer from a subagent log, for the Agent console.
+
+    The subagent's last tool output is followed by its answer and a RESULT line.
+    Keep that last contiguous prose block (allowing a blank between paragraphs)
+    and leave the tool transcript in the full-log view.
+    """
+    path = os.path.join(LOGS, (log or "") + ".log")
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - 65536))
+            text = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return ""
+    lines = ANSI.sub("", text).splitlines()
+    end = len(lines)
+    for i in range(len(lines) - 1, -1, -1):
+        if re.match(r"^RESULT:", lines[i].strip()):
+            end = i
+            break
+    block = []
+    i = end - 1
+    while i >= 0 and len(block) < max_lines:
+        s = lines[i].strip()
+        if not s:
+            if not block:            # trailing blank after RESULT: skip it
+                i -= 1
+                continue
+            j = i - 1
+            while j >= 0 and not lines[j].strip():
+                j -= 1
+            if block and j >= 0 and _delegated_prose(lines[j]):
+                block.append("")
+                i = j
+                continue
+            break
+        if not _delegated_prose(s):
+            break
+        block.append(s)
+        i -= 1
+    return "\n".join(reversed(block)).strip()[:max_chars]
+
+
 def _delegated_finished(limit=5):
     """Recently finished subagents with their RESULT, for the chat."""
     out = []
@@ -4221,7 +4399,8 @@ def _delegated_finished(limit=5):
         if not (_delegated_done(log) or not _pid_alive(rec.get("pid"))):
             continue
         out.append({"id": rec.get("id", ""), "title": rec.get("title", "subagent"),
-                    "log": log, "result": _delegated_result(log)})
+                    "log": log, "result": _delegated_result(log),
+                    "summary": _delegated_summary(log)})
         if len(out) >= limit:
             break
     return out
@@ -4374,7 +4553,8 @@ def prepare_roles(keys):
         env["MODEL"] = sub
     _spawn(f"prepare {len(rows)} role(s) (review)",
            ["bash", os.path.join(ROOT, "tools", "run_queue.sh")], env,
-           roles=[{"company": r["company"], "role": r["role"], "key": r.get("key", "")} for r in rows])
+           roles=[{"company": r["company"], "role": r["role"], "key": r.get("key", "")} for r in rows],
+           role="subagent")
     return {"ok": f"generating documents for {len(rows)} role(s) — watch the Activity pane (nothing is submitted)"}
 
 
@@ -4561,6 +4741,105 @@ def graph_query(*args):
         data = {"error": f"{type(e).__name__}: {e}"}
     _gcache[key] = (time.time(), data)
     return data
+
+
+def _kg_sources_meta():
+    """key -> (company, role) from the register and the queue."""
+    meta = {}
+    try:
+        for r in _rows(os.path.join(STATE, "applications.csv")):
+            k = (r.get("key") or "").strip()
+            if k:
+                meta[k] = ((r.get("company") or "").strip(), (r.get("role") or "").strip())
+    except Exception:
+        pass
+    for name in ("queue.tsv", "queue.done"):
+        try:
+            for line in open(os.path.join(STATE, name), encoding="utf-8", errors="ignore"):
+                if not line.strip() or line.startswith("#"):
+                    continue
+                f = (line.rstrip("\n").split("\t") + [""] * 6)[:6]
+                if len(f) >= 6 and f[5].strip():
+                    meta.setdefault(f[5].strip(), (f[0].strip(), f[1].strip()))
+        except OSError:
+            pass
+    return meta
+
+
+def kg_play_sources(limit=140):
+    """Saved job descriptions the playground can build from."""
+    folder = os.path.join(STATE, "job-descriptions")
+    try:
+        names = [f for f in os.listdir(folder) if f.endswith(".md")]
+    except OSError:
+        names = []
+    meta = _kg_sources_meta()
+    out = []
+    for name in names:
+        key = name[:-3]
+        company, role = meta.get(key, ("", ""))
+        path = os.path.join(folder, name)
+        if not role:
+            try:
+                for line in open(path, encoding="utf-8", errors="ignore"):
+                    s = line.strip().lstrip("#").strip()
+                    if s and len(s) < 130:
+                        role = s
+                        break
+            except OSError:
+                pass
+        try:
+            updated = int(os.path.getmtime(path))
+        except OSError:
+            updated = 0
+        out.append({"key": key, "company": company, "role": role,
+                    "label": f"{company} — {role}" if company else (role or key),
+                    "updated": updated})
+    out.sort(key=lambda x: -x["updated"])
+    return {"sources": out[:int(limit or 140)]}
+
+
+_PLAY_CACHE = {}
+_PLAY_CACHE_TTL = 600
+
+
+def graph_play(key="", text="", hops=2, kind="cv"):
+    """Recursive evidence traversal + document build for the playground."""
+    key = str(key or "").strip()
+    text = str(text or "")
+    kind = "letter" if str(kind or "").lower() == "letter" else "cv"
+    cache_key = (key, hashlib.sha1(text.encode("utf-8", "ignore")).hexdigest(),
+                 str(hops or 2), kind)
+    hit = _PLAY_CACHE.get(cache_key)
+    if hit and time.time() - hit[0] < _PLAY_CACHE_TTL:
+        return hit[1]
+    if not text and key:
+        try:
+            text = open(os.path.join(STATE, "job-descriptions", key + ".md"),
+                        encoding="utf-8", errors="ignore").read()
+        except OSError:
+            return {"error": f"no saved job description for {key}"}
+    text = text.strip()[:24000]
+    if not text:
+        return {"error": "paste a job spec or choose a saved one"}
+    try:
+        hops = max(1, min(3, int(hops or 2)))
+    except (TypeError, ValueError):
+        hops = 2
+    py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    try:
+        r = subprocess.run([py, GRAPH_TOOL, "playground", key, str(hops), kind], cwd=ROOT,
+                           input=text, capture_output=True, text=True, timeout=90, env=env)
+        data = json.loads((r.stdout or "").strip() or "{}")
+        if r.returncode != 0 and "error" not in data:
+            data = {"error": (r.stderr or "playground failed").strip()[-300:]}
+        if not data.get("error"):
+            _PLAY_CACHE[cache_key] = (time.time(), data)
+        return data
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"}
 
 
 def graph_role_evidence(key):
@@ -5363,6 +5642,8 @@ class H(BaseHTTPRequestHandler):
                                               qs.get("limit", ["14"])[0]))
         if p == "/api/graph/role":
             return self._json(graph_role_evidence(qs.get("key", [""])[0]))
+        if p == "/api/kg/play/sources":
+            return self._json(kg_play_sources())
         if p == "/api/graph/ontology":
             return self._json(graph_query("ontology"))
         if p == "/api/graph/types":
@@ -5502,6 +5783,9 @@ class H(BaseHTTPRequestHandler):
             return self._json(graph_edit_node(data))
         if p == "/api/graph/ask":
             return self._json(graph_ask(data.get("question", ""), data.get("method", "local")))
+        if p == "/api/kg/play":
+            return self._json(graph_play(data.get("key", ""), data.get("text", ""),
+                                          data.get("hops", 2), data.get("kind", "cv")))
         if p == "/api/captcha":
             return self._json(captcha_save(data))
         if p == "/api/secrets":
@@ -5615,6 +5899,12 @@ class H(BaseHTTPRequestHandler):
             return self._json(ats_add(data.get("key", ""), data.get("term", "")))
         if p == "/api/ats/refresh":
             return self._json(ats_refresh(data.get("key", "")))
+        if p == "/api/role/skills":
+            return self._json(explain_missing_skills(data.get("key", "")))
+        if p == "/api/skill/explain":
+            return self._json(skill_context.explain(data.get("key", ""), data.get("term", "")))
+        if p == "/api/role/interview-stage":
+            return self._json(set_interview_stage(data.get("key", ""), data.get("stage", "")))
         if p == "/api/open":
             return self._json(open_apply(data.get("company", ""), data.get("role", "")))
         if p == "/api/action/stop":

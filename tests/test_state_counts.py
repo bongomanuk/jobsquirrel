@@ -42,6 +42,9 @@ def test_a_shelved_role_is_counted_and_shown_under_shelved_only():
     assert "continue;" in stats
 
 
-def test_no_result_has_its_own_state_node():
+def test_no_result_is_not_an_application_state():
     app = _app()
-    assert "{ s: 'NO RESULT', x: 370, note: 'run produced nothing' }" in app
+    assert "{ s: 'NO RESULT'" not in app
+    with open(os.path.join(ROOT, "tools", "web", "index.html"), encoding="utf-8") as fh:
+        html = fh.read()
+    assert "<option>NO RESULT</option>" not in html

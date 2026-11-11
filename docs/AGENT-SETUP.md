@@ -117,32 +117,53 @@ Both write `~/.config/job-search/agent.json`:
   it has not acted yet. `AGENT_RETRY=0` disables it, `AGENT_RETRY_BASE=<seconds>`
   changes the backoff. A task that succeeds after a retry keeps its STATUS and is
   not treated as an infrastructure stop.
-- The **GraphRAG LLM is separate** (`kb/graphrag/.env`, same Settings page): the
+- The **GraphRAG LLM is separate** (`kb/graphrag/.env`, **Settings → GraphRAG**): the
   knowledge-graph builder does not use the coding-agent model.
 
 ### OpenRouter models
 
-**Settings → AI & agent → OpenRouter** accepts an OpenRouter API key, then
-**Use OpenRouter** sets the agent to `openrouter` and the model to OpenRouter's
-DeepSeek V4.1 Flash. The model picker lists OpenRouter's catalogue (grouped by
-provider, with free models separated); pick another model or type its id.
+**Settings → AI & agent → Main agent → OpenRouter** reveals the OpenRouter key
+field and its model list (grouped by provider, with free models separated). Pick
+a model or type its id; the model picker and provider settings save immediately.
 
-The key is stored in `~/.config/job-search/agent.json` under `env` (0600), never
-in the repository. OpenCode remains the local tool runner (it reads `AGENTS.md`
-and drives the browser/commands); OpenRouter supplies the model. The saved
-selection looks like:
+The key is stored in the encrypted secrets store (`~/.config/job-search/secrets.json`),
+never in the repository. OpenCode remains the local tool runner (it reads `AGENTS.md`
+and drives the browser/commands); OpenRouter supplies the model. The non-secret
+selection in `~/.config/job-search/agent.json` looks like:
 
 ```jsonc
 {
   "agent": "openrouter",
   "model": "deepseek/deepseek-v4.1-flash",
-  "models": { "openrouter": "deepseek/deepseek-v4.1-flash" },
-  "env": { "OPENROUTER_API_KEY": "sk-or-..." }
+  "models": { "openrouter": "deepseek/deepseek-v4.1-flash" }
 }
 ```
 
 `tools/agent_run.sh` forwards the key to the runner and prefixes the model with
 `openrouter/` for OpenCode. Queue/apply runs, chat and role chats all use it.
+
+### Give subagents their own provider and model
+
+The dashboard runs document preparation and delegated background tasks as
+**subagents**. In **Settings → AI & agent → Subagents** choose *Same as main
+agent* (the default) or a different provider and model. Provider keys and
+endpoints are shared, so a second provider only needs its key entered once. The
+saved selection adds two keys:
+
+```jsonc
+{
+  "agent": "opencode",
+  "model": "inferx/deepseek-v4.1-flash-1017-basic",
+  "subagent_agent": "openrouter",
+  "subagent_model": "deepseek/deepseek-v4.1-flash"
+}
+```
+
+- An empty `subagent_agent` follows the main agent; an empty `subagent_model`
+  follows the main model (or uses the subagent provider's saved/default model).
+- Submissions, the chat and role chats stay on the **main agent**. Subagents are
+  the dashboard's document-preparation and background runs.
+- `PARALLEL` (1–6) is set on the same panel; submissions always run one at a time.
 
 ### Run it fully local
 
