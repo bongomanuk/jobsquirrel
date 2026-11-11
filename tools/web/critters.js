@@ -27,7 +27,7 @@ const state = {
   critters: [], nuts: [], raf: 0, clock: null, W: 1,
   resident: null, perches: [],
   pointer: { x: 0, y: -999 }, lastPoke: 0,
-  snow: null, fx: [], trees: [], grove: null,
+  snow: null, fx: [], trees: [], grove: null, disco: null, house: null,
 };
 
 const MAT = {
@@ -49,6 +49,8 @@ const MAT = {
   leaf2: new THREE.MeshStandardMaterial({ color: 0x5f7a5b, roughness: 0.92 }),
   leaf3: new THREE.MeshStandardMaterial({ color: 0x46604a, roughness: 0.92 }),
   sled: new THREE.MeshStandardMaterial({ color: 0xb5654a, roughness: 0.75 }),
+  wall: new THREE.MeshStandardMaterial({ color: 0x8a6a4a, roughness: 0.9 }),
+  roof: new THREE.MeshStandardMaterial({ color: 0x4a3a2e, roughness: 0.95 }),
   tongue: new THREE.MeshStandardMaterial({ color: 0xd97b8a, roughness: 0.7 }),
 };
 
@@ -398,7 +400,8 @@ function addCritter(opts) {
     trickUntil: 0, social: false, tagUntil: 0, visitUntil: 0,
     partner: null, playUntil: 0, nextThrow: 0, sledOn: false, sledSpeed: 0, sprayAt: 0,
     bonkUntil: 0, sparkAt: 0, tree: null, forageX: 0, forageAt: 0, carried: false,
-    eatingUntil: 0, foraged: false, throwUntil: 0,
+    eatingUntil: 0, foraged: false, throwUntil: 0, danceUntil: 0, buildUntil: 0,
+    baby: false, babyUntil: 0, babyTarget: 0, nextBabyTarget: 0,
   };
   state.critters.push(c);
   return c;
@@ -519,11 +522,11 @@ function syncTree(t) {
 }
 
 const GROVE = [
-  { dx: -44, z: -2.4, s: 0.72, kind: 'fir', tone: 2 },
-  { dx: -24, z: -1.7, s: 0.94, kind: 'fir', tone: 0 },
-  { dx: -2, z: -2.1, s: 1.12, kind: 'round', tone: 0 },
-  { dx: 21, z: -1.5, s: 0.84, kind: 'fir', tone: 1 },
-  { dx: 41, z: -2.6, s: 0.62, kind: 'fir', tone: 2 },
+  { dx: -44, z: -2.4, s: 0.62, kind: 'fir', tone: 2 },
+  { dx: -24, z: -1.7, s: 0.8, kind: 'fir', tone: 0 },
+  { dx: -2, z: -2.1, s: 0.95, kind: 'round', tone: 0 },
+  { dx: 21, z: -1.5, s: 0.72, kind: 'fir', tone: 1 },
+  { dx: 41, z: -2.6, s: 0.54, kind: 'fir', tone: 2 },
 ];
 
 function makeTree(def) {
@@ -570,7 +573,7 @@ function makeTree(def) {
     nuts.push(n);
   }
   g.position.set(def.dx, FLOOR, def.z || -1.6);
-  g.scale.setScalar(SCALE * 0.82);
+  g.scale.setScalar(SCALE * 0.66);
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   const tree = { ...def, group: g, caps, nuts, cache: Math.floor(Math.random() * 3), x: def.dx };
   syncTree(tree);
@@ -620,6 +623,80 @@ function startForage(c, tree, how = 'auto', side = 0) {
     c.target = c.forageX;
     c.nextAction = performance.now() + 12000;
   }
+}
+
+/* ---------- disco, den and babies ---------- */
+function groveWorldX() {
+  return state.grove ? state.grove.group.position.x : Math.round(-state.W * 0.16);
+}
+
+function startDisco(stage) {
+  if (state.disco) return;
+  const g = new THREE.Group();
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(5.5, 16, 12),
+    new THREE.MeshStandardMaterial({ color: 0xf2f6ff, metalness: 0.85, roughness: 0.18,
+                                     emissive: 0x9fb4ff, emissiveIntensity: 1.1 }));
+  ball.position.set(stage, BAR / 2 - 12, 2);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: puffTexture(), color: 0xff9ae0, transparent: true, opacity: 0.8,
+    depthWrite: false, blending: THREE.AdditiveBlending,
+  }));
+  glow.scale.setScalar(30);
+  glow.position.copy(ball.position);
+  const string = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 14, 4), MAT.dark);
+  string.position.set(stage, BAR / 2 - 1, 2);
+  const light = new THREE.PointLight(0xff6ad5, 10, 300);
+  light.position.set(stage, 14, 28);
+  g.add(ball, glow, string, light);
+  state.scene.add(g);
+  state.disco = { g, ball, light, stage, until: performance.now() + 7200, sparkAt: 0 };
+}
+
+function stopDisco() {
+  if (!state.disco) return;
+  state.scene.remove(state.disco.g);
+  state.disco.g.traverse(o => { if (o.isMesh) { o.geometry.dispose(); o.material.dispose(); } });
+  state.disco = null;
+}
+
+function buildHouse(x) {
+  if (state.house) return state.house;
+  const g = new THREE.Group();
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(30, 18, 16), MAT.wall);
+  wall.position.y = 9;
+  g.add(wall);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(24, 14, 4), MAT.roof);
+  roof.position.y = 25;
+  roof.rotation.y = Math.PI / 4;
+  g.add(roof);
+  const door = new THREE.Mesh(new THREE.BoxGeometry(8, 11, 1), MAT.dark);
+  door.position.set(0, 5.5, 8.2);
+  g.add(door);
+  const chimney = new THREE.Mesh(new THREE.BoxGeometry(5, 10, 5), MAT.wall);
+  chimney.position.set(9, 27, 0);
+  g.add(chimney);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(22, 11, 4), MAT.snow);
+  cap.position.y = 27;
+  cap.rotation.y = Math.PI / 4;
+  cap.visible = false;
+  g.add(cap);
+  g.position.set(x, FLOOR, -1.2);
+  g.scale.set(1, 0.01, 1);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  state.scene.add(g);
+  state.house = { g, x, born: performance.now(), cap, puffAt: 0 };
+  return state.house;
+}
+
+function spawnBaby(x) {
+  const c = addCritter({ x, friend: true, speed: 0 });
+  c.baby = true;
+  c.mode = 'baby';
+  c.babyUntil = performance.now() + 15000;
+  c.nextBabyTarget = 0;
+  c.nextKick = Infinity;
+  c.root.scale.setScalar(SCALE * 0.55);
+  return c;
 }
 
 /* ---------- animation ---------- */
@@ -771,6 +848,24 @@ function animate(c, dt) {
     c.tail[2].rotation.x = -0.2;
     c.root.rotation.z = Math.sin(p * 1.7) * 0.05;
   }
+  if (c.danceUntil > now) {
+    const t = now / 1000 + c.phase;
+    c.root.position.y = FLOOR + Math.abs(Math.sin(t * 6)) * 6;
+    c.hips.rotation.x = -0.25 + Math.sin(t * 8) * 0.12;
+    c.front.forEach((f, i) => {
+      f.shoulder.rotation.x = -2.4 + Math.sin(t * 8 + i * Math.PI) * 0.35;
+      f.elbow.rotation.x = -0.6;
+    });
+    c.hind[0].hip.rotation.x = -0.8;
+    c.hind[1].hip.rotation.x = -0.8;
+    c.neck.rotation.z = Math.sin(t * 4) * 0.18;
+    c.tail[0].rotation.x = -0.6 + Math.sin(t * 8) * 0.2;
+  }
+  if (c.buildUntil > now) {
+    c.front[1].shoulder.rotation.x = -1.7 + Math.sin(now / 55) * 0.65;
+    c.front[1].elbow.rotation.x = -0.45;
+    c.neck.rotation.x = -0.05;
+  }
   if (c.bonkUntil > now) {
     const k = Math.sin((c.bonkUntil - now) / 55);
     c.neck.rotation.z = k * 0.4;
@@ -827,6 +922,28 @@ function updateWeather(now, dt) {
     f.sp.position.y += f.vy * dt;
     f.sp.material.opacity = 0.85 * (1 - k);
     f.sp.scale.setScalar(f.base * (1 + f.grow * k));
+  }
+  if (state.disco) {
+    const d = state.disco;
+    d.ball.rotation.y += dt * 4;
+    d.light.color.setHSL((now * 0.00035) % 1, 0.75, 0.6);
+    if (now > d.sparkAt) {
+      d.sparkAt = now + 240;
+      addPuff(d.stage + (Math.random() - 0.5) * 34, BAR / 2 - 12 + (Math.random() - 0.5) * 12,
+              { color: '#ffd6f2', size: 3, life: 320, vy: 8, grow: 1.6 });
+    }
+    if (now > d.until) stopDisco();
+  }
+  if (state.house) {
+    const h = state.house;
+    const k = Math.min(1, (now - h.born) / 1200);
+    h.g.scale.y = Math.max(0.01, k);
+    if (k < 1 && now > h.puffAt) {
+      h.puffAt = now + 180;
+      addPuff(h.x + (Math.random() - 0.5) * 34, FLOOR + 5,
+              { color: '#c9b79a', size: 5, life: 500, vy: 22, grow: 2 });
+    }
+    if (h.cap) h.cap.visible = !!state.snow;
   }
 }
 
@@ -1013,6 +1130,34 @@ function frame() {
         else c.mode = 'leave';
       }
     }
+    if (c.mode === 'disco') {
+      const d = c.meetX - c.x;
+      if (Math.abs(d) > 4) { c.x += Math.sign(d) * Math.min(Math.abs(d), 150 * dt); c.speed = 150; }
+      else c.speed = 0;
+      if (now > c.danceUntil) {
+        c.danceUntil = 0;
+        if (c === state.resident) { c.mode = 'travel'; c.target = c.home; c.social = false; }
+        else c.mode = 'leave';
+      }
+    }
+    if (c.mode === 'build') {
+      const d = c.meetX - c.x;
+      if (Math.abs(d) > 4) { c.x += Math.sign(d) * Math.min(Math.abs(d), 150 * dt); c.speed = 150; }
+      else c.speed = 0;
+      if (now > c.buildUntil) { c.buildUntil = 0; c.mode = 'leave'; }
+    }
+    if (c.mode === 'baby') {
+      if (now > c.nextBabyTarget) {
+        c.babyTarget = Math.max(-state.W / 2 + 80,
+          Math.min(state.W / 2 - 80, c.x + (Math.random() - 0.5) * 340));
+        c.nextBabyTarget = now + 600 + Math.random() * 900;
+        if (Math.random() < 0.3) c.hopUntil = now + 260;
+      }
+      const d = c.babyTarget - c.x;
+      if (Math.abs(d) > 2) { c.x += Math.sign(d) * Math.min(Math.abs(d), 140 * dt); c.speed = 140; }
+      else c.speed = 0;
+      if (now > c.babyUntil) { c.mode = 'leave'; c.babyUntil = 0; }
+    }
     if (c.mode === 'drink') {
       c.beerOn = now < c.drinkUntil;
       c.clink = now > c.clinkAt && now < c.clinkAt + 400;
@@ -1049,6 +1194,8 @@ function frame() {
                            c.mode === 'nuts' || c.mode === 'snowfight')) {
       want = c.partner.x < c.x ? -Math.PI / 2 : Math.PI / 2;
     }
+    else if (c.mode === 'disco') want = Math.PI / 2 + Math.sin(now / 300 + c.phase) * 0.7;
+    else if (c.baby) want = (c.babyTarget - c.x) >= 0 ? Math.PI / 2 : -Math.PI / 2;
     else if (c.waveOn) want = 0;
     else if (moving) want = (c.resident ? Math.sign(c.target - c.x) : 1) > 0 ? Math.PI / 2 : -Math.PI / 2;
     else if (c.resident) {
@@ -1056,7 +1203,7 @@ function frame() {
       want = nd < 160 && state.pointer.y < FLOOR + 120 ? 0 : Math.PI / 2;
     }
     c.root.rotation.y += (want - c.root.rotation.y) * Math.min(1, dt * 9);
-    if (!c.resident && !c.held && !c.waveOn && now > c.nextKick &&
+    if (!c.resident && !c.held && !c.waveOn && !c.baby && now > c.nextKick &&
         c.x > -state.W / 2 && c.x < state.W / 2) {
       c.nextKick = now + 900 + Math.random() * 1400;
       kickNut(c);
@@ -1283,6 +1430,35 @@ function run(kind) {
     if (f.sled) f.sled.visible = true;
     f.sledSpeed = 230 + Math.random() * 60;
     f.sprayAt = 0;
+  } else if (kind === 'disco') {
+    const stage = Math.round(-w * 0.12);
+    startDisco(stage);
+    const until = performance.now() + 7000;
+    const f1 = addCritter({ ...base, x: -w / 2 - 60, friend: true, holdAt: 0 });
+    f1.mode = 'disco'; f1.meetX = stage - 46; f1.danceUntil = until;
+    const f2 = addCritter({ ...base, x: -w / 2 - 90, friend: true, holdAt: 0 });
+    f2.mode = 'disco'; f2.meetX = stage + 46; f2.danceUntil = until;
+    if (lead) {
+      lead.mode = 'disco';
+      lead.meetX = stage;
+      lead.target = stage;
+      lead.danceUntil = until;
+      lead.social = true;
+      lead.nextAction = performance.now() + 12000;
+    }
+  } else if (kind === 'house') {
+    const hx = groveWorldX() + 110;
+    buildHouse(hx);
+    const f = addCritter({ ...base, x: -w / 2 - 60, friend: true, holdAt: 0 });
+    f.mode = 'build'; f.meetX = hx + 30; f.buildUntil = performance.now() + 2800;
+    if (lead) { lead.target = hx - 70; lead.social = true; lead.nextAction = performance.now() + 12000; }
+  } else if (kind === 'family') {
+    const hx = state.house ? state.house.x : groveWorldX() + 110;
+    if (!state.house) buildHouse(hx);
+    spawnBaby(hx - 60);
+    spawnBaby(hx + 10);
+    spawnBaby(hx + 70);
+    if (lead) { lead.target = hx - 110; lead.social = true; lead.nextAction = performance.now() + 12000; }
   } else if (kind === 'forage') {
     if (!state.trees.length || (state.grove && !state.grove.group.visible)) return;
     const withNuts = state.trees.filter(t => t.cache > 0);
@@ -1318,8 +1494,8 @@ function run(kind) {
 
 export function callCritters() { run('hold'); }
 
-const ROTATION = ['duel', 'snow', 'nuts', 'fight', 'forage', 'snow', 'hold',
-                  'chase', 'snow', 'wave', 'visit'];
+const ROTATION = ['duel', 'snow', 'house', 'nuts', 'disco', 'family', 'forage', 'snow',
+                  'fight', 'disco', 'hold', 'chase', 'wave'];
 let rotation = 0;
 
 function snowDay() {
