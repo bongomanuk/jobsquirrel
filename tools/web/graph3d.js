@@ -17,6 +17,7 @@ const TYPE_COLORS = {
 const ACCENT = 0xd8b47c;
 const DIM = 0x334155;
 
+let HL_RUN = 0;
 const S = {
   inited: false, canvas: null, labels: null, tip: null, stage: null,
   renderer: null, scene: null, camera: null, group: null, raycaster: null,
@@ -550,6 +551,15 @@ export function setPlayback(ids, links, labels) {
   updateLabels(S.playLabels.size ? new Set(S.playLabels) : null, true);
 }
 
+export function isHighlighting() { return S.playIds.size > 0; }
+
+export function clearHighlight() {
+  HL_RUN++;
+  clearPlayback();
+  clearSelection();
+  fit();
+}
+
 export function clearPlayback() {
   S.playIds = new Set();
   S.playLinks = new Set();
@@ -568,6 +578,7 @@ export function clearPlayback() {
 export function highlightNeighbourhood(id, hops = 2, opts = {}) {
   const root = S.byId.get(id);
   if (!root) return 0;
+  const run = ++HL_RUN;
   const maxHops = Math.max(1, Math.min(4, +hops || 2));
   const levels = [[id]];
   const levelLinks = [[]];
@@ -603,6 +614,7 @@ export function highlightNeighbourhood(id, hops = 2, opts = {}) {
   frameIds([id], 700);
   let step = 0;
   const tick = () => {
+    if (run !== HL_RUN) return;
     step++;
     if (step >= levels.length) return;
     for (const n of levels[step]) ids.add(n);
@@ -702,6 +714,7 @@ export function setHiddenTypes(types) {
 
 export function fit(margin = 1.02) {
   if (!S.nodes.length) return;
+  S.fly = null;
   const box = new THREE.Box3();
   S.nodes.forEach(n => box.expandByPoint(n.pos));
   const center = box.getCenter(new THREE.Vector3());

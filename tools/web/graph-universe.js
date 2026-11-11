@@ -8,6 +8,7 @@
  */
 import * as THREE from './vendor/three.module.min.js';
 
+let HL_RUN = 0;
 const S = {
   inited: false, loading: false, data: null, canvas: null, labels: null, tip: null,
   renderer: null, scene: null, camera: null, raycaster: null, pointer: new THREE.Vector2(-9, -9),
@@ -1242,7 +1243,7 @@ function renderNodeSide(d) {
   const actions = `<div class="uni-actions">
       <button class="small" data-title="${esc(d.title)}" onclick="App.editNode(this.dataset.title)">Edit details</button>
       <button class="small" onclick="window.__uni && window.__uni.focusSelected()">Fly here</button>
-      <button class="small" data-title="${esc(d.title)}" onclick="window.__uni && window.__uni.highlightNeighbourhood(this.dataset.title, 2)" title="Animate the subgraph around this node, one hop at a time">Highlight subgraph</button>
+      <button class="small" data-title="${esc(d.title)}" onclick="window.__uni && window.__uni.toggleHighlight(this.dataset.title, 2, this)" title="Animate the subgraph around this node, one hop at a time">Highlight subgraph</button>
     </div>`;
   box.innerHTML = `<div class="uni-kind">${esc(d.class_label || d.type || 'entity')} · impact ${Math.round((d.importance || 0) * 100)}%${d.grounded ? ' · grounded' : ''}</div>
     <h3>${esc(d.title)}</h3>
@@ -1512,6 +1513,7 @@ export function highlightNeighbourhood(idOrTitle, hops = 2) {
   const root = S.byId.get(idOrTitle) ||
     S.nodes.find(n => String(n.title).toLowerCase() === String(idOrTitle).toLowerCase());
   if (!root) return 0;
+  const run = ++HL_RUN;
   const maxHops = Math.max(1, Math.min(4, +hops || 2));
   const levels = [[root.id]];
   const levelLinks = [[]];
@@ -1555,6 +1557,7 @@ export function highlightNeighbourhood(idOrTitle, hops = 2) {
   frameStarSet([...ids], 800);
   let step = 0;
   const tick = () => {
+    if (run !== HL_RUN) return;
     step++;
     if (step >= levels.length) return;
     for (const n of levels[step]) ids.add(n);
@@ -1567,6 +1570,36 @@ export function highlightNeighbourhood(idOrTitle, hops = 2) {
   setTimeout(tick, 450);
   if (window.toast) window.toast(`Highlighting ${Math.min(seen.size, MAX_NODES)} nodes within ${maxHops} hops`);
   return seen.size;
+}
+
+export function isHighlighting() { return S.playIds.size > 0; }
+
+export function clearHighlight() {
+  HL_RUN++;
+  clearPlayback();
+  S.selDist = null;
+  S.focusAmount = 0;
+  applySelection();
+  if (S.returnView) {
+    flyTo(S.returnView.target, S.returnView.radius, 700);
+    S.returnView = null;
+  } else {
+    S.orbit.target.set(0, 0, 0);
+    S.orbit.radius = S.baseRadius;
+    S.fly = null;
+  }
+}
+
+export function toggleHighlight(idOrTitle, hops = 2, btn) {
+  if (isHighlighting()) {
+    clearHighlight();
+    if (btn) btn.textContent = 'Highlight subgraph';
+    if (window.toast) window.toast('highlight cleared');
+    return false;
+  }
+  highlightNeighbourhood(idOrTitle, hops);
+  if (btn) btn.textContent = 'Clear highlight';
+  return true;
 }
 
 export function selectByTitle(title) {

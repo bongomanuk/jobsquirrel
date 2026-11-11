@@ -1286,15 +1286,18 @@ const App = {
     return App.graphOverview(null);
   },
   graphSelect: (id) => { if (KG && KG.byId.has(id)) kgSelect(id); else App.graphEgo(id); },
-  kgHighlightSubgraph: () => {
+  kgHighlightSubgraph: (btn) => {
     if (!KG || !KG.selected || !window.__kg3d) return;
+    if (window.__kg3d.isHighlighting()) {
+      window.__kg3d.clearHighlight();
+      if (btn) btn.textContent = 'Highlight subgraph';
+      toast('highlight cleared');
+      return;
+    }
     const hops = Math.max(1, Math.min(3, +(document.getElementById('kg-focus')?.value || 2)));
     const n = window.__kg3d.highlightNeighbourhood(KG.selected, hops);
+    if (btn) btn.textContent = 'Clear highlight';
     if (n) toast(`Highlighting ${n} node${n === 1 ? '' : 's'} within ${hops} hop${hops === 1 ? '' : 's'}`);
-  },
-  kgClearHighlight: () => {
-    if (window.__kg3d) window.__kg3d.clearPlayback();
-    toast('highlight cleared');
   },
   graphFit: () => { if (window.__kg3d) window.__kg3d.fit(); },
   graphType: (type) => {
@@ -5384,8 +5387,7 @@ function kgSelect(id) {
       ${isComm
         ? `<button class="small" data-id="${n.community}" onclick="App.graphCommunity(this.dataset.id)">Open community</button>`
         : `<button class="small" data-id="${esc(n.type)}" onclick="App.graphTypeEntities(this.dataset.id)">Open topic</button>`}
-      <button class="small" onclick="App.kgHighlightSubgraph()" title="Animate the subgraph around this node, one hop at a time">Highlight subgraph</button>
-      <button class="small" onclick="App.kgClearHighlight()">Clear highlight</button>
+      <button class="small" onclick="App.kgHighlightSubgraph(this)" title="Animate the subgraph around this node, one hop at a time">Highlight subgraph</button>
     </div>`;
     body.innerHTML = `<h4>${esc(n.title || n.label)}</h4>
       <div class="muted mini">${isComm ? 'Community' : 'Topic'} · ${n.size} entities${isComm && n.level != null ? ` · level ${n.level}` : ''}</div>
@@ -5405,8 +5407,7 @@ function kgSelect(id) {
   const actions = `<div class="row" style="margin:8px 0;flex-wrap:wrap">
     <button class="small" data-title="${esc(n.title)}" onclick="App.editNode(this.dataset.title)">Edit details</button>
     <button class="small" data-id="${esc(n.title)}" onclick="App.graphEgo(this.dataset.id)">Focus ego network</button>
-    <button class="small" onclick="App.kgHighlightSubgraph()" title="Animate the subgraph around this node, one hop at a time">Highlight subgraph</button>
-    <button class="small" onclick="App.kgClearHighlight()" title="Clear the highlighted subgraph">Clear highlight</button>
+    <button class="small" onclick="App.kgHighlightSubgraph(this)" title="Animate the subgraph around this node, one hop at a time">Highlight subgraph</button>
     ${n.community != null ? `<button class="small" data-id="${n.community}" onclick="App.graphCommunity(this.dataset.id)">Open community</button>` : ''}
   </div>`;
   body.innerHTML = `<h4>${esc(n.title)}</h4>
