@@ -192,7 +192,7 @@ $LETTER_LINE
   Browser: run every command as \`python3 tools/camoufox_browser.py --server $server <cmd>\` (nav/snap/click/fill/type/select/pick/fillmap/press/check/upload/value/eval/wait). Prefix \`$TIMEOUT_CMD 30\`. Refs renumber after every snap - re-snap before using refs; prefer CSS selectors with \`fill '<sel>' '<text>'\`. To cut tokens, BATCH form fields with \`fillmap '<json steps>'\` (steps: [{"selector":"#x","value":"...","op":"fill|check|select|upload|press"}]) instead of one call per field.
   Custom ATS widgets (Workday, Greenhouse/react-select, Ashby): options in a listbox/dropdown are NOT clickable via eval-dispatched events - use \`pick '<option text>' ['<opener selector>']\` (it scrolls virtualised lists and clicks with real input). Use \`press Enter '<sel>'\` to commit type-aheads, \`press Escape\` to close a popup. \`click\` retries with a forced click automatically when an overlay blocks it; add \`--force\` yourself if you already know something is in the way. CSS ids starting with a digit need \`[id="53683"]\`, not \`#53683\`.
 
-SUBMIT-PREPARED RUN: these files were generated, written and gated in an earlier REVIEW pass and are FINAL. Do NOT re-do any preparation. Specifically: do NOT run kb_graphrag.py, ats_keywords.py, cv_target.py, render_motivation/render_cv, and do NOT rewrite, re-render, edit or "improve" the CV or letter. Do NOT run check_alignment.py. Do not call GraphRAG. If the CV or letter is missing, STOP and record BLOCKED with the missing path (the operator must re-prepare) - never generate a replacement.
+SUBMIT-PREPARED RUN: these files were generated, written and gated in an earlier REVIEW pass and are FINAL. Do NOT re-do any preparation. Specifically: do NOT run kb_graphrag.py, ats_keywords.py, cv_target.py, render_motivation/render_cv, and do NOT rewrite, re-render, edit or "improve" the CV or letter. Do NOT run check_alignment.py. Do not call GraphRAG. If the CV is missing, STOP and record BLOCKED with the missing path - never generate a replacement. If only the cover letter is missing because the advert did not ask for one, leave it out unless the form makes it mandatory (step 1b).
 
 FIRST, before anything else: read config/profile.md and apply it - identity (name, email, phone, location, links), work authorisation, languages, availability, pay/rate, eligibility/exclusions, accuracy rules and the standard diversity/EEO answers. Use those exact values wherever a form asks; never invent or substitute personal data.
 
@@ -201,6 +201,7 @@ Steps:
 ${REPOST_NOTE:-}
 0b. ELIGIBILITY CHECK (quick): confirm from profile.md that the role's location/work model, languages and authorisation still fit. If it is clearly excluded (or the posting is no longer live and cannot be found), record CLOSED with the reason and STOP. Do not redo any analysis beyond that.
 1. PRE-SUBMIT GATE (the only gate to run): \`python3 tools/check_documents.py ${LETTER_GATE}--cv documents/applications/${CV_PREFIX}_CV_$key.docx --company "<Company>" --jd state/job-descriptions/$key.md --ats-keywords state/ats/$key.txt --engagement $ENGAGEMENT --record\` - it must print RESULT: PASS (it re-stamps the receipt for the exact files you upload). If it FAILS, STOP: do not submit; record BLOCKED with the gate's reason.
+1b. COVER LETTER FALLBACK (only when the form marks a cover letter as mandatory and no letter was prepared): write a short, grounded letter to state/letters/$key.json with keys headline, title, engagement ("fulltime"), opening and fit, using state/kb-context/$key.md and state/cv-content/$key.json. Use the candidate's voice and only facts the CV/KB support. Render and gate it WITHOUT touching the CV: `python3 tools/finalise_docs.py --key $key --company "<Company>" --role "$role" --jd state/job-descriptions/$key.md --ats state/ats/$key.txt --engagement $ENGAGEMENT --skip-cv --letter-mode yes` - it must print RESULT: PASS and write the gate receipt. Then upload documents/applications/${CV_PREFIX}_Motivation_$key.docx, re-run the step 1 gate with `--letter documents/applications/${CV_PREFIX}_Motivation_$key.docx`, and add the same `--letter documents/applications/${CV_PREFIX}_Motivation_$key.docx` to the step 3 record command. If the letter cannot be generated or gated, record BLOCKED.
 2. Apply via the Camoufox browser: fill fields with profile.md values, upload the prepared CV $LETTER_UPLOAD, answer questions honestly, submit. Verify a success/thank-you page.
    Multi-step forms (Workday etc): the footer button is [data-automation-id="pageFooterNextButton"] (Save and Continue). If a save is rejected, read the Error-* text and fix exactly the field it names (usually a custom dropdown - use \`pick\`).
 2b. EMAIL VERIFICATION (mandatory): after submit, wait ~45s, then read the candidate's Gmail (\`.venv/bin/python tools/email_verify.py --query 'newer_than:2h (from:teamtailor-mail.com OR from:join.com OR "Complete the application" OR "Security code for your application" OR "verify your email" OR "Activate your account")'\`) and COMPLETE it in THIS browser. Do NOT record SUBMITTED until a real confirmation is seen. If verification remains pending, record BLOCKED.
@@ -350,11 +351,11 @@ sys.exit(0 if isinstance(d,dict) and sys.argv[2] in d else 1)' "${ROOT:-.}/state
     LETTER_STATUS="letter: $letter_rel"
     LETTER_UPLOAD="and the prepared letter where a letter field exists"
   else
-    LETTER_LINE="Cover letter: NOT PREPARED. The advert did not ask for one, so do not write or upload one; if the form makes it mandatory, STOP and record BLOCKED with 'form requires a cover letter; none prepared'."
+    LETTER_LINE="Cover letter: NOT PREPARED. The advert did not ask for one. If the form does not require one, skip it. If the form marks a cover letter as mandatory, generate one with step 1b from the existing grounding; never regenerate the CV."
     LETTER_GATE=""
     LETTER_RECORD=""
-    LETTER_STATUS="letter: none (not required)"
-    LETTER_UPLOAD="(no cover letter: the advert did not ask for one)"
+    LETTER_STATUS="letter: none (not required by the advert; generated only if the form demands it)"
+    LETTER_UPLOAD="(no cover letter unless step 1b generated one because the form required it)" 
   fi
   runlog "START $(date +%H:%M:%S) $company | $role"
   prompt="$(build_prompt "$company" "$role" "$url" "$cv" "$ats" "$key" "$server")"
