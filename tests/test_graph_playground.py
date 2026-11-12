@@ -130,3 +130,19 @@ def test_the_graph_supplies_requirement_coverage(built):
     assert cov, "no requirement-to-evidence map"
     assert all(c["keyword"] and c["nodes"] for c in cov)
     assert len(cov) <= 14
+
+
+def test_each_line_marks_the_words_the_graph_produced(built):
+    """The document highlights its own provenance: matched requirements and cited
+    entities that actually appear in the line."""
+    doc = built["doc"]
+    lines = [s for b in doc["blocks"] for s in (b.get("sentences") or [])]
+    lines += [s for b in doc["blocks"] for r in (b.get("roles") or [])
+              for s in (r.get("sentences") or [])]
+    assert all("marks" in s for s in lines), "a line without marks"
+    marked = [s for s in lines if s["marks"]]
+    assert len(marked) >= len(lines) // 2, "most lines should carry graph-derived words"
+    for s in lines:
+        low = s["text"].lower()
+        for m in s["marks"]:
+            assert m.lower() in low, (m, s["text"][:80])

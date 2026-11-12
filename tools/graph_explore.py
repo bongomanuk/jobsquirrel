@@ -1584,6 +1584,32 @@ def playground(key="", text="", hops=2, kind="cv"):
             for s_ in _written():
                 g = ground(s_["text"], s_.get("cites") or [])
                 s_["grounding"] = g
+                # The words in this line that came from QUERYING the graph: an
+                # advert requirement the traversal matched, or an entity it
+                # returned. The UI highlights exactly these, so the document
+                # shows its own provenance instead of asserting it.
+                low = " " + s_["text"].lower() + " "
+                generic = {"security", "strategy", "engineering", "evaluation", "agents",
+                           "director", "founder", "data", "cloud", "platform", "leadership",
+                           "management", "architecture", "experience", "team", "systems"}
+                marks, seen_low = [], set()
+
+                def _add(m):
+                    ml = str(m).strip()
+                    if len(ml) < 3 or ml.lower() in generic or ml.lower() in seen_low:
+                        return
+                    if not re.search(r"\b" + re.escape(ml.lower()) + r"\b", low):
+                        return
+                    seen_low.add(ml.lower())
+                    marks.append(ml)
+
+                for kw in keywords:            # advert requirements the graph matched
+                    _add(kw)
+                for t in (s_.get("cites") or []):   # entities the traversal returned
+                    _add(t)
+                for t in (getattr(g, "get", lambda *_: [])("nodes") or []):
+                    _add(t)
+                s_["marks"] = sorted(marks, key=lambda x: (-len(x), x))[:14]
                 total_s += 1
                 if g["grounded"]:
                     grounded_n += 1

@@ -5240,6 +5240,8 @@ function kgPlayUIHTML() {
         <span id="kg-play-query" class="kg-play-query"></span></div>
       <div id="kg-play-because" class="kg-play-because"></div>
       <div id="kg-play-trail" class="kg-play-trail"></div>
+      <div class="kg-play-legend"><i class="kg-legend-mark"></i> highlighted words come from the graph
+        (a matched requirement or a cited entity)</div>
       <div class="kg-play-rail-h">cited evidence</div>
       <div id="kg-play-cites" class="kg-cites-list"></div>
       <div class="kg-play-rail-h">requirement coverage</div>
@@ -5400,6 +5402,7 @@ function kgPlayRender(d) {
     return `<${t} class="kg-play-sentence kg-play-reveal${gcls}" data-step="${esc(String(s.step == null ? 0 : s.step))}"` +
       ` data-text="${esc(s.text || '')}" data-cites="${esc((s.cites || []).join('|'))}"` +
       ` data-ground="${esc(String(g.score == null ? '' : g.score))}"` +
+      ` data-marks="${esc(JSON.stringify(s.marks || []))}"` +
       ` onmouseenter="App.kgPlayHover(this,1)" onmouseleave="App.kgPlayHover(this,0)">` +
       `<span class="kg-say"></span><span class="kg-caret">▍</span></${t}>`;
   };
@@ -5472,6 +5475,24 @@ function kgPlayRender(d) {
   kgPlaySplits();
 }
 
+/* Words in the document that came out of the GraphRAG query: an advert
+   requirement the traversal matched, or an entity it returned. Wrapping them is
+   the point of the playground - you can see which words the graph produced. */
+function kgMarkText(text, marks) {
+  const list = (marks || []).filter(m => m && String(m).length >= 3)
+    .sort((a, b) => String(b).length - String(a).length);
+  if (!list.length) return esc(text);
+  const re = new RegExp('(' + list.map(m => String(m).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')', 'gi');
+  let out = '', last = 0, m;
+  while ((m = re.exec(text))) {
+    out += esc(text.slice(last, m.index)) +
+      `<mark class="kg-graph-term" title="from the graph: matched requirement or cited entity">${esc(m[0])}</mark>`;
+    last = m.index + m[0].length;
+    if (m.index === re.lastIndex) re.lastIndex++;
+  }
+  return out + esc(text.slice(last));
+}
+
 async function kgTypeSentence(el, speed, run) {
   const text = el.getAttribute('data-text') || '';
   const say = el.querySelector('.kg-say');
@@ -5497,7 +5518,9 @@ async function kgTypeSentence(el, speed, run) {
     if (!/^\s+$/.test(w)) await new Promise(r => setTimeout(r, per));
     if (n % 3 === 0) keepVisible();
   }
-  say.innerHTML = mdInline(text);
+  let marks = [];
+  try { marks = JSON.parse(el.dataset.marks || '[]'); } catch (e) { marks = []; }
+  say.innerHTML = kgMarkText(text, marks);
   el.classList.add('done');
   keepVisible();
 }
