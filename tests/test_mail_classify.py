@@ -39,3 +39,22 @@ def test_cancelled_meeting_is_not_an_interview():
 
 def test_verification_mail_wins():
     assert classify("Please verify your new device", "Confirm this sign-in") == "VERIFICATION"
+
+
+def test_an_interview_reply_that_withdraws_is_not_an_invitation():
+    """'Re: Interview Invitation' can cancel or redirect: it is not an interview."""
+    from gmail_readonly import classify
+    subject = "Re: Thomson Reuters Interview Invitation for Senior Manager, Product Analytics"
+    body = ("Hi Peter, I'm very sorry about the confusion. The opening for Sweden is still active so I "
+            "will include the link so you can apply to the correct listing. This is managed by a "
+            "different team so I would not be able to progress your application myself.")
+    assert classify(subject, body) == "OTHER"
+
+
+def test_a_real_invitation_and_a_reschedule_still_count():
+    from gmail_readonly import classify
+    assert classify("Your interview invitation @ Datatonic",
+                    "Tuesday 10 Nov 2026 14:00-15:00. Join with the Google Meet link.") == "INTERVIEW"
+    assert classify("Rescheduled: interview with Acme",
+                    "Your interview has been moved to Thursday 10:00.") == "INTERVIEW"
+    assert classify("Canceled: Interview", "The meeting has been cancelled.") == "OTHER"

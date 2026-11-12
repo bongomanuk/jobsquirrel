@@ -221,8 +221,18 @@ def classify(subject, body):
                           r"we got your application|application (?:has been )?received|"
                           r"thank you for submitting your application|thanks for your application", b)
 
-    if i_subj:
+    # A reply on an interview thread is not an invitation. It may withdraw the
+    # interview ("sorry, I made an error"), cancel it, or point at a different
+    # listing - the subject still says "Interview Invitation", which used to be
+    # enough to record an interview that never happened.
+    withdrawn = re.search(r"cancel|no longer (?:active|available)|not be able to progress|"
+                          r"apply to the correct listing|sorry about the confusion|"
+                          r"made an error on my end|managed by a different team|"
+                          r"different team|unfortunately.{0,60}(?:not|no longer)", b)
+    if i_subj and not withdrawn:
         return "INTERVIEW"
+    if i_subj and withdrawn:
+        return "OTHER"
     if conf_subj:
         if body_interview:
             return "INTERVIEW"
