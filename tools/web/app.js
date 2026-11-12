@@ -5531,6 +5531,7 @@ async function kgPlayRun(run) {
   const speed = Math.max(800, parseInt((($('#kg-play-speed') || {}).value || '3600'), 10) || 3600);
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const seenNodes = new Set(), seenLinks = [];
+  const litNodes = new Set(), litLinks = new Map();
   const qEl = $('#kg-play-query');
   const whyEl = $('#kg-play-because');
   const lastFocus = new Set();
@@ -5571,21 +5572,29 @@ async function kgPlayRun(run) {
       kgPlaySpecFocus(st.terms || []);
     }
     kgPlayTrail(st.trace);
-    const playSet = st.kind === 'query' ? (st.nodes || []) : [...seenNodes];
-    const linkSet = st.links || [];
+    // Cumulative: the graph must visibly GROW as the document is written. A
+    // query step used to light only its own nodes and dim everything found so
+    // far, which read as "the lookup barely touched the graph".
+    litNodes.add(...(st.nodes || []));
+    litNodes.add(...(st.focus || []));
+    (st.links || []).forEach(l => litLinks.set([l.from || l.source, l.to || l.target].sort().join('|'), l));
+    const playSet = [...litNodes];
+    const linkSet = [...litLinks.values()];
     if (KGMODE === 'universe') {
       if (window.__uni) {
         window.__uni.setPlayback(playSet, linkSet, [...focusIds]);
         if (focusIds.size) window.__uni.focusOn([...focusIds], null, 1100);
-        if ((st.trace || []).length) window.__uni.pulsePath(st.trace, Math.max(220, Math.min(520, speed / 8)));
+        if ((st.trace || []).length) window.__uni.pulsePath(st.trace, Math.max(160, Math.min(380, speed / 10)));
+        const us = $('#uni-stats');
+        if (us) us.textContent = `${st.label || st.kind} · ${playSet.length} nodes lit · ${linkSet.length} edges · ${(st.trace || []).length} traversed`;
       }
     } else if (window.__kg3d) {
       window.__kg3d.setPlayback(playSet, linkSet, [...focusIds]);
       if ((st.trace || []).length) window.__kg3d.pulsePath(st.trace, Math.max(220, Math.min(460, speed / 8)));
     }
     // let the viewer read the question and see the graph light up first
-    await sleep(st.kind === 'read' ? speed * 0.6
-      : st.kind === 'query' ? speed * 0.55
+    await sleep(st.kind === 'read' ? speed * 0.5
+      : st.kind === 'query' ? speed * 0.32
       : Math.min(1300, Math.max(600, speed * 0.32)));
     if (KG_PLAY.run !== run) return;
     const items = [...document.querySelectorAll(`#kg-play-doc .kg-play-reveal[data-step="${st.n}"]`)];
@@ -5604,7 +5613,22 @@ async function kgPlayRun(run) {
   document.querySelectorAll('#kg-play-doc .kg-play-reveal').forEach(el => el.classList.add('on'));
   KG_PLAY.playing = false;
   if (KGMODE === 'universe') {
-    if (window.__uni) window.__uni.setPlayback((d.graph.nodes || []).map(n => n.id), d.graph.links || [], [...lastFocus]);
+    if (window.__uni) {
+      // Finale: expand from the lines' cites to the whole evidence subgraph in a
+      // few visible beats, instead of snapping from 12 nodes to 50.
+      const allIds = [...new Set([...litNodes, ...(d.graph.nodes || []).map(n => n.id)])];
+      const allLinks = (d.graph.links || []).length ? d.graph.links : [...litLinks.values()];
+      const missing = allIds.filter(id => !litNodes.has(id));
+      if (missing.length > 6) {
+        const chunk = Math.ceil(missing.length / 3);
+        for (let k = 1; k <= 2; k++) {
+          missing.slice(0, k * chunk).forEach(id => litNodes.add(id));
+          window.__uni.setPlayback([...litNodes], allLinks, [...lastFocus]);
+          await sleep(320);
+        }
+      }
+      window.__uni.setPlayback(allIds, allLinks, [...lastFocus]);
+    }
   } else if (window.__kg3d) {
     window.__kg3d.setPlayback((d.graph.nodes || []).map(n => n.id), d.graph.links || [], [...lastFocus]);
     setTimeout(() => { if (KG_PLAY.run === run && window.__kg3d) window.__kg3d.fit(); }, 650);

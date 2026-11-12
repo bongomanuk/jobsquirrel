@@ -1459,6 +1459,18 @@ def playground(key="", text="", hops=2, kind="cv"):
              f"{len(covered)} of {len(keywords)} matched, giving {len(seed_nodes)} seed entities "
              f"to walk out from."),
             nodes=seed_nodes[:16], focus=seed_nodes[:8], terms=covered[:8], label="Seed match")
+        # One query step per evidenced requirement: the animation should show
+        # each lookup, not just the seed match and the hops.
+        for kw in covered[:6]:
+            nodes_kw = [t for t in matched.get(kw, []) if t in by_title][:6]
+            if not nodes_kw:
+                continue
+            add_query(
+                f"MATCH requirement “{kw}” → {len(nodes_kw)} entities",
+                (f"The advert asks for {kw}. The graph returned {len(nodes_kw)} entities that "
+                 f"evidence it; they are cited in the document wherever the line uses the term."),
+                nodes=nodes_kw, focus=nodes_kw[:6], terms=[kw], label=kw)
+
         for entry in hop_log:
             depth = entry.get("depth", 1)
             raw_edges = entry.get("edges") or []

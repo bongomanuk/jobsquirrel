@@ -1641,8 +1641,10 @@ export function focusOn(ids, radius, dur = 900) {
   pts.forEach(p => box.expandByPoint(p.pos));
   const c = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3()).length() || 700;
-  // fit the whole evidence set, however widely the islands are spread
-  const r = Math.max(300, Math.min(9000, radius || size * 1.25));
+  // Fit the whole evidence set, however widely the islands are spread. The floor
+  // keeps a one-node step from diving into the node: the viewer needs the
+  // neighbourhood in frame to see the lookup happen.
+  const r = Math.max(650, Math.min(9000, radius || size * 1.25));
   flyTo(c, r, dur);
 }
 
