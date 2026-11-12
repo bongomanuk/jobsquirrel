@@ -248,3 +248,18 @@ def test_an_empty_url_and_cv_do_not_shift_the_key(tmp_path):
     assert "CV to upload: \n" in prompt
     assert "--key kempty" in prompt
     assert "Apply URL: kempty" not in prompt
+
+
+def test_a_prepared_run_builds_a_missing_document_instead_of_failing(tmp_path):
+    """Submit-prepared must not stop because the file is gone: it prepares it."""
+    rows = [("CoP", "Engineer", "https://example.test/1", "cv.docx", "ats", "missing-key")]
+    root, env = _sandbox(tmp_path, rows)
+    env.update(PARALLEL="1", PREPARED="1")
+    (root / "state" / "applications.csv").write_text("company,role,status,date\n")
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+                       env=env, capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    out = (root / "state" / "logs" / "run_queue.out").read_text()
+    assert "PREPARE-MISSING" in out, out
+    # it still ran the task afterwards; the stub agent was called
+    assert (tmp_path / "calls").exists()

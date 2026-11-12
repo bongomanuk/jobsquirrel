@@ -171,6 +171,14 @@ def test_waitfor_and_text_commands(server, page):
     assert txt["ok"] is True and "Senior Manager" in txt["text"]
 
 
+def test_a_sleep_step_waits(server, page):
+    """`sleep` is documented as a flow step; it must not fail as an unknown cmd."""
+    out = _flow(server, [{"op": "nav", "url": page}, {"op": "sleep", "ms": 150},
+                         {"op": "snap", "match": "Submit"}])
+    assert out["ok"] is True, out
+    assert out["steps"][1]["op"] == "wait"
+
+
 def test_flow_reads_steps_from_a_file(server, page, tmp_path):
     spec = tmp_path / "steps.json"
     spec.write_text(json.dumps({"steps": [{"op": "nav", "url": page},

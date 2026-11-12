@@ -403,6 +403,26 @@ sys.exit(0 if isinstance(d,dict) and sys.argv[2] in d else 1)' "${ROOT:-.}/state
     REPOST_NOTE="REPOST: this role matches an earlier application ($dup). Reapplying is allowed and expected. Do not record CLOSED because it looks like a duplicate. Proceed with the normal task and add the note \"reapplied to a repost of $dup\" when you record it."
   fi
   log="$LOGS/$(echo "$company-$role" | tr ' /|' '___').log"
+  # A PREPARED run must never fail because a document has gone missing (packed by
+  # storage, moved, or a row prepared before the key was final). Build it here,
+  # deterministically, and carry on: "prepare and submit" then always submits.
+  if [ "${PREPARED:-0}" = "1" ] && [ -n "${key:-}" ]; then
+    _cv="$ROOT/documents/applications/${CV_PREFIX}_CV_$key.docx"
+    if [ ! -f "$_cv" ]; then
+      runlog "PREPARE-MISSING $(date +%H:%M:%S) $company | $role — building the documents first"
+      {
+        python3 "$ROOT/tools/prepare_role.py" --key "$key" --company "$company" --role "$role"
+        python3 "$ROOT/tools/finalise_docs.py" --key "$key" --company "$company" --role "$role" \
+          --jd "$ROOT/state/job-descriptions/$key.md" --ats "$ROOT/state/ats/$key.txt" \
+          --engagement "$ENGAGEMENT"
+      } > "$log.prep" 2>&1 || true
+      if [ -f "$_cv" ]; then
+        runlog "PREPARE-MISSING $(date +%H:%M:%S) $company | $role — built and gated, continuing"
+      else
+        runlog "PREPARE-FAILED $(date +%H:%M:%S) $company | $role — see ${log}.prep"
+      fi
+    fi
+  fi
   # A cover letter exists only when the advert (or an application form) asked for
   # one. Never assume it: most roles are CV only.
   letter_rel="documents/applications/${CV_PREFIX}_Motivation_$key.docx"

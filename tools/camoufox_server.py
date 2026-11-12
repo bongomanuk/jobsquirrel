@@ -587,6 +587,8 @@ def dispatch(cmd: str, body: dict) -> dict:
                         "steps": log, "url": page.url}
             st = dict(raw)
             op = str(st.pop("op", "fill") or "fill").strip().lower()
+            if op == "sleep":                 # documented alias for the wait command
+                op = "wait"
             optional = bool(st.pop("optional", False))
             # `fill`/`type` take "text" in the single-command API; a flow step
             # reads more naturally as {selector, value}, so accept both.
