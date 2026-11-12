@@ -28,6 +28,7 @@ Run it after a graph rebuild. The dashboard caches graph reads for a minute.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -81,16 +82,68 @@ def save(name, df):
     df.to_parquet(os.path.join(OUT, name + ".parquet"), index=False)
 
 
+ALIAS_FILE = os.path.join(ROOT, "kb", "graphrag", "aliases.json")
+
+
+def load_aliases():
+    """Curated alias -> canonical overrides (kb/graphrag/aliases.json)."""
+    try:
+        with open(ALIAS_FILE, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return {str(k): str(v) for k, v in (data or {}).items() if k and v}
+
+
+def person_map(titles, types):
+    """PETER HOLLAS -> PETER LIAM HOLLAS: token-subset, same surname, PERSON only.
+
+    GraphRAG emits the same person under a fuller and a shorter name. Merging into
+    the *longer* name keeps the operative node (the one relationships and the UI
+    already use) without a curated list for every variant.
+    """
+    people = [t for t in titles if types.get(t, "").upper() == "PERSON"]
+    out = {}
+    for a in people:
+        ta = norm(a).split()
+        if len(ta) < 2:
+            continue
+        for b in people:
+            if a == b or a in out:
+                continue
+            tb = norm(b).split()
+            if len(tb) <= len(ta) or ta[-1] != tb[-1]:
+                continue
+            if set(ta) <= set(tb):
+                out[a] = b
+                break
+    return out
+
+
 def build_map(ents, near=False):
     """canonical title -> survivor title for every entity that should merge."""
     import pandas as pd
 
     titles = [str(t) for t in ents["title"]]
     types = {str(r["title"]): str(r.get("type") or "") for _, r in ents.iterrows()}
+    # Which node is the one the graph actually uses? Connections first, then
+    # mentions, then the more descriptive title. Merging into the busiest node
+    # keeps the operative one (PETER LIAM HOLLAS, HAUD AB, TELIA COMPANY) instead
+    # of an abbreviation that happens to normalise the same.
+    rank = {}
+    for _, r in ents.iterrows():
+        t = str(r["title"])
+        try:
+            rank[t] = (int(r.get("degree") or 0), int(r.get("frequency") or 0), len(t))
+        except (TypeError, ValueError):
+            rank[t] = (0, 0, len(t))
     by_norm, by_org = {}, {}
     for t in titles:
         if len(norm(t)) >= 4 and not symbolic(t):
-            by_norm.setdefault((norm(t), types[t]), []).append(t)
+            # group by normalised title regardless of type: "CALLER-FRAUD
+            # DETECTION PIPELINE" filed once as TECHNOLOGY and once as PROJECT is
+            # the same thing, and the survivor keeps the busier node's type.
+            by_norm.setdefault(norm(t), []).append(t)
         if types[t].upper() == "ORGANIZATION":
             base = base_org(t)
             if base:
@@ -101,7 +154,7 @@ def build_map(ents, near=False):
     for group in by_norm.values():
         if len(group) < 2:
             continue
-        keep = max(group, key=lambda t: (len(t), t))
+        keep = max(group, key=lambda t: rank.get(t, (0, 0, len(t))))
         for t in group:
             if t != keep:
                 merge[t] = keep
@@ -110,10 +163,19 @@ def build_map(ents, near=False):
         if len(group) < 2:
             continue
         exact = next((t for t in group if norm(t) == base), None)
-        keep = exact or min(group, key=lambda t: (len(t), t))
+        keep = max(group, key=lambda t: rank.get(t, (0, 0, len(t))))
         for t in group:
             if t != keep:
                 merge.setdefault(t, keep)
+
+    # curated overrides win, when both ends exist
+    known = set(titles)
+    for alias, canonical in load_aliases().items():
+        if alias in known and canonical in known and alias != canonical:
+            merge.setdefault(alias, canonical)
+    # one person, two names
+    for alias, canonical in person_map(titles, types).items():
+        merge.setdefault(alias, canonical)
 
     if near:
         # conservative near-duplicates: same type, one title is the other plus a
@@ -130,6 +192,23 @@ def build_map(ents, near=False):
                 if shared >= 2 and shared / max(len(ta), len(tb)) >= 0.8:
                     long_, short = (a, b) if len(a) >= len(b) else (b, a)
                     merge.setdefault(short, long_)
+    return _break_cycles(merge, rank)
+
+
+def _break_cycles(merge, rank):
+    """A -> B -> C -> A must collapse to one survivor, not loop."""
+    for start in list(merge):
+        path, cur = [], start
+        while cur in merge and cur not in path:
+            path.append(cur)
+            cur = merge[cur]
+        if cur in path:                       # found a cycle
+            members = set(path[path.index(cur):]) | {cur}
+            best = max(members, key=lambda t: rank.get(t, (0, 0, 0)))
+            for m in members:
+                if m != best:
+                    merge[m] = best
+            merge.pop(best, None)
     return merge
 
 

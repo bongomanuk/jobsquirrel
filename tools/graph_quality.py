@@ -53,7 +53,9 @@ def load(name):
 
 
 def norm_title(s):
-    s = re.sub(r"[^a-z0-9 ]", " ", str(s).lower())
+    # Keep +, # and / so C, C++ and C# are not reported as duplicates of each
+    # other (the dedupe tool uses the same rule).
+    s = re.sub(r"[^a-z0-9+#/ ]", " ", str(s).lower())
     return re.sub(r"\s+", " ", s).strip()
 
 

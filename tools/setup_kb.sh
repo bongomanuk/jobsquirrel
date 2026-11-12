@@ -111,5 +111,9 @@ echo "indexing (this can take many minutes and uses the LLM)..."
 if [ -x "$ROOT/.venv-graphrag/bin/python" ]; then
   "$ROOT/.venv-graphrag/bin/python" "$ROOT/tools/graph_relations.py" --apply --quiet \
     && echo "relations typed with the ontology" || echo "could not type relations (run tools/graph_relations.py)"
+  # Merge the duplicates extraction always produces (same person twice, an
+  # employer and its legal entities) so the graph does not show one thing twice.
+  "$ROOT/.venv-graphrag/bin/python" "$ROOT/tools/graph_dedupe.py" --apply --quiet 2>/dev/null \
+    && echo "duplicate entities merged" || echo "could not merge duplicates (run tools/graph_dedupe.py)"
 fi
 echo "verify with: $HELP_CMD"
