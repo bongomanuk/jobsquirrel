@@ -105,4 +105,11 @@ if [ "${1:-}" = "--no-index" ]; then
 fi
 echo "indexing (this can take many minutes and uses the LLM)..."
 "$gr" index --root kb/graphrag && echo "index complete." || echo "indexing failed — see kb/graphrag/logs/. Re-run to resume (completed steps are cached)."
+# Typing the edges is post-processing on the index, not part of GraphRAG's
+# extraction: without it every relationship is RELATED_TO and the selection
+# layer has nothing to reason about.
+if [ -x "$ROOT/.venv-graphrag/bin/python" ]; then
+  "$ROOT/.venv-graphrag/bin/python" "$ROOT/tools/graph_relations.py" --apply --quiet \
+    && echo "relations typed with the ontology" || echo "could not type relations (run tools/graph_relations.py)"
+fi
 echo "verify with: $HELP_CMD"

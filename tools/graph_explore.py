@@ -195,7 +195,9 @@ def relationships(q, limit):
             df["description"].str.lower().str.contains(q, regex=False)
         df = df[m]
     df = df.sort_values("weight", ascending=False).head(limit)
+    has_rel = "relation_type" in df.columns
     rows = [{"source": _s(r.source, 90), "target": _s(r.target, 90), "weight": round(float(r.weight), 1),
+             "rel": (_s(getattr(r, "relation_type", ""), 40) if has_rel else ""),
              "description": _s(r.description, 400)} for r in df.itertuples()]
     for r in _overlay_nodes(q, 20):
         rows.append({"source": "Peter Hollas", "target": r["title"], "weight": 1,
@@ -776,6 +778,14 @@ def playground(key="", text="", hops=2, kind="cv"):
         return {"error": "no index"}
     imp = _importance()
     by_title = {str(r.title): r for r in ents.itertuples()}
+    # The ontology decides what "relevant" means for this kind of role: a
+    # leadership CV leans on roles/teams/organisations, an AI CV on technology,
+    # projects and metrics. Same graph, different cut.
+    profile, weights = ONT.weights_for(f"{role} {key} {jd[:600]}")
+
+    def _w(t):
+        r = by_title.get(t)
+        return ONT.weight_of(weights, getattr(r, "type", "") if r is not None else "")
 
     def _rel(t):
         r = by_title.get(t)
@@ -785,7 +795,7 @@ def playground(key="", text="", hops=2, kind="cv"):
         typ = str(getattr(r, "type", "") or "").upper()
         bonus = {"METRIC": 3, "SKILL": 2, "TECHNOLOGY": 2, "PROJECT": 2,
                  "CERTIFICATION": 2, "ROLE": 1}.get(typ, 0)
-        return hits, bonus
+        return hits * _w(t), bonus * _w(t)
 
     def _hits_text(text):
         s = str(text or "").lower()
@@ -807,7 +817,7 @@ def playground(key="", text="", hops=2, kind="cv"):
         for r in rows.itertuples():
             t = str(r.title)
             titles.append(t)
-            seed_score[t] = seed_score.get(t, 0) + 1
+            seed_score[t] = seed_score.get(t, 0) + _w(t)
         matched[kw] = titles[:6]
     seeds = sorted(seed_score, key=lambda t: (-seed_score[t], -float(imp.get(t, 0)),
                                               -int(by_title[t].degree if t in by_title else 0)))[:8]
@@ -819,6 +829,16 @@ def playground(key="", text="", hops=2, kind="cv"):
     # adjacency, strongest first
     adj = {}
     link_desc = {}
+    rel_of = {}
+    has_rel = "relation_type" in getattr(rels, "columns", [])
+    for r in rels.itertuples():
+        a, b = str(r.source), str(r.target)
+        rel = (_s(getattr(r, "relation_type", ""), 40) if has_rel
+               else ONT.relation_for(getattr(by_title.get(a), "type", ""),
+                                     getattr(by_title.get(b), "type", ""),
+                                     getattr(r, "description", "")))
+        rel_of[(a, b)] = rel
+        rel_of[(b, a)] = rel
     for r in rels.itertuples():
         s, t = str(r.source), str(r.target)
         w = float(r.weight)
@@ -1021,13 +1041,15 @@ def playground(key="", text="", hops=2, kind="cv"):
     links = []
     for (s, t) in used_links:
         if s in node_ids and t in node_ids:
-            links.append({"source": s, "target": t,
-                          "weight": 30, "description": link_desc.get((s, t), "")})
+            links.append({"source": s, "target": t, "weight": 30,
+                          "rel": rel_of.get((s, t), ""),
+                          "description": link_desc.get((s, t), "")})
     # keep the seed-to-seed structure if it exists, without exploding the payload
     for r in rels.itertuples():
         s, t = str(r.source), str(r.target)
         if s in node_ids and t in node_ids and (s, t) not in used_links and len(links) < 60:
             links.append({"source": s, "target": t, "weight": round(float(r.weight), 1),
+                          "rel": rel_of.get((s, t), ""),
                           "description": link_desc.get((s, t), "")})
 
     def _build_cv(kind):
@@ -1404,16 +1426,21 @@ def playground(key="", text="", hops=2, kind="cv"):
                                "desc": "cited by this line", "citation": True})
                     have.add((base, cid))
             for hop in tr:
+                if not hop.get("rel"):
+                    hop["rel"] = rel_of.get((hop["from"], hop["to"])) or ONT.relation_for(
+                        getattr(by_title.get(hop["from"]), "type", ""),
+                        getattr(by_title.get(hop["to"]), "type", ""), hop.get("desc") or "")
                 if (hop["from"], hop["to"]) not in edge_pairs:
                     links.append({"source": hop["from"], "target": hop["to"],
-                                  "weight": 24.0, "description": hop.get("desc") or ""})
+                                  "weight": 24.0, "rel": hop.get("rel") or rel_of.get((hop["from"], hop["to"]), ""),
+                                  "description": hop.get("desc") or ""})
                     edge_pairs.add((hop["from"], hop["to"]))
                     edge_pairs.add((hop["to"], hop["from"]))
             steps_.append({"n": n, "kind": "write", "query": query,
                            "label": label or (sentences_[0]["section"] if sentences_ else "Document"),
                            "write": " ".join(s_["text"] for s_ in sentences_)[:700],
                            "nodes": ids_, "focus": ids_,
-                           "links": [{"from": x["from"], "to": x["to"]} for x in tr],
+                           "links": [{"from": x["from"], "to": x["to"], "rel": x.get("rel", "")} for x in tr],
                            "trace": tr,
                            "terms": terms if terms is not None else terms_of(
                                " ".join(s_["text"] for s_ in sentences_)),
@@ -1434,14 +1461,19 @@ def playground(key="", text="", hops=2, kind="cv"):
                     focus_ids.append(xid)
             tr = [h for h in (trace_ or []) if h.get("from") != h.get("to")][:8]
             for hop in tr:
+                if not hop.get("rel"):
+                    hop["rel"] = rel_of.get((hop["from"], hop["to"])) or ONT.relation_for(
+                        getattr(by_title.get(hop["from"]), "type", ""),
+                        getattr(by_title.get(hop["to"]), "type", ""), hop.get("desc") or "")
                 if (hop["from"], hop["to"]) not in edge_pairs:
                     links.append({"source": hop["from"], "target": hop["to"],
-                                  "weight": 24.0, "description": hop.get("desc") or ""})
+                                  "weight": 24.0, "rel": hop.get("rel") or rel_of.get((hop["from"], hop["to"]), ""),
+                                  "description": hop.get("desc") or ""})
                     edge_pairs.add((hop["from"], hop["to"]))
                     edge_pairs.add((hop["to"], hop["from"]))
             steps_.append({"n": n, "kind": "query", "query": query, "label": label,
                            "write": "", "nodes": ids_,
-                           "links": [{"from": x["from"], "to": x["to"]} for x in tr],
+                           "links": [{"from": x["from"], "to": x["to"], "rel": x.get("rel", "")} for x in tr],
                            "trace": tr, "terms": terms or [],
                            "focus": focus_ids,
                            "explain": explain, "returned": len(focus_ids)})
@@ -1663,6 +1695,8 @@ def playground(key="", text="", hops=2, kind="cv"):
                            "ungrounded": ungrounded[:12]},
                 "coverage": coverage[:14],
             }
+        out_ontology = {"profile": profile, "weights": {k: round(float(v), 2)
+                                                        for k, v in (weights or {}).items()}}
         found_terms = [k for k in keywords if matched.get(k)]
         missing_terms = [k for k in keywords if not matched.get(k)]
         steps_[0].update({
@@ -1705,6 +1739,7 @@ def playground(key="", text="", hops=2, kind="cv"):
                         "missing": missing_terms[:10], "hops": hops,
                         "coverage": round(100 * len(covered) / max(1, len(keywords))),
                         "lines": spec_lines, "text": jd[:4600]},
+                "ontology": out_ontology,
                 "steps": steps_, "doc": doc,
                 "graph": {"nodes": nodes, "links": links, "center": top_seed}}
 

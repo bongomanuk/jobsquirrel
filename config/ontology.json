@@ -1,0 +1,65 @@
+{
+  "_comment": "Local ontology override, merged over ontology.example.json. Edit here, not in the example.",
+  "classes": {
+    "ACHIEVEMENT": {
+      "label": "Achievement",
+      "color": "#c7a6d8",
+      "description": "A delivered outcome with evidence (a metric, a launch, a result)."
+    },
+    "LANGUAGE": {
+      "label": "Language",
+      "color": "#8fbfa8",
+      "description": "A spoken language and the honest level."
+    },
+    "DOCUMENT": {
+      "label": "Document",
+      "color": "#9aa6b8",
+      "description": "A source document the graph was built from."
+    }
+  },
+  "relations": {
+    "LOCATED_AT": {
+      "label": "Located at",
+      "description": "Role, project or organisation -> location."
+    }
+  },
+  "profiles": {
+    "leadership": {
+      "ROLE": 2.0,
+      "ORGANIZATION": 1.8,
+      "TEAM": 1.7,
+      "METRIC": 1.5,
+      "PROJECT": 1.2,
+      "SKILL": 1.0,
+      "TECHNOLOGY": 0.8
+    },
+    "ai": {
+      "TECHNOLOGY": 1.9,
+      "SKILL": 1.7,
+      "PROJECT": 1.6,
+      "PLATFORM": 1.4,
+      "METRIC": 1.3
+    },
+    "data": {
+      "METRIC": 1.8,
+      "TECHNOLOGY": 1.6,
+      "SKILL": 1.5,
+      "PROJECT": 1.4,
+      "PLATFORM": 1.2
+    },
+    "security": {
+      "CERTIFICATION": 1.9,
+      "TECHNOLOGY": 1.5,
+      "SKILL": 1.4,
+      "PROJECT": 1.3
+    },
+    "architecture": {
+      "TECHNOLOGY": 1.6,
+      "PLATFORM": 1.5,
+      "PROJECT": 1.4,
+      "SKILL": 1.3,
+      "ORGANIZATION": 1.1
+    },
+    "default": {}
+  }
+}

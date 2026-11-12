@@ -146,3 +146,13 @@ def test_each_line_marks_the_words_the_graph_produced(built):
         low = s["text"].lower()
         for m in s["marks"]:
             assert m.lower() in low, (m, s["text"][:80])
+
+
+def test_the_payload_names_the_ontology_profile_it_used(built):
+    onto = built.get("ontology") or {}
+    assert onto.get("profile") in ("leadership", "ai", "data", "security", "architecture", "default")
+    assert onto.get("weights"), "the weights that shaped the selection are reported"
+    links = (built.get("graph") or {}).get("links") or []
+    assert links, "no links"
+    typed = [l for l in links if l.get("rel")]
+    assert len(typed) >= len(links) // 2, "the traversal's edges should carry a relation"

@@ -335,3 +335,19 @@ HQ, ...) are stripped. Aliases are recorded in the surviving entity, text
 units are unioned, relationships are rewritten and duplicate edges summed.
 Symbols such as C, C# and C++ are never merged. A timestamped backup is
 written under `state/backups/` first.
+
+## Typed relations and per-role weighting
+
+GraphRAG types entities but leaves every edge as an undifferentiated
+relationship. `tools/graph_relations.py --apply` classifies each edge with the
+ontology vocabulary (`HELD_ROLE`, `AT_ORGANIZATION`, `USES`, `DELIVERED`,
+`EVIDENCED_BY`, `CERTIFIED_IN`, `STUDIED_AT`, `SPEAKS`, `RELATED_TO`) from its
+endpoints' classes and its description, and writes a `relation_type` column.
+`tools/setup_kb.sh` runs it after every index.
+
+`tools/ontology.py` also carries **profiles**: a per-class weighting for each
+kind of role (leadership, ai, data, security, architecture). The playground picks
+a profile from the role text and uses it to rank seeds and order the traversal,
+so the same graph produces a leadership-shaped CV for one role and a
+technology-shaped one for another. The payload reports the profile and weights it
+used, and the build rail shows them.

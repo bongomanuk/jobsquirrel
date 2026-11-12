@@ -5235,6 +5235,7 @@ function kgPlayUIHTML() {
     <aside class="kg-play-rail">
       <div class="kg-pane-h"><span>Build</span><b>how this CV is made</b></div>
       <div id="kg-play-meta" class="kg-play-meta"></div>
+      <div id="kg-play-onto" class="kg-play-onto"></div>
       <div id="kg-play-gate" class="kg-play-gate"></div>
       <div class="kg-play-now"><span class="kg-play-now-k">now</span>
         <span id="kg-play-query" class="kg-play-query"></span></div>
@@ -5364,7 +5365,7 @@ function kgPlayTrail(trace) {
     return;
   }
   box.innerHTML = hops.map((h, i) =>
-    `<span class="kg-hop" title="${esc(h.desc || '')}">` +
+    `<span class="kg-hop" title="${esc((h.rel ? h.rel.replace(/_/g, ' ').toLowerCase() + ' · ' : '') + (h.desc || ''))}">` +
     `${i === 0 ? `<b>${esc(kgShort(h.from, 24))}</b>` : ''}` +
     `<i>→</i><b>${esc(kgShort(h.to, 24))}</b>` +
     (h.desc && !h.citation ? `<small>${esc(kgShort(h.desc, 46))}</small>` : '') + `</span>`).join('');
@@ -5440,6 +5441,15 @@ function kgPlayRender(d) {
   // the rail: the note and the numbered evidence, never inside the document
   const meta = $('#kg-play-meta');
   if (meta) meta.textContent = doc.meta || '';
+  const onto = $('#kg-play-onto');
+  if (onto) {
+    const o = d.ontology || {};
+    const w = Object.entries(o.weights || {}).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    onto.innerHTML = o.profile
+      ? `<span class="kg-onto-k">weighted for</span> <b>${esc(o.profile)}</b>` +
+        (w.length ? ` <span class="muted">${w.map(([k, v]) => `${esc(k)} ×${v}`).join(' · ')}</span>` : '')
+      : '';
+  }
   const gateEl = $('#kg-play-gate');
   if (gateEl && doc.gating) {
     const g = doc.gating;
