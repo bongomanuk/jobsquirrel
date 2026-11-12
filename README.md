@@ -4,7 +4,19 @@
 
 # Jobsquirrel
 
-**An open, self-hosted job-application agent. Give it your CV. It finds roles, tailors each application, gates every claim, applies through the employer's own site, and tracks the replies.**
+**The register that keeps your job search straight, and the agent that builds the applications for you. Every role you are applying to, every application you have sent, every reply, in one place.**
+
+Applying for a job should not be hard. Rewriting a CV for the fortieth time,
+retyping the same details into another form, losing track of which version went
+where, hunting through an inbox for a reply you may have missed. None of that is
+the job you actually want. Jobsquirrel takes the pain out of it.
+
+Give it your CV and your rules. It finds roles, writes a truthful CV for each one
+(with a cover letter only when the advert asks), checks every claim before
+anything is sent, applies through the employer's own site, and keeps a register
+of exactly what went out, when, and on what evidence. Replies, interviews and
+outcomes land in the same register. One place to see where you stand, and no
+application you cannot account for.
 
 [![version](https://img.shields.io/github/v/release/bongomanuk/jobsquirrel?style=flat-square&label=version)](https://github.com/bongomanuk/jobsquirrel/releases)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square)](LICENSE)
@@ -24,11 +36,12 @@
 - **Tailor** a CV for each role, with a cover letter only when the advert asks, grounded in your own evidence.
 - **Gate** every document for accuracy, ATS fit and AI slop before anything is sent.
 - **Apply** through the employer's own ATS with a real browser, not a form-spam script.
-- **Track** replies, interviews and outcomes in one register.
+- **Track** every role and every application in one register: what you applied to, what you sent, what came back, and what is still waiting.
 - **Warn** on recruitment scams before you engage.
 
-It runs on your machine. Your CV, your inbox and your job search stay yours. The
-project says CV; if you are in the US, read it as resume.
+It runs on your machine: your CV, your inbox and your job search stay yours, and
+nothing is sent without your approval. The project says CV; if you are in the US,
+read it as resume.
 
 ## Screenshots
 

@@ -6,6 +6,7 @@ achievement must appear, with the graph supplying ranking and citations.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -105,7 +106,7 @@ def test_the_build_is_animated_step_by_step(built):
     roles = [b for b in built["doc"]["blocks"] if b.get("type") == "experience"][0]["roles"]
     labels = [s["label"] for s in writes]
     for role in roles:
-        employer = role["heading"].split(" — ")[0]
+        employer = re.split(r"\s+[|]\s+", role["heading"])[0]
         assert any(employer in lb for lb in labels), f"no step writes {employer}"
 
 

@@ -425,7 +425,7 @@ sys.exit(0 if isinstance(d,dict) and sys.argv[2] in d else 1)' "${ROOT:-.}/state
   if [ "${PREPARED:-0}" = "1" ] && [ -n "${key:-}" ]; then
     _cv="$ROOT/documents/applications/${CV_PREFIX}_CV_$key.docx"
     if [ ! -f "$_cv" ]; then
-      runlog "PREPARE-MISSING $(date +%H:%M:%S) $company | $role — building the documents first"
+      runlog "PREPARE-MISSING $(date +%H:%M:%S) $company | $role: building the documents first"
       {
         python3 "$ROOT/tools/prepare_role.py" --key "$key" --company "$company" --role "$role"
         python3 "$ROOT/tools/finalise_docs.py" --key "$key" --company "$company" --role "$role" \
@@ -433,9 +433,9 @@ sys.exit(0 if isinstance(d,dict) and sys.argv[2] in d else 1)' "${ROOT:-.}/state
           --engagement "$ENGAGEMENT"
       } > "$log.prep" 2>&1 || true
       if [ -f "$_cv" ]; then
-        runlog "PREPARE-MISSING $(date +%H:%M:%S) $company | $role — built and gated, continuing"
+        runlog "PREPARE-MISSING $(date +%H:%M:%S) $company | $role: built and gated, continuing"
       else
-        runlog "PREPARE-FAILED $(date +%H:%M:%S) $company | $role — see ${log}.prep"
+        runlog "PREPARE-FAILED $(date +%H:%M:%S) $company | $role: see ${log}.prep"
       fi
     fi
   fi
@@ -536,7 +536,7 @@ REVIEW RUN ENDS HERE. Do NOT open the browser, do NOT upload, do NOT run record_
     elif [ -n "$reason" ]; then sum_status="INFRA_FAIL"
     else sum_status="FINISHED"; fi
   fi
-  printf -- '- %s — %s: %s%s\n' "$company" "$role" "$sum_status" \
+  printf -- '- %s / %s: %s%s\n' "$company" "$role" "$sum_status" \
     "${reason:+ ($reason)}" >> "$SUMMARY_FILE"
   runlog "$(tail -1 "$log" 2>/dev/null)"
   runlog "DONE  $(date +%H:%M:%S) $company | $role (rc=$rc)"
@@ -709,7 +709,7 @@ fi
 # Register integrity is part of finishing a run: a contradictory register means
 # a status lied about what the mailbox says. Report it loudly (do not hide it).
 if ! python3 "$ROOT/tools/register.py" --audit > "$LOGS/audit.out" 2>&1; then
-  { echo "AUDIT FAILED after this run — inspect and repair before the next one:";
+  { echo "AUDIT FAILED after this run: inspect and repair before the next one:";
     grep '^FAIL' "$LOGS/audit.out"; } | tee -a "$LOGS/run_queue.out" >&2
 fi
 

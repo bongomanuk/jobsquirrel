@@ -1335,7 +1335,7 @@ def playground(key="", text="", hops=2, kind="cv"):
                 sentences.append({"text": b, "cites": c, "step": 0,
                                   "section": "Selected experience", "group": emp, "trace": []})
             if sentences:
-                role_blocks.append({"heading": f"{emp} — {e.get('title', '')}",
+                role_blocks.append({"heading": f"{emp} | {e.get('title', '')}",
                                     "sub": " · ".join(x for x in (e.get("dates"), e.get("location")) if x),
                                     "sentences": sentences})
                 role_steps.append((emp, sentences, list(dict.fromkeys(all_cites))))

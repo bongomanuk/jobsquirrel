@@ -15,7 +15,7 @@ lists and clicks with real input).
 ## One call per page: `flow`
 
 Every separate browser command is a separate agent turn, and the agent re-reads
-the whole transcript on each one — a 20-control form used to cost 20 turns and a
+the whole transcript on each one: a 20-control form used to cost 20 turns and a
 growing context, which is why a submit took five to ten minutes. `flow` runs the
 whole page inside the browser server:
 
@@ -59,7 +59,7 @@ It pings the desktop and shows a single dialog in the dashboard; when the human
 types the code it prints `{"ok":true,"answer":"482913"}`, and the agent types
 that into the page and carries on. Exit code 2 / `"ok":false` means nobody
 answered (or it was cancelled): record `BLOCKED` with the page left open.
-Email-delivered codes do not need a human — read them with `tools/email_verify.py`.
+Email-delivered codes do not need a human; read them with `tools/email_verify.py`.
 
 > These recipes are starting points. Employers change their forms; when a step
 > fails, `snap` the page, adjust the selector, and prefer the employer's own ATS

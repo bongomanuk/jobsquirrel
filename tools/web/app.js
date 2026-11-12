@@ -1079,7 +1079,7 @@ const App = {
     rows = rows.slice(0, 30);
     box.innerHTML = rows.length
       ? rows.map(x => `<button class="kg-play-result" data-key="${esc(x.key)}" onclick="App.kgPlayPick(this.dataset.key)">
-          <b>${esc(x.company || '—')}</b><span>${esc(x.role || x.key)}</span></button>`).join('')
+          <b>${esc(x.company || '-')}</b><span>${esc(x.role || x.key)}</span></button>`).join('')
       : '<div class="kg-play-empty">No saved job spec matches that.</div>';
     box.classList.add('on');
   },
@@ -1100,7 +1100,7 @@ const App = {
     KG_PLAY.key = '';
     const inp = $('#kg-play-q'); if (inp) { inp.value = ''; inp.focus(); }
     const sel = $('#kg-play-selected');
-    if (sel) sel.textContent = 'No saved spec selected — paste one below.';
+    if (sel) sel.textContent = 'No saved spec selected. Paste one below.';
     App.kgPlayCloseResults();
   },
   kgPlayCloseResults: () => {
@@ -3280,7 +3280,7 @@ function summary(r) {
     const term = x.term || '';
     const label = x.label || term;
     const ev = (m.evidenced || []).some(e => e.toLowerCase() === term.toLowerCase());
-    const why = x.note ? ` — ${x.note}` : '';
+    const why = x.note ? ` · ${x.note}` : '';
     return `<a class="missk${ev ? ' evidenced' : ''}" title="${esc((ev ? 'recorded evidence; re-prepare to apply it' : 'click to record where you have this skill') + why)}" onclick='App.addEvidence(${JSON.stringify(term)},${JSON.stringify(r.jd_key || r.key)})'>${ev ? '✓ ' : ''}${esc(label)}</a>`;
   }).join('');
   const IV_STAGES = [['', 'not recorded'], ['screen', 'Recruiter screen'], ['hiring-manager', 'Hiring manager'],
@@ -5201,7 +5201,7 @@ function kgPlayUIHTML() {
       <button class="kg-play-clear" id="kg-play-clear" onclick="App.kgPlayClear()" title="Clear the saved selection">✕</button>
       <div id="kg-play-results" class="kg-play-results"></div>
     </div>
-    <div id="kg-play-selected" class="kg-play-selected">${sel ? 'Selected: ' + esc(sel.label) : 'No saved spec selected — paste one below.'}</div>
+    <div id="kg-play-selected" class="kg-play-selected">${sel ? 'Selected: ' + esc(sel.label) : 'No saved spec selected. Paste one below.'}</div>
     <textarea id="kg-play-text" placeholder="Paste a job spec here…" style="width:100%;height:56px;margin:6px 0"></textarea>
     <div class="kg-play-controls">
       <label class="mini muted">Document
@@ -5312,7 +5312,7 @@ function kgPlaySpec(d) {
   const box = $('#kg-play-spec');
   const job = (d && d.job) || {};
   const inTitle = $('#kg-play-in-title');
-  if (inTitle) inTitle.textContent = job.company ? `${job.company} — ${job.role || 'job spec'}` : (job.role || 'job spec');
+  if (inTitle) inTitle.textContent = job.company ? `${job.company} · ${job.role || 'job spec'}` : (job.role || 'job spec');
   const cov = $('#kg-play-cov');
   if (cov) cov.textContent = `${(job.found || []).length}/${(job.keywords || []).length} requirements evidenced · ${job.hops || 2} hops`;
   if (!box) return;
@@ -5645,7 +5645,7 @@ async function kgPlayRun(run) {
   }
   const status = $('#kg-play-status');
   if (status) status.textContent = `complete · ${(d.graph.nodes || []).length} nodes · ${(d.graph.links || []).length} links`;
-  if (qEl) qEl.textContent = 'Document complete — every line traced to a graph node';
+  if (qEl) qEl.textContent = 'Document complete. Every line traced to a graph node';
   if (whyEl) whyEl.innerHTML = `<span class="kg-why">${esc(d.doc && d.doc.note || '')}</span>`;
   kgPlayHud(`<b>Build complete</b><span>${(d.graph.nodes || []).length} evidence nodes · ${(d.graph.links || []).length} connections · every line cited</span>`);
   kgPlayTrail([]);
