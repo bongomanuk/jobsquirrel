@@ -80,6 +80,19 @@ mkdir -p "$LOGS"; touch "$DONE"
 if command -v flock >/dev/null 2>&1; then
   exec 9>>"$ROOT/state/run.lock"
   if ! flock -n 9; then
+    holder="$(fuser state/run.lock 2>/dev/null | tr -d '[:space:]')"
+    holder_cmd=""
+    [ -n "$holder" ] && holder_cmd="$(tr '\0' ' ' < "/proc/${holder%% *}/cmdline" 2>/dev/null | cut -c1-70)"
+    case "$holder_cmd" in
+      *run_queue.sh*) : ;;                       # a real run: respect it
+      *)
+        runlog "reclaiming a stale run lock held by ${holder:-unknown} (${holder_cmd:-not a queue run})"
+        [ -n "$holder" ] && kill $holder 2>/dev/null
+        sleep 1
+        exec 9>>"$ROOT/state/run.lock"
+        flock -n 9 || true
+        ;;
+    esac
     if [ "${ALLOW_CONCURRENT:-0}" = "1" ]; then
       runlog "WARN: another run_queue.sh is active; ALLOW_CONCURRENT=1 set, continuing (expect slower roles)"
     else
@@ -174,8 +187,11 @@ ensure_server() {
   mkdir -p "$profile" 2>/dev/null
   local headful=""
   [ "${HEADFUL:-0}" = "1" ] && headful="--headful"
+  # 9>&- is essential: the browser server outlives the run, and an inherited lock
+  # fd would keep state/run.lock held after the run finished, refusing every
+  # later batch ("another run_queue.sh is already active").
   setsid nohup "$py" "$ROOT/tools/camoufox_server.py" --port "$port" --profile "$profile" $headful \
-    >> "$LOGS/camoufox_server_$port.log" 2>&1 < /dev/null &
+    >> "$LOGS/camoufox_server_$port.log" 2>&1 < /dev/null 9>&- &
   disown
   local _t
   for _t in $(seq 1 30); do
@@ -459,7 +475,7 @@ sys.exit(0 if isinstance(d,dict) and sys.argv[2] in d else 1)' "${ROOT:-.}/state
 
 REVIEW RUN ENDS HERE. Do NOT open the browser, do NOT upload, do NOT run record_submission.py and do NOT set SUBMITTED. The finalise command (with --record-prepared) has already recorded PREPARED on PASS. Return exactly one line: STATUS $company | $role | PREPARED|BLOCKED|CLOSED | <reason> | CV: documents/applications/${CV_PREFIX}_CV_$key.docx | letter: <the letter path if one exists, otherwise 'none (not required)'>"
   fi
-  "$TIMEOUT_CMD" -k 30s "$TASK_TIMEOUT" bash "$ROOT/tools/agent_run.sh" "$prompt" >"$log" 2>&1 </dev/null
+  "$TIMEOUT_CMD" -k 30s "$TASK_TIMEOUT" bash "$ROOT/tools/agent_run.sh" "$prompt" >"$log" 2>&1 </dev/null 9>&-
   rc=$?
   # The outcome is the third |-separated field of the agent's last STATUS line:
   # "STATUS <Company> | <role> | BLOCKED | <reason> | CV: ...". (Taking the last
