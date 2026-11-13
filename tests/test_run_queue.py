@@ -86,12 +86,29 @@ def test_a_repost_review_tells_finalise_to_record_prepared(tmp_path):
     (root / "state" / "applications.csv").write_text(
         "company,role,status,date\nCoR,Engineer,IN_PROGRESS,2026-10-08\n")
     env["PARALLEL"] = "1"
+    # The default now skips a role already applied to. This test covers the
+    # explicit opt-in path that re-applies to a repost.
+    env["ALLOW_REPOST"] = "1"
     r = subprocess.run(["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
                        env=env, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr
     prompt = (tmp_path / "prompts" / "CoR.txt").read_text()
     assert "REPOST: this role matches an earlier application" in prompt
     assert "--record-prepared --repost" in prompt
+
+
+def test_an_applied_role_is_skipped_by_default(tmp_path):
+    rows = [("CoS", "Engineer", "u", "cv", "ats", "ks")]
+    root, env = _sandbox(tmp_path, rows)
+    (root / "state" / "applications.csv").write_text(
+        "company,role,status,date\nCoS,Engineer,SUBMITTED,2026-10-08\n")
+    env["PARALLEL"] = "1"
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+                       env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    out = (root / "state" / "logs" / "run_queue.out").read_text()
+    assert "SKIP-APPLIED" in out
+    assert not (tmp_path / "prompts" / "CoS.txt").exists(), "a skipped role must not reach the agent"
 
 
 def test_blocked_roles_get_one_retry(tmp_path):
