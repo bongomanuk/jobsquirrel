@@ -67,6 +67,13 @@ the register; rows written before that column existed fall back to
 `REVIEW=1` builds and gates the documents without sending, and `PREPARED=1`
 submits documents that are already gated.
 
+**Do not apply twice.** The runner skips a role already applied to (same
+company and role) with `SKIP-APPLIED`; set `ALLOW_REPOST=1` only for a
+deliberate second attempt. `python3 tools/queue_prune.py --apply` parks
+finished rows in `state/queue-parked.tsv`, and `state/employer-limits.json`
+stops a role at an employer that caps applications (Ashby three per 90 days,
+for example). Manage caps with `tools/employer_limit.py`.
+
 **Seniority first.** When several roles are pending, the runner applies to the
 most senior first, e.g. a company's *Director of Engineering* before its
 *Platform Engineer*. Rank (high→low): Chief/CTO/VP · Director/Head of ·

@@ -88,6 +88,14 @@ python3 tools/gmail_reconcile.py --apply   # set INTERVIEW / REJECTED / SUBMITTE
 bash tools/reconcile_loop.sh               # continuous, refreshes counts
 ```
 
+## 7. Adaptive fallback (opt-in)
+
+`ADAPTIVE=1` hands a `BLOCKED` task to `tools/adaptive/run.sh`, a separate
+agent on its own browser port and profile. It handles unknown forms and
+widgets; it stops on CAPTCHA, 2FA, rate limits, paywalls, fees, payment or ID
+uploads, and site terms. A verified confirmation is recorded as `SUBMITTED`;
+a wall stays `BLOCKED`.
+
 ## Environment switches (summary)
 
 | Env | Effect |
@@ -102,6 +110,7 @@ bash tools/reconcile_loop.sh               # continuous, refreshes counts
 | `MODEL=...` | the agent model the runner launches (opencode defaults to DeepSeek Flash; other agents use their own default) |
 | `CLAUDE_PERMISSION_MODE`, `CLAUDE_ALLOWED_TOOLS`, `CLAUDE_ARGS` | Claude Code permissions and extra flags (see [AGENT-SETUP.md](AGENT-SETUP.md#running-the-queue-with-claude-code)) |
 | `CAMOUFOX_SERVER=...` | target a specific browser instance/ports |
+| `ADAPTIVE=1` | hand a `BLOCKED` task to the separate adaptive harness (forms only, never security controls) |
 
 The runner works on Linux and macOS. macOS lacks `flock`, `setsid` and
 `timeout`, so `tools/compat/` provides portable stand-ins that are used only

@@ -25,6 +25,7 @@
 | ▶️ **[USING-IT.md](USING-IT.md)** | Day-to-day prompts, monitoring, the state model, the grid, the knowledge workspace, backup and restore. |
 | 🧭 **[RUN-MODES.md](RUN-MODES.md)** | Discover / review / apply / fixed-CV run modes and the queue runner. |
 | 🛠️ **[WORKFLOW.md](WORKFLOW.md)** | The per-role procedure in detail. |
+| 🧪 **[ADAPTIVE-HARNESS.md](ADAPTIVE-HARNESS.md)** | The separate harness for unknown forms, its boundary and its recipes. |
 | 🤖 **[ATS-RECIPES.md](ATS-RECIPES.md)** | How each applicant-tracking system is driven. |
 | 📄 **[CV-CONTENT.md](CV-CONTENT.md)** | How a CV is written: two full pages, split compound bullets, delivery and team emphasis, no padding. |
 

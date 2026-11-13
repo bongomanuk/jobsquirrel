@@ -82,6 +82,7 @@ description: Jobsquirrel is an open, self-hosted job-application agent: it finds
 - **[Setup](SETUP.md)**: install, dependencies, configuration, Gmail.
 - **[Agent setup](AGENT-SETUP.md)**: opencode, Claude Code, Cursor, and **running it fully local**.
 - **[Using it](USING-IT.md)**: the daily prompts, monitoring, the state model and the grid.
+- **[The adaptive harness](ADAPTIVE-HARNESS.md)**: a separate agent for unknown forms and widgets, and the boundary it must not cross.
 - **[The scam detector](SCAMS.md)**: the hard rule, every signal, the email checks and the limits.
 - **[How Cascade is integrated](CASCADE.md)**: which surfaces are reactive islands, how the vanilla code talks to them, and what stays outside.
 - **[All documentation](all.md)**: the full index.

@@ -38,6 +38,8 @@ application you cannot account for.
 - **Apply** through the employer's own ATS with a real browser, not a form-spam script.
 - **Track** every role and every application in one register: what you applied to, what you sent, what came back, and what is still waiting.
 - **Warn** on recruitment scams before you engage.
+- **Adapt** to an unfamiliar form with a separate harness, so a new ATS widget or wizard does not end the application.
+- **Remember** what was already applied to: same-role repeats and employer application caps are skipped before a run, and finished queue rows are parked.
 
 It runs on your machine: your CV, your inbox and your job search stay yours, and
 nothing is sent without your approval. The project says CV; if you are in the US,
@@ -114,6 +116,7 @@ ISC license. See [how Cascade is integrated](docs/CASCADE.md),
 - [Run modes](docs/RUN-MODES.md)
 - [Knowledge graph](docs/KNOWLEDGE-GRAPH.md)
 - [Scam detector](docs/SCAMS.md)
+- [Adaptive harness](docs/ADAPTIVE-HARNESS.md)
 - [All documentation](https://bongomanuk.github.io/jobsquirrel/)
 
 ---

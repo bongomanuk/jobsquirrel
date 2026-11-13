@@ -82,6 +82,14 @@ One row is kept per company and role. A repost reuses that row:
   spinner while the run is live, and the outcome sets `SUBMITTED`, `BLOCKED` or
   `CLOSED` directly. A crash leaves the row at `PREPARED`, which is the truth.
 
+## Employer application caps
+
+A cap is per employer, not per role. A role refused because the employer
+already has three applications in 90 days (or two in 30) is `CLOSED`, with
+the dashboard sub-state `employer cap`; it is never `SUBMITTED`, because
+nothing was sent. `state/employer-limits.json` stops the runner from trying
+again until the date passes.
+
 ## Queue leftovers
 
 `state/queue.done` records that a queue row finished. If no register row was

@@ -18,6 +18,7 @@
 - [Setup](https://bongomanuk.github.io/jobsquirrel/SETUP/): install, dependencies, configuration, Gmail.
 - [Agent setup](https://bongomanuk.github.io/jobsquirrel/AGENT-SETUP/): opencode, Claude Code, Cursor, and running fully local.
 - [Using it](https://bongomanuk.github.io/jobsquirrel/USING-IT/): prompts, monitoring, the state model and the grid.
+- [The adaptive harness](https://bongomanuk.github.io/jobsquirrel/ADAPTIVE-HARNESS/): a separate agent for unknown forms, and the boundary it must not cross.
 
 ## Safety
 
