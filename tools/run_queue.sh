@@ -417,6 +417,15 @@ sys.exit(0 if isinstance(d,dict) and sys.argv[2] in d else 1)' "${ROOT:-.}/state
     runlog "SKIP-SHELVED $(date +%H:%M:%S) $company | $role"
     return 0
   fi
+  # An employer-level application cap (Ashby three per 90 days, and similar) is
+  # not a same-role duplicate, so is_duplicate never sees it. Check it before
+  # opening a form that the ATS will refuse anyway.
+  if limit="$(python3 "$ROOT/tools/employer_limit.py" --check "$company" 2>/dev/null)"; then
+    runlog "SKIP-LIMIT $(date +%H:%M:%S) $company | $role ($limit)"
+    emit_run_json "$company" "$role" "SKIP_LIMIT" 0 "$limit"
+    echo "${key:-$company|$role}" >> "$DONE"
+    return 0
+  fi
   dup="$(is_duplicate "$company" "$role")"
   REPOST_NOTE=""
   if [ -n "$dup" ]; then

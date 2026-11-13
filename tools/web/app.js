@@ -86,7 +86,7 @@ const SUBSTATE_ORDER = {
   BLOCKED: ['captcha', 'login', 'email', 'lead', 'info', 'site', 'blocked'],
   MANUAL: ['email', 'lead', 'verify', 'manual'],
   REJECTED: ['after-interview', 'after-application'],
-  CLOSED: ['withdrawn', 'duplicate', 'not-eligible', 'filled', 'expired', 'closed'],
+  CLOSED: ['limit', 'withdrawn', 'duplicate', 'not-eligible', 'filled', 'expired', 'closed'],
 };
 function substateRank(st, key) {
   const o = SUBSTATE_ORDER[st] || [];
@@ -97,6 +97,10 @@ function bucketOf(r) {
   const s = r.status, lb = r.label || s;
   if (r.shelved) return 'shelved';               // a parked role is out of every other bucket
   if (r.scam && ['high', 'medium'].includes(r.scam.level)) return 'scams';
+  // An employer cap is not a finished role: the employer already has the
+  // candidate's applications and is reviewing them. Show it with the ongoing
+  // (submitted) group, while the status stays CLOSED and the chip says so.
+  if ((s === 'CLOSED' || s === 'REJECTED') && r.substate === 'limit') return 'ongoing';
   if (s === 'CLOSED' || s === 'REJECTED') return 'done';
   if (s === 'BLOCKED') return 'needs';
   const live = ['SUBMITTED', 'IN_PROGRESS', 'INTERVIEW'].includes(s);

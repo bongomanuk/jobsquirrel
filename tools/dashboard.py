@@ -1995,6 +1995,11 @@ def _substate(status, notes="", action="", label=""):
             return ("after-interview", "after interview", "Rejected after interview; no action.")
         return ("after-application", "after application", "Rejected after applying; no action.")
     if st == "CLOSED":
+        if has("three applications", "3 applications", "within the past 90 days",
+               "within the last 30 days", "limiting applications", "application limit",
+               "applied to another role"):
+            return ("limit", "employer cap",
+                    "The employer caps applications from one candidate; wait for the review window.")
         if has("withdraw", "withdrew", "not pursuing", "not pursued", "ignore/drop", "dropped"):
             return ("withdrawn", "withdrawn", "You withdrew or dropped it; no action.")
         if has("duplicate", "dupe"):
