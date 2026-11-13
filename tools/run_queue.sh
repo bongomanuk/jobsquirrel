@@ -504,6 +504,36 @@ REVIEW RUN ENDS HERE. Do NOT open the browser, do NOT upload, do NOT run record_
   # "STATUS <Company> | <role> | BLOCKED | <reason> | CV: ...". (Taking the last
   # capitalised word instead picked up letters from the reason or the CV path.)
   outcome="$(grep -aoE 'STATUS .*' "$log" 2>/dev/null | tail -1 | awk -F'|' '{print $3}' | tr -cd 'A-Z_')"
+  # A BLOCKED task is a wall the main harness could not classify. Hand exactly
+  # that page to the separate adaptive harness (its own port and profile). It may
+  # solve a form or widget; it must never solve a security control, and it says
+  # so in its JSON result. Opt in with ADAPTIVE=1.
+  if [ "$outcome" = "BLOCKED" ] && [ "${ADAPTIVE:-0}" = "1" ] && [ -n "${url:-}" ] && [ -n "${key:-}" ]; then
+    local acv="${cv:-documents/applications/${CV_PREFIX}_CV_$key.docx}"
+    local ablock adaptive_json aev
+    ablock="$(grep -aE 'STATUS .*' "$log" 2>/dev/null | tail -1 | cut -c1-500)"
+    runlog "ADAPTIVE $(date +%H:%M:%S) $company | $role (separate harness)"
+    adaptive_json="$(bash "$ROOT/tools/adaptive/run.sh" --company "$company" --role "$role" \
+      --url "$url" --cv "$acv" --key "$key" --blocker "$ablock" 2>>"$log")"
+    printf '%s\n' "$adaptive_json" >> "$log"
+    if printf '%s' "$adaptive_json" | python3 -c 'import json,sys
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(1)
+sys.exit(0 if d.get("ok") else 1)' 2>/dev/null; then
+      aev="$(printf '%s' "$adaptive_json" | python3 -c 'import json,sys
+d=json.load(sys.stdin); print((d.get("confirmation") or "")[:500])' 2>/dev/null)"
+      if [ -n "$aev" ] && python3 "$ROOT/tools/record_submission.py" --company "$company" --role "$role" \
+          --ats "${ats:-Adaptive}" --url "$url" --key "$key" --cv "$acv" \
+          --status SUBMITTED --evidence "$aev" >>"$log" 2>&1; then
+        outcome="SUBMITTED"
+        runlog "ADAPTIVE-OK $(date +%H:%M:%S) $company | $role"
+      else
+        runlog "ADAPTIVE-GATE $(date +%H:%M:%S) $company | $role (confirmation not recordable)"
+      fi
+    else
+      runlog "ADAPTIVE-FAIL $(date +%H:%M:%S) $company | $role (wall remains)"
+    fi
+  fi
   # Distinguish an APPLICATION failure from an INFRASTRUCTURE failure (the model
   # never really ran). Infra failures must NOT be committed to $DONE or they are
   # lost: the task stays pending for a later run and is re-queued for the retry pass.
