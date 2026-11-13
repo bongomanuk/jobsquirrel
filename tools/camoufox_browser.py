@@ -216,10 +216,17 @@ def main() -> int:
             return 1
         payload["ms"] = int(a[0])
     elif cmd == "upload":
-        if len(a) < 2:
+        if a and a[0] == "--chooser":
+            if len(a) < 3:
+                print("usage: upload --chooser <selector> <path>", file=sys.stderr)
+                return 1
+            payload["chooser"] = True
+            payload["selector"], payload["path"] = a[1], " ".join(a[2:])
+        elif len(a) < 2:
             print("usage: upload <selector> <path>", file=sys.stderr)
             return 1
-        payload["selector"], payload["path"] = a[0], " ".join(a[1:])
+        else:
+            payload["selector"], payload["path"] = a[0], " ".join(a[1:])
     elif cmd == "download":
         if len(a) < 2:
             print("usage: download <url> <path>", file=sys.stderr)

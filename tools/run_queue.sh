@@ -41,10 +41,11 @@ runlog() { printf '%s\n' "$*" >> "$LOGS/run_queue.out"; printf '%s\n' "$*"; }
 SUMMARY_FILE="${SUMMARY_FILE:-$LOGS/run-summary-$$.md}"
 : > "$SUMMARY_FILE"
 PARALLEL="${PARALLEL:-5}"
-# A task that has produced no useful output for this long is stuck, not working:
-# at ~3s per model turn a real application finishes well inside ten minutes. The
-# old 1200s cap meant one stalled worker burned 20 minutes and then retried.
-TASK_TIMEOUT="${TASK_TIMEOUT:-600}"
+# A submit task is a real browser session: several ATS forms take 10 to 15
+# minutes with retries inside the page. 600s cut those off mid-form and reported
+# them as infrastructure failures. 20 minutes, plus the one automatic retry
+# below, is enough for the slowest Workday/SuccessFactors flows.
+TASK_TIMEOUT="${TASK_TIMEOUT:-1200}"
 RETRY_LIMIT="${RETRY_LIMIT:-1}"
 LIGHT="${LIGHT:-0}"                 # 1 = cheap run: one fixed CV, no per-role CV/letter
 FIXED_CV="${FIXED_CV:-}"            # CV file to upload when LIGHT=1
@@ -170,6 +171,11 @@ ensure_server() {
          kill_port "$port" ;;
     esac
   fi
+  # No healthy server answered on this port. If something is still listening (a
+  # wedged server, or an orphan left by a killed run) a new server cannot bind,
+  # and the task would be reported as an infrastructure failure after a 30s
+  # wait. Clear the port first.
+  kill_port "$port"
   runlog "starting camoufox server on port $port ..."
   # The project venv may not have camoufox (it can live in the system/user
   # site-packages), so start the server with an interpreter that can import it.
@@ -220,7 +226,7 @@ browser_help() {
   Custom ATS widgets (Workday, Greenhouse/react-select, Ashby): listbox options are NOT clickable via eval-dispatched events - use \`pick '<option text>' ['<opener selector>']\` (it scrolls virtualised lists and clicks with real input). \`press Enter '<sel>'\` commits type-aheads, \`press Escape\` closes a popup. \`click\` retries with a forced click automatically; add \`--force\` if something is in the way. CSS ids starting with a digit need \`[id="53683"]\`, not \`#53683\`.
   LinkedIn: if a LinkedIn page shows a login wall, checkpoint, App Challenge or SMS code, go to the employer's own ATS or the posting's external apply link first - one attempt on LinkedIn, never a loop. If the employer route needs the LinkedIn session, use the 2FA handoff below.
   CAPTCHA is NOT a human handoff: "verify you are human", hCaptcha/reCAPTCHA, a slider or rotate widget is handled by the captcha rule (the private build solves it). Never ask the human for a CAPTCHA and never use ask_human/open_for_human for one.
-  NEEDS THE HUMAN TO SIGN IN (an employer portal or a Google/Microsoft account that wants a password, a LinkedIn "was this you?" app approval, a device check with no code): do NOT just report it and stop, and do NOT use ask_human for a sign-in that needs typing in the page. Run \`python3 tools/open_for_human.py --url "<the exact login URL>" --port ${server##*:} --reason "Sign in: <what>" --detail "$company / $role" --timeout 900\` - it replaces this worker's headless browser with a VISIBLE Camoufox window on the same port and profile, opens the page, and blocks until the human presses Done in the dashboard. Then continue the application in that same browser. Use OPEN_FOR_HUMAN once per sign-in, not per attempt, and never for a CAPTCHA.
+  NEEDS THE HUMAN TO SIGN IN (an employer portal or a Google/Microsoft account that wants a password, a LinkedIn "was this you?" app approval, a device check with no code): do NOT just report it and stop, and do NOT use ask_human for a sign-in that needs typing in the page. Run \`python3 tools/open_for_human.py --url "<the exact login URL>" --port ${server##*:} --reason "Sign in: <what>" --detail "$company / $role" --timeout 900\` - it replaces this worker's headless browser with a VISIBLE Camoufox window on the same port and profile, opens the page, and blocks until the human presses Done in the dashboard. Then continue the application in that same browser. Pass the URL in FULL, including every query parameter: a sign-in URL whose continue value is cut at the question mark sends Google back to a bare endpoint and it answers "400 malformed". For Google Careers, hand over the posting's own Apply URL (it redirects to the sign-in with the jobId intact) rather than a hand-built accounts.google.com URL. Use OPEN_FOR_HUMAN once per sign-in, not per attempt, and never for a CAPTCHA.
   2FA / sign-in checkpoint (LinkedIn "App Challenge" or device approval, an SMS/authenticator code, "verify your device"): a code or an app tap is a HUMAN handoff, not a dead end - do NOT record BLOCKED yet and never try to work around it. READ THE PAGE FIRST and pick the mode: if it says "check your app", "was this you?" or "tap Yes" it is an APPROVAL - \`python3 tools/ask_human.py --mode approve --reason "LinkedIn: approve the sign-in on your phone" --detail "<Company> / <Role>" --timeout 600\` (the dashboard asks the human to tap Yes and press Done; no code exists, so never ask for one). Only if it shows a 6-digit code field use \`--mode code --reason "LinkedIn sign-in: enter the code sent to your phone"\`. It blocks until they answer and prints one JSON line \`{"ok":true,"answer":"482913"}\` (or \`"approved"\`). Then act in the page: \`fill '<code field>' '<answer>'\` + \`press Enter\`, or for an approval re-read the page/\`nav\` it again to let it pass, then carry on with the application. Only if it prints \`"ok":false\` (nobody answered in time) record BLOCKED with "2FA handoff unanswered, page left open". Ask at most once per checkpoint per role. If the checkpoint emails the code instead of texting it, read it with email_verify.py --wait 90 first: no human needed.
 BROWSER
 }
@@ -255,7 +261,7 @@ FIRST, before anything else: read config/profile.md and apply it - identity (nam
 This is a LIGHT run: be fast and cheap. Do NOT run GraphRAG, do NOT write a CV or letter, do NOT run alignment/document gates (the runner already gated $FIXED_CV, so recording it as SUBMITTED needs no --force).
 
 Steps:
-0. DUPLICATE GUARD: the queue runner already checked the register for this company and role before starting. Do not re-read state/applications.csv or call register.py --show. A repost or an earlier application does NOT block a new one: apply/prepare it as normal and note the repost. Never record CLOSED just because the role looks like a duplicate.
+0. DUPLICATE GUARD: the queue runner already checked the register for this company and role before starting. Do not re-read state/applications.csv or call register.py --show. Roles already applied to are skipped by default; ALLOW_REPOST=1 is the opt-in override, so if this task is running the guard has passed. A task explicitly marked REPOST was allowed by the operator: follow that note. Never record CLOSED just because the role looks like a duplicate.
 ${REPOST_NOTE:-}
 0b. ELIGIBILITY GATE (mandatory): apply ONLY if the role is compatible with the eligibility rules in config/profile.md (based-in location, accepted work models, languages, work authorisation, exclusions). If the role is excluded, or requires work authorisation / a language / an on-site location the candidate does not have, record CLOSED with the reason and STOP - do not fill or submit. If the location/work model is unclear or excluded, record CLOSED/BLOCKED per those rules and STOP (no application). Only if eligible, continue.
 1. Open the apply URL. If it is a LinkedIn job page, find the employer's own Apply link / real ATS (Greenhouse/Lever/Ashby/Workday/Teamtailor/own site) and apply there; prefer it over LinkedIn Easy Apply.
@@ -286,7 +292,7 @@ SUBMIT-PREPARED RUN: these files were generated, written and gated in an earlier
 FIRST, before anything else: read config/profile.md and apply it - identity (name, email, phone, location, links), work authorisation, languages, availability, pay/rate, eligibility/exclusions, accuracy rules and the standard diversity/EEO answers. Use those exact values wherever a form asks; never invent or substitute personal data.
 
 Steps:
-0. DUPLICATE GUARD: the queue runner already checked the register for this company and role before starting. Do not re-read state/applications.csv or call register.py --show. A repost or an earlier application does NOT block a new one: apply/prepare it as normal and note the repost. Never record CLOSED just because the role looks like a duplicate.
+0. DUPLICATE GUARD: the queue runner already checked the register for this company and role before starting. Do not re-read state/applications.csv or call register.py --show. Roles already applied to are skipped by default; ALLOW_REPOST=1 is the opt-in override, so if this task is running the guard has passed. A task explicitly marked REPOST was allowed by the operator: follow that note. Never record CLOSED just because the role looks like a duplicate.
 ${REPOST_NOTE:-}
 0b. ELIGIBILITY CHECK (quick): confirm from profile.md that the role's location/work model, languages and authorisation still fit. If it is clearly excluded (or the posting is no longer live and cannot be found), record CLOSED with the reason and STOP. Do not redo any analysis beyond that.
 1. PRE-SUBMIT GATE (the only gate to run): \`python3 tools/check_documents.py ${LETTER_GATE}--cv documents/applications/${CV_PREFIX}_CV_$key.docx --company "<Company>" --jd state/job-descriptions/$key.md --ats-keywords state/ats/$key.txt --engagement $ENGAGEMENT --record\` - it must print RESULT: PASS (it re-stamps the receipt for the exact files you upload). If it FAILS, STOP: do not submit; record BLOCKED with the gate's reason.
@@ -313,7 +319,7 @@ $(browser_help)
 FIRST, before anything else: read config/profile.md and apply it - identity (name, email, phone, location, links), work authorisation, languages, availability, pay/rate, eligibility/exclusions, accuracy rules and the standard diversity/EEO answers. Use those exact values wherever a form asks; never invent or substitute personal data. Use config/cv.json as the source of truth for the candidate's experience, and config/archetypes.json for the CV archetypes described below. Use the real company name you resolve in the gate/record calls.
 ${REVIEW_MSG:-}
 Steps:
-0. DUPLICATE GUARD: the queue runner already checked the register for this company and role before starting. Do not re-read state/applications.csv or call register.py --show. A repost or an earlier application does NOT block a new one: apply/prepare it as normal and note the repost. Never record CLOSED just because the role looks like a duplicate.
+0. DUPLICATE GUARD: the queue runner already checked the register for this company and role before starting. Do not re-read state/applications.csv or call register.py --show. Roles already applied to are skipped by default; ALLOW_REPOST=1 is the opt-in override, so if this task is running the guard has passed. A task explicitly marked REPOST was allowed by the operator: follow that note. Never record CLOSED just because the role looks like a duplicate.
 ${REPOST_NOTE:-}
 0b. ONLINE ELIGIBILITY GATE (mandatory, before any letter or application):
    - Determine the role's LOCATION and work model (on-site / hybrid / remote) from the posting or a web search.
@@ -414,9 +420,17 @@ sys.exit(0 if isinstance(d,dict) and sys.argv[2] in d else 1)' "${ROOT:-.}/state
   dup="$(is_duplicate "$company" "$role")"
   REPOST_NOTE=""
   if [ -n "$dup" ]; then
-    # A repost or a second application is allowed: mark it, never skip it.
-    runlog "REPOST $(date +%H:%M:%S) $company | $role (earlier application: $dup; applying again)"
-    REPOST_NOTE="REPOST: this role matches an earlier application ($dup). Reapplying is allowed and expected. Do not record CLOSED because it looks like a duplicate. Proceed with the normal task and add the note \"reapplied to a repost of $dup\" when you record it."
+    # Applying twice to the same role burns a worker and a model budget for no
+    # gain. Skip it by default; ALLOW_REPOST=1 restores the old reapply path for
+    # a genuine repost that the candidate explicitly wants to chase.
+    if [ "${ALLOW_REPOST:-0}" != "1" ]; then
+      runlog "SKIP-APPLIED $(date +%H:%M:%S) $company | $role (already applied: $dup)"
+      emit_run_json "$company" "$role" "SKIP_APPLIED" 0 "already applied: $dup"
+      echo "${key:-$company|$role}" >> "$DONE"
+      return 0
+    fi
+    runlog "REPOST $(date +%H:%M:%S) $company | $role (earlier application: $dup; ALLOW_REPOST=1)"
+    REPOST_NOTE="REPOST: this role matches an earlier application ($dup). Reapplying was explicitly allowed. Do not record CLOSED because it looks like a duplicate. Proceed with the normal task and add the note \"reapplied to a repost of $dup\" when you record it."
   fi
   log="$LOGS/$(echo "$company-$role" | tr ' /|' '___').log"
   # A PREPARED run must never fail because a document has gone missing (packed by
@@ -498,7 +512,14 @@ REVIEW RUN ENDS HERE. Do NOT open the browser, do NOT upload, do NOT run record_
   elif ! grep -q 'STATUS' "$log" 2>/dev/null && grep -qE 'API Error: |overloaded_error' "$log" 2>/dev/null; then
     reason="model/API error"
   elif [ "$rc" -eq 124 ] && ! grep -q 'STATUS' "$log" 2>/dev/null; then
-    reason="timeout with no model output"
+    # A timeout after real tool activity is a slow form, not a dead model. Name
+    # it honestly and let it take the automatic retry below. Only a log with no
+    # work in it is a genuine stall that should stay pending for the operator.
+    if [ "$size" -gt 2000 ] && grep -qE '\{"ok":true|> build|RESULT:|STEP ' "$log" 2>/dev/null; then
+      reason="task timeout"
+    else
+      reason="timeout with no model output"
+    fi
   elif [ "$size" -lt 200 ] && ! grep -q 'STATUS' "$log" 2>/dev/null; then
     reason="empty model output"
   fi

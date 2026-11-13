@@ -2340,9 +2340,9 @@ function renderRows() {
       `<td data-col="ats" class="muted"${T(r.ats ? 'Submitted through ' + r.ats + ' (the employer’s applicant-tracking system)' : 'No ATS recorded')}>${esc(r.ats)}</td>` +
       `<td data-col="status">${chip(r.label || r.status)}${r.interview_stage_label && r.interview_stage ? `<span class="stagechip">${esc(r.interview_stage_label)}</span>` : ''}${subLineHTML(r) || (r.hint ? `<div class="mini muted whycell"${T(r.hint)}>${esc(r.hint.slice(0, 66))}</div>` : '')}</td><td data-col="match">${mbadge(r)}</td>` +
       `<td data-col="salary">${payBadge(r)}</td><td data-col="work">${workBadge(r)}</td>` +
-      `<td data-col="queue"${T(QUEUE_HELP[r.queue] || 'Not in any queue')}>${['pending', 'human', 'retry'].includes(r.queue)
+      `<td data-col="queue"${T((QUEUE_HELP[r.queue] || 'Not in any queue') + (r.applied ? ' Already applied' + (r.date ? ' on ' + r.date : '') + '; a queued repost is a second application, not a first one.' : ''))}>${['pending', 'human', 'retry'].includes(r.queue)
         ? `<span class="badge ${r.queue === 'human' ? 'bad' : r.queue === 'retry' ? 'mid' : 'good'}">${esc(r.queue)}</span>`
-        : `<span class="muted">-</span>`}</td>` +
+        : ''}${r.applied ? `${['pending', 'human', 'retry'].includes(r.queue) ? ' ' : ''}<span class="badge good" title="Already applied${r.date ? ' on ' + esc(r.date) : ''}. A queued repost is a second application, not a first one.">applied</span>` : ''}${!['pending', 'human', 'retry'].includes(r.queue) && !r.applied ? '<span class="muted">-</span>' : ''}</td>` +
       `<td data-col="files"${T(r.applied ? 'Provenance recorded: exact CV, letter and SHA-256 hashes on file' : 'No submission recorded (not applied, or not reconciled yet)')}>${r.applied ? '✓' : '<span class="muted">-</span>'}</td>` +
       `<td data-col="ad"${T(r.spec ? 'A saved job description exists: open the row for the ad, ATS keywords and grounded context' : 'No saved job description')}>${r.spec ? '✓' : '<span class="muted">-</span>'}</td>`;
     return { key: r.key, id: selId(r), keyName: r.key, rowId: selId(r), cls: `click${sel}${SEL.has(selId(r)) ? ' multi' : ''}`, html, index: i };

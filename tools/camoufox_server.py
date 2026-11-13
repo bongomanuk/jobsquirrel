@@ -24,6 +24,8 @@ LOCK = threading.Lock()
 PAGE = None
 HEADFUL = False
 CONSOLE_LOGS = []
+NET_LOG = []
+NET_LISTENING = False
 DIALOG = {"mode": None}      # None=dismiss (Playwright default), "accept", "once", "dismiss"
 
 
@@ -476,6 +478,14 @@ def dispatch(cmd: str, body: dict) -> dict:
 
     if cmd == "upload":
         sel, path = body.get("selector") or "", body.get("path") or ""
+        if body.get("chooser"):
+            # Some upload widgets (Google Careers, a few enterprise portals) do
+            # not keep a file input in the DOM: the button opens the native file
+            # chooser. Click it and hand the file to the chooser instead.
+            with page.expect_file_chooser(timeout=15000) as fc:
+                page.click(sel, timeout=10000)
+            fc.value.set_files(path)
+            return {"ok": True, "uploaded": path, "selector": sel, "via": "chooser"}
         page.set_input_files(sel, path, timeout=15000)
         return {"ok": True, "uploaded": path, "selector": sel}
 
@@ -566,6 +576,29 @@ def dispatch(cmd: str, body: dict) -> dict:
 
     if cmd == "console":
         return {"ok": True, "logs": CONSOLE_LOGS[-300:]}
+
+    if cmd == "netlog":
+        # Record API responses (status + body) so a silent 400 can be read.
+        global NET_LISTENING
+        if not NET_LISTENING:
+            def _on_resp(r):
+                try:
+                    if "/api/" not in r.url:
+                        return
+                    body = ""
+                    try:
+                        body = r.text()[:800]
+                    except Exception:
+                        pass
+                    NET_LOG.append({"url": r.url, "status": r.status, "body": body})
+                except Exception:
+                    pass
+            PAGE.on("response", _on_resp)
+            NET_LISTENING = True
+        return {"ok": True}
+
+    if cmd == "netlog-dump":
+        return {"ok": True, "entries": NET_LOG[-30:]}
 
     if cmd == "headers":
         return {"ok": True, "url": page.url, "title": page.title(),
