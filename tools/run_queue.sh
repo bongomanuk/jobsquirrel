@@ -190,6 +190,25 @@ ensure_server() {
   # new device and triggering another verification. HEADFUL=1 shows the windows,
   # for a run where the human has to sign in by hand.
   local profile="${CAMOUFOX_PROFILE_DIR:-$HOME/.config/job-search/profiles}/work-$port"
+  # A host with a persistent sign-in (LinkedIn) gets a named profile, so a login
+  # on that profile survives the next run instead of asking again on a new port.
+  if [ -f "$ROOT/state/browser-affinity.json" ]; then
+    local ap
+    ap="$(python3 - "$ROOT/state/browser-affinity.json" "$port" <<'PYAFFPROF'
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+for entry in data.values():
+    entry = entry or {}
+    if str(entry.get("port")) == sys.argv[2] and entry.get("profile"):
+        print(entry["profile"])
+        break
+PYAFFPROF
+)"
+    [ -n "$ap" ] && profile="${CAMOUFOX_PROFILE_DIR:-$HOME/.config/job-search/profiles}/$ap"
+  fi
   mkdir -p "$profile" 2>/dev/null
   local headful=""
   [ "${HEADFUL:-0}" = "1" ] && headful="--headful"
@@ -212,6 +231,21 @@ if [ "$REVIEW" != "1" ]; then
   for _u in "${SERVERS[@]}"; do
     ensure_server "$_u" "${_u##*:}" || runlog "WARN: camoufox server $_u did not come up"
   done
+  # Dedicated profiles for hosts that hold a sign-in (LinkedIn). They are not
+  # part of the worker pool; a task whose URL matches the host is routed here.
+  if [ -f "$ROOT/state/browser-affinity.json" ]; then
+    for _ap in $(python3 - "$ROOT/state/browser-affinity.json" <<'PYAFFPORTS'
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+print(" ".join(str((v or {}).get("port")) for v in data.values() if (v or {}).get("port")))
+PYAFFPORTS
+); do
+      ensure_server "http://127.0.0.1:$_ap" "$_ap" || runlog "WARN: affinity browser on $_ap did not come up"
+    done
+  fi
 fi
 
 browser_help() {
@@ -488,6 +522,35 @@ sys.exit(0 if isinstance(d,dict) and sys.argv[2] in d else 1)' "${ROOT:-.}/state
     LETTER_STATUS="letter: none (not required by the advert; generated only if the form demands it)"
     LETTER_UPLOAD="(no cover letter unless step 1b generated one because the form required it)"
   fi
+  # Host affinity: a site with a persistent sign-in gets its dedicated profile
+  # and port, and is serialised. This is why a LinkedIn login is reused instead
+  # of being requested again on a different worker port.
+  local host="" aff="" hostlock=""
+  if [ -n "${url:-}" ]; then
+    host="$(printf '%s' "$url" | sed -E 's#^[A-Za-z]+://([^/]+).*#\1#' | tr 'A-Z' 'a-z' | sed 's/^www\.//')"
+  fi
+  if [ -n "$host" ] && [ -f "$ROOT/state/browser-affinity.json" ]; then
+    aff="$(python3 - "$ROOT/state/browser-affinity.json" "$host" <<'PYAFFHOST'
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+host = sys.argv[2]
+for key, entry in data.items():
+    if host == key or host.endswith("." + key):
+        port = (entry or {}).get("port")
+        if port:
+            print("http://127.0.0.1:%s" % port)
+        break
+PYAFFHOST
+)"
+    if [ -n "$aff" ]; then
+      server="$aff"
+      mkdir -p "$ROOT/state/locks"
+      hostlock="$ROOT/state/locks/${host//[^a-z0-9.]/_}.lock"
+    fi
+  fi
   runlog "START $(date +%H:%M:%S) $company | $role"
   prompt="$(build_prompt "$company" "$role" "$url" "$cv" "$ats" "$key" "$server")"
   if [ "$REVIEW" = "1" ]; then
@@ -498,7 +561,13 @@ sys.exit(0 if isinstance(d,dict) and sys.argv[2] in d else 1)' "${ROOT:-.}/state
 
 REVIEW RUN ENDS HERE. Do NOT open the browser, do NOT upload, do NOT run record_submission.py and do NOT set SUBMITTED. The finalise command (with --record-prepared) has already recorded PREPARED on PASS. Return exactly one line: STATUS $company | $role | PREPARED|BLOCKED|CLOSED | <reason> | CV: documents/applications/${CV_PREFIX}_CV_$key.docx | letter: <the letter path if one exists, otherwise 'none (not required)'>"
   fi
-  "$TIMEOUT_CMD" -k 30s "$TASK_TIMEOUT" bash "$ROOT/tools/agent_run.sh" "$prompt" >"$log" 2>&1 </dev/null 9>&-
+  if [ -n "$hostlock" ]; then
+    # One task per host at a time: two browsers on one profile would fight over
+    # the session and LinkedIn would treat it as suspicious.
+    flock -x "$hostlock" "$TIMEOUT_CMD" -k 30s "$TASK_TIMEOUT" bash "$ROOT/tools/agent_run.sh" "$prompt" >"$log" 2>&1 </dev/null 9>&-
+  else
+    "$TIMEOUT_CMD" -k 30s "$TASK_TIMEOUT" bash "$ROOT/tools/agent_run.sh" "$prompt" >"$log" 2>&1 </dev/null 9>&-
+  fi
   rc=$?
   # The outcome is the third |-separated field of the agent's last STATUS line:
   # "STATUS <Company> | <role> | BLOCKED | <reason> | CV: ...". (Taking the last

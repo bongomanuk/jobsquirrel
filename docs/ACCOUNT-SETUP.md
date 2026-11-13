@@ -180,6 +180,19 @@ application. Never mass-apply, and stop on any CAPTCHA/checkpoint. Automating
 Easy Apply may breach LinkedIn's User Agreement and can get an account restricted;
 that capability is a private add-on, not part of this build.
 
+### Persistent sign-in for discovery
+
+A host that holds a sign-in can be pinned in `state/browser-affinity.json`:
+
+```json
+{"linkedin.com": {"port": 9896, "profile": "linkedin"}}
+```
+
+The queue runner starts that dedicated profile, routes matching URLs to
+its port and serialises them, so the sign-in survives across runs. Sign in
+once on that profile; a login on a worker port is not reused by another
+port.
+
 ## 5. Per-site ATS accounts (Workday, SuccessFactors, Ashby, own sites…)
 
 Some applications need an account. `tools/accounts.py` stores a strong password
