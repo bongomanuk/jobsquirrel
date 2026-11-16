@@ -1,0 +1,282 @@
+"""run_queue.sh end to end with a stub agent, and agent_run.sh's command lines.
+
+The queue runs in a throwaway ROOT (tools/ symlinked in), in REVIEW mode so no
+browser is started, with AGENT pointing at a stub that records each call.
+"""
+import os
+import stat
+import subprocess
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+STUB = """#!/bin/sh
+company=$(printf '%s\\n' "$1" | sed -n 's/^Company[^:]*: //p' | head -n1)
+role=$(printf '%s\\n' "$1" | sed -n 's/^Role: //p' | head -n1)
+printf '%s|%s\\n' "$company" "$role" >> "$CALLS"
+printf '%s\\n' "$1" > "$PROMPTS/$company.txt"
+case "$role" in
+  Slow*) sleep 30 ;;
+  Blocked*) echo "STATUS $company | $role | BLOCKED | hCaptcha on Workday | CV: documents/applications/Jane_Doe_CV_k.docx | letter: documents/applications/Jane_Doe_Motivation_k.docx"
+            exit 0 ;;
+esac
+echo "STATUS $company | $role | PREPARED | stub"
+"""
+
+
+def _exe(path, text):
+    path.write_text(text)
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    return path
+
+
+def _sandbox(tmp_path, rows):
+    root = tmp_path / "root"
+    (root / "state").mkdir(parents=True)
+    os.symlink(os.path.join(ROOT, "tools"), root / "tools")
+    (root / "state" / "queue.tsv").write_text(
+        "".join("\t".join(r) + "\n" for r in rows))
+    (tmp_path / "prompts").mkdir()
+    env = dict(os.environ, ROOT=str(root), REVIEW="1", RETRY_LIMIT="0",
+               AGENT_CFG=str(tmp_path / "no-agent.json"),
+               AGENT=str(_exe(tmp_path / "stub-agent", STUB)),
+               CALLS=str(tmp_path / "calls"), PROMPTS=str(tmp_path / "prompts"))
+    env.pop("VIRTUAL_ENV", None)
+    return root, env
+
+
+def test_queue_runs_each_role_once_in_parallel(tmp_path):
+    rows = [(f"Co{i}", f"Engineer {i}", f"https://example.test/{i}", "cv.docx", "ats", f"k{i}")
+            for i in range(6)]
+    rows.append(("CoSlow", "Slow Role", "https://example.test/slow", "cv.docx", "ats", "kslow"))
+    root, env = _sandbox(tmp_path, rows)
+    env.update(PARALLEL="3", TASK_TIMEOUT="2")
+
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+                       env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert "command not found" not in r.stderr, r.stderr
+
+    calls = (tmp_path / "calls").read_text().splitlines()
+    want = sorted(f"{c}|{role}" for c, role, *_ in rows)
+    assert sorted(calls) == want, "every role must be claimed exactly once"
+
+    done = (root / "state" / "queue.done").read_text().splitlines()
+    # DONE stores the queue key (field 6), not "company|role": keys survive a
+    # company rename and cannot be ambiguous when a company name contains "|".
+    want_keys = [r[5] for r in rows if r[0] != "CoSlow"]
+    assert sorted(done) == sorted(want_keys)
+
+    out = (root / "state" / "logs" / "run_queue.out").read_text()
+    assert "INFRA-FAIL" in out and "CoSlow | Slow Role (timeout with no model output" in out
+    assert "queue complete" in out
+
+    prompt = (tmp_path / "prompts" / "Co0.txt").read_text()
+    assert "REVIEW MODE (do NOT submit)" in prompt
+    assert "timeout 30" in prompt
+    # Review runs end on the same STATUS line the runner parses, not a PREPARED line.
+    assert "STATUS Co0 | Engineer 0 | PREPARED|BLOCKED|CLOSED | <reason>" in prompt
+    assert "Return exactly one line: PREPARED" not in prompt
+    assert "Do not call register.py --set for PREPARED" in prompt
+    assert "--record-prepared" in prompt
+
+
+def test_a_repost_review_tells_finalise_to_record_prepared(tmp_path):
+    rows = [("CoR", "Engineer", "u", "cv", "ats", "kr")]
+    root, env = _sandbox(tmp_path, rows)
+    (root / "state" / "applications.csv").write_text(
+        "company,role,status,date\nCoR,Engineer,IN_PROGRESS,2026-10-08\n")
+    env["PARALLEL"] = "1"
+    # The default now skips a role already applied to. This test covers the
+    # explicit opt-in path that re-applies to a repost.
+    env["ALLOW_REPOST"] = "1"
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+                       env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    prompt = (tmp_path / "prompts" / "CoR.txt").read_text()
+    assert "REPOST: this role matches an earlier application" in prompt
+    assert "--record-prepared --repost" in prompt
+
+
+def test_an_applied_role_is_skipped_by_default(tmp_path):
+    rows = [("CoS", "Engineer", "u", "cv", "ats", "ks")]
+    root, env = _sandbox(tmp_path, rows)
+    (root / "state" / "applications.csv").write_text(
+        "company,role,status,date\nCoS,Engineer,SUBMITTED,2026-10-08\n")
+    env["PARALLEL"] = "1"
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+                       env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    out = (root / "state" / "logs" / "run_queue.out").read_text()
+    assert "SKIP-APPLIED" in out
+    assert not (tmp_path / "prompts" / "CoS.txt").exists(), "a skipped role must not reach the agent"
+
+
+def test_blocked_roles_get_one_retry(tmp_path):
+    rows = [("CoB", "Blocked Role", "u1", "cv", "ats", "kb"),
+            ("CoOk", "Engineer", "u2", "cv", "ats", "kok")]
+    root, env = _sandbox(tmp_path, rows)
+    env.update(PARALLEL="1", RETRY_LIMIT="1")
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+                       env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    calls = (tmp_path / "calls").read_text().splitlines()
+    assert calls.count("CoB|Blocked Role") == 2, calls
+    assert calls.count("CoOk|Engineer") == 1, calls
+    assert "retry pass 1" in (root / "state" / "logs" / "run_queue.out").read_text()
+
+
+def test_queue_aborts_when_the_agent_is_not_signed_in(tmp_path):
+    rows = [(f"Co{i}", "Eng", "u", "cv", "ats", f"k{i}") for i in range(5)]
+    root, env = _sandbox(tmp_path, rows)
+    # Claude Code's exact message when its sign-in has lapsed.
+    env["AGENT"] = str(_exe(tmp_path / "signed-out-agent", "#!/bin/sh\necho 'Failed to "
+                            "authenticate: OAuth session expired and could not be refreshed'\nexit 1\n"))
+    env["PARALLEL"] = "1"
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+                       env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    out = (root / "state" / "logs" / "run_queue.out").read_text()
+    assert "ABORT" in out and "agent not signed in hit 3x" in out
+    assert out.count("START") == 3, "the run must stop after 3 sign-in failures"
+    assert not (root / "state" / "queue.done").read_text().strip(), "failed roles stay pending"
+
+
+def test_queue_stops_when_no_agent_is_installed(tmp_path):
+    root, env = _sandbox(tmp_path, [("Co", "Eng", "u", "cv", "ats", "k")])
+    env["AGENT"] = "no-such-agent-xyz"
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+                       env=env, capture_output=True, text=True, timeout=30)
+    assert r.returncode != 0
+    assert "no-such-agent-xyz" in r.stderr
+    assert not (tmp_path / "calls").exists()
+
+
+def _argv_of(tmp_path, agent, **extra):
+    """Run agent_run.sh against a fake `agent` binary that prints its argv."""
+    bindir = tmp_path / "bin"
+    bindir.mkdir(exist_ok=True)
+    _exe(bindir / agent, '#!/bin/sh\nfor a in "$@"; do printf "%s\\n" "$a"; done\n')
+    env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}", AGENT=agent,
+               AGENT_CFG=str(tmp_path / "no-agent.json"), **extra)
+    for k in ("MODEL", "CLAUDE_ALLOWED_TOOLS", "CLAUDE_PERMISSION_MODE", "CLAUDE_ARGS"):
+        if k not in extra:
+            env.pop(k, None)
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), "do the thing"],
+                       env=env, capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    return r.stdout.splitlines()
+
+
+def test_agent_run_claude_is_headless_with_an_allowlist(tmp_path):
+    argv = _argv_of(tmp_path, "claude", MODEL="sonnet")
+    assert argv[:2] == ["-p", "do the thing"]  # prompt before the variadic --allowedTools
+    assert argv[argv.index("--permission-mode") + 1] == "dontAsk"
+    allowed = argv[argv.index("--allowedTools") + 1]
+    assert "Bash(python3 *)" in allowed and "WebSearch" in allowed
+    assert "--strict-mcp-config" in argv
+    assert argv[argv.index("--model") + 1] == "sonnet"
+
+
+def test_agent_run_claude_overrides(tmp_path):
+    argv = _argv_of(tmp_path, "claude", CLAUDE_PERMISSION_MODE="bypassPermissions",
+                    CLAUDE_ALLOWED_TOOLS="Read", CLAUDE_ARGS="--max-turns 5")
+    assert argv[argv.index("--permission-mode") + 1] == "bypassPermissions"
+    assert argv[argv.index("--allowedTools") + 1] == "Read"
+    assert argv[-2:] == ["--max-turns", "5"]
+    assert "--model" not in argv
+
+
+def test_agent_run_opencode(tmp_path):
+    a = _argv_of(tmp_path, "opencode", MODEL="m")
+    assert a[0] == "run"
+    assert a[a.index("--model") + 1] == "m"
+    assert a[-1] == "do the thing"
+    # a session is pinned so retries continue the conversation instead of
+    # repeating tool calls
+    assert a[a.index("-s") + 1].startswith("ses_")
+
+    b = _argv_of(tmp_path, "opencode")
+    assert b[0] == "run" and b[-1] == "do the thing" and "-s" in b
+
+    c = _argv_of(tmp_path, "opencode", MODEL="m", AGENT_SESSION="pinned-1")
+    assert c[c.index("-s") + 1] == "pinned-1"
+    assert c.count("-s") == 1
+
+
+def test_agent_run_retries_a_transient_provider_error(tmp_path):
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    calls = tmp_path / "calls"
+    fak = bindir / "flaky"
+    fak.write_text(f'#!/bin/sh\necho x >> "{calls}"\necho "APIError: 420 Enhance Your Calm" >&2\nexit 1\n')
+    fak.chmod(0o755)
+    env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}", AGENT="flaky",
+               AGENT_CFG=str(tmp_path / "no-agent.json"), AGENT_RETRY="2", AGENT_RETRY_BASE="1")
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), "x"],
+                       env=env, capture_output=True, text=True, timeout=30)
+    assert r.returncode != 0
+    assert calls.read_text().count("x") == 2
+    assert "retrying in" in r.stderr
+
+
+def test_agent_run_does_not_retry_an_auth_error(tmp_path):
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    calls = tmp_path / "calls"
+    fak = bindir / "denied"
+    fak.write_text(f'#!/bin/sh\necho x >> "{calls}"\necho "APIError: 401 Unauthorized" >&2\nexit 1\n')
+    fak.chmod(0o755)
+    env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}", AGENT="denied",
+               AGENT_CFG=str(tmp_path / "no-agent.json"), AGENT_RETRY="2", AGENT_RETRY_BASE="1")
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), "x"],
+                       env=env, capture_output=True, text=True, timeout=30)
+    assert r.returncode != 0
+    assert calls.read_text().count("x") == 1
+
+
+def test_queue_order_is_most_senior_first_by_whole_words(tmp_path):
+    import sys
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import prioritise_queue as P
+    from test_prioritise_queue import TITLES
+
+    rows = [(f"Co{i}", title, f"u{i}", "cv", "ats", f"k{i}") for i, (title, _) in enumerate(TITLES)]
+    root, env = _sandbox(tmp_path, rows)
+    env.update(PARALLEL="1")
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+                       env=env, capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    calls = [c.split("|", 1)[1] for c in (tmp_path / "calls").read_text().splitlines()]
+    # Most senior first, file order within a rank: the same order prioritise_queue.py gives.
+    assert calls == sorted((t for t, _ in TITLES), key=lambda t: -P.seniority(t))
+    assert calls[:2] == ["VP Engineering", "Co-founder & CTO"]
+
+
+def test_an_empty_url_and_cv_do_not_shift_the_key(tmp_path):
+    rows = [("Co", "Engineer", "", "", "", "kempty")]
+    root, env = _sandbox(tmp_path, rows)
+    env["PARALLEL"] = "1"
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+                       env=env, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    prompt = (tmp_path / "prompts" / "Co.txt").read_text()
+    assert "Apply URL: \n" in prompt
+    assert "CV to upload: \n" in prompt
+    assert "--key kempty" in prompt
+    assert "Apply URL: kempty" not in prompt
+
+
+def test_a_prepared_run_builds_a_missing_document_instead_of_failing(tmp_path):
+    """Submit-prepared must not stop because the file is gone: it prepares it."""
+    rows = [("CoP", "Engineer", "https://example.test/1", "cv.docx", "ats", "missing-key")]
+    root, env = _sandbox(tmp_path, rows)
+    env.update(PARALLEL="1", PREPARED="1")
+    (root / "state" / "applications.csv").write_text("company,role,status,date\n")
+    r = subprocess.run(["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+                       env=env, capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    out = (root / "state" / "logs" / "run_queue.out").read_text()
+    assert "PREPARE-MISSING" in out, out
+    # it still ran the task afterwards; the stub agent was called
+    assert (tmp_path / "calls").exists()

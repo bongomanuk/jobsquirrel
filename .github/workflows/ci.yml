@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test deps
+        run: pip install pytest python-docx rich pandas cryptography
+
+      - name: Compile Python
+        run: python -m py_compile tools/*.py tools/compat/*
+
+      - name: Syntax-check shell
+        run: bash -n tools/*.sh install.sh
+
+      - name: Run tests
+        run: python -m pytest -q

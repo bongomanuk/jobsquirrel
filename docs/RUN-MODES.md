@@ -1,0 +1,127 @@
+# Run modes
+
+<div align="center"><sub><a href="../README.md">Jobsquirrel</a> · <a href="README.md">Docs</a></sub></div>
+
+
+The pipeline can be run several ways. **The agent should explain these to the
+user and let them choose**, the user should never have to read this file.
+
+## Run completion
+
+Every finished queue appends a summary of each task's outcome to the **Agent**
+pane (and `state/logs/run-complete.log`). A detached run no longer disappears
+silently when its badge clears: you see what was prepared, submitted, blocked or
+closed, with the reason.
+
+## 1. Discover (find roles, no applications)
+
+Find new roles and feed the queue; generate nothing.
+
+```bash
+python3 tools/discover.py                 # from LinkedIn Job Alert emails (dry run)
+python3 tools/discover.py --queue         # add new matches to state/queue.tsv
+python3 tools/email_opportunities.py --apply   # recruiter/contract leads -> register
+python3 tools/prioritise_queue.py         # order the queue most-senior-first
+```
+
+## 2. Review / Prepare (generate documents, do NOT send)
+
+For every queued role: build the **grounded, targeted CV and cover letter**,
+run the alignment and pre-submit gates, save the files, and record the row as
+`PREPARED`. **Nothing is submitted.** Use this to review documents before sending.
+
+```bash
+REVIEW=1 PARALLEL=3 bash tools/run_queue.sh
+```
+
+Outputs per role: `state/kb-context/<key>.md`, `state/cv-content/<key>.json`,
+`documents/applications/<Prefix>_CV_<key>.docx` (+ `.pdf`) and
+`documents/applications/<Prefix>_Motivation_<key>.docx`. Review them, then move the
+roles you're happy with to an apply run (or send them yourself).
+
+## 3. Apply (generated, role-targeted CVs), the default
+
+Full end-to-end: build the targeted documents, gate them, submit through the
+employer's ATS, and record provenance.
+
+```bash
+PARALLEL=3 bash tools/run_queue.sh
+```
+
+Each queued role's CV is **generated for that role** (aligned to its family and
+grounded in the knowledge base). This is the highest-quality mode.
+
+## 4. Apply with a fixed CV (no per-role generation)
+
+Use **one** CV for every role in the run, no grounding, no per-role CV/letter.
+Fast and cheap (e.g. a "general" CV), lower targeting.
+
+```bash
+LIGHT=1 FIXED_CV=documents/archetypes/<Prefix>_CV_<Archetype>.docx \
+  PARALLEL=3 bash tools/run_queue.sh
+```
+
+The runner still does the eligibility/duplicate gates and records the outcome.
+Before any task starts it runs the pre-submit gate once on the fixed CV
+(`check_documents.py --cv <CV> --record`: your name, no template leftovers, no
+present-tense claims about past employers, no contract rate in a full-time run).
+If the CV fails, the run stops with the reasons and nothing is sent; if it
+passes, the receipt lets every submission be recorded without `--force`.
+
+## 5. One role at a time (manual, for control or a retry)
+
+Drive the per-role steps directly (see `AGENTS.md` §4): save the ad, extract ATS
+keywords, ground with GraphRAG, pick the aligned archetype, build the targeted CV
++ letter, gate, apply, record. Ideal for a single URL or a re-run.
+
+## Choosing the CV per role
+
+- The queue's 4th column is the **starting archetype** (e.g. leadership vs
+  AI-platform vs security); the runner verifies alignment and switches if needed.
+- **Generated** CVs (modes 2-3) are tailored per role and grounded in the KB.
+- **Fixed** (mode 4) uses your chosen archetype as-is.
+
+## 6. Reconcile (track replies)
+
+```bash
+python3 tools/gmail_reconcile.py --apply   # set INTERVIEW / REJECTED / SUBMITTED
+bash tools/reconcile_loop.sh               # continuous, refreshes counts
+```
+
+## 7. Adaptive fallback (opt-in)
+
+`ADAPTIVE=1` hands a `BLOCKED` task to `tools/adaptive/run.sh`, a separate
+agent on its own browser port and profile. It handles unknown forms and
+widgets; it stops on CAPTCHA, 2FA, rate limits, paywalls, fees, payment or ID
+uploads, and site terms. A verified confirmation is recorded as `SUBMITTED`;
+a wall stays `BLOCKED`.
+
+## Environment switches (summary)
+
+| Env | Effect |
+|---|---|
+| `PARALLEL=n` | number of concurrent applications |
+| `REVIEW=1` | generate + gate + record `PREPARED`, do **not** submit |
+| `LIGHT=1 FIXED_CV=<path>` | one fixed CV for all roles, no per-role generation |
+| `PRIORITISE=0` | keep file order instead of most-senior-first |
+| `ELIGIBILITY_OVERRIDE=...` | one-run override of the eligibility rules |
+| `ENGAGEMENT=contract` | use contract/consulting CV+letter rules (rate allowed) |
+| `AGENT=claude` | the coding agent each task runs with: `opencode`, `claude` or any CLI that takes the prompt as its last argument (default: opencode if installed, else claude) |
+| `MODEL=...` | the agent model the runner launches (opencode defaults to DeepSeek Flash; other agents use their own default) |
+| `CLAUDE_PERMISSION_MODE`, `CLAUDE_ALLOWED_TOOLS`, `CLAUDE_ARGS` | Claude Code permissions and extra flags (see [AGENT-SETUP.md](AGENT-SETUP.md#running-the-queue-with-claude-code)) |
+| `CAMOUFOX_SERVER=...` | target a specific browser instance/ports |
+| `KEEP_BROWSERS=1` | leave the Camoufox servers this run started running; by default they are stopped when the run ends |
+| `ADAPTIVE=1` | hand a `BLOCKED` task to the separate adaptive harness (forms only, never security controls) |
+
+Each parallel worker gets its own Camoufox server and profile. The runner stops
+the servers it started when the pool finishes or is interrupted, so a batch does
+not leave a full headless browser behind per worker. A server that was already
+healthy is reused and left alone, and the persistent profiles stay on disk, so a
+sign-in survives the restart. Use `KEEP_BROWSERS=1` only when you want the same
+servers for the next run.
+
+The runner works on Linux and macOS. macOS lacks `flock`, `setsid` and
+`timeout`, so `tools/compat/` provides portable stand-ins that are used only
+where the real commands are missing. If the project venv (`.venv`, from
+`tools/install.sh`) exists, the runner uses it automatically. The same goes for
+`human_assist.sh`, which also takes `AGENT`.

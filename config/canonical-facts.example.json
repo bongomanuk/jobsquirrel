@@ -1,0 +1,5 @@
+{
+  "_comment": "Copy to config/canonical-facts.json and add your own canonical wording. 'wrong' entries are regular expressions; 'right' is the exact replacement. The document gate fails if a generated CV or letter still contains a wrong variant.",
+  "replace": [],
+  "forbidden": []
+}

@@ -1,0 +1,252 @@
+#!/usr/bin/env python3
+"""Agent-facing CLI for the Camoufox pipeline browser (Camoufox/Firefox only — no Chromium).
+
+The command surface the agent prompts use:
+  status | nav <url> | snap [path] | click <ref|selector> [--force] |
+  fill <sel> <text> | type <sel> <text> | select <sel> <value> |
+  pick <option text> [open-selector] | fillmap '<json steps>' | press <key> [sel] |
+  check <sel> | value <sel> | eval <js> | wait <ms> | upload <sel> <path> | drag <x1> <y1> <x2> <y2> | headers
+
+Custom ATS widgets (Workday, Greenhouse react-select, ...):
+  - use `pick` to choose a listbox option: synthetic JS clicks are ignored.
+  - use `press` for real key events (Enter commits type-aheads).
+  - `click` falls back to a forced click automatically when an overlay blocks it.
+
+All commands are forwarded to tools/camoufox_server.py over HTTP.
+
+Usage:
+  python3 tools/camoufox_browser.py --server http://127.0.0.1:9872 nav https://...
+  python3 tools/camoufox_browser.py --server http://127.0.0.1:9872 fill '#email' 'x@y.z'
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import urllib.error
+import urllib.request
+
+DEFAULT_SERVER = "http://127.0.0.1:9872"
+
+
+def post(server: str, payload: dict, timeout: float = 45.0) -> dict:
+    req = urllib.request.Request(
+        f"{server.rstrip('/')}/cmd",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read().decode())
+        except Exception:
+            return {"ok": False, "error": f"HTTP {e.code}"}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Camoufox pipeline browser CLI")
+    ap.add_argument("--server", default=DEFAULT_SERVER)
+    ap.add_argument("cmd", help="status|nav|snap|click|fill|type|select|pick|fillmap|flow|press|check|value|eval|wait|waitfor|waittext|waiturl|text|upload|download|headers|dialog")
+    ap.add_argument("args", nargs="*", help="command arguments")
+    ap.add_argument("--force", action="store_true", help="click: skip actionability checks")
+    ap.add_argument("--match", default="", help="snap: only refs whose text/tag matches this regex")
+    ap.add_argument("--timeout", type=float, default=None, help="HTTP timeout in seconds (flow defaults to 300)")
+    ns = ap.parse_args()
+
+    cmd = ns.cmd.lower()
+    a = ns.args
+    payload: dict = {"cmd": cmd}
+
+    if cmd == "status" or cmd == "headers":
+        pass
+    elif cmd == "nav":
+        if not a:
+            print("usage: nav <url>", file=sys.stderr)
+            return 1
+        payload["url"] = a[0]
+    elif cmd == "snap":
+        if a:
+            payload["path"] = a[0]
+        if ns.match:
+            payload["match"] = ns.match
+    elif cmd == "text":
+        if a:
+            payload["max"] = int(a[0])
+    elif cmd == "waitfor":
+        if not a:
+            print("usage: waitfor <selector> [timeout_ms] [visible|attached|hidden]", file=sys.stderr)
+            return 1
+        payload["selector"] = a[0]
+        if len(a) > 1 and str(a[1]).isdigit():
+            payload["timeout"] = int(a[1])
+        for word in ("visible", "attached", "hidden", "detached"):
+            if word in a[1:]:
+                payload["state"] = word
+    elif cmd == "waittext":
+        if not a:
+            print("usage: waittext <text|regex> [timeout_ms] [--regex]", file=sys.stderr)
+            return 1
+        payload["text"] = a[0]
+        if len(a) > 1 and str(a[1]).isdigit():
+            payload["timeout"] = int(a[1])
+        if "--regex" in a:
+            payload["regex"] = True
+    elif cmd == "waiturl":
+        if not a:
+            print("usage: waiturl <substring|regex> [timeout_ms] [--regex]", file=sys.stderr)
+            return 1
+        payload["url"] = a[0]
+        if len(a) > 1 and str(a[1]).isdigit():
+            payload["timeout"] = int(a[1])
+        if "--regex" in a:
+            payload["regex"] = True
+    elif cmd == "flow":
+        if not a:
+            print("usage: flow '<json>' | flow @steps.json", file=sys.stderr)
+            return 1
+        spec = " ".join(a)
+        if spec.startswith("@"):
+            try:
+                spec = open(spec[1:], encoding="utf-8").read()
+            except OSError as e:
+                print(f"flow: cannot read {spec[1:]}: {e}", file=sys.stderr)
+                return 1
+        try:
+            parsed = json.loads(spec)
+        except Exception as e:
+            print(f"flow: invalid JSON: {e}", file=sys.stderr)
+            return 1
+        if isinstance(parsed, dict):
+            payload.update(parsed)
+        else:
+            payload["steps"] = parsed
+        payload["cmd"] = "flow"
+    elif cmd == "click":
+        if not a:
+            print("usage: click <ref|selector>", file=sys.stderr)
+            return 1
+        payload["target"] = a[0]
+        if ns.force:
+            payload["force"] = True
+    elif cmd == "fill":
+        if len(a) < 2:
+            print("usage: fill <selector> <text>", file=sys.stderr)
+            return 1
+        payload["selector"], payload["text"] = a[0], " ".join(a[1:])
+    elif cmd == "type":
+        if len(a) < 2:
+            print("usage: type <selector> <text>", file=sys.stderr)
+            return 1
+        payload["selector"], payload["text"] = a[0], " ".join(a[1:])
+    elif cmd == "select":
+        if len(a) < 2:
+            print("usage: select <selector> <value>", file=sys.stderr)
+            return 1
+        payload["selector"], payload["value"] = a[0], " ".join(a[1:])
+    elif cmd == "press":
+        if not a:
+            print("usage: press <key> [selector]", file=sys.stderr)
+            return 1
+        payload["key"] = a[0]
+        if len(a) > 1:
+            payload["selector"] = a[1]
+    elif cmd == "mouse":
+        if len(a) < 2:
+            print("usage: mouse <x> <y>", file=sys.stderr)
+            return 1
+        payload["x"], payload["y"] = int(a[0]), int(a[1])
+    elif cmd == "pick":
+        if not a:
+            print("usage: pick <option text> [open-selector]", file=sys.stderr)
+            return 1
+        payload["text"] = a[0]
+        if len(a) > 1:
+            payload["open"] = a[1]
+    elif cmd == "fillmap":
+        if not a:
+            print("usage: fillmap '<json steps>'", file=sys.stderr)
+            return 1
+        try:
+            payload["steps"] = json.loads(" ".join(a))
+        except Exception as e:
+            print(f"fillmap: invalid JSON: {e}", file=sys.stderr)
+            return 1
+    elif cmd == "dialog":
+        payload["mode"] = a[0] if a else "accept"
+    elif cmd == "check":
+        if not a:
+            print("usage: check <selector>", file=sys.stderr)
+            return 1
+        payload["selector"] = a[0]
+    elif cmd == "value":
+        if not a:
+            print("usage: value <selector>", file=sys.stderr)
+            return 1
+        payload["selector"] = a[0]
+    elif cmd == "eval":
+        if not a:
+            print("usage: eval <js>", file=sys.stderr)
+            return 1
+        payload["js"] = " ".join(a)
+    elif cmd == "addinit":
+        if not a:
+            print("usage: addinit <path>", file=sys.stderr)
+            return 1
+        payload["path"] = a[0]
+    elif cmd == "preload":
+        if len(a) < 2:
+            print("usage: preload <match> <script-src> [placement]", file=sys.stderr)
+            return 1
+        payload["match"], payload["src"] = a[0], a[1]
+        if len(a) > 2:
+            payload["placement"] = a[2]
+    elif cmd == "drag":
+        if len(a) < 4:
+            print("usage: drag <x1> <y1> <x2> <y2>", file=sys.stderr)
+            return 1
+        payload["x1"], payload["y1"], payload["x2"], payload["y2"] = (int(v) for v in a[:4])
+    elif cmd == "wait":
+        if not a:
+            print("usage: wait <ms>", file=sys.stderr)
+            return 1
+        payload["ms"] = int(a[0])
+    elif cmd == "upload":
+        if a and a[0] == "--chooser":
+            if len(a) < 3:
+                print("usage: upload --chooser <selector> <path>", file=sys.stderr)
+                return 1
+            payload["chooser"] = True
+            payload["selector"], payload["path"] = a[1], " ".join(a[2:])
+        elif len(a) < 2:
+            print("usage: upload <selector> <path>", file=sys.stderr)
+            return 1
+        else:
+            payload["selector"], payload["path"] = a[0], " ".join(a[1:])
+    elif cmd == "download":
+        if len(a) < 2:
+            print("usage: download <url> <path>", file=sys.stderr)
+            return 1
+        payload["url"], payload["path"] = a[0], " ".join(a[1:])
+    else:
+        print(f"unknown cmd: {cmd}", file=sys.stderr)
+        return 1
+
+    out = post(ns.server, payload,
+               timeout=ns.timeout or (300.0 if cmd == "flow" else 45.0))
+    # Compact JSON: the agent re-reads every command result, and pretty-printing
+    # bloats the transcript by ~40% in tokens for no information gain.
+    print(json.dumps(out, separators=(",", ":"), default=str))
+    if out.get("blocked"):
+        return 2
+    if not out.get("ok"):
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

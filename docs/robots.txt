@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://bongomanuk.github.io/jobsquirrel/sitemap.xml

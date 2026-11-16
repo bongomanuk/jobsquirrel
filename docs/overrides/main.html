@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  {% set desc = page.meta.description if page and page.meta and page.meta.description else config.site_description %}
+  {% set title = page.title if page and page.title else config.site_name %}
+  <meta name="keywords" content="job search, job application, job hunting, resume, CV, cover letter, AI agent, agentic AI, LLM, GraphRAG, knowledge graph, self-hosted, local-first, privacy, Python, ATS, automation, open source">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ config.site_name }}">
+  <meta property="og:title" content="{{ title }}">
+  <meta property="og:description" content="{{ desc }}">
+  <meta property="og:image" content="{{ config.site_url }}assets/social-card.jpg">
+  <meta property="og:url" content="{{ page.canonical_url if page else config.site_url }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ title }}">
+  <meta name="twitter:description" content="{{ desc }}">
+  <meta name="twitter:image" content="{{ config.site_url }}assets/social-card.jpg">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Jobsquirrel",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Linux, macOS",
+    "url": {{ config.site_url | tojson }},
+    "codeRepository": "https://github.com/bongomanuk/jobsquirrel",
+    "license": "https://www.apache.org/licenses/LICENSE-2.0",
+    "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+    "description": {{ config.site_description | tojson }}
+  }
+  </script>
+{% endblock %}

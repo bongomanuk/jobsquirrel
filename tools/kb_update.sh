@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Incremental knowledge-graph update: ingest new/changed kb/sources into the GraphRAG
+# input folder, run `graphrag update` (only the delta), then promote the updated index
+# into kb/graphrag/output so queries see it. Much faster than a full re-index.
+#
+#   bash tools/kb_update.sh
+set -u
+ROOT="${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+cd "$ROOT" || exit 1
+GR="$ROOT/kb/graphrag"
+
+gr() {
+  if [ -x "$ROOT/.venv-graphrag/bin/graphrag" ]; then echo "$ROOT/.venv-graphrag/bin/graphrag"; return; fi
+  if [ -n "${GRAPHRAG_BIN:-}" ] && [ -x "$GRAPHRAG_BIN" ]; then echo "$GRAPHRAG_BIN"; return; fi
+  command -v graphrag || true
+}
+G="$(gr)"
+[ -n "$G" ] || { echo "no graphrag CLI found (set GRAPHRAG_BIN or run tools/install.sh)" >&2; exit 1; }
+[ -f "$GR/settings.yaml" ] || { echo "missing kb/graphrag/settings.yaml" >&2; exit 1; }
+[ -f "$GR/output/entities.parquet" ] || { echo "no existing index — run a full build first (tools/setup_kb.sh)" >&2; exit 1; }
+
+# GraphRAG's settings reference ${OPENCODE_API_KEY}; load it from the encrypted
+# store when the caller did not export it (same as tools/setup_kb.sh).
+if [ -z "${OPENCODE_API_KEY:-}" ]; then
+  OPENCODE_API_KEY="$(python3 "$ROOT/tools/secrets_store.py" --get graphrag OPENCODE_API_KEY 2>/dev/null || true)"
+  export OPENCODE_API_KEY
+fi
+
+echo "== ingest kb/sources -> kb/graphrag/input =="
+python3 "$ROOT/tools/kb_ingest.py" --sources "$ROOT/kb/sources" --out "$GR/input" --clean \
+  || { echo "ingest failed" >&2; exit 1; }
+
+echo "== graphrag update (incremental; only new/changed docs) =="
+# graphrag update appends "-update" to the method itself, so passing
+# "standard-update" asks for the unregistered "standard-update-update" and runs
+# an empty pipeline. Use the base method; the update command adds the suffix.
+"$G" update --root "$GR" --method standard || { echo "graphrag update failed" >&2; exit 1; }
+
+# Promote the updated index so queries use it.
+# GraphRAG v2 wrote a flat update_output/; v3 writes update_output/<timestamp>/{delta,previous}
+# and the query layer merges those, so no promotion is needed there — just report.
+if [ -f "$GR/update_output/entities.parquet" ]; then
+  echo "== promoting update_output -> output =="
+  rm -rf "$GR/output"
+  mv "$GR/update_output" "$GR/output"
+else
+  _latest="$(ls -1dt "$GR"/update_output/*/ 2>/dev/null | head -n1 || true)"
+  if [ -n "$_latest" ] && [ -f "${_latest}delta/stats.json" ]; then
+    _n="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("update_documents","?"))' "${_latest}delta/stats.json" 2>/dev/null || echo "?")"
+    echo "== GraphRAG v3 incremental update: ${_n} document(s) updated; query layer merges update_output (no promote needed) =="
+  fi
+fi
+echo "knowledge graph updated $(date +%H:%M:%S)"

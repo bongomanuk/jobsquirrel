@@ -1,0 +1,6134 @@
+#!/usr/bin/env python3
+"""Jobsquirrel WebUI server - stdlib http.server + static zero-build frontend.
+
+Serves tools/web/ (index.html, app.css, app.js) and a JSON API over the pipeline
+state. Binds 127.0.0.1 by default; every write needs the per-session token
+(X-Session) injected into the page. Irreversible actions (submitting the queue)
+require an explicit approval token. See docs/PRODUCT-SPEC.md.
+
+    python3 tools/dashboard.py [--host 127.0.0.1] [--port 8765] [--open]
+"""
+import argparse
+import csv
+import email.utils
+import glob
+import gzip
+import hashlib
+from functools import lru_cache
+from datetime import date
+import html as _html
+import json
+import mimetypes
+import os
+import platform
+import re
+import secrets
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import urllib.request
+import uuid
+import webbrowser
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse, parse_qs, quote
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import stateio  # noqa: E402  transparent gzip for state/ artifacts
+import scam_check  # noqa: E402  recruitment-scam signals
+import skill_context  # noqa: E402  readable missing-skill labels from the advert
+import secrets_store as SS  # noqa: E402  central 0600 store, outside the repo
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATE = os.environ.get("DASHBOARD_STATE", os.path.join(ROOT, "state"))
+LOGS = os.path.join(STATE, "logs")
+WEB = os.path.join(ROOT, "tools", "web")
+SESSION_TOKEN = secrets.token_urlsafe(24)
+BOOT_ID = secrets.token_urlsafe(8)          # changes on every restart; lets open tabs reload
+START_TS = time.time()
+
+try:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import watch_queue as WQ
+except Exception:
+    WQ = None
+
+ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+KEEP = re.compile(r"STATUS|RESULT:|\b(ERROR|FAIL|PASS)\b|recorded|submitted|verified|"
+                  r"BLOCKED|CLOSED|PREPARED|SUBMITTED|INTERVIEW|REJECTED|thank you|thanks for|"
+                  r"confirmation|not moving forward|unfortunately|record_submission|check_documents|"
+                  r"kb_graphrag|email_verify|nav |fill |click |submit", re.I)
+CONFIG_FILES = {"profile": "config/profile.md", "cv": "config/cv.json",
+                "archetypes": "config/archetypes.json"}
+STATUSES = ["SUBMITTED", "IN_PROGRESS", "INTERVIEW", "OFFER", "REJECTED",
+            "BLOCKED", "MANUAL", "PREPARED", "CLOSED"]
+
+
+# ---------------------------------------------------------------- helpers
+def _read(path, cap=400_000):
+    # Task logs are gzipped once they are old enough and state artifacts can be
+    # packed by tools/storage.py; an artifact may also be an alias symlink to a
+    # file that was packed afterwards. stateio follows both without restoring
+    # anything, so simply browsing the grid never undoes the saving.
+    return stateio.read_text(path)[:cap]
+
+
+def _rows(path):
+    try:
+        with open(path, newline="", encoding="utf-8") as fh:
+            return list(csv.DictReader(fh))
+    except OSError:
+        return []
+
+
+def _lines(path):
+    return [l.rstrip("\n") for l in _read(path).splitlines() if l.strip() and not l.lstrip().startswith("#")]
+
+
+def _count(path):
+    return len(_lines(path))
+
+
+def curate(text, limit=600):
+    text = ANSI.sub("", text or "")
+    out, last_phase = [], None
+    for raw in text.splitlines():
+        s = raw.strip()
+        if not s or re.fullmatch(r"\d+\s*/\s*\d+", s) or s[:4] in ("0%|", "5%|"):
+            continue
+        if WQ and WQ._is_noise(s):
+            continue
+        if re.match(r"\d{4}-\d{2}-\d{2}[,\s]", s) or s.count(",") >= 4:
+            continue
+        phase = None
+        if WQ:
+            for pat, label in WQ.PHASES:
+                if re.search(pat, s, re.I):
+                    phase = label
+                    break
+        if phase and phase != last_phase:
+            out.append({"k": "phase", "t": phase})
+            last_phase = phase
+        elif KEEP.search(s):
+            out.append({"k": "line", "t": s[:240]})
+    ded = []
+    for it in out:
+        if not ded or ded[-1] != it:
+            ded.append(it)
+    return ded[-limit:]
+
+
+# ---------------------------------------------------------------- health
+_HEALTH = {"t": 0, "v": "unknown", "detail": "", "checks": [], "register": {}}
+
+
+def health(force=False):
+    if not force and time.time() - _HEALTH["t"] < 30:
+        return _HEALTH
+    v, detail, checks, register = "unknown", "", [], {}
+    try:
+        r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "doctor.py"), "--json"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=60)
+        d = json.loads(r.stdout)
+        checks = [{"name": str(c.get("name", "")), "status": str(c.get("status", "")),
+                   "detail": str(c.get("detail", ""))} for c in d.get("checks", [])]
+        v = "PASS" if d.get("ok") else "FAIL"
+        detail = "; ".join(f"{c['name']}:{c['status']}" for c in d.get("checks", []) if c["status"] != "pass") or "all ok"
+        # The register audit is part of health: a contradictory register is not
+        # a healthy system, whatever the environment checks say.
+        a = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "register.py"), "--audit"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=60)
+        lines = (a.stdout or a.stderr or "").strip().splitlines()
+        summary = next((l for l in reversed(lines) if "problem(s)" in l), "")
+        m = re.search(r"(\d+)\s+problem", summary)
+        register = {"summary": summary, "problems": int(m.group(1)) if m else None}
+        if a.returncode != 0:
+            v = "FAIL"
+            reg = summary or "register audit failed"
+            detail = (detail + "; " if detail and detail != "all ok" else "") + reg
+    except Exception as e:
+        v, detail = "unknown", str(e)[:120]
+    _HEALTH.update(t=time.time(), v=v, detail=detail, checks=checks, register=register)
+    return _HEALTH
+
+
+def _file_count(path):
+    n = 0
+    for _base, _dirs, files in os.walk(path):
+        n += len(files)
+    return n
+
+
+def health_full(force=False):
+    """The Settings → About view: full checks plus what this instance is."""
+    h = health(force=force)
+    apps = _rows(os.path.join(STATE, "applications.csv"))
+    q_total = _count(os.path.join(STATE, "queue.tsv"))
+    q_done = _count(os.path.join(STATE, "queue.done"))
+    submissions = _count(os.path.join(STATE, "submissions.csv"))
+    graph = graph_query("stats")
+    graph_info = {}
+    if isinstance(graph, dict) and not graph.get("error"):
+        graph_info = {k: graph.get(k) for k in ("index", "entities", "relationships",
+                                                "communities", "documents", "runtime_s")
+                      if k in graph}
+    elif isinstance(graph, dict):
+        graph_info = {"error": graph.get("error", "")}
+    return {
+        "status": h.get("v", "unknown"),
+        "detail": h.get("detail", ""),
+        "checks": h.get("checks", []),
+        "register": h.get("register", {}),
+        "instance": {
+            "version": current_version(),
+            "web_ui": "v6",
+            "boot": BOOT_ID,
+            "started": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(START_TS)),
+            "uptime_s": max(0, int(time.time() - START_TS)),
+            "pid": os.getpid(),
+            "python": platform.python_version(),
+            "platform": f"{platform.system()} {platform.release()}",
+            "root": ROOT,
+            "root_name": os.path.basename(ROOT.rstrip(os.sep)) or ROOT,
+            "paths": {"config": "config", "state": "state", "documents": "documents",
+                      "kb": "kb/sources", "logs": "state/logs"},
+            "register_rows": len(apps),
+            "submissions": submissions,
+            "queue_rows": q_total,
+            "queue_done": q_done,
+            "documents": _file_count(os.path.join(ROOT, "documents", "applications")),
+            "kb_sources": _file_count(os.path.join(ROOT, "kb", "sources")),
+            "graph": graph_info,
+        },
+    }
+
+
+# ---------------------------------------------------------------- state
+def state():
+    apps = _rows(os.path.join(STATE, "applications.csv"))
+    counts = {}
+    for r in apps:
+        k = (r.get("status") or "?").upper()
+        counts[k] = counts.get(k, 0) + 1
+    inproc = sum(counts.get(k, 0) for k in ("SUBMITTED", "IN_PROGRESS", "INTERVIEW", "OFFER"))
+    interviews = [r for r in apps if (r.get("status") or "").upper() == "INTERVIEW"]
+    q_total, q_done = _count(os.path.join(STATE, "queue.tsv")), _count(os.path.join(STATE, "queue.done"))
+    return {"kpis": {"in_process": inproc, "interviews": counts.get("INTERVIEW", 0),
+                     "blocked": counts.get("BLOCKED", 0), "offers": counts.get("OFFER", 0),
+                     "human": _count(os.path.join(STATE, "queue-human.tsv")),
+                     "total": len(apps), "submissions": _count(os.path.join(STATE, "submissions.csv"))},
+            "counts": counts,
+            "queue_counts": {"pending": q_total, "done": q_done},
+            "interviews": [{"company": r["company"], "role": r["role"]} for r in interviews][:40]}
+
+
+# ---------------------------------------------------------------- register
+def register_api(q="", status="", limit=200, offset=0):
+    rows = _rows(os.path.join(STATE, "applications.csv"))
+    q, status = (q or "").lower(), (status or "").upper()
+    if q:
+        rows = [r for r in rows if q in r["company"].lower() or q in r["role"].lower()]
+    if status:
+        rows = [r for r in rows if (r.get("status") or "").upper() == status]
+    total = len(rows)
+    try:
+        offset, limit = int(offset), int(limit)
+    except (TypeError, ValueError):
+        offset, limit = 0, 200
+    rows = sorted(rows, key=lambda r: (r.get("date") or ""), reverse=True)
+    return {"total": total, "rows": rows[offset:offset + limit]}
+
+
+def provenance(company, role):
+    for r in _rows(os.path.join(STATE, "submissions.csv")):
+        if r["company"].strip() == company.strip() and r["role"].strip() == role.strip():
+            snap = r.get("snapshot_dir", "")
+            shots = []
+            try:
+                for f in os.listdir(os.path.join(ROOT, snap)):
+                    if f.lower().endswith((".png", ".jpg")):
+                        shots.append(os.path.join(snap, f))
+            except OSError:
+                pass
+            return {"company": r["company"], "role": r["role"], "date": r.get("date"),
+                    "status": r.get("status"), "confidence": r.get("confidence"),
+                    "action": (r.get("action") or "").strip(),
+                    "cv_file": r.get("cv_file"), "cv_sha256": r.get("cv_sha256"),
+                    "letter_file": r.get("letter_file"), "letter_sha256": r.get("letter_sha256"),
+                    "evidence": r.get("evidence"),"snapshot_dir": snap, "screenshots": shots}
+    return {}
+
+
+def update_row(company, role, status, note, employment=None, action=None,
+               work_model=None, salary=None, key=""):
+    if not (company and role):
+        return {"error": "company and role required"}
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import register as REG
+    try:
+        REG.set_row(company, role, status=(status or "").upper(), note=note or "",
+                    employment=employment, action=action)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    if work_model is not None or salary is not None:
+        set_role_meta(key or _slug(f"{company}-{role}"),
+                      work_model=work_model, salary=salary)
+    return {"ok": f"updated {company} / {role}"}
+
+
+# ---------------------------------------------------------------- triage flags
+ROLE_FLAGS = os.path.join(STATE, "role-flags.json")
+
+
+def role_flags():
+    """Per-role UI triage: pinned to the top."""
+    try:
+        with open(ROLE_FLAGS, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    # Older builds stored a "dismissed" flag; ignore it and keep only pins.
+    return {k: {"pinned": True} for k, v in data.items()
+            if isinstance(v, dict) and v.get("pinned")}
+
+
+def set_role_flags(key, pinned=None):
+    if not key:
+        return {"error": "key required"}
+    data = role_flags()
+    entry = dict(data.get(key) or {})
+    if pinned is not None:
+        entry["pinned"] = bool(pinned)
+    if entry.get("pinned"):
+        data[key] = entry
+    else:
+        data.pop(key, None)
+    tmp = ROLE_FLAGS + ".tmp"
+    os.makedirs(os.path.dirname(tmp), exist_ok=True)
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=1, sort_keys=True)
+    os.replace(tmp, ROLE_FLAGS)
+    return {"ok": "updated"}
+
+
+# ---------------------------------------------------------------- shelved roles
+SHELVED = os.path.join(STATE, "shelved.json")
+
+
+def shelved_roles():
+    """Roles parked by the operator. The register status is never changed."""
+    try:
+        with open(SHELVED, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): (v if isinstance(v, dict) else {}) for k, v in data.items()}
+
+
+def set_shelved(key, on=True, note=""):
+    key = str(key or "").strip()[:160]
+    if not key:
+        return {"error": "key required"}
+    data = shelved_roles()
+    if on:
+        data[key] = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                     "note": str(note or "")[:400]}
+    else:
+        data.pop(key, None)
+    tmp = SHELVED + ".tmp"
+    os.makedirs(os.path.dirname(tmp), exist_ok=True)
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=1, sort_keys=True)
+    os.replace(tmp, SHELVED)
+    return {"ok": "shelved" if on else "unshelved", "key": key}
+
+
+# ---------------------------------------------------------------- role groups
+ROLE_GROUPS = os.path.join(STATE, "role-groups.json")
+GROUP_COLORS = ["#7aa2f7", "#9ece6a", "#e0af68", "#f7768e",
+                "#bb9af7", "#7dcfff", "#ff9e64", "#c0caf5"]
+
+
+def role_groups():
+    """Named groups (campaigns) and the roles in them, independent of status."""
+    try:
+        with open(ROLE_GROUPS, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    raw_groups = data.get("groups") if isinstance(data.get("groups"), dict) else {}
+    raw_roles = data.get("roles") if isinstance(data.get("roles"), dict) else {}
+    groups = {}
+    for gid, g in raw_groups.items():
+        if not isinstance(g, dict):
+            continue
+        name = str(g.get("name") or "").strip()[:60]
+        if not name:
+            continue
+        groups[str(gid)] = {"name": name, "color": str(g.get("color") or "")}
+    roles = {}
+    for key, ids in raw_roles.items():
+        if not isinstance(ids, list):
+            continue
+        keep = sorted({str(x) for x in ids if str(x) in groups})
+        if keep:
+            roles[str(key)] = keep
+    return {"groups": groups, "roles": roles}
+
+
+def _group_slug(name, existing):
+    base = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")[:40] or "group"
+    slug, i = base, 2
+    while slug in existing:
+        slug = f"{base}-{i}"
+        i += 1
+    return slug
+
+
+def _save_role_groups(data):
+    tmp = ROLE_GROUPS + ".tmp"
+    os.makedirs(os.path.dirname(tmp), exist_ok=True)
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=1, sort_keys=True)
+    os.replace(tmp, ROLE_GROUPS)
+
+
+def groups_view():
+    data = role_groups()
+    counts = {}
+    for ids in data["roles"].values():
+        for gid in ids:
+            counts[gid] = counts.get(gid, 0) + 1
+    groups = [{"id": gid, **g, "count": counts.get(gid, 0)}
+              for gid, g in sorted(data["groups"].items(),
+                                   key=lambda kv: kv[1]["name"].lower())]
+    return {"groups": groups, "roles": data["roles"]}
+
+
+def group_action(op, name="", group="", key="", on=None):
+    """Create, rename, delete or assign a role group."""
+    data = role_groups()
+    groups, roles = data["groups"], data["roles"]
+    op = (op or "").strip().lower()
+    if op == "create":
+        nm = (name or "").strip()[:60]
+        if not nm:
+            return {"error": "group name required"}
+        gid = _group_slug(nm, groups)
+        color = GROUP_COLORS[len(groups) % len(GROUP_COLORS)]
+        groups[gid] = {"name": nm, "color": color}
+        _save_role_groups(data)
+        return {"ok": "created", "group": {"id": gid, **groups[gid]}}
+    if op == "rename":
+        gid = str(group or "")
+        nm = (name or "").strip()[:60]
+        if gid not in groups:
+            return {"error": "unknown group"}
+        if not nm:
+            return {"error": "group name required"}
+        groups[gid]["name"] = nm
+        _save_role_groups(data)
+        return {"ok": "renamed", "group": {"id": gid, **groups[gid]}}
+    if op == "delete":
+        gid = str(group or "")
+        if gid not in groups:
+            return {"error": "unknown group"}
+        groups.pop(gid, None)
+        for k in list(roles):
+            ids = [x for x in roles[k] if x != gid]
+            if ids:
+                roles[k] = ids
+            else:
+                roles.pop(k, None)
+        _save_role_groups(data)
+        return {"ok": "deleted"}
+    if op == "assign":
+        gid = str(group or "")
+        k = str(key or "")
+        if gid not in groups:
+            return {"error": "unknown group"}
+        if not k:
+            return {"error": "role key required"}
+        ids = set(roles.get(k) or [])
+        if on is None:
+            on = True
+        if on:
+            ids.add(gid)
+        else:
+            ids.discard(gid)
+        if ids:
+            roles[k] = sorted(ids)
+        else:
+            roles.pop(k, None)
+        _save_role_groups(data)
+        return {"ok": "assigned", "key": k, "groups": sorted(ids)}
+    return {"error": "unknown group action"}
+
+
+# ---------------------------------------------------------------- drafted replies
+def drafts_list(company="", role=""):
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import draft_email as DE
+    return {"drafts": DE.list_drafts(company, role)}
+
+
+def draft_get(path):
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import draft_email as DE
+    try:
+        return {"draft": DE.load_draft(path)}
+    except (OSError, ValueError) as e:
+        return {"error": str(e)}
+
+
+def draft_save(data):
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import draft_email as DE
+    path = data.get("path") or ""
+    try:
+        if path:
+            saved = DE.update_draft(path, data.get("to", ""), data.get("cc", ""),
+                                    data.get("subject", ""), data.get("body", ""),
+                                    data.get("attachments") or [], data.get("company", ""),
+                                    data.get("role", ""))
+        else:
+            if not (data.get("company") and data.get("role")):
+                return {"error": "company and role required"}
+            saved = DE.save_draft(data.get("company", ""), data.get("role", ""),
+                                  data.get("to", ""), data.get("cc", ""),
+                                  data.get("subject", ""), data.get("body", ""),
+                                  data.get("attachments") or [])
+        return {"ok": "saved", "path": saved, "draft": DE.load_draft(saved)}
+    except (OSError, ValueError) as e:
+        return {"error": str(e)}
+
+
+def draft_delete(path):
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import draft_email as DE
+    return {"ok": "deleted"} if DE.delete_draft(path) else {"error": "draft not found"}
+
+
+def _apply_draft_edits(d, edits, validate=True):
+    """Apply edits from the approval dialog to the saved draft (headers sanitised)."""
+    def pick(key, default, header=False, limit=200000):
+        v = edits.get(key)
+        if v is None:
+            return default
+        v = str(v)
+        if header:
+            v = re.sub(r"[\r\n]+", " ", v).strip()
+        return v[:limit]
+    to = pick("to", d.get("to", ""), header=True, limit=2000)
+    cc = pick("cc", d.get("cc", ""), header=True, limit=2000)
+    subject = pick("subject", d.get("subject", ""), header=True, limit=500)
+    body = pick("body", d.get("body", ""))
+    if validate:
+        if not to.strip():
+            return {"error": "add a recipient before sending"}
+        if not subject.strip():
+            return {"error": "add a subject before sending"}
+        if not body.strip():
+            return {"error": "the email body is empty — not sent"}
+    try:
+        import draft_email as DE
+        DE.update_draft(d["path"], to=to, cc=cc, subject=subject, body=body,
+                        attachments=d.get("attachments") or [],
+                        company=d.get("company") or "", role=d.get("role") or "")
+    except (OSError, ValueError) as e:
+        return {"error": f"could not save the edited draft: {e}"}
+    return {}
+
+
+def draft_send(path, clear_action=False):
+    """Send exactly one saved draft, after a human approves (and may edit) it."""
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import draft_email as DE
+    try:
+        d = DE.load_draft(path)
+    except (OSError, ValueError) as e:
+        return {"error": str(e)}
+    # A human must approve this exact draft, every time. The dialog shows the
+    # whole email and can edit it; the receipt is issued AFTER those edits.
+    who = d.get("to") or "(no recipient)"
+    purpose = f"sending draft to {who} — {d.get('subject') or '(no subject)'}"
+    email = {"to": d.get("to", ""), "cc": d.get("cc", ""), "subject": d.get("subject", ""),
+             "body": d.get("body", ""), "attachments": d.get("attachments") or []}
+    res = consent_request(purpose, "SEND-EMAIL", timeout=900, email=email)
+    edits = res.get("edits") or {}
+    if res.get("decision") != "allow":
+        if res.get("save") and edits:
+            problem = _apply_draft_edits(d, edits, validate=False)
+            if problem:
+                return problem
+            return {"ok": "changes saved — email not sent"}
+        return {"error": "refused: the email was not approved"}
+    if edits:
+        problem = _apply_draft_edits(d, edits, validate=True)
+        if problem:
+            return problem
+        d = DE.load_draft(d["path"])
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import send_receipt as SRE
+    SRE.issue(d["path"], "dashboard")
+    env = agent_env()
+    env.pop("APPROVE_SEND_EMAIL", None)
+    try:
+        r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "gmail_send.py"),
+                            "--draft", d["path"]],
+                           cwd=ROOT, env=env, capture_output=True, text=True, timeout=380)
+    except subprocess.TimeoutExpired:
+        return {"error": "timed out (approval unanswered?)"}
+    out = (r.stdout + "\n" + r.stderr).strip()
+    if r.returncode != 0 or "sent " not in out:
+        return {"error": out or f"gmail_send exited {r.returncode}", "output": out}
+    mid = out.split("sent ", 1)[1].split()[0]
+    DE.mark_sent(d["path"], mid)
+    if clear_action and d.get("company") and d.get("role"):
+        try:
+            sys.path.insert(0, os.path.join(ROOT, "tools"))
+            import register as REG
+            REG.set_row(d["company"], d["role"], action="")
+        except Exception:
+            pass
+    return {"ok": f"sent {mid}", "message_id": mid, "output": out}
+
+
+# ---------------------------------------------------------------- queue
+def _queue_rows(path):
+    out = []
+    for ln in _lines(path):
+        raw = ln.split("\t")
+        if len(raw) < 2 or not raw[1].strip():
+            continue                      # a bare key (queue.retry) is not a role row
+        p = (raw + [""] * 6)[:6]
+        # Some queues (queue-human.tsv) put a reason in the 6th column rather
+        # than a key; never mistake that for the key -- derive the slug instead.
+        key = p[5]
+        reason = ""
+        if not re.fullmatch(r"[a-z0-9._-]{3,}", key or ""):
+            reason, key = key, _slug(f"{p[0]}-{p[1]}")
+        ats, letter = p[4], ""
+        if ats.lower().endswith((".docx", ".pdf")):     # human queue carries the letter here
+            letter, ats = ats, ""
+        out.append({"company": p[0], "role": p[1], "url": p[2], "cv": p[3], "ats": ats,
+                    "key": key, "reason": reason, "letter": letter})
+    return out
+
+
+def queue_files():
+    return {"pending": _queue_rows(os.path.join(STATE, "queue.tsv")),
+            "human": _queue_rows(os.path.join(STATE, "queue-human.tsv")),
+            "retry": _queue_rows(os.path.join(STATE, "queue.retry")),
+            "done": [l.replace("|", " — ") for l in _lines(os.path.join(STATE, "queue.done"))]}
+
+
+def _drop_key(path, key):
+    keep, n = [], 0
+    for ln in _read(path).splitlines():
+        p = (ln.split("\t") + [""] * 6)[:6]
+        if (p[0] + "|" + p[1]).lower() == key.lower():
+            n += 1
+            continue
+        keep.append(ln)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(keep).rstrip("\n") + ("\n" if keep else ""))
+    return n
+
+
+def _queue_fields(company, role):
+    """Recover url/cv/ats/key so a re-queued row is complete."""
+    for path in ("queue.tsv", "queue-human.tsv", "queue.retry",
+                 "queue-prepared-linkedin.tsv", "queue-linkedin.tsv"):
+        for r in _queue_rows(os.path.join(STATE, path)):
+            if r["company"].lower() == company.lower() and r["role"].lower() == role.lower():
+                if r["url"] or r["key"]:
+                    return r["url"], r["cv"], r["ats"], r["key"]
+    for r in _rows(os.path.join(STATE, "submissions.csv")):
+        if r["company"].lower() == company.lower() and r["role"].lower() == role.lower():
+            return r.get("apply_url", ""), r.get("cv_file", ""), r.get("ats", ""), _slug(f"{company}-{role}")
+    return "", "", "", _slug(f"{company}-{role}")
+
+
+def _row_note(company, role):
+    for r in _rows(os.path.join(STATE, "applications.csv")):
+        if r["company"].lower() == company.lower() and r["role"].lower() == role.lower():
+            return r.get("notes", "")
+    return ""
+
+
+def _prepared_letter(company, role, key):
+    """The cover letter recorded/prepared for this row, if any."""
+    m = re.search(r"documents/[^\s|;]*_Motivation_[^\s|;]*\.docx", _row_note(company, role))
+    if m and os.path.exists(os.path.join(ROOT, m.group(0))):
+        return m.group(0)
+    hits = sorted(glob.glob(os.path.join(ROOT, "documents", "applications", f"*_Motivation_{key}.docx")))
+    return os.path.relpath(hits[-1], ROOT) if hits else ""
+
+
+def _prepared_cv(company, role, key):
+    """The targeted CV prepared for this row (falls back to the queue's archetype)."""
+    return _prepared_cv_note(_row_note(company, role), key)
+
+
+def _prepared_cv_note(note, key, cv_index=None):
+    """The targeted CV from a register note, or the key index (cheap, no CSV read)."""
+    m = re.search(r"documents/[^\s|;]*_CV_[^\s|;]*\.docx", note or "")
+    if m and os.path.exists(os.path.join(ROOT, m.group(0))):
+        return m.group(0)
+    if cv_index is not None:
+        return cv_index.get(key, "")
+    hits = sorted(glob.glob(os.path.join(ROOT, "documents", "applications", f"*_CV_{key}.docx")))
+    return os.path.relpath(hits[-1], ROOT) if hits else ""
+
+
+def queue_action(action, company, role):
+    if not (company and role):
+        return {"error": "company and role required"}
+    key = f"{company}|{role}"
+    q = os.path.join(STATE, "queue.tsv")
+    if action == "delete":
+        n = sum(_drop_key(os.path.join(STATE, f), key) for f in ("queue.tsv", "queue-human.tsv", "queue.retry"))
+        return {"ok": f"removed {n} row(s)"}
+    if action in ("retry", "unblock"):
+        url, cv, ats, k = _queue_fields(company, role)
+        for f in ("queue.tsv", "queue-human.tsv", "queue.retry", "queue.done"):
+            _drop_key(os.path.join(STATE, f), key)
+        with open(q, "a", encoding="utf-8") as fh:
+            fh.write("\t".join([company, role, url, cv, ats, k]) + "\n")
+        try:
+            sys.path.insert(0, os.path.join(ROOT, "tools"))
+            import register as REG
+            REG.set_row(company, role, status="QUEUED",
+                        note=("unblocked via dashboard" if action == "unblock" else "retry via dashboard"))
+        except Exception:
+            pass
+        return {"ok": f"{'unblocked' if action == 'unblock' else 're-queued'} {company} / {role}"}
+    if action == "human":
+        # One role, one visible browser, everything pre-filled: the human only has
+        # to clear the challenge and press Submit. The queue row carries the exact
+        # cv/letter/reason so the assist agent uploads the prepared documents.
+        url, cv, ats, k = _queue_fields(company, role)
+        cv = _prepared_cv(company, role, k) or cv
+        letter = _prepared_letter(company, role, k)
+        reason = (_row_note(company, role).split("|")[0].strip() or "human step")[:200]
+        os.makedirs(LOGS, exist_ok=True)
+        tmp = os.path.join(LOGS, "queue-human-ui.tsv")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write("\t".join([company, role, url, cv, letter, reason]) + "\n")
+        tmp_done = os.path.join(LOGS, "queue-human-ui.done")     # empty: never skip this row
+        with open(tmp_done, "w", encoding="utf-8"):
+            pass
+        _spawn(f"human assist: {company} / {role}",
+               ["bash", os.path.join(ROOT, "tools", "human_assist.sh")],
+               {"QUEUE": tmp, "DONE": tmp_done})
+        return {"ok": f"opening a VISIBLE browser for {company} / {role} — it pre-fills everything, "
+                      f"then you solve the challenge and submit"}
+    return {"error": "unknown action"}
+
+
+def open_apply(company, role):
+    """Open the employer's apply page in the operator's own browser."""
+    import shutil
+    url, _, _, _ = _queue_fields(company, role)
+    if not url:
+        return {"error": "no apply URL recorded for this row"}
+    opener = "open" if sys.platform == "darwin" else "xdg-open"
+    if not shutil.which(opener):
+        return {"error": f"{opener} not available"}
+    subprocess.Popen([opener, url], start_new_session=True)
+    return {"ok": f"opened {url}"}
+
+
+# ---------------------------------------------------------------- roles
+def _archetype_for(key):
+    for r in _queue_rows(os.path.join(STATE, "queue.tsv")):
+        if r["key"] == key:
+            return r["cv"]
+    return ""
+
+
+def roles_list():
+    out = []
+    for key in stateio.stems(os.path.join(STATE, "job-descriptions"), ".md"):
+        m = _MATCH_CACHE.get(key, {})
+        out.append({"key": key, "company": m.get("company", ""), "role": m.get("role", ""),
+                    "ats": m.get("ats", ""), "match_pct": m.get("coverage"), "alignment": m.get("alignment")})
+    return out
+
+
+_MATCH_CACHE = {}
+
+# Coverage (ATS-keyword hit %) is cheap to compute, so the grid can show it for
+# every row; alignment runs a subprocess and stays on-demand. Both are persisted
+# here, keyed by a signature of the inputs so restarts don't recompute.
+MATCH_FILE = os.path.join(LOGS, "dashboard-match.json")
+_COV, _cov_loaded, _cov_dirty = {}, False, False
+_arch_text = {}
+
+
+def _load_cov():
+    global _cov_loaded
+    if _cov_loaded:
+        return
+    _cov_loaded = True
+    try:
+        with open(MATCH_FILE, encoding="utf-8") as fh:
+            _COV.update(json.load(fh))
+    except (OSError, ValueError):
+        pass
+
+
+def _save_cov():
+    global _cov_dirty
+    if not _cov_dirty:
+        return
+    try:
+        os.makedirs(LOGS, exist_ok=True)
+        tmp = MATCH_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(_COV, fh)
+        os.replace(tmp, MATCH_FILE)
+        _cov_dirty = False
+    except OSError:
+        pass
+
+
+# Employment/engagement type: the register field wins; otherwise guess it from
+# the saved job ad. Persisted (with the JD's mtime) so the grid stays cheap.
+EMP_FILE = os.path.join(LOGS, "dashboard-employment.json")
+_EMP, _emp_loaded, _emp_dirty = {}, False, False
+EMPLOYMENT_TYPES = ["full-time", "part-time", "contract", "consultant",
+                    "freelance", "internship", "temporary"]
+# Ordered checks; the first that matches wins. Deliberately conservative so a
+# job title like "Senior Consultant" at a consultancy isn't mistaken for a
+# consultancy engagement, and "permanent contract" reads as full-time.
+_EMP_CHECKS = (
+    ("freelance", lambda t: re.search(r"freelance|freelancer", t)),
+    ("part-time", lambda t: re.search(r"part[- ]time", t)),
+    ("internship", lambda t: re.search(r"internship|\bintern\b|\bpraktik\b", t)),
+    ("temporary", lambda t: re.search(r"\btemporary\b|maternity cover|parental cover|\bvikariat\b", t)),
+    ("consultant", lambda t: re.search(r"\bconsultant (contract|role|engagement|position|basis)"
+                                       r"|\bas a consultant\b|independent consultant"
+                                       r"|consultancy contract|freelance consultant", t)),
+    ("contract", lambda t: re.search(r"fixed[- ]term|\bcontractor\b|\bb2b\b|day rate|\binterim\b"
+                                     r"|outside ir35|inside ir35"
+                                     r"|\b\d+[- ]?(month|year)s?[- ]contract\b"
+                                     r"|\bcontract (role|position|basis|assignment|work|employment|"
+                                     r"duration|length|to hire|of \d)\b|\bon a contract\b", t)),
+    ("full-time", lambda t: re.search(r"full[- ]time|permanent|\bfte\b|tillsvidare|direct hire", t)),
+)
+
+
+def _load_emp():
+    global _emp_loaded
+    if _emp_loaded:
+        return
+    _emp_loaded = True
+    try:
+        with open(EMP_FILE, encoding="utf-8") as fh:
+            _EMP.update(json.load(fh))
+    except (OSError, ValueError):
+        pass
+
+
+def _save_emp():
+    global _emp_dirty
+    if not _emp_dirty:
+        return
+    try:
+        os.makedirs(LOGS, exist_ok=True)
+        tmp = EMP_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(_EMP, fh)
+        os.replace(tmp, EMP_FILE)
+        _emp_dirty = False
+    except OSError:
+        pass
+
+
+def _employment_from_jd(key):
+    """Engagement type read from the saved job ad (cached by the ad's mtime)."""
+    path = os.path.join(STATE, "job-descriptions", key + ".md")
+    mt = _mtime(path)
+    if not mt:
+        return ""
+    hit = _EMP.get(key) or {}
+    if hit.get("mt") == mt:
+        return hit.get("type", "")
+    text = _read(path, 30000).lower()
+    etype = ""
+    for name, check in _EMP_CHECKS:
+        if check(text):
+            etype = name
+            break
+    _EMP[key] = {"mt": mt, "type": etype}
+    globals()["_emp_dirty"] = True
+    return etype
+
+
+def _employment_from_notes(notes):
+    """Engagement type guessed from the register notes (weaker signal than the ad)."""
+    t = (notes or "").lower()
+    if not t:
+        return ""
+    for name, check in _EMP_CHECKS:
+        if check(t):
+            return name
+    return ""
+
+
+# ---------------------------------------------------------------- pay + work model
+# Estimated annual pay and work model, derived from the saved ad. The estimates
+# are deliberately rough: they rank/filter roles, they do not replace the ad.
+# Manual overrides persist in state/logs/dashboard-role-meta.json and win.
+_PAY_FX = {"EUR": 1.0, "SEK": 0.090, "USD": 0.92, "GBP": 1.17,
+           "CAD": 0.68, "CHF": 1.05, "DKK": 0.134, "NOK": 0.086}
+_PAY_ANNUAL = {"year": 1, "month": 12, "week": 48, "day": 220, "hour": 1600}
+PAY_FIT = 70                                             # default "good fit" threshold
+PAY_TARGET_FALLBACK = 100000
+META_VERSION = 1                                         # bump when the parser changes
+META_FILE = os.path.join(LOGS, "dashboard-role-meta.json")
+_META, _meta_loaded, _meta_dirty = {}, False, False
+_TARGET = {"mt": 0, "eur": PAY_TARGET_FALLBACK}
+
+_PAY_HEAD = re.compile(
+    r"^\s*(?:base\s+)?(salary|compensation|pay|rate|package|remuneration)\b[^:]{0,40}:\s*(.+)$", re.I)
+_PAY_HINT = re.compile(r"(salary|compensation|pay|rate|remuneration)", re.I)
+_PAY_CUR = (("CAD", r"\bCA\$|\bCAD\b"), ("EUR", r"\bEUR\b|€"), ("USD", r"\bUSD\b|\bUS\$|\$"),
+            ("GBP", r"\bGBP\b|£"), ("CHF", r"\bCHF\b"), ("DKK", r"\bDKK\b"),
+            ("NOK", r"\bNOK\b"), ("SEK", r"\bSEK\b|\bkr\b"))
+_PAY_CUR_RE = re.compile(r"(€|£|\$|\b(?:EUR|SEK|USD|GBP|CHF|DKK|NOK|CAD)\b|\bkr\b)", re.I)
+
+
+def _pay_num(token):
+    if re.fullmatch(r"\d{1,3}(?:[ .,]\d{3})+", token):
+        return float(token.replace(" ", "").replace(",", "").replace(".", ""))
+    return float(token.replace(",", "."))
+
+
+_PAY_METRICS = re.compile(r"revenue|turnover|funding|raised|valuation|billion|million users|employees", re.I)
+
+
+def _pay_salary_like(text):
+    return bool(re.search(r"\d{1,3}(?:[ ,.]\d{3})+|\d{4,}|\d+\s*[kK]\b", text))
+
+
+def _pay_line_blocks(s):
+    """Sentences in one line that read like pay, not corporate metrics."""
+    if len(s) <= 240:
+        return [s] if _pay_salary_like(s) else []
+    out = []
+    for part in re.split(r"(?<=[.!?])\s+", s):
+        if (len(part) <= 240 and _PAY_HINT.search(part) and _PAY_CUR_RE.search(part)
+                and _pay_salary_like(part) and not _PAY_METRICS.search(part)):
+            out.append(part)
+    return out[:2]
+
+
+def _pay_blocks(text):
+    """Candidate salary/compensation lines from an ad (URLs and equity skipped)."""
+    out, lines = [], (text or "").splitlines()
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if not s or re.search(r"https?://|www\.", s, re.I):
+            continue
+        m = _PAY_HEAD.match(s)
+        if m:
+            out.append(m.group(2).strip())
+            for nxt in lines[i + 1:i + 3]:
+                n = nxt.strip()
+                if n and not re.match(r"^[A-Z][A-Za-z /&-]{2,40}:", n) and _pay_salary_like(n):
+                    out.append(n)
+            continue
+        if _PAY_HINT.search(s) and _PAY_CUR_RE.search(s):
+            out.extend(_pay_line_blocks(s))
+    seen, uniq = set(), []
+    for x in out:
+        if x not in seen:
+            seen.add(x)
+            uniq.append(x[:240])
+    return uniq[:8]
+
+
+def _parse_pay_block(raw):
+    if not raw:
+        return None
+    t = raw.replace("\u2013", "-").replace("\u2014", "-").replace("\u2212", "-").replace("\u00a0", " ")
+    # "kr840000" / "SEK1,000,000" are common; separate the code from the amount.
+    t = re.sub(r"\b(EUR|SEK|USD|GBP|CHF|DKK|NOK|CAD|kr)\s*", r"\1 ", t, flags=re.I)
+    cur = next((c for c, pat in _PAY_CUR if re.search(pat, t, re.I)), None)
+    if not cur:
+        return None
+    amounts = []
+    for m in re.finditer(r"(?<![\w./])(\d{1,3}(?:[ .,]\d{3})+|\d+(?:[.,]\d+)?)\s*([kKmM])?(?![%\w])", t):
+        try:
+            v = _pay_num(m.group(1))
+        except ValueError:
+            continue
+        suf = (m.group(2) or "").lower()
+        if suf == "k":
+            v *= 1000
+        elif suf == "m":
+            v *= 1000000
+        if v >= 10:
+            amounts.append((v, m.start()))
+    if not amounts:
+        return None
+    low = t.lower()
+    period = ""
+    for name, pat in (("hour", r"per hour|/hour|hourly|/hr\b|an hour|\bhour\b"),
+                      ("day", r"per day|/day|daily|day rate"),
+                      ("week", r"per week|/week|weekly"),
+                      ("month", r"per month|/month|monthly|a month|/mo\b"),
+                      ("year", r"per year|/year|/yr\b|annually|per annum|a year")):
+        if re.search(pat, low):
+            period = name
+            break
+    vals = [a[0] for a in amounts]
+    chosen = vals[0]
+    if len(vals) >= 2:
+        before = low[:amounts[0][1]]
+        # "up to X ... exceptional Y" -> the realistic number is X
+        if re.search(r"up to[^.;]{0,24}$", before) and max(vals) > 1.5 * min(vals):
+            chosen = vals[0]
+        else:
+            chosen = (min(vals) + max(vals)) / 2
+    if not period:
+        if cur in ("SEK", "NOK", "DKK"):
+            period = "year" if chosen >= 300000 else ("month" if chosen >= 15000 else "hour")
+        else:
+            period = "year" if chosen >= 30000 else ("hour" if chosen < 500 else "month")
+    eur = chosen * _PAY_ANNUAL[period] * _PAY_FX[cur]
+    return {"currency": cur, "period": period, "low": round(min(vals)), "high": round(max(vals)),
+            "chosen": round(chosen), "eur": int(round(eur / 1000) * 1000), "raw": t[:200]}
+
+
+def parse_pay(text, extract=True):
+    """Best salary estimate from an ad (or from one override line)."""
+    parsed = [p for p in (_parse_pay_block(b) for b in
+                          (_pay_blocks(text) if extract else [text or ""])) if p]
+    if not parsed:
+        return None
+    # Prefer EUR, then SEK, over other locations.
+    for market in ("SEK", "EUR"):
+        for p in parsed:
+            if p["currency"] == market:
+                return p
+    if len({p["currency"] for p in parsed}) > 1:
+        return None                                     # location-specific ranges, no EU/SEK figure
+    return parsed[0]
+
+
+def _salary_label(p):
+    if not p:
+        return ""
+    k = p["eur"] / 1000
+    return f"≈€{round(k)}k" if k >= 10 else f"≈€{p['eur']:,}"
+
+
+def _salary_target():
+    path = os.path.join(ROOT, "config", "profile.md")
+    mt = _mtime(path)
+    if _TARGET.get("mt") == mt:
+        return _TARGET["eur"]
+    eur = PAY_TARGET_FALLBACK
+    m = re.search(r"salary target\s*:\s*([^\n]+)", _read(path, 20000), re.I)
+    if m:
+        p = parse_pay(m.group(1), extract=False)
+        if p:
+            eur = p["eur"]
+    _TARGET.update(mt=mt, eur=eur)
+    return eur
+
+
+def _work_from_text(text):
+    """remote / hybrid / on-site / '' from the ad's location or work-model lines."""
+    if not text:
+        return ""
+    region = ""
+    for line in text.splitlines()[:30]:
+        if re.match(r"^\s*(work model|location(?:\s*/\s*work model)?|remote|workplace)\b", line, re.I):
+            region += " " + line.lower()
+    if not region:
+        region = "\n".join(text.splitlines()[:30]).lower()
+    if (re.search(r"\b(fully|100%|100 ?percent)\s+remote\b|\bremote[- ]first\b|"
+                  r"\bwork from (anywhere|home)\b|\bremote \((?:eu|europe|anywhere)|\bremote\b", region)
+            and not re.search(r"no remote|not remote", region)):
+        return "remote"
+    if re.search(r"\bhybrid\b(?!\s+cloud)|some (?:office|in-office) days|"
+                 r"\b\d+\s*(?:-\s*\d+\s*)?days?\s*(?:a|per)\s*week\s*(?:in|at)\s*(?:the\s*)?office|"
+                 r"partly remote|part remote", region):
+        return "hybrid"
+    if re.search(r"\bon-?site\b|in[- ]office|in[- ]person|office[- ]based|"
+                 r"work(?:ing)? from (?:the )?office", region):
+        return "on-site"
+    body = text[:6000].lower()
+    if re.search(r"\bfully remote\b|\b100% remote\b|\bremote[- ]first\b|work from anywhere", body):
+        return "remote"
+    if re.search(r"\bhybrid\b(?!\s+cloud)|some office days|days a week in (the )?office", body):
+        return "hybrid"
+    if re.search(r"\b(?:on-?site|in[- ]office|in[- ]person)\b", body):
+        return "on-site"
+    return ""
+
+
+def _work_label(w):
+    return {"remote": "Remote", "hybrid": "Hybrid", "on-site": "On-site"}.get(w, "—")
+
+
+def _load_meta():
+    global _meta_loaded
+    if _meta_loaded:
+        return
+    _meta_loaded = True
+    try:
+        with open(META_FILE, encoding="utf-8") as fh:
+            _META.update(json.load(fh))
+    except (OSError, ValueError):
+        pass
+
+
+def _save_meta(force=False):
+    global _meta_dirty
+    if not (_meta_dirty or force):
+        return
+    try:
+        os.makedirs(LOGS, exist_ok=True)
+        tmp = META_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(_META, fh)
+        os.replace(tmp, META_FILE)
+        _meta_dirty = False
+    except OSError:
+        pass
+
+
+def _role_meta(key, notes=""):
+    """Effective pay/work model: JD-derived, with a manual override on top."""
+    _load_meta()
+    path = os.path.join(STATE, "job-descriptions", key + ".md")
+    mt = _mtime(path) or 0
+    e = _META.setdefault(key, {})
+    if e.get("v") != META_VERSION or e.get("mt", -1) != mt or "salary" not in e:
+        text = _read(path, 20000) if mt else ""
+        e["mt"] = mt
+        e["v"] = META_VERSION
+        e["salary"] = parse_pay(text) if text else None
+        e["salary_raw"] = (e["salary"] or {}).get("raw", "")
+        e["work_model"] = _work_from_text(text) if text else ""
+        globals()["_meta_dirty"] = True
+    sal, raw = e.get("salary"), e.get("salary_raw") or ""
+    if e.get("salary_override"):
+        raw = e["salary_override"]
+        sal = parse_pay(raw, extract=False)
+    work = e.get("work_override") or e.get("work_model")
+    if not work and notes:
+        work = _work_from_text(notes[:4000])
+    return {"salary": sal, "salary_raw": raw,
+            "salary_override": bool(e.get("salary_override")),
+            "work_model": work or "unknown",
+            "work_detected": e.get("work_model") or "unknown",
+            "work_override": bool(e.get("work_override"))}
+
+
+def set_role_meta(key, work_model=None, salary=None):
+    """Persist a manual pay/work-model override ('' clears it)."""
+    if not key:
+        return
+    _load_meta()
+    e = _META.setdefault(key, {})
+    if work_model is not None:
+        e["work_override"] = (work_model or "").strip().lower()
+    if salary is not None:
+        e["salary_override"] = (salary or "").strip()
+    globals()["_meta_dirty"] = True
+    _save_meta(force=True)
+
+
+def set_interview_stage(key, stage):
+    """Record which interview round a role is at (or clear it)."""
+    import register as REG
+    key = os.path.basename(str(key or ""))[:120]
+    stage = str(stage or "").strip()
+    if stage not in INTERVIEW_STAGES:
+        return {"error": "unknown interview stage"}
+    row = next((r for r in REG.load() if r.get("key") == key), None)
+    if not row:
+        return {"error": "role not found in the register"}
+    label = INTERVIEW_STAGES.get(stage, stage)
+    note = (f"{date.today().isoformat()} interview stage: {label}" if stage
+            else f"{date.today().isoformat()} interview stage cleared")
+    n = REG.set_interview_stage(row["company"], row["role"], stage, note=note)
+    return {"ok": (f"interview stage: {label}" if stage else "interview stage cleared"),
+            "updated": n, "interview_stage": stage, "interview_stage_label": label}
+
+
+def _pay_work_fields(key, notes, status, cov, target):
+    """The grid's pay/work/focus fields for one row."""
+    meta = _role_meta(key, notes)
+    sal = meta["salary"]
+    eur = sal["eur"] if sal else None
+    work = meta["work_model"]
+    focus = (status not in ("CLOSED", "REJECTED") and cov is not None
+             and cov >= PAY_FIT and eur is not None and eur >= target)
+    focus_unknown = (status not in ("CLOSED", "REJECTED") and cov is not None
+                     and cov >= PAY_FIT and eur is None)
+    score = (round(0.6 * cov + 0.4 * min(100, 100 * eur / target))
+             if cov is not None and eur is not None else None)
+    band = ("good" if eur is not None and eur >= target else
+            "mid" if eur is not None and eur >= 0.8 * target else
+            "low" if eur is not None else "")
+    return {"salary_eur": eur, "salary_label": _salary_label(sal),
+            "salary_raw": meta["salary_raw"], "salary_band": band,
+            "salary_override": meta["salary_override"],
+            "work_model": work, "work_label": _work_label(work),
+            "work_detected": meta.get("work_detected", work),
+            "work_override": meta["work_override"],
+            "focus": focus, "focus_unknown": focus_unknown, "focus_score": score}
+
+
+def _doc_text(path):
+    """Plain text of a CV file: .docx, .pdf (pdftotext) or .md/.txt. Cached by path+mtime."""
+    if not path or not os.path.isfile(path):
+        return ""
+    ck = f"{path}:{_mtime(path)}"
+    if ck in _arch_text:
+        return _arch_text[ck]
+    ext = os.path.splitext(path)[1].lower()
+    t = ""
+    try:
+        if ext == ".docx":
+            import docx
+            doc = docx.Document(path)
+            out = [p.text for p in doc.paragraphs]
+
+            def walk(tbl):
+                for row in tbl.rows:
+                    for c in row.cells:
+                        out.append(c.text)
+                        for t in c.tables:
+                            walk(t)
+            for t in doc.tables:
+                walk(t)
+            t = "\n".join(x for x in out if x and x.strip())
+        elif ext == ".pdf":
+            import shutil
+            exe = shutil.which("pdftotext")
+            if exe:
+                r = subprocess.run([exe, path, "-"], capture_output=True, text=True, timeout=30)
+                t = r.stdout or ""
+        else:
+            t = _read(path)
+    except Exception:
+        t = ""
+    _arch_text[ck] = t
+    return t
+
+
+def _mtime(path):
+    found = stateio.resolve(path)
+    if not found:
+        return 0
+    try:
+        return int(os.path.getmtime(found))
+    except OSError:
+        return 0
+
+
+def _present(path):
+    """True if a state artifact exists, packed or plain."""
+    return stateio.exists(path)
+
+
+def _hydrate(path):
+    """Restore a packed artifact in place (tools/storage.py --state packed it)."""
+    return stateio.ensure(path)
+
+
+def _skills_text():
+    """The candidate's recorded skills/evidence — so the fit reflects skills the moment
+    they're added, without waiting for a CV to be regenerated."""
+    return (_read(os.path.join(ROOT, "config", "cv.json")) + " " + _read(SKILLS_FILE)).lower()
+
+
+@lru_cache(maxsize=4096)
+def _norm_slug(s):
+    return re.sub(r"[^a-z0-9]+", "", (s or "").lower())
+
+
+_ATS_STEM_CACHE = {}
+
+
+def _ats_stem_index(stems):
+    """Normalised ATS stems and a token index, built once per stem set.
+
+    The old loop rebuilt a regex token set for every stem on every row, which
+    made the grid quadratic (about 750k regex calls for a thousand rows). The
+    stems only change when an ATS file is added or removed, so build the index
+    once and reuse it.
+    """
+    key = tuple(stems)
+    cached = _ATS_STEM_CACHE.get(key)
+    if cached is not None:
+        return cached
+    rows, by_token = [], {}
+    for stem in stems:
+        sn = _norm_slug(stem)
+        if not sn:
+            continue
+        toks = set(re.findall(r"[a-z0-9]+", (stem or "").lower()))
+        item = (stem, sn, toks)
+        rows.append(item)
+        for tok in toks:
+            by_token.setdefault(tok, []).append(item)
+    cached = (rows, by_token)
+    if len(_ATS_STEM_CACHE) > 4:
+        _ATS_STEM_CACHE.clear()
+    _ATS_STEM_CACHE[key] = cached
+    return cached
+
+
+def _ats_key_for(company, role, key, stems=None):
+    """The ATS/JD slug for a row, even when the agent resolved its own key.
+
+    Artifact stems often carry a source prefix (``li_seb_...``) or a different
+    separator from the register key, so match the employer as a token anywhere
+    in the stem and require at least one role word. This also covers short
+    employer names such as SEB, which the old length guard skipped entirely.
+    """
+    if _present(os.path.join(STATE, "ats", key + ".txt")):
+        return key
+    cn = _norm_slug(company)
+    if not cn:
+        return key
+    if stems is None:
+        try:
+            stems = stateio.stems(os.path.join(STATE, "ats"), ".txt")
+        except OSError:
+            return key
+    rows, by_token = _ats_stem_index(stems)
+    role_tokens = {t for t in re.findall(r"[a-z0-9]{4,}", (role or "").lower())}
+    generic = {"group", "groupe", "ab", "the", "inc", "ltd", "oy", "as",
+               "plc", "gmbh", "nordic", "consulting", "recruitment",
+               "technologies", "solutions", "services"}
+    ctoks = {t for t in re.findall(r"[a-z0-9]{2,}", (company or "").lower())
+             if t not in generic}
+    # Only stems that can match the employer need scoring: an exact token, a
+    # prefix on either side, or a shared company token.
+    candidates, seen = [], set()
+
+    def add(items):
+        for item in items:
+            if item[0] not in seen:
+                seen.add(item[0])
+                candidates.append(item)
+
+    add(by_token.get(cn, ()))
+    for item in rows:
+        sn = item[1]
+        if sn.startswith(cn) or cn.startswith(sn):
+            add((item,))
+    for tok in ctoks:
+        add(by_token.get(tok, ()))
+
+    # Score in stem order so an exact employer token and a shared generic
+    # token (for example "bank") that tie still resolve the way the old
+    # sorted scan did.
+    order = {item[0]: i for i, item in enumerate(rows)}
+    candidates.sort(key=lambda item: order.get(item[0], 0))
+    best, best_score = key, 0
+    for s, sn, toks in candidates:
+        if cn in toks:
+            company_score = 20
+        elif sn.startswith(cn) or cn.startswith(sn):
+            company_score = min(len(sn), len(cn))
+        else:
+            shared = [t for t in ctoks if t in toks]
+            if not shared:
+                continue
+            company_score = 10 + sum(len(t) for t in shared)
+        hits = sum(1 for t in role_tokens if t in sn)
+        if not hits:
+            # A company-level ad ("acme.md") can still describe this role.
+            # Require at least two role words in the saved ad so a generic
+            # employer page cannot claim every job at that company.
+            jd_text = _read(os.path.join(STATE, "job-descriptions", s + ".md")).lower()
+            jd_hits = sum(1 for t in role_tokens if t in jd_text)
+            if jd_hits < 2:
+                continue
+            score = company_score + jd_hits * 2
+        else:
+            score = company_score + hits * 4
+        if score > best_score:
+            best, best_score = s, score
+    return best
+
+
+def _content_key_for(cvrel, key):
+    """The cv-content/letters-content slug implied by the prepared CV filename."""
+    m = re.search(r"_CV_(.+?)\.docx$", cvrel or "")
+    if m and _present(os.path.join(STATE, "cv-content", m.group(1) + ".json")):
+        return m.group(1)
+    return key
+
+
+def _jd_key_for(ats_key, key, company="", role=""):
+    """The stem of the saved job description, tolerating key-style drift
+    (hyphens vs underscores) and a file named for the employer (redpine.md)."""
+    for cand in (ats_key, key):
+        for v in (cand, cand.replace("_", "-"), cand.replace("-", "_")):
+            if v and _present(os.path.join(STATE, "job-descriptions", v + ".md")):
+                return v
+    slug = _slug(company or "")
+    if slug and _present(os.path.join(STATE, "job-descriptions", slug + ".md")):
+        return slug
+    return key
+
+
+def _cov_sig(key, cvrel, ats_key=None, content_key=None):
+    ak, ck = ats_key or key, content_key or key
+    cvp = cvrel if os.path.isabs(cvrel or "") else os.path.join(ROOT, cvrel or "")
+    # Bump when the coverage algorithm changes: the on-disk cache must not
+    # outlive a change to which tokens count as requirements.
+    return "v3:" + ":".join(str(_mtime(p)) for p in (
+        os.path.join(STATE, "ats", ak + ".txt"),
+        os.path.join(STATE, "job-descriptions", ak + ".md"),
+        os.path.join(STATE, "cv-content", ck + ".json"),
+        os.path.join(STATE, "letters-content", ck + ".json"), cvp,
+        os.path.join(ROOT, "config", "cv.json"), SKILLS_FILE))
+
+
+def _coverage_with_gaps(key, kws, hay):
+    """Coverage over real requirements only.
+
+    Missing keywords that the advert-context resolver classifies as page chrome
+    (a currency, a company name, a reference code) are not requirements: they
+    must not lower the percentage and must not appear as "missing skills" with
+    an empty list. Returns (coverage, missing, missing_detail).
+    """
+    hit = [k for k in kws if k.lower() in hay]
+    miss = [k for k in kws if k.lower() not in hay]
+    try:
+        detail = skill_context.resolve(key, miss)
+    except Exception:
+        detail = []
+    junk = {str(d.get("term") or "").lower() for d in detail
+            if d.get("kind") in skill_context.JUNK_KINDS}
+    effective = [k for k in kws if k.lower() not in junk]
+    hits = [k for k in hit if k.lower() not in junk]
+    cov = round(100 * len(hits) / len(effective)) if effective else None
+    return cov, miss, detail
+
+
+def coverage_for(key, cvrel="", ats_key=None, content_key=None):
+    """ATS-keyword coverage %: the tailored content packs + the candidate's recorded skills
+    (and the archetype CV text as a fallback)."""
+    global _cov_dirty
+    ak, ck = ats_key or key, content_key or key
+    kws = [l.strip() for l in _lines(os.path.join(STATE, "ats", ak + ".txt"))]
+    if not kws:
+        return None
+    sig = _cov_sig(key, cvrel, ats_key=ak, content_key=ck)
+    hit = _COV.get(key) or {}
+    if hit.get("sig") == sig and "cov" in hit:
+        return hit["cov"]
+    hay = (_read(os.path.join(STATE, "cv-content", ck + ".json")) + " "
+           + _read(os.path.join(STATE, "letters-content", ck + ".json"))).lower()
+    if not hay.strip() and cvrel:
+        cvp = cvrel if os.path.isabs(cvrel) else os.path.join(ROOT, cvrel)
+        hay = _doc_text(cvp).lower()
+    hay += " " + _skills_text()
+    cov = _coverage_with_gaps(key, kws, hay)[0] if hay.strip() else None
+    _COV.setdefault(key, {}).update(sig=sig, cov=cov)
+    _cov_dirty = True
+    return cov
+
+
+def match_score(key, cache=True):
+    if cache and key in _MATCH_CACHE:
+        return _MATCH_CACHE[key]
+    cv = _archetype_for(key)
+    jd = os.path.join(STATE, "job-descriptions", key + ".md")
+    res = {"key": key, "archetype": os.path.basename(cv) if cv else "",
+           "alignment": "unknown", "alignment_detail": "", "coverage": None, "missing": []}
+    if cv and os.path.isfile(jd):
+        cvpath = cv if os.path.isabs(cv) else os.path.join(ROOT, cv)
+        if os.path.isfile(cvpath):
+            try:
+                r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "check_alignment.py"),
+                                    "--cv", cvpath, "--jd", jd], cwd=ROOT, capture_output=True, text=True, timeout=90)
+                out = ANSI.sub("", r.stdout + r.stderr)
+                res["alignment"] = ("PASS" if "RESULT: PASS" in out else
+                                    "FAIL" if "RESULT: FAIL" in out else "?")
+                res["alignment_detail"] = out.strip()[-500:]
+            except (OSError, subprocess.SubprocessError) as e:
+                res["alignment_detail"] = str(e)
+    kws = [l.strip() for l in _lines(os.path.join(STATE, "ats", key + ".txt"))]
+    content = _read(os.path.join(STATE, "cv-content", key + ".json"))
+    letters = _read(os.path.join(STATE, "letters-content", key + ".json"))
+    if kws and (content or letters):
+        hay = (content + " " + letters).lower()
+        hay += " " + _skills_text()               # recorded skills count toward the fit
+        cov, miss, detail = _coverage_with_gaps(key, kws, hay)
+        res["coverage"], res["missing"], res["missing_detail"] = cov, miss[:24], detail
+    else:
+        res["missing_detail"] = []
+    _MATCH_CACHE[key] = res
+    _load_cov()
+    _COV.setdefault(key, {})["align"] = res["alignment"]
+    globals()["_cov_dirty"] = True
+    _save_cov()
+    return res
+
+
+def role_docs(key):
+    """The rendered documents for a role: the tailored CV (.docx/.pdf) and cover letter."""
+    app = os.path.join(ROOT, "documents", "applications")
+    out = {"cv": "", "cv_pdf": "", "letter": ""}
+
+    def pick(pattern):
+        hits = sorted(glob.glob(os.path.join(app, pattern.replace("{k}", glob.escape(key)))))
+        return os.path.relpath(hits[0], ROOT) if hits else ""
+
+    out["cv"] = pick("*_CV_{k}.docx")
+    out["cv_pdf"] = pick("*_CV_{k}.pdf")
+    out["letter"] = pick("*_Motivation_{k}.docx") or pick("*_Letter_{k}.docx")
+    out["letter_pdf"] = pick("*_Motivation_{k}.pdf") or pick("*_Letter_{k}.pdf")
+    return out
+
+
+def _evidenced_skills():
+    """Skill names that have recorded evidence in kb/sources/personal/skills_evidence.md."""
+    out = set()
+    for ln in _read(SKILLS_FILE).splitlines():
+        m = re.match(r"- \*\*(.+?)\*\*", ln.strip())
+        if m:
+            out.add(m.group(1).strip().lower())
+    return out
+
+
+def match_info(key):
+    """Cheap match for the detail drawer: keyword coverage + missing terms, no subprocess.
+    (The alignment gate runs only when you explicitly prepare/recompute.)"""
+    kws = [l.strip() for l in _lines(os.path.join(STATE, "ats", key + ".txt")) if l.strip()]
+    content = _read(os.path.join(STATE, "cv-content", key + ".json"))
+    letters = _read(os.path.join(STATE, "letters-content", key + ".json"))
+    hay = (content + " " + letters).lower()
+    if not hay.strip():
+        cv = _archetype_for(key)
+        if cv:
+            hay = _doc_text(cv if os.path.isabs(cv) else os.path.join(ROOT, cv)).lower()
+    hay += " " + _skills_text()                     # recorded skills count toward the fit
+    cov, missing, evidenced, missing_detail = None, [], [], []
+    if kws and hay.strip():
+        cov, miss, missing_detail = _coverage_with_gaps(key, kws, hay)
+        missing = miss[:24]
+        ev = _evidenced_skills()
+        evidenced = [k for k in missing if k.strip().lower() in ev]
+    return {"key": key, "coverage": cov, "missing": missing,
+            "missing_detail": missing_detail, "evidenced": evidenced,
+            "alignment": (_COV.get(key, {}) or {}).get("align", ""),
+            "archetype": os.path.basename(_archetype_for(key) or "")}
+
+
+def explain_missing_skills(key):
+    """Resolve the role's missing keywords with the advert, using the model for
+    anything the deterministic context pass could not identify."""
+    key = os.path.basename(str(key or ""))[:120]
+    info = match_info(key)
+    terms = [t for t in (info.get("missing") or []) if t]
+    rows = skill_context.resolve(key, terms, use_ai=True, refresh=False, timeout=60)
+    return {"key": key, "terms": rows}
+
+
+def ats_add(key, term):
+    """Append one requirement term to a role's ATS list, so the drawer can fix a gap."""
+    key = os.path.basename(str(key or ""))[:120]
+    term = str(term or "").strip().replace("\n", " ")[:80]
+    if not key or len(term) < 2 or term.startswith("#"):
+        return {"error": "need a role key and a keyword"}
+    path = os.path.join(STATE, "ats", key + ".txt")
+    if not os.path.exists(stateio.resolve(path) or path):
+        return {"error": f"no ATS list for {key}; prepare or re-extract keywords first"}
+    text = stateio.read_text(stateio.resolve(path) or path)
+    lines = [l.rstrip() for l in text.splitlines()]
+    if any(l.strip().lower() == term.lower() for l in lines):
+        return {"ok": f"{term} is already listed"}
+    lines.append(term)
+    stateio.write(path, ("\n".join(lines) + "\n").encode())
+    _COV.pop(key, None)
+    return {"ok": f"added {term}", "match": match_info(key)}
+
+
+def ats_refresh(key):
+    """Re-extract a role's ATS keywords from its saved JD (new term lists apply)."""
+    key = os.path.basename(str(key or ""))[:120]
+    jd = os.path.join(STATE, "job-descriptions", key + ".md")
+    out = os.path.join(STATE, "ats", key + ".txt")
+    if not os.path.exists(jd):
+        return {"error": f"no job description for {key}"}
+    r = subprocess.run([sys.executable, "tools/ats_keywords.py", "--jd", jd, "--out", out],
+                       cwd=ROOT, capture_output=True, text=True)
+    if r.returncode:
+        return {"error": (r.stdout + r.stderr).strip()[:300] or "keyword extraction failed"}
+    _COV.pop(key, None)
+    return {"ok": "keywords re-extracted", "match": match_info(key),
+            "count": len([l for l in _lines(out) if l.strip()])}
+
+
+def role_detail(key):
+    key = os.path.basename(key)[:120]
+    return {"key": key,
+            "scam": scam_check.load(key),
+            "jd": _read(os.path.join(STATE, "job-descriptions", key + ".md")),
+            "ats": _read(os.path.join(STATE, "ats", key + ".txt")),
+            "kb": _read(os.path.join(STATE, "kb-context", key + ".md"))[:12000],
+            "tailored_cv": _read(os.path.join(STATE, "cv-content", key + ".json"))[:12000],
+            "letter": _read(os.path.join(STATE, "letters-content", key + ".json"))[:12000],
+            "docs": role_docs(key),
+            "match": match_info(key)}
+
+
+def scam_clear(company, role, key=""):
+    """Clear a scam warning after the human has verified the employer."""
+    key = os.path.basename(str(key or ""))[:120]
+    if key:
+        path = os.path.join(STATE, "scam", key + ".json")
+        try:
+            if os.path.exists(path):
+                os.unlink(path)
+        except OSError:
+            pass
+    path = os.path.join(STATE, "scam-emails.json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        keep = [e for e in data
+                if not (str(e.get("company", "")).lower() == str(company or "").lower()
+                        and str(e.get("role", "")).lower() == str(role or "").lower())]
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(keep, fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
+    except (OSError, ValueError):
+        pass
+    return {"ok": "scam warning cleared"}
+
+
+def discover(url):
+    url = (url or "").strip()
+    if not url.startswith("http"):
+        return {"error": "need an http(s) URL"}
+    import urllib.request
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 jobsquirrel"})
+        page = urllib.request.urlopen(req, timeout=25).read().decode("utf-8", "ignore")
+    except Exception as e:
+        return {"error": f"could not fetch: {e}"}
+    text = re.sub(r"(?is)<(script|style|head)\b[^>]*>.*?</\1>", " ", page)
+    text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text)).strip()
+    slug = re.sub(r"[^a-z0-9]+", "-", urlparse(url).netloc + "-" + urlparse(url).path).strip("-")[:80]
+    os.makedirs(os.path.join(STATE, "job-descriptions"), exist_ok=True)
+    stateio.write(os.path.join(STATE, "job-descriptions", slug + ".md"),
+                  f"# {url}\n\n{text[:20000]}\n".encode("utf-8"))
+    return {"ok": f"saved role {slug}", "key": slug}
+
+
+# ---------------------------------------------------------------- config / outcomes
+def config_get(target):
+    target = target if target in CONFIG_FILES else "profile"
+    return {"target": target, "content": _read(os.path.join(ROOT, CONFIG_FILES[target])),
+            "format": "json" if target != "profile" else "md"}
+
+
+def config_save(target, content):
+    if target not in CONFIG_FILES:
+        return {"error": "unknown config target"}
+    if target != "profile":
+        try:
+            json.loads(content)
+        except ValueError as e:
+            return {"error": f"invalid JSON: {e}"}
+    p = os.path.join(ROOT, CONFIG_FILES[target])
+    try:
+        if os.path.isfile(p):
+            open(p + ".bak", "w", encoding="utf-8").write(_read(p))
+        open(p, "w", encoding="utf-8").write(content)
+    except OSError as e:
+        return {"error": str(e)}
+    return {"ok": f"saved {CONFIG_FILES[target]} (backup .bak)"}
+
+
+def _slug(s):
+    return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
+
+
+def _company_token(name):
+    """A stable first word for an employer name, ignoring alert-suffix noise.
+
+    "Neko Health starting at $405K/year" and "Neko Health" are the same employer;
+    "neko" is the same employer too. Used only to merge a stale queue alias into
+    the register row it belongs to, never to merge two different employers.
+    """
+    s = re.sub(r"\bstarting at\b.*$", "", (name or "").lower())
+    s = re.sub(r"[^a-z0-9 ]+", " ", s)
+    words = [w for w in s.split() if w not in ("the", "ab", "inc", "ltd", "group")]
+    return words[0] if words else ""
+
+
+def _key_map():
+    m = {}
+    for path in ("queue.tsv", "queue-human.tsv", "queue.retry"):
+        for r in _queue_rows(os.path.join(STATE, path)):
+            if r["key"]:
+                m[(r["company"].lower(), r["role"].lower())] = r["key"]
+    return m
+
+
+def _key_maps():
+    km, cv = {}, {}
+    for path in ("queue.tsv", "queue-human.tsv", "queue.retry"):
+        for r in _queue_rows(os.path.join(STATE, path)):
+            if r["key"]:
+                km[(r["company"].lower(), r["role"].lower())] = r["key"]
+                if r["cv"]:
+                    cv[r["key"]] = r["cv"]
+    return km, cv
+
+
+def _hint(status, notes):
+    """A plain-language 'what this means / what to do' line for a row."""
+    parts = [x.strip() for x in (notes or "").split(" | ") if x.strip()]
+    reason = parts[0] if parts else ""
+    if status in ("BLOCKED", "MANUAL"):
+        return reason or "needs you — open the row to get past the block"
+    if status in ("CLOSED", "REJECTED"):
+        return (parts[-1] if parts else "") or ("closed — no action" if status == "CLOSED" else "rejected — no action")
+    return {
+        "QUEUED": "in the apply queue — nothing done yet; applied when you run the queue",
+        "DRAFTING": "in progress — ad/keywords saved, but no finished documents yet",
+        "PREPARED": "documents generated and gated — ready to apply",
+        "SUBMITTED": "applied — waiting for a reply",
+        "IN_PROGRESS": "application in progress",
+        "INTERVIEW": "interview held — awaiting the outcome",
+        "OFFER": "offer — respond",
+    }.get(status, "")
+
+
+_MONTHS = {m: i for i, m in enumerate(
+    ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
+# A segment counts as interview-related if it says any of these; "booked" and
+# "confirmed" catch the terse "Booked: Thu 15 Oct …" / "Confirmed: …" notes.
+_INTERVIEW_WORDS = ("interview", "screen", "intro call", "first chat", "call with",
+                    "booked", "confirmed", "invit")
+# No date yet, but clearly still being arranged -> INVITED rather than held.
+_INVITED_WORDS = ("invit", "schedul", "availabil", "await", "reschedul", "book at",
+                  "asked", "reply", "follow", "still interested")
+# A held interview needs explicit evidence. A bare INTERVIEW status, or a
+# reconciler note carrying the email's date, must not look like a past interview.
+_HELD_WORDS = ("interview held", "interview took place", "interview completed",
+               "awaiting the outcome", "awaiting outcome", "after the interview",
+               "spoke with", "had the interview", "post-interview")
+
+
+def _interview_time(notes):
+    """Latest interview datetime mentioned in the notes (epoch seconds, 0 if none).
+
+    Only '|'-separated segments that talk about an interview/screen/call are
+    scanned, so application dates or start dates don't flip the label."""
+    best = 0.0
+    for seg in re.split(r"\s*\|\s*", notes or ""):
+        sl = seg.strip().lower()
+        if sl.startswith("gmail:"):                     # reconciler metadata: the email's date, not the interview's
+            continue
+        if any(w in sl for w in ("email sent to", "message id", "outbound", "sent:")):
+            continue                                     # outbound note: the send date, not an interview
+        if any(w in sl for w in ("asked", "followed up", "follow-up", "still interested",
+                                 "reply", "not booked", "availability",
+                                 "date/time to be recorded", "date tbc",
+                                 "date to be confirmed", "reports an interview", "interview prep")):
+            continue                                     # correspondence, not a booked interview
+        if not any(w in seg.lower() for w in _INTERVIEW_WORDS):
+            continue
+        for m in re.finditer(r"\b(20\d{2})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?", seg):
+            try:
+                best = max(best, time.mktime((int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                                              int(m.group(4) or 0), int(m.group(5) or 0),
+                                              0, 0, 0, -1)))
+            except (OverflowError, ValueError):
+                pass
+        for m in re.finditer(r"\b(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+                             r"[a-z]*\.?\s+(20\d{2})(?:[ ,]+(\d{1,2}):(\d{2}))?", seg, re.I):
+            try:
+                best = max(best, time.mktime((int(m.group(3)), _MONTHS[m.group(2).lower()[:3]],
+                                              int(m.group(1)), int(m.group(4) or 0),
+                                              int(m.group(5) or 0), 0, 0, 0, -1)))
+            except (OverflowError, ValueError):
+                pass
+    return best
+
+
+def _deadline_time(notes):
+    """Latest deadline/expiry date mentioned in the notes (epoch seconds, 0 if none).
+
+    Used for assessments and other dated actions, so a missed deadline becomes
+    a different sub-state instead of looking like it is still to do."""
+    best = 0.0
+    for seg in re.split(r"\s*\|\s*", notes or ""):
+        sl = seg.strip().lower()
+        if not any(w in sl for w in ("expir", "deadline", "due", "before", "closes", "by ")):
+            continue
+        for m in re.finditer(r"\b(20\d{2})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2}))?", seg):
+            try:
+                best = max(best, time.mktime((int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                                              int(m.group(4) or 23), int(m.group(5) or 59),
+                                              0, 0, 0, -1)))
+            except (OverflowError, ValueError):
+                pass
+        for m in re.finditer(r"\b(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+                             r"[a-z]*\.?\s+(20\d{2})(?:[ ,]+(\d{1,2}):(\d{2}))?", seg, re.I):
+            try:
+                best = max(best, time.mktime((int(m.group(3)), _MONTHS[m.group(2).lower()[:3]],
+                                              int(m.group(1)), int(m.group(4) or 23),
+                                              int(m.group(5) or 59), 0, 0, 0, -1)))
+            except (OverflowError, ValueError):
+                pass
+    return best
+
+
+INTERVIEW_STAGES = {
+    "": "not recorded",
+    "screen": "Recruiter screen",
+    "hiring-manager": "Hiring manager",
+    "technical": "Technical interview",
+    "panel": "Panel / onsite",
+    "final": "Final round",
+    "offer": "Offer stage",
+}
+
+
+def _interview_label(status, notes):
+    """Distinguish the interview sub-states for the grid.
+
+      SCHEDULED  a future interview is booked
+      INVITED     being arranged (no confirmed date yet)
+      INTERVIEW   held — awaiting the outcome
+
+    Returns (display_label, 'YYYY-MM-DD HH:MM' or '')."""
+    if status != "INTERVIEW":
+        return status, ""
+    iv = _interview_time(notes)
+    if iv > time.time() - 3600:          # still in the interview window
+        return "SCHEDULED", time.strftime("%Y-%m-%d %H:%M", time.localtime(iv))
+    if iv:
+        return "INTERVIEW", time.strftime("%Y-%m-%d %H:%M", time.localtime(iv))
+    low = (notes or "").lower()
+    if any(w in low for w in _HELD_WORDS):
+        return "INTERVIEW", ""
+    if re.search(r"gmail:\s*INTERVIEW\b", low) or any(w in low for w in _INVITED_WORDS):
+        return "INVITED", ""
+    return "INVITED", ""
+
+
+
+_SENT_NOTE = re.compile(r"^(\d{4})-(\d{2})-(\d{2})\b.*\bemail sent to", re.I)
+_INVITE_NOTE = re.compile(r"^gmail:\s*([A-Za-z]+)\s+(.+)$")
+
+
+def _replied_since_invite(notes):
+    """True when we sent an email after the latest inbound invite/notice.
+
+    The notes are append-only: an outbound "email sent to" segment newer than
+    the last "gmail: INTERVIEW/OTHER" segment means the candidate has replied,
+    so the row is waiting on the employer, not on them.
+    """
+    sent = invite = 0.0
+    for seg in re.split(r"\s*\|\s*", notes or ""):
+        seg = seg.strip()
+        m = _SENT_NOTE.match(seg)
+        if m:
+            try:
+                sent = max(sent, time.mktime((int(m.group(1)), int(m.group(2)),
+                                              int(m.group(3)), 23, 59, 0, 0, 0, -1)))
+            except (OverflowError, ValueError):
+                pass
+            continue
+        m = _INVITE_NOTE.match(seg)
+        if m and m.group(1).upper() in ("INTERVIEW", "OTHER"):
+            try:
+                dt = email.utils.parsedate_to_datetime(m.group(2).split(" (")[0].strip())
+                if dt is not None:
+                    invite = max(invite, dt.timestamp())
+            except (TypeError, ValueError, OverflowError):
+                pass
+    return sent > 0 and (invite == 0 or sent >= invite)
+
+
+
+# Seniority grading: title first (predictable, no model), then the ad's own
+# wording. The order matters: "Senior Manager" is a manager, not a senior IC.
+_SENIORITY = (
+    ("c-level", "C-level", 10, r"\b(chief|cto|cio|cfo|coo|cpo|cmo|co-?founder|owner)\b"),
+    ("vp", "VP", 9, r"\b(vice[ -]?president|vp|svp|evp|v\.p\.)\b"),
+    ("director", "Director", 8, r"\b(director|head of)\b"),
+    ("manager", "Manager", 7, r"\b(manager|management|mgr)\b"),
+    ("lead", "Lead", 6, r"\blead\b"),
+    ("principal", "Principal", 5, r"\bprincipal\b"),
+    ("staff", "Staff", 4, r"\bstaff\b"),
+    ("senior", "Senior", 3, r"\b(senior|sr\.?)\b"),
+    ("junior", "Junior", 1, r"\b(junior|graduate|entry[ -]level|trainee)\b"),
+    ("intern", "Intern", 0, r"\bintern(ship)?\b"),
+)
+
+
+def seniority_of(title, jd_text=""):
+    """(key, label, rank) for a role title, falling back to the ad's wording.
+
+    Word boundaries matter: "director" contains "cto" and used to be graded
+    C-level. The first matching rule wins, so a "Senior Manager" is a manager.
+    """
+    t = " " + (title or "").lower() + " "
+    for key, label, rank, pattern in _SENIORITY:
+        if re.search(pattern, t):
+            return key, label, rank
+    low = (jd_text or "").lower()
+    if low:
+        if re.search(r"\b(head of|director of)\b", low):
+            return "director", "Director", 8
+        if re.search(r"\breport(s|ing)? to the (cto|ceo)\b", low):
+            return "lead", "Lead", 6
+        if re.search(r"\bsenior (engineer|developer|specialist)\b", low):
+            return "senior", "Senior", 3
+    return "mid", "Mid", 2
+
+
+def _substate(status, notes="", action="", label=""):
+    """The human sub-state inside a coarse register status.
+
+    The register status is the machine stage (gates, reconciliation, queue);
+    the substate is what is actually happening and what the candidate should do.
+    Returns (key, label, hint). The rules are deliberately keyword-led so they
+    work from the notes the pipeline and the reconciler already write.
+    """
+    st = (status or "").upper()
+    segments = [x.strip() for x in (notes or "").split(" | ") if x.strip()]
+    text = " ".join(x for x in (action or "", notes or "", label or "") if x).lower()
+    if st in ("CLOSED", "REJECTED") and segments:
+        # Terminal rows are append-only: the last note is the actual closure or
+        # rejection, so an old "eligible" note must not override it.
+        text = " ".join((action or "", *segments[-2:])).lower()
+
+    def has(*words):
+        return any(w in text for w in words)
+
+    if st == "QUEUED":
+        return ("queued", "queued", "In the apply queue; nothing sent yet.")
+    if st == "DRAFTING":
+        return ("drafting", "drafting", "Ad and keywords saved; documents are still being built.")
+    if st == "PREPARED":
+        if has("review", "send the drafted", "draft ready", "approve", "email draft", "awaiting human"):
+            return ("review", "needs review", "Documents are ready but you need to review and send them.")
+        return ("ready", "ready to submit", "Documents are gated; submit when you are ready.")
+    if st == "BLOCKED":
+        # A note often mentions a passed gate on the way to a different wall.
+        # Only a real refusal is a gate failure; "gate PASS" is not.
+        if has("gate fail", "gate failed", "gate failure", "pre-submit gate failed",
+               "pre-submit gate did not pass", "pre-submit gate refused",
+               "alignment fail", "alignment failed", "did not print result: pass",
+               "documents need re-preparation", "canonical", "echoes", "verbatim"):
+            return ("gate", "gate failure",
+                    "The pre-submit gate refused the documents; fix them and re-prepare.")
+        if has("captcha", "recaptcha", "bot check", "human check", "are you a robot"):
+            return ("captcha", "CAPTCHA", "A CAPTCHA/bot check stopped the submission; solve it and retry.")
+        if has("2fa", "two-factor", "login", "log in", "sign in", "sso", "verification code", "verify"):
+            return ("login", "login / 2FA", "The site needs a login, SSO or 2FA step from you.")
+        if has("email application", "apply by email", "maila ansökan", "send by email",
+               "email the", "email your", "mailto:", "email-only", "only accepts email",
+               "no ats", "no apply url"):
+            return ("email", "email application", "The employer only accepts email; send the drafted application.")
+        if has("recruiter", "agency", "lead", "intro"):
+            return ("lead", "recruiter lead", "A recruiter/agency lead needs a human reply.")
+        if has("404", "site", "page", "form", "closed", "expired"):
+            return ("site", "site problem", "The application page/form is broken or gone; check the ad.")
+        if has("missing", "eligib", "question", "salary", "authoris", "permit", "language"):
+            return ("info", "missing information", "A question or eligibility point needs your answer.")
+        return ("blocked", "blocked", "A hard wall stopped the submission; open the row for the exact reason.")
+    if st == "MANUAL":
+        if has("email application", "apply by email", "maila ansökan", "send by email",
+               "email the", "email your", "mailto:", "email-only", "only accepts email",
+               "no ats", "no apply url"):
+            return ("email", "email application", "Email-only employer; send the drafted application.")
+        if has("recruiter", "agency", "lead", "intro"):
+            return ("lead", "recruiter lead", "A recruiter/agency lead needs a human reply.")
+        if has("verify", "verification", "code"):
+            return ("verify", "verification", "A verification link/code needs you.")
+        return ("manual", "needs you", "A human step is required; open the row for what to do.")
+    if st == "SUBMITTED":
+        if has("assessment", "test", "kattis", "abstract reasoning", "coding challenge", "take-home", "case study"):
+            dl = _deadline_time(notes)
+            if dl and dl < time.time():
+                return ("assessment-overdue", "assessment overdue",
+                        "The assessment deadline has passed; contact the recruiter.")
+            hint = ("Complete it by " + time.strftime("%d %b", time.localtime(dl)) + ".")
+            if dl:
+                return ("assessment", "assessment to take", hint)
+            return ("assessment", "assessment to take", "The employer sent a test/assessment; complete it before the deadline.")
+        if has("no reply", "no response", "follow up", "follow-up", "stale", "chase", "nudge"):
+            return ("stale", "follow up", "No reply yet; it is time to follow up.")
+        if has("acknowledg", "confirmation", "received", "thank you for applying",
+               "thanks for applying", "under consideration"):
+            return ("acknowledged", "acknowledged", "The employer confirmed receipt; waiting for the next step.")
+        return ("awaiting", "awaiting reply", "Application sent; waiting for the employer.")
+    if st == "IN_PROGRESS":
+        if has("assessment", "test", "kattis", "coding challenge", "take-home", "case study"):
+            dl = _deadline_time(notes)
+            if dl and dl < time.time():
+                return ("assessment-overdue", "assessment overdue",
+                        "The assessment deadline has passed; contact the recruiter.")
+            return ("assessment", "assessment", "An assessment/test is in progress or waiting for you.")
+        if has("background", "reference", "check"):
+            return ("background", "background check", "The employer is running checks/references.")
+        if has("interview", "round", "stage"):
+            return ("interviewing", "interviewing", "The process is at an interview stage.")
+        return ("processing", "processing", "The employer is processing the application.")
+    if st == "INTERVIEW":
+        iv = _interview_time(notes)
+        now = time.time()
+        if has("final round", "final interview", "last round"):
+            return ("final", "final round", "You are at the final interview stage.")
+        if has("next round", "second round", "2nd round", "next stage", "next interview"):
+            return ("next", "next round", "You advanced to the next round; prepare for it.")
+        if label == "SCHEDULED":
+            if iv and time.strftime("%Y-%m-%d", time.localtime(iv)) == time.strftime("%Y-%m-%d", time.localtime(now)):
+                return ("today", "interview today",
+                        "Your interview is today at " + time.strftime("%H:%M", time.localtime(iv)) + ".")
+            hint = ("Booked for " + time.strftime("%d %b %H:%M", time.localtime(iv)) + "; prepare.") if iv else \
+                   "An interview is booked; prepare and attend."
+            return ("scheduled", "scheduled", hint)
+        if label == "INVITED":
+            if not (action or "").strip() and _replied_since_invite(notes):
+                return ("replied", "replied — awaiting a reply",
+                        "You replied; waiting for the employer.")
+            return ("invited", "invited — reply", "The employer invited you; reply with availability.")
+        if iv and now - iv > 7 * 86400:
+            return ("held-followup", "interviewed — follow up",
+                    "The interview was over a week ago; follow up for the outcome.")
+        return ("held", "interviewed — awaiting outcome", "The interview happened; waiting for the outcome.")
+    if st == "OFFER":
+        if has("negotiat", "counter", "package"):
+            return ("negotiating", "negotiating", "An offer is on the table; negotiate the package.")
+        if has("accept", "signed"):
+            return ("accepted", "accepted", "Offer accepted.")
+        if has("declin", "turned down"):
+            return ("declined", "declined", "Offer declined.")
+        if has("verbal", "verbally"):
+            return ("verbal", "verbal offer", "A verbal offer; get it in writing.")
+        return ("received", "offer received", "An offer is on the table; respond.")
+    if st == "REJECTED":
+        if has("can't invite you for an interview", "cannot invite you for an interview",
+               "not invite you for an interview", "interview had been cancelled",
+               "interview cancelled", "no interview"):
+            return ("after-application", "after application", "Rejected without an interview; no action.")
+        if has("after interview", "post-interview", "interviewed", "final round",
+               "interview held", "interview took place", "interview confirmed",
+               "interview booked", "technical interview", "video interview",
+               "recruiter interview", "thank you for the call", "spoke with",
+               "interview had been held"):
+            return ("after-interview", "after interview", "Rejected after interview; no action.")
+        return ("after-application", "after application", "Rejected after applying; no action.")
+    if st == "CLOSED":
+        if has("three applications", "3 applications", "within the past 90 days",
+               "within the last 30 days", "limiting applications", "application limit",
+               "applied to another role"):
+            return ("limit", "employer cap",
+                    "The employer caps applications from one candidate; wait for the review window.")
+        if has("withdraw", "withdrew", "not pursuing", "not pursued", "ignore/drop", "dropped"):
+            return ("withdrawn", "withdrawn", "You withdrew or dropped it; no action.")
+        if has("duplicate", "dupe"):
+            return ("duplicate", "duplicate", "Duplicate of another application; no action.")
+        if has("not eligible", "eligib", "language", "swedish", "authoris", "permit"):
+            return ("not-eligible", "not eligible", "Not eligible for this role; no action.")
+        if has("filled", "position filled"):
+            return ("filled", "filled", "The position was filled; no action.")
+        if has("expired", "no longer", "404", "gone", "removed"):
+            return ("expired", "expired / gone", "The ad is no longer live; no action.")
+        return ("closed", "closed", "Closed; no action.")
+    return (st.lower() or "unknown", st.lower() or "unknown", "")
+
+
+def _email_scams():
+    """Worst scam warning per company+role, written by gmail_reconcile."""
+    try:
+        with open(os.path.join(STATE, "scam-emails.json"), encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    for e in data if isinstance(data, list) else []:
+        if isinstance(e, dict) and e.get("company"):
+            out[(e["company"].lower(), (e.get("role") or "").lower())] = e
+    return out
+
+
+def _worst_scam(*items):
+    best = None
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        if best is None or (scam_check.LEVELS.get(it.get("level"), 0) >
+                            scam_check.LEVELS.get(best.get("level"), 0)):
+            best = it
+    return best
+
+
+REPOST_STATUSES = {"SUBMITTED", "IN_PROGRESS", "INTERVIEW", "OFFER", "REJECTED"}
+_ROLE_STOP = {"the", "a", "an", "of", "and", "for", "to", "with"}
+
+
+def _role_tokens(value):
+    return {t for t in re.split(r"[^a-z0-9]+", str(value or "").lower())
+            if t and t not in _ROLE_STOP}
+
+
+def _same_role(a, b):
+    """A repost keeps the same title; only punctuation and filler differ.
+
+    Deliberately strict: "Senior AI Engineer" and "AI Engineer" are different
+    roles, not a repost, while "X - Y" and "X, Y" are the same posting again.
+    """
+    wa, wb = _role_tokens(a), _role_tokens(b)
+    return bool(wa) and wa == wb
+
+
+def grid():
+    """One row per application: register ⋈ queue ⋈ in-flight running tasks ⋈ provenance."""
+    apps = _rows(os.path.join(STATE, "applications.csv"))
+    email_scams = _email_scams()
+    flags = role_flags()
+    shelved = shelved_roles()
+    group_roles = role_groups()["roles"]
+    _load_cov(); _load_emp()
+    target = _salary_target()
+    km, cvmap = _key_maps()
+    qstate, qrow = {}, {}
+    for st, path in (("pending", "queue.tsv"), ("human", "queue-human.tsv"), ("retry", "queue.retry")):
+        for r in _queue_rows(os.path.join(STATE, path)):
+            ck = (r["company"].lower(), r["role"].lower())
+            qstate[ck] = st
+            qrow.setdefault(ck, r)
+    done = set(l.strip() for l in _lines(os.path.join(STATE, "queue.done")))
+    subm = {(r["company"].lower(), r["role"].lower())
+            for r in _rows(os.path.join(STATE, "submissions.csv"))}
+    subm_cv = {(r["company"].lower(), r["role"].lower()): r.get("cv_file", "")
+               for r in _rows(os.path.join(STATE, "submissions.csv")) if r.get("cv_file")}
+    subm_url = {(r["company"].lower(), r["role"].lower()): r.get("apply_url", "")
+                for r in _rows(os.path.join(STATE, "submissions.csv")) if r.get("apply_url")}
+    # A reposted role is allowed to be applied to again. Mark it, do not block it:
+    # remember roles this employer has already been applied to, so a queued repost
+    # can say so in the grid.
+    prior = {}
+    for r in apps:
+        st = (r.get("status") or "").upper()
+        if st in REPOST_STATUSES or (r["company"].lower(), r["role"].lower()) in subm:
+            prior.setdefault(_company_token(r["company"]), []).append(
+                (r["role"], st, r.get("date", "")))
+
+    def repost_for(co, role):
+        want = str(role or "").strip().lower()
+        for prole, pst, pdate in prior.get(_company_token(co), []):
+            if str(prole).strip().lower() == want:
+                continue                      # the same row, not a repost
+            if _same_role(prole, role):
+                return {"role": prole, "status": pst, "date": pdate}
+        return None
+
+    specs = set(stateio.stems(os.path.join(STATE, "job-descriptions"), ".md"))
+
+    def _keyset(folder, ext):
+        return set(stateio.stems(os.path.join(STATE, folder), ext))
+    ats_set, kb_set, cv_set = _keyset("ats", ".txt"), _keyset("kb-context", ".md"), _keyset("cv-content", ".json")
+    ats_stems = sorted(ats_set)
+    cv_index = {}
+    try:
+        app_dir = os.path.join(ROOT, "documents", "applications")
+        for f in os.listdir(app_dir):
+            m = re.match(r".*_CV_(.+?)\.docx$", f)
+            if not m:
+                continue
+            k = m.group(1)
+            rel = os.path.join("documents", "applications", f)
+            mt = _mtime(os.path.join(app_dir, f)) or 0
+            if k not in cv_index or mt >= cv_index[k][0]:
+                cv_index[k] = (mt, rel)
+    except OSError:
+        pass
+    cv_index = {k: v[1] for k, v in cv_index.items()}
+
+    def stages_for(key, applied, jd_key=None, ats_key=None, content_key=None):
+        """What has actually happened to this job so far (artifact slugs may differ)."""
+        jk, ak, ck = jd_key or key, ats_key or key, content_key or key
+        return {"ad": jk in specs, "keywords": ak in ats_set,
+                "grounding": jk in kb_set or ak in kb_set,
+                "documents": ck in cv_set or key in cv_set, "applied": bool(applied)}
+    running = set()
+    for k in _live_task_keys():
+        co, _, role = k.partition("|")
+        running.add((co.strip().lower(), role.strip().lower()))
+    out = []
+    seen = set()
+    for r in apps:
+        co, role = r["company"], r["role"]
+        ck = (co.lower(), role.lower())
+        seen.add(ck)
+        # The register row's key is the canonical identity (a queue key is only
+        # an alias). Using the queue key first used to invent a company-role
+        # slug for a row keyed by a LinkedIn id, so the drawer and the Ad column
+        # looked for an ad that was saved under the row's real key.
+        key = (r.get("key") or "").strip() or km.get(ck) or _slug(f"{co}-{role}")
+        notes = r.get("notes", "")
+        cvrel = _prepared_cv_note(notes, key, cv_index) or cvmap.get(key, "") or subm_cv.get(ck, "")
+        content_key = _content_key_for(cvrel, key)
+        ats_key = _ats_key_for(co, role, key, stems=ats_stems)
+        # A tailored CV filename is the strongest key hint: it names the
+        # content pack and usually the matching ATS file even when the
+        # register row was renamed or the company uses a source prefix.
+        if (content_key != key
+                and _present(os.path.join(STATE, "ats", content_key + ".txt"))):
+            ats_key = content_key
+        jd_key = _jd_key_for(ats_key, key, co, role)
+        m = _MATCH_CACHE.get(key, {})
+        cov = m.get("coverage")
+        if cov is None:
+            cov = coverage_for(key, cvrel, ats_key=ats_key, content_key=content_key)
+        align = m.get("alignment") or (_COV.get(key, {}) or {}).get("align", "")
+        status = (r.get("status") or "").upper()
+        label, interview_at = _interview_label(status, notes)
+        hint = _hint(status, notes)
+        employment = ((r.get("employment") or "").strip().lower()
+                      or _employment_from_jd(jd_key) or _employment_from_notes(notes))
+        sub = _substate(status, notes, r.get("action", ""), label)
+        stage = (r.get("interview_stage") or "").strip()
+        stage_label = INTERVIEW_STAGES.get(stage, stage)
+        sen = seniority_of(role, _read(os.path.join(STATE, "job-descriptions", jd_key + ".md"))[:4000])
+        if status == "INTERVIEW":
+            hint = sub[2] + (f" Stage: {stage_label}." if stage else "")
+        out.append({"date": r.get("date", ""), "company": co, "role": role, "ats": r.get("ats", ""),
+                    "status": status, "label": label, "interview_at": interview_at, "key": key,
+                    "interview_stage": stage, "interview_stage_label": stage_label,
+                    "substate": sub[0], "substate_label": sub[1], "substate_hint": sub[2],
+                    "employment": employment,
+                    "seniority": sen[0], "seniority_label": sen[1], "seniority_rank": sen[2],
+                    "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, ""),
+                    "spec": jd_key in specs, "jd_key": jd_key, "applied": ck in subm,
+                    "match": cov, "alignment": align, "running": ck in running,
+                    "notes": notes, "letter": r.get("letter", ""), "action": (r.get("action") or "").strip(),
+                    "scam": _worst_scam(scam_check.load(jd_key), scam_check.load(key),
+                                        email_scams.get(ck)),
+                    "url": (qrow.get(ck, {}).get("url", "")
+                            or subm_url.get(ck, "")
+                            or r.get("apply_url", "")),
+                    "stages": stages_for(key, ck in subm, jd_key=jd_key,
+                                         ats_key=ats_key, content_key=content_key),
+                    "pinned": bool((flags.get(key) or {}).get("pinned")),
+                    "shelved": key in shelved,
+                    "shelved_at": (shelved.get(key) or {}).get("at", ""),
+                    "groups": group_roles.get(key, []),
+                    "repost": repost_for(co, role),
+                    **_pay_work_fields(jd_key, notes, status, cov, target),
+                    "hint": hint})
+    # queued but not yet in the register — show the work that's waiting / in flight
+    reg_roles = {(r["role"].strip().lower(), _company_token(r["company"])) for r in apps}
+    for ck, r in qrow.items():
+        if ck in seen:
+            continue
+        co, role = r["company"], r["role"]
+        # A stale queue alias ("Neko Health starting at $405K/year", "neko") can
+        # survive a rename of the register row. Do not show it as a second role:
+        # same title and same employer token means the register already owns it.
+        if (role.strip().lower(), _company_token(co)) in reg_roles:
+            continue
+        key = r["key"] or _slug(f"{co}-{role}")
+        m = _MATCH_CACHE.get(key, {})
+        cov = m.get("coverage")
+        if cov is None:
+            cov = coverage_for(key, r.get("cv", ""))
+        jd = os.path.join(STATE, "job-descriptions", key + ".md")
+        stamp = _mtime(jd) or _mtime(os.path.join(STATE, "queue.tsv"))
+        qdate = time.strftime("%Y-%m-%d", time.localtime(stamp)) if stamp else ""
+        st = stages_for(key, ck in subm)
+        finished = (f"{co}|{role}" in done
+                    or bool(r.get("key") and r["key"] in done))
+        if st["applied"]:
+            stg = "SUBMITTED"
+        elif finished:
+            # A finished queue row with no register row is a queue leftover, not
+            # an application. It has no state of its own: skip it here and keep
+            # it in state/queue-leftovers.md. Inventing NO RESULT for it made a
+            # phantom application that nobody could explain.
+            continue
+        elif st["documents"]:
+            stg = "PREPARED"
+        elif st["ad"] or st["keywords"] or st["grounding"]:
+            stg = "DRAFTING"
+        else:
+            stg = "QUEUED"
+        sub = _substate(stg, "", "", stg)
+        sen = seniority_of(role, _read(jd)[:4000])
+        out.append({"date": qdate, "company": co, "role": role, "ats": r.get("ats", ""),
+                    "status": stg, "label": stg, "interview_at": "", "key": key,
+                    "substate": sub[0], "substate_label": sub[1], "substate_hint": sub[2],
+                    "employment": r.get("employment", "") or _employment_from_jd(key),
+                    "seniority": sen[0], "seniority_label": sen[1], "seniority_rank": sen[2],
+                    "queue": "finished" if f"{co}|{role}" in done else qstate.get(ck, "pending"),
+                    "spec": key in specs, "jd_key": key, "applied": ck in subm,
+                    "match": cov, "alignment": m.get("alignment", ""), "running": ck in running,
+                    "notes": "", "letter": "", "action": "", "url": r.get("url", ""), "stages": st,
+                    "pinned": bool((flags.get(key) or {}).get("pinned")),
+                    "shelved": key in shelved,
+                    "shelved_at": (shelved.get(key) or {}).get("at", ""),
+                    "groups": group_roles.get(key, []),
+                    "repost": repost_for(co, role),
+                    **_pay_work_fields(key, "", stg, cov, target),
+                    "hint": _hint(stg, "")})
+    _save_cov(); _save_emp(); _save_meta()
+    out.sort(key=lambda x: (x["date"] or ""), reverse=True)
+    return out
+
+
+def outcomes():
+    rows = _rows(os.path.join(STATE, "applications.csv"))
+    by_ats = {}
+    for r in rows:
+        a = (r.get("ats") or "(none)").strip() or "(none)"
+        s = (r.get("status") or "").upper()
+        d = by_ats.setdefault(a, {"total": 0, "interview": 0, "offer": 0})
+        d["total"] += 1
+        if s in ("INTERVIEW", "OFFER"):
+            d["interview"] += 1
+        if s == "OFFER":
+            d["offer"] += 1
+    iv = sum(1 for r in rows if (r.get("status") or "").upper() in ("INTERVIEW", "OFFER"))
+    return {"by_ats": by_ats, "interview_rate": round(100 * iv / max(1, len(rows)), 1)}
+
+
+# ---------------------------------------------------------------- runs / live / logs
+def runs(n=40):
+    path = os.path.join(LOGS, "runs.jsonl")
+    out = []
+    for ln in _read(path).splitlines()[-n:]:
+        try:
+            out.append(json.loads(ln))
+        except ValueError:
+            pass
+    return out[::-1]
+
+
+def task_logs():
+    # A compressed log keeps its task name: foo.log.gz -> "foo".
+    try:
+        names = {}
+        for f in os.listdir(LOGS):
+            if f.endswith(".log"):
+                names[f[:-4]] = True
+            elif f.endswith(".log.gz"):
+                names.setdefault(f[:-7], True)
+        return sorted(names)
+    except OSError:
+        return []
+
+
+def task_log_items(limit=80):
+    """Task logs with the metadata the Settings log browser needs.
+
+    Newest first. Running names come from the queue worker, the same source the
+    standalone /logs page uses. A name that has both a live .log and a packed
+    .log.gz is reported once, from the live file.
+    """
+    running = {}
+    for k in _live_task_keys():
+        co, _, role = k.partition("|")
+        running[f"{co}-{role}".translate(str.maketrans(" /|", "___"))] = True
+    found = {}
+    try:
+        files = os.listdir(LOGS)
+    except OSError:
+        return []
+    for f in files:
+        if f.endswith(".log.gz"):
+            name, path = f[:-7], os.path.join(LOGS, f)
+            if os.path.exists(os.path.join(LOGS, name + ".log")):
+                continue
+        elif f.endswith(".log"):
+            name, path = f[:-4], os.path.join(LOGS, f)
+        else:
+            continue
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        found[name] = {"name": name, "size": st.st_size,
+                       "age": max(0, int(time.time() - st.st_mtime)),
+                       "running": name in running}
+    try:
+        limit = max(1, min(int(limit), 500))
+    except (TypeError, ValueError):
+        limit = 80
+    return sorted(found.values(), key=lambda x: (x["age"], x["name"]))[:limit]
+
+
+def read_task_log(name):
+    name = os.path.basename(name)[:120]
+    path = os.path.join(LOGS, name + ".log")
+    if not os.path.exists(path):
+        path += ".gz"
+    try:
+        st = os.stat(path)
+        size, age = st.st_size, int(time.time() - st.st_mtime)
+    except OSError:
+        size, age = 0, None
+    text = ANSI.sub("", _read(path, cap=400_000))
+    return {"name": name, "curated": curate(text),
+            "raw": text.splitlines()[-400:], "size": size, "age": age}
+
+
+def _web_build():
+    """Restart + static-frontend fingerprint, so an open tab reloads itself."""
+    files = ("index.html", "app.css", "app.js", "grid-stats.js", "critters.js", "graph3d.js",
+             "graph-universe.js", "cascade-islands.js", "vendor/cascade.js",
+             "vendor/three.module.min.js")
+    parts = []
+    for name in files:
+        try:
+            st = os.stat(os.path.join(WEB, name))
+            parts.append(f"{name}:{st.st_mtime_ns}:{st.st_size}")
+        except OSError:
+            continue
+    static = "|".join(parts)
+    return f"{BOOT_ID}|{static}"
+
+
+
+def _graph_index_build():
+    """A graphrag index build running in this repo, as an Activity task."""
+    me = os.getpid()
+    for d in glob.glob("/proc/[0-9]*"):
+        try:
+            pid = int(d.split("/")[2])
+            if pid == me:
+                continue
+            raw = open(os.path.join(d, "cmdline"), "rb").read()
+            args = [a.decode("utf-8", "ignore") for a in raw.split(b"\0") if a]
+            # The real process is `<venv>/python .venv-graphrag/bin/graphrag index ...`.
+            # A shell that merely mentions those words is not a running build.
+            if len(args) < 3 or not args[1].endswith("bin/graphrag") or args[2] != "index":
+                continue
+            if os.path.realpath(os.readlink(os.path.join(d, "cwd"))) != os.path.realpath(ROOT):
+                continue
+        except (OSError, ValueError):
+            continue
+        logs = sorted(glob.glob(os.path.join(LOGS, "kg-rebuild-*.log")),
+                      key=lambda f: os.path.getmtime(f))
+        if not logs:
+            return None
+        path = logs[-1]
+        try:
+            st = os.stat(path)
+            age, size = int(time.time() - st.st_mtime), st.st_size
+        except OSError:
+            age, size = None, 0
+        return {"label": "Rebuilding the knowledge graph",
+                "log": os.path.basename(path)[:-4], "age": age, "size": size}
+    return None
+
+
+def live():
+    _act_load()
+    active = bool(WQ and WQ.runner_active())
+    running = list(_live_task_keys())
+    tail_name, tail = "", []
+    if running:
+        cand = []
+        for key in running:
+            co, _, role = key.partition("|")
+            name = f"{co}-{role}".translate(str.maketrans(" /|", "___"))
+            if os.path.isfile(os.path.join(LOGS, name + ".log")):
+                cand.append((os.path.getmtime(os.path.join(LOGS, name + ".log")), name))
+        if cand:
+            tail_name = max(cand)[1]
+            tail = read_task_log(tail_name)["curated"][-150:]
+    if not tail:
+        dl = delegated_live()
+        if dl:
+            tail_name = dl[-1]["log"]
+            tail = [{"t": l} for l in read_task_log(tail_name)["raw"][-20:] if l.strip()]
+    if not tail and (action_alive() or active):
+        # A dashboard action (or its scoped queue) is running (prepare/submit), which
+        # the queue watcher does not see. Show the newest role log it is writing,
+        # so the Activity pane is not blank while the agent works.
+        act_proc = _ACT.get("proc")
+        act_started = _ACT.get("t0") or 0
+        recent = []
+        try:
+            now = time.time()
+            for f in os.listdir(LOGS):
+                if not f.endswith(".log"):
+                    continue
+                if f.startswith(("dashboard-", "chat-", "delegated-")):
+                    continue
+                path = os.path.join(LOGS, f)
+                mt = os.path.getmtime(path)
+                if mt >= act_started - 5 and now - mt < 900:
+                    recent.append((mt, f[:-4]))
+        except OSError:
+            recent = []
+        if recent:
+            tail_name = max(recent)[1]
+            tail = read_task_log(tail_name)["curated"][-60:]
+    act_running = action_alive()
+    delegated = delegated_live()
+    act_lines = action_log(4000)
+    # The transcript is always sent; the UI keeps a finished action's log behind
+    # a collapsed "Technical details" disclosure instead of showing it as live
+    # work. A running action shows it directly.
+    act_log = act_lines[-400:]
+    act_name = _ACT.get("name", "")
+    def _running_task(k):
+        co, _, role = k.partition("|")
+        name = f"{co}-{role}".translate(str.maketrans(" /|", "___"))
+        try:
+            st = os.stat(os.path.join(LOGS, name + ".log"))
+            age, size = int(time.time() - st.st_mtime), st.st_size
+        except OSError:
+            age, size = None, 0
+        return {"label": k.replace("|", " — "), "log": name, "age": age, "size": size}
+    gbuild = _graph_index_build()
+    return {"active": active, "running": [k.replace("|", " — ") for k in running],
+            "running_tasks": ([gbuild] if gbuild else []) + [_running_task(k) for k in running] +
+                             [{"label": d["title"], "log": d["log"], "age": d["age"],
+                               "size": d["size"]} for d in delegated],
+            "delegated": delegated,
+            "delegated_done": _delegated_finished(),
+            "tail_name": tail_name, "tail": tail,
+            "paused": os.path.exists(PAUSE_FILE),
+            "stopping": os.path.exists(STOP_FILE),
+            "build": _web_build(),
+            "action": {"name": act_name, "running": act_running,
+                       "finished": bool(act_name and not act_running),
+                       "t0": _ACT.get("t0", 0),
+                       "summary": summarize_action(act_name, act_lines, act_running),
+                       "overview": action_overview(act_name, act_lines, act_running),
+                       "roles": _ACT.get("roles") or [],
+                       "log": act_log}}
+
+
+ACT_NOISE = re.compile(r"^\s*(?:[─═\-_=]{4,}|[.|·•]\s*$|\d+%?\s*\|)")
+
+
+def summarize_action(name, lines, running):
+    """Compress an action log into a headline + the few lines that matter."""
+    clean = [l.rstrip() for l in lines if l.strip() and not ACT_NOISE.match(l)]
+    wanted = re.compile(r"(error|fail|warn|refus|denied|traceback|⇒|→|nothing to|no changes|"
+                        r"proposed|verification|unmatched|ambiguous|summary|"
+                        r"\bwrote\b|\bwritten\b|\bsaved\b|prepared|submitted|applied|created|"
+                        r"proposal|\b[1-9]\d*\b\s*(?:new|found|queued|sent|updated|skipped|matched))", re.I)
+    notable, seen = [], set()
+    for l in clean:
+        if wanted.search(l) and l not in seen:
+            notable.append(l.strip()[:200]); seen.add(l)
+    notable = notable[-8:]
+    return {"headline": (clean[-1][:200] if clean else ("running…" if running else "no output")),
+            "notable": notable, "lines": len(clean)}
+
+
+RECON_SUMMARY = re.compile(
+    r"summary \((dry run|applied)\): (\d+) inspected · (\d+) proposed · "
+    r"(\d+) outbound · (\d+) verification · (\d+) unmatched · (\d+) ambiguous")
+
+
+def action_overview(name, lines, running):
+    """A short 'where we are / what's new' summary after a reconcile."""
+    if "reconcile" not in (name or "").lower():
+        return []
+    apps = _rows(os.path.join(STATE, "applications.csv"))
+    counts = {}
+    for r in apps:
+        k = (r.get("status") or "").upper()
+        counts[k] = counts.get(k, 0) + 1
+    live = sum(counts.get(k, 0) for k in ("SUBMITTED", "IN_PROGRESS", "INTERVIEW", "OFFER"))
+    live_parts = " · ".join(f"{s} {counts[s]}" for s in
+                            ("SUBMITTED", "IN_PROGRESS", "INTERVIEW", "OFFER") if counts.get(s))
+    flagged = sum(1 for r in apps if (r.get("action") or "").strip())
+    blocked = counts.get("BLOCKED", 0) + counts.get("MANUAL", 0)
+    human = _count(os.path.join(STATE, "queue-human.tsv"))
+    out = [f"live {live}" + (f" — {live_parts}" if live_parts else "")]
+    needs = " · ".join(x for x in (
+        f"{human} waiting on you" if human else "",
+        f"{flagged} flagged" if flagged else "",
+        f"{blocked} blocked/manual" if blocked else "") if x)
+    out.append("needs you " + (needs or "nothing"))
+    out.append(f"queue {_count(os.path.join(STATE, 'queue.tsv'))} · "
+               f"prepared {counts.get('PREPARED', 0)} · "
+               f"closed {counts.get('CLOSED', 0)} (hidden by default) · "
+               f"rejected {counts.get('REJECTED', 0)}")
+    hit = None
+    for line in reversed(lines):
+        hit = RECON_SUMMARY.search(line)
+        if hit:
+            break
+    if hit:
+        mode, _insp, proposed, _out, verification, unmatched, ambiguous = hit.groups()
+        out.append(f"new this run ({mode}): {proposed} proposed · {verification} verification · "
+                   f"{unmatched} unmatched · {ambiguous} ambiguous")
+    elif running:
+        tail = [l.strip() for l in lines if l.strip()]
+        out.append("new this run: reconciling…" + (f" ({tail[-1][:100]})" if tail else ""))
+    change_word = ("proposed: " if hit and hit.group(1) == "dry run"
+                   else ("changed: " if hit else "new: "))
+    changes, in_sec = [], False
+    for line in lines:
+        s = line.strip()
+        if s.startswith("== proposed register changes"):
+            in_sec = True
+            continue
+        if in_sec:
+            if s.startswith("=="):
+                break
+            if s and s != "(none)":
+                changes.append(change_word + " ".join(s.split())[:140])
+    if changes:
+        out.extend(changes[:5])
+        if len(changes) > 5:
+            out.append(f"new: … and {len(changes) - 5} more")
+    return out
+
+
+def logs_tail(lines=100):
+    p = os.path.join(LOGS, "run_queue.out")
+    return {"logs": ANSI.sub("", _read(p, cap=200_000)).splitlines()[-int(lines or 100):]}
+
+
+# ---------------------------------------------------------------- file viewer
+SAFE_DIRS = ("documents", "state", "config", "kb", "answers", "docs")
+
+
+def _safe_path(rel):
+    """Resolve a viewable path: inside the repo (allow-listed top dir) or under $HOME
+    (recorded CVs/letters can be absolute paths outside the repo). Secrets always blocked."""
+    rel = (rel or "").strip()
+    root = os.path.realpath(ROOT)
+    home = os.path.realpath(os.path.expanduser("~"))
+    p = os.path.realpath(rel if os.path.isabs(rel) else os.path.join(ROOT, rel.lstrip("/")))
+    if p.startswith(root + os.sep):
+        top = p[len(root) + 1:].split(os.sep)[0]
+        if top not in SAFE_DIRS:
+            return None
+    elif not p.startswith(home + os.sep):
+        return None
+    if any(x in p.lower() for x in ("token", "credential", ".env", "accounts.json",
+                                   "secrets.json", ".ssh", ".gnupg")):
+        return None
+    return p
+
+
+def file_view(rel):
+    p = _safe_path(rel)
+    if p and not os.path.isfile(p):
+        p = stateio.ensure(p) or p
+    if not p or not os.path.isfile(p):
+        return {"error": "not found or not allowed"}
+    ext = os.path.splitext(p)[1].lower()
+    if ext == ".docx":
+        try:
+            import docx
+            doc = docx.Document(p)
+            out = []
+            for para in doc.paragraphs:
+                if para.text.strip():
+                    out.append(f"<p>{_html.escape(para.text)}</p>")
+            for t in doc.tables:
+                for row in t.rows:
+                    out.append("<p>" + " | ".join(_html.escape(c.text) for c in row.cells) + "</p>")
+            return {"kind": "docx", "html": "".join(out), "name": os.path.basename(p)}
+        except Exception as e:
+            return {"error": f"could not read docx: {e}"}
+    if ext in (".md", ".txt", ".csv", ".json", ".log"):
+        return {"kind": "text", "text": _read(p), "name": os.path.basename(p)}
+    if ext == ".pdf":
+        return {"kind": "pdf", "url": "/raw?path=" + quote(rel), "name": os.path.basename(p)}
+    if ext in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+        return {"kind": "image", "url": "/raw?path=" + quote(rel), "name": os.path.basename(p)}
+    return {"kind": "other", "url": "/raw?path=" + quote(rel), "name": os.path.basename(p)}
+
+
+def raw_file(rel):
+    p = _safe_path(rel)
+    if p and not os.path.isfile(p):
+        p = stateio.ensure(p) or p
+    if not p or not os.path.isfile(p):
+        return None, None, None
+    try:
+        with open(p, "rb") as fh:
+            return fh.read(), (mimetypes.guess_type(p)[0] or "application/octet-stream"), os.path.basename(p)
+    except OSError:
+        return None, None, None
+
+
+# ---------------------------------------------------------------- chat
+CHAT_LOG = os.path.join(LOGS, "dashboard-chat.log")
+CHAT_SESSION = os.path.join(LOGS, "dashboard-chat.session")
+_CHAT = {"proc": None, "queue": []}
+CHAT_PID = os.path.join(LOGS, "dashboard-chat.pid")
+
+
+def _chat_pid_write(pid):
+    try:
+        os.makedirs(LOGS, exist_ok=True)
+        with open(CHAT_PID, "w") as fh:
+            fh.write(str(pid))
+    except OSError:
+        pass
+
+
+def _chat_pid_read():
+    """pid of the running chat turn, even if this dashboard process didn't spawn it."""
+    try:
+        pid = int(open(CHAT_PID).read().strip())
+    except (OSError, ValueError):
+        return 0
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return 0
+    return pid
+
+
+def _chat_running():
+    p = _CHAT.get("proc")
+    if p is not None:
+        return p.poll() is None
+    return bool(_chat_pid_read())
+
+
+def chat_agent():
+    try:
+        r = subprocess.run(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), "--which"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=10)
+        return (r.stdout or "").strip() or "?"
+    except (OSError, subprocess.SubprocessError):
+        return "?"
+
+
+def _chat_session():
+    try:
+        with open(CHAT_SESSION, encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
+def _record_chat_session(text):
+    """Remember the agent's session id so the next message continues the same conversation."""
+    sid = ""
+    for ln in text.splitlines():
+        i = ln.find('"sessionID"')
+        if i != -1:
+            j = ln.find(':"', i + 11)
+            if j != -1:
+                sid = ln[j + 2:].split('"', 1)[0]
+    if sid and sid != _chat_session():
+        try:
+            with open(CHAT_SESSION, "w", encoding="utf-8") as fh:
+                fh.write(sid)
+        except OSError:
+            pass
+
+
+def chat_stop():
+    """Stop the current turn (and drop queued messages) but KEEP the transcript."""
+    _CHAT["queue"] = []
+    pid = (_CHAT["proc"].pid if _CHAT.get("proc") and _CHAT["proc"].poll() is None
+           else _chat_pid_read())
+    killed = False
+    if pid:
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+            killed = True
+        except OSError:
+            try:
+                os.kill(pid, signal.SIGTERM)
+                killed = True
+            except OSError:
+                pass
+    _CHAT["proc"] = None
+    try:
+        os.remove(CHAT_PID)
+    except OSError:
+        pass
+    return {"ok": "stopped the current turn" if killed else "nothing was running"}
+
+
+def chat_new():
+    """Clear the chat history: stop any running turn, drop the queue, transcript + session."""
+    _CHAT["queue"] = []
+    pid = (_CHAT["proc"].pid if _CHAT.get("proc") and _CHAT["proc"].poll() is None
+           else _chat_pid_read())
+    if pid:
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+        except OSError:
+            pass
+        _CHAT["proc"] = None
+    try:
+        os.remove(CHAT_PID)
+    except OSError:
+        pass
+    for path in (CHAT_LOG, CHAT_SESSION):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    return {"ok": "history cleared"}
+
+
+# ---------------------------------------------------------------- per-role chat (drawer → Discuss)
+ROLE_CHAT_DIR = os.path.join(LOGS, "role-chat")
+_ROLE = {}                      # key -> {"proc": Popen, "queue": [(message, company, role)]}
+
+
+def _role_key(key):
+    k = re.sub(r"[^a-z0-9._-]+", "-", (key or "").lower()).strip("-")[:120]
+    if not k:
+        raise ValueError("role key required")
+    os.makedirs(ROLE_CHAT_DIR, exist_ok=True)
+    return k
+
+
+def _role_paths(key):
+    k = _role_key(key)
+    return (os.path.join(ROLE_CHAT_DIR, k + ".log"),
+            os.path.join(ROLE_CHAT_DIR, k + ".session"),
+            os.path.join(ROLE_CHAT_DIR, k + ".pid"))
+
+
+def _role_pid(key):
+    _, _, pidf = _role_paths(key)
+    try:
+        pid = int(open(pidf).read().strip())
+    except (OSError, ValueError):
+        return 0
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return 0
+    return pid
+
+
+def _role_running(key):
+    k = _role_key(key)
+    st = _ROLE.get(k) or {}
+    p = st.get("proc")
+    if p is not None:
+        return p.poll() is None
+    return bool(_role_pid(k))
+
+
+def _role_session(key):
+    _, sess, _ = _role_paths(key)
+    try:
+        with open(sess, encoding="utf-8") as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
+def _role_find_session(text):
+    sid = ""
+    for ln in text.splitlines():
+        i = ln.find('"sessionID"')
+        if i != -1:
+            j = ln.find(':"', i + 11)
+            if j != -1:
+                sid = ln[j + 2:].split('"', 1)[0]
+    return sid
+
+
+def _role_record_session(key, text):
+    _, sess, _ = _role_paths(key)
+    sid = _role_find_session(text)
+    if sid and sid != _role_session(key):
+        try:
+            with open(sess, "w", encoding="utf-8") as fh:
+                fh.write(sid)
+        except OSError:
+            pass
+
+
+def _role_echo(key, message):
+    log, _, _ = _role_paths(key)
+    os.makedirs(LOGS, exist_ok=True)
+    with open(log, "a", encoding="utf-8") as fh:
+        fh.write(f"\n> {message}\n")
+
+
+def _role_context(company, role, key):
+    import register as REG
+    row = None
+    for r in REG.load():
+        if r["company"].strip().lower() == company.strip().lower() and \
+                r["role"].strip().lower() == role.strip().lower():
+            row = r
+            break
+    bits = [f"- Company: {company}", f"- Role: {role}"]
+    if row:
+        bits += [f"- Status: {row.get('status','')}",
+                 f"- Follow-up flag: {row.get('action','') or '(none)'}",
+                 f"- Engagement: {row.get('employment','') or '(unknown)'}"]
+        notes = (row.get("notes") or "").strip()
+        if notes:
+            bits.append(f"- Notes: {notes[:1400]}")
+        if row.get("letter"):
+            bits.append(f"- Cover letter: {row['letter']}")
+    jd = os.path.join(STATE, "job-descriptions", key + ".md")
+    if os.path.isfile(jd):
+        bits.append(f"- Job ad file: {os.path.relpath(jd, ROOT)}")
+    cv = os.path.join(STATE, "cv-content", key + ".json")
+    if os.path.isfile(cv):
+        bits.append(f"- Tailored CV content: {os.path.relpath(cv, ROOT)}")
+    return ("You are discussing ONE application with the candidate. Stay on this role.\n"
+            + "\n".join(bits) + "\n\n"
+            "Answer questions about this role and help with next steps: reply wording, interview "
+            "preparation, follow-ups, gaps and positioning. Be concise and practical. If email is "
+            "needed, save a draft with tools/draft_email.py and ask the candidate to press Send with "
+            "approval in the drawer (never send; gmail_send.py refuses unapproved drafts). Never submit an application "
+            "or change the register without explicit approval. Read the job ad/CV files above when useful.")
+
+
+def _role_spawn(key, message, company, role):
+    log, _, pidf = _role_paths(key)
+    sid = _role_session(key)
+    base = message if sid else (CHAT_PREAMBLE + "\n\n" + _role_context(company, role, key) + "\n\n---\n" + message)
+    prompt = GATE_NOTE + "\n\n" + base
+    f = open(log, "a", encoding="utf-8")
+    env = agent_env(AGENT_JSON="1")
+    if sid:
+        env["AGENT_SESSION"] = sid
+    p = subprocess.Popen(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), prompt],
+                         cwd=ROOT, env=env, stdout=f, stderr=subprocess.STDOUT,
+                         start_new_session=True)
+    st = _ROLE.setdefault(_role_key(key), {"proc": None, "queue": []})
+    st["proc"] = p
+    try:
+        with open(pidf, "w") as fh:
+            fh.write(str(p.pid))
+    except OSError:
+        pass
+
+
+def _role_pump(key):
+    k = _role_key(key)
+    if _role_running(k):
+        return
+    q = _ROLE.get(k, {}).get("queue") or []
+    if q:
+        message, company, role = q.pop(0)
+        _role_spawn(k, message, company, role)
+
+
+def role_chat_start(key, company, role, message):
+    message = (message or "").strip()[:6000]
+    if not message:
+        return {"error": "empty message"}
+    k = _role_key(key)
+    if _role_running(k):
+        _ROLE.setdefault(k, {"proc": None, "queue": []})["queue"].append((message, company, role))
+        _role_echo(k, message)
+        return {"status": "queued", "queued": True}
+    _role_echo(k, message)
+    _role_spawn(k, message, company, role)
+    return {"status": "started"}
+
+
+def role_chat_stream(key):
+    k = _role_key(key)
+    _role_pump(k)
+    log, _, _ = _role_paths(k)
+    try:
+        text = ANSI.sub("", open(log, encoding="utf-8", errors="ignore").read())
+    except OSError:
+        text = ""
+    _role_record_session(k, text)
+    kind = _json_kind(text)
+    if kind == "opencode":
+        segs = chat_parse_json(text)
+    elif kind == "claude":
+        segs = chat_parse_claude(text)
+    else:
+        segs = chat_parse(text)
+    total = len(segs)
+    base = max(0, total - 300)
+    if total > 300:
+        segs = segs[-300:]
+    q = _ROLE.get(k, {}).get("queue") or []
+    return {"segments": segs, "base": base, "total": total,
+            "running": _role_running(k), "pending": len(q),
+            "done": not _role_running(k) and not q}
+
+
+def role_chat_stop(key):
+    k = _role_key(key)
+    _ROLE.setdefault(k, {"proc": None, "queue": []})["queue"] = []
+    pid = (_ROLE.get(k, {}).get("proc").pid if _ROLE.get(k, {}).get("proc")
+           and _ROLE[k]["proc"].poll() is None else _role_pid(k))
+    killed = False
+    if pid:
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGTERM)
+            killed = True
+        except OSError:
+            try:
+                os.kill(pid, signal.SIGTERM)
+                killed = True
+            except OSError:
+                pass
+    _ROLE.setdefault(k, {"proc": None, "queue": []})["proc"] = None
+    try:
+        os.remove(_role_paths(k)[2])
+    except OSError:
+        pass
+    return {"ok": "stopped this role's turn" if killed else "nothing was running"}
+
+
+def role_chat_new(key):
+    k = _role_key(key)
+    role_chat_stop(k)
+    for path in (_role_paths(k)[0], _role_paths(k)[1]):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    return {"ok": "role chat cleared"}
+
+
+CHAT_PREAMBLE = (
+    "You are the operator assistant for THIS repository: the Jobsquirrel job-search pipeline. "
+    "The repo root is your cwd. Read AGENTS.md at the repo root first; it is your operating manual, "
+    "and the human in the chat is the candidate whose job search this pipeline runs. "
+    "Answer questions about the job search from the pipeline's own state, NOT from git history: "
+    "the canonical register is state/applications.csv with counts from `python3 tools/register.py --stats` "
+    "(also written to state/counts.md); the apply queue is state/queue*.tsv; what was sent to whom is "
+    "state/submissions.csv; conversion is `python3 tools/outcomes.py`. Treat 'updates', 'status' and "
+    "'how's it going' as job-search progress (applications, interviews, replies, queue) unless the "
+    "operator explicitly asks about the code. Be concise; use the repo's tools; never take an "
+    "irreversible action (submitting applications, sending email, deleting mail) without explicit approval. "
+    "THIS CHAT IS A CONTROL ROOM, NOT THE WORKER: for any request that changes files, runs commands, "
+    "prepares or submits applications, reconciles mail, researches, or takes more than one quick read, "
+    "do not do the work here. Hand it to a background subagent with `python3 tools/delegate.py --title "
+    "... --prompt ...` and reply with the task id plus one line on what it will do. It runs detached and "
+    "is reported in the Activity pane. Never use shell, write, edit, read or web tools directly in this "
+    "chat unless it is a single quick status check that cannot be delegated. Batch work must leave the "
+    "chat: build a scoped queue and run `tools/run_queue.sh` in the background (or delegate it), with "
+    "PARALLEL=N for document preparation and PARALLEL=1 when the roles share one ATS account. Tell the "
+    "operator where to watch. This chat is for conversation, one role, a quick check, or a decision. "
+    "NEVER send email yourself: save a draft with tools/draft_email.py and ask the candidate to press "
+    "Send with approval in the role drawer. gmail_send.py refuses non-draft sends and drafts without a "
+    "human dashboard receipt; do not try to set APPROVE_SEND_EMAIL, call the Gmail API directly, "
+    "or work around it. Email access is Gmail only: use tools/gmail_readonly.py, "
+    "tools/gmail_reconcile.py and tools/email_opportunities.py; never use `mail`, "
+    "`/var/spool/mail`, or local mailbox files—there is no local mail spool. "
+    "IMPORTANT, this is a job-search tool: when the operator says 'skills', 'my experience', 'my background' "
+    "or 'add what I did at X', they mean their JOB/CAREER skills (technologies, competencies, roles, "
+    "achievements) for their CV — capture those in the knowledge base (kb/sources/*.md, grounded and "
+    "attributed) and config/cv.json so they flow into the tailored CVs and cover letters. They do NOT mean "
+    "coding-agent tooling (opencode skill packages, plugins, MCP servers, IDE extensions). If a request "
+    "could be read either way, assume career/job skills and ask only if still unclear. ")
+
+
+def _chat_echo(message):
+    os.makedirs(LOGS, exist_ok=True)
+    with open(CHAT_LOG, "a", encoding="utf-8") as fh:
+        fh.write(f"\n> {message}\n")
+
+
+# The agent reaches outside the repo only through the gate (tools/agent_access.py),
+# which asks the operator; native external access is denied so it can't bypass it.
+AGENT_PERMISSIONS = {"permission": {"external_directory": {"*": "deny"}, "task": "allow"}}
+GATE_NOTE = ("Before reading files outside this repo, writing files, or running shell commands, use the "
+             "gate so the operator can approve: `python3 tools/agent_access.py read|write|run ...`. "
+             "It asks the operator and only proceeds if they allow it.")
+
+
+DASH = {"url": ""}          # set in main(); handed to the embedded agent so it can ask for approval
+
+
+# ---------------------------------------------------------------- agent / LLM config
+AGENT_CFG_FILE = os.path.join(os.path.expanduser("~"), ".config", "job-search", "agent.json")
+GRAPHRAG_ENV = os.path.join(ROOT, "kb", "graphrag", ".env")
+GMAIL_REVIEW_FILE = os.path.join(STATE, "gmail-review.json")
+GMAIL_REVIEW_ACK = os.path.join(STATE, "gmail-review-ack.json")
+GMAIL_REVIEW_CFG = os.path.join(ROOT, "config", "gmail-review.json")
+
+
+def _stored_agent_env():
+    """Agent secrets from the central store (strings only)."""
+    try:
+        return {str(k): str(v) for k, v in SS.section("agent").items()
+                if v is not None and not isinstance(v, (dict, list))}
+    except SS.SecretsError:
+        return {}
+
+
+def load_agent_cfg():
+    try:
+        with open(AGENT_CFG_FILE, encoding="utf-8") as fh:
+            d = json.load(fh)
+        models = d.get("models") if isinstance(d.get("models"), dict) else {}
+        models = {str(k)[:200]: str(v)[:200] for k, v in models.items() if v}
+        agent = d.get("agent", "") or ""
+        model = (d.get("model", "") or "").strip() or models.get(agent, "")
+        legacy = d.get("env") if isinstance(d.get("env"), dict) else {}
+        env = {str(k): str(v) for k, v in legacy.items() if v is not None}
+        env.update(_stored_agent_env())        # the store wins
+        try:
+            parallel = int(d.get("parallel") or 3)
+        except (TypeError, ValueError):
+            parallel = 3
+        sub_agent = str(d.get("subagent_agent") or "").strip()[:200]
+        sub_model = str(d.get("subagent_model") or "").strip()[:200]
+        if sub_agent and not sub_model:
+            sub_model = models.get(sub_agent, "")
+        return {"agent": agent, "model": model, "models": models, "env": env,
+                "parallel": max(1, min(6, parallel)),
+                "subagent_agent": sub_agent, "subagent_model": sub_model,
+                "roles": {"main": {"agent": agent, "model": model},
+                          "subagent": {"agent": sub_agent, "model": sub_model}}}
+    except (OSError, ValueError):
+        return {"agent": "", "model": "", "models": {}, "env": _stored_agent_env(),
+                "parallel": 3, "subagent_agent": "", "subagent_model": "",
+                "roles": {"main": {"agent": "", "model": ""},
+                          "subagent": {"agent": "", "model": ""}}}
+
+
+def save_agent_cfg(d):
+    prev = load_agent_cfg()
+    agent = str(d.get("agent", prev["agent"]) or "").strip()[:200]
+    models = dict(prev.get("models") or {})
+    if isinstance(d.get("models"), dict):
+        for k, v in d["models"].items():
+            k, v = str(k).strip()[:200], str(v).strip()[:200]
+            if k and v:
+                models[k] = v
+    if "model" in d:
+        model = str(d.get("model") or "").strip()[:200]
+        if agent:
+            if model:
+                models[agent] = model
+            else:
+                models.pop(agent, None)
+    else:
+        model = prev["model"]
+        if agent and not model:
+            model = models.get(agent, "")
+    for k, v in (d.get("env") or {}).items():
+        k = re.sub(r"[^A-Za-z0-9_]", "", str(k))[:80]
+        if not k:
+            continue
+        try:
+            if v in ("", None):
+                SS.delete("agent", k)
+            else:
+                SS.put("agent", k, str(v)[:8192])
+        except SS.SecretsError as exc:
+            return {"agent": agent, "model": model, "models": models,
+                    "env": _stored_agent_env(), "error": str(exc)}
+    # Subagent settings: worker count, an optional different provider and model.
+    # An empty provider means "same as the main agent"; an empty model means the
+    # provider's default (or, when the provider is inherited, the main model).
+    try:
+        parallel = int(d.get("parallel", prev.get("parallel", 3)) or 3)
+    except (TypeError, ValueError):
+        parallel = 3
+    parallel = max(1, min(6, parallel))
+    sub_agent = str(d.get("subagent_agent", prev.get("subagent_agent", "")) or "").strip()[:200]
+    sub_model = str(d.get("subagent_model", prev.get("subagent_model", "")) or "").strip()[:200]
+    if sub_agent and sub_model:
+        models[sub_agent] = sub_model            # remember it for that provider
+    # agent.json keeps the non-secret choice only; keys live in the store.
+    out = {"agent": agent, "model": model, "models": models,
+           "parallel": parallel, "subagent_agent": sub_agent, "subagent_model": sub_model}
+    os.makedirs(os.path.dirname(AGENT_CFG_FILE), exist_ok=True)
+    fd = os.open(AGENT_CFG_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(out, fh, indent=2)
+    out["env"] = _stored_agent_env()
+    out["roles"] = {"main": {"agent": agent, "model": model},
+                    "subagent": {"agent": sub_agent, "model": sub_model}}
+    _MODEL_CACHE.update(t=0.0, key="", data={})
+    if (prev.get("agent"), prev.get("model")) != (out["agent"], out["model"]):
+        # A new provider/model must not resume a conversation built for the old
+        # context window (e.g. a 240k cloud chat on a 32k local model).
+        for path in (CHAT_SESSION,):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        try:
+            for f in os.listdir(ROLE_CHAT_DIR):
+                if f.endswith(".session"):
+                    os.remove(os.path.join(ROLE_CHAT_DIR, f))
+        except OSError:
+            pass
+    return out
+
+
+def _mask(v):
+    v = v or ""
+    return ("…" + v[-4:]) if len(v) > 4 else ("set" if v else "")
+
+
+_MODEL_CACHE = {"t": 0.0, "key": "", "data": {}}
+
+
+def agent_models(agent=""):
+    """Models the chosen CLI can run, when it can tell us (opencode models)."""
+    import shutil
+    agent = (agent or "").strip()
+    if not agent:
+        try:
+            r = subprocess.run(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), "--which"],
+                               cwd=ROOT, capture_output=True, text=True, timeout=10)
+            agent = (r.stdout or "").strip()
+        except (OSError, subprocess.SubprocessError):
+            agent = ""
+    base = (agent.split() or [""])[0]
+    now = time.time()
+    cache = _MODEL_CACHE
+    if cache["key"] == base and now - cache["t"] < 300:
+        return cache["data"]
+    models, source = [], ""
+    if base in ("local", "llamacpp"):
+        cfg = load_agent_cfg()
+        baseurl = (os.environ.get("LOCAL_LLM_BASE_URL")
+                   or (cfg.get("env") or {}).get("LOCAL_LLM_BASE_URL")
+                   or os.environ.get("LLAMACPP_BASE_URL")
+                   or (cfg.get("env") or {}).get("LLAMACPP_BASE_URL")
+                   or "http://127.0.0.1:8080/v1").strip().rstrip("/")
+        key = (os.environ.get("LOCAL_LLM_API_KEY")
+               or (cfg.get("env") or {}).get("LOCAL_LLM_API_KEY") or "sk-local")
+        try:
+            req = urllib.request.Request(baseurl + "/models",
+                                         headers={"User-Agent": "jobsquirrel", "Authorization": f"Bearer {key}"})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                data = json.load(r)
+            models = [str(m.get("id") or "").strip() for m in (data.get("data") or [])
+                      if isinstance(m, dict) and m.get("id")]
+            models = [m for m in models if m]
+            source = "Local LLM (OpenAI-compatible)"
+        except Exception as e:
+            models, source = [], f"Local LLM (failed: {str(e)[:80]})"
+    elif base == "openrouter":
+        cfg = load_agent_cfg()
+        key = (os.environ.get("OPENROUTER_API_KEY")
+               or (cfg.get("env") or {}).get("OPENROUTER_API_KEY") or "").strip()
+        if not key:
+            models, source = [], "OpenRouter (set OPENROUTER_API_KEY)"
+        else:
+            try:
+                req = urllib.request.Request(
+                    "https://openrouter.ai/api/v1/models",
+                    headers={"Authorization": f"Bearer {key}", "User-Agent": "jobsquirrel"})
+                with urllib.request.urlopen(req, timeout=25) as r:
+                    data = json.load(r)
+                models = [str(m.get("id") or "").strip() for m in (data.get("data") or [])
+                          if isinstance(m, dict) and m.get("id")]
+                models = [m for m in models if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/~-]*", m)]
+                models = list(dict.fromkeys(models))
+                source = "OpenRouter"
+            except Exception as e:
+                models, source = [], f"OpenRouter (failed: {str(e)[:80]})"
+    elif base == "opencode" and shutil.which("opencode"):
+        try:
+            r = subprocess.run(["opencode", "models"], capture_output=True, text=True, timeout=40)
+            models = [ln.strip() for ln in ANSI.sub("", r.stdout or "").splitlines()
+                      if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]*", ln.strip() or "")]
+            source = "opencode models"
+        except (OSError, subprocess.SubprocessError):
+            models, source = [], "opencode models (failed)"
+    elif base == "claude" and shutil.which("claude"):
+        models = ["sonnet", "opus", "haiku", "sonnet[1m]", "opus[1m]"]
+        source = "Claude Code aliases"
+    models = list(dict.fromkeys(models))
+    groups = _model_groups(base, models)
+    cfg = load_agent_cfg()
+    data = {"agent": agent or base, "models": models, "groups": groups, "source": source,
+            "current": cfg.get("model", ""), "saved": (cfg.get("models") or {}).get(base, "")}
+    _MODEL_CACHE.update(t=now, key=base, data=data)
+    return data
+
+
+def _model_groups(base, models):
+    """Group model ids for the pickers: Free, products (Zen/Go/...), contributor."""
+    def short(m):
+        return m.split("/", 1)[1] if "/" in m else m
+    free = [m for m in models if short(m).lower().endswith(("-free", ":free"))]
+    contributor = [m for m in models if short(m).lower().endswith("-contributor")]
+    rest = [m for m in models if m not in free and m not in contributor]
+    groups = []
+    if free:
+        groups.append({"label": "Free models", "models": free})
+    by_product = {}
+    for m in rest:
+        key = m.split("/", 1)[0] if "/" in m else (base or "other")
+        by_product.setdefault(key, []).append(m)
+    labels = {"opencode": "OpenCode Zen", "opencode-go": "OpenCode Go",
+              "claude": "Claude Code", "anthropic": "Anthropic",
+              "deepseek": "DeepSeek", "openrouter": "OpenRouter"}
+    for key in sorted(by_product):
+        groups.append({"label": labels.get(key, key.replace("-", " ").title() or "Other"),
+                       "models": by_product[key]})
+    if contributor:
+        groups.append({"label": "Contributor / preview", "models": contributor})
+    return groups
+
+
+def _gmail_review_cfg():
+    try:
+        with open(GMAIL_REVIEW_CFG, encoding="utf-8") as fh:
+            d = json.load(fh)
+        return {"enabled": bool(d.get("enabled", True)),
+                "use_model": bool(d.get("use_model", True)),
+                "auto_model": bool(d.get("auto_model", False))}
+    except (OSError, ValueError):
+        return {"enabled": True, "use_model": True, "auto_model": False}
+
+
+def _gmail_review_enabled():
+    return _gmail_review_cfg()["enabled"]
+
+
+def _gmail_review_ack_ids():
+    try:
+        with open(GMAIL_REVIEW_ACK, encoding="utf-8") as fh:
+            return {str(x) for x in json.load(fh)}
+    except (OSError, ValueError):
+        return set()
+
+
+def gmail_review_data():
+    cfg = _gmail_review_cfg()
+    try:
+        with open(GMAIL_REVIEW_FILE, encoding="utf-8") as fh:
+            items = [e for e in json.load(fh) if isinstance(e, dict) and e.get("id")]
+    except (OSError, ValueError):
+        items = []
+    ack = _gmail_review_ack_ids()
+    items = [e for e in items if str(e.get("id")) not in ack]
+    return {"enabled": cfg["enabled"], "use_model": cfg["use_model"],
+            "auto_model": cfg["auto_model"], "count": len(items), "items": items}
+
+
+def gmail_review_ack(rid):
+    rid = str(rid or "").strip()
+    if not rid:
+        return {"error": "id required"}
+    ack = _gmail_review_ack_ids()
+    ack.add(rid)
+    os.makedirs(STATE, exist_ok=True)
+    with open(GMAIL_REVIEW_ACK, "w", encoding="utf-8") as fh:
+        json.dump(sorted(ack), fh, indent=2)
+    try:
+        with open(GMAIL_REVIEW_FILE, encoding="utf-8") as fh:
+            items = [e for e in json.load(fh) if isinstance(e, dict) and str(e.get("id")) != rid]
+        with open(GMAIL_REVIEW_FILE, "w", encoding="utf-8") as fh:
+            json.dump(items, fh, indent=2, ensure_ascii=False)
+    except (OSError, ValueError):
+        pass
+    return {"ok": "removed from review", "count": len([e for e in items if str(e.get('id')) not in ack]) if 'items' in locals() else 0}
+
+
+def gmail_review_config(enabled=None, use_model=None, auto_model=None):
+    prev = _gmail_review_cfg()
+    enabled = prev["enabled"] if enabled is None else bool(enabled)
+    use_model = prev["use_model"] if use_model is None else bool(use_model)
+    auto_model = prev["auto_model"] if auto_model is None else bool(auto_model)
+    os.makedirs(os.path.dirname(GMAIL_REVIEW_CFG), exist_ok=True)
+    with open(GMAIL_REVIEW_CFG, "w", encoding="utf-8") as fh:
+        json.dump({"enabled": enabled, "use_model": use_model, "auto_model": auto_model}, fh, indent=2)
+    return {"ok": "saved", "enabled": enabled, "use_model": use_model, "auto_model": auto_model}
+
+
+def _plain_email(body):
+    body = re.sub(r"(?is)<(style|script|head)\b[^>]*>.*?</\1>", " ", body or "")
+    body = re.sub(r"(?is)<br\s*/?>|</p>|</li>", "\n", body)
+    body = re.sub(r"<[^>]+>", " ", body)
+    return re.sub(r"[ \t]+", " ", body).strip()
+
+
+def gmail_review_ask(rid):
+    rid = str(rid or "").strip()
+    try:
+        with open(GMAIL_REVIEW_FILE, encoding="utf-8") as fh:
+            item = next((e for e in json.load(fh) if str(e.get("id")) == rid), None)
+    except (OSError, ValueError):
+        item = None
+    if not item:
+        return {"error": "review item not found"}
+    import gmail_review_model as GRM
+    return GRM.ask(item)
+
+def agent_config():
+    import shutil
+    cfg = load_agent_cfg()
+    detected = [a for a in ("opencode", "claude") if shutil.which(a)]
+    which = ""
+    try:
+        r = subprocess.run(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), "--which"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=10)
+        which = (r.stdout or "").strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return {"agent": cfg["agent"], "model": cfg["model"], "models": cfg.get("models", {}),
+            "parallel": cfg.get("parallel", 3),
+            "subagent_agent": cfg.get("subagent_agent", ""),
+            "subagent_model": cfg.get("subagent_model", ""),
+            "roles": cfg.get("roles") or {"main": {"agent": cfg["agent"], "model": cfg["model"]},
+                                          "subagent": {"agent": cfg.get("subagent_agent", ""),
+                                                       "model": cfg.get("subagent_model", "")}},
+            "env": {k: (v if re.search(r"BASE_URL$", k) else _mask(v)) for k, v in cfg["env"].items()},
+            "env_keys": sorted(cfg["env"]), "detected": detected, "which": which,
+            "config_path": AGENT_CFG_FILE, "secrets_path": SS.path(),
+            "known_keys": ["OPENROUTER_API_KEY", "LOCAL_LLM_BASE_URL", "LOCAL_LLM_API_KEY",
+                           "LLAMACPP_BASE_URL", "OPENCODE_API_KEY",
+                           "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]}
+
+
+def _graphrag_section():
+    try:
+        sec = SS.section("graphrag")
+    except SS.SecretsError:
+        sec = {}
+    if sec:
+        return sec
+    # First run after upgrading: read the old .env, then migrate() moves it.
+    sec = {}
+    for ln in _read(GRAPHRAG_ENV).splitlines():
+        s = ln.strip()
+        if not s or s.startswith("#") or "=" not in s:
+            continue
+        k, v = s.split("=", 1)
+        sec[k.strip()] = v.strip()
+    return sec
+
+
+def _write_graphrag_env(sec):
+    """Materialize kb/graphrag/.env (0600) for GraphRAG's own dotenv loader."""
+    os.makedirs(os.path.dirname(GRAPHRAG_ENV), exist_ok=True)
+    lines = ["# Materialized from the secrets store (Settings -> Secrets).",
+             "# Edit there, not here; this file is rewritten."]
+    for k, v in sec.items():
+        if v is None or str(v) == "":
+            continue
+        lines.append(f"{k}={v}")
+    fd = os.open(GRAPHRAG_ENV, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+
+
+def graphrag_env():
+    sec = _graphrag_section()
+    vars_ = {}
+    for k, v in sec.items():
+        secret = bool(re.search(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL", k, re.I))
+        vars_[k] = _mask(str(v)) if secret else str(v)
+    return {"path": GRAPHRAG_ENV, "vars": vars_, "keys": list(sec),
+            "exists": bool(sec) or os.path.isfile(GRAPHRAG_ENV),
+            "store": SS.path()}
+
+
+def save_graphrag_env(updates):
+    try:
+        sec = _graphrag_section()
+    except SS.SecretsError as exc:
+        return {"error": str(exc)}
+    for k, v in (updates or {}).items():
+        k = re.sub(r"[^A-Za-z0-9_]", "", str(k))[:80]
+        if not k:
+            continue
+        if v in ("", None):
+            sec.pop(k, None)
+        else:
+            sec[k] = str(v)[:8192]
+    try:
+        SS.set_section("graphrag", sec)
+        _write_graphrag_env(sec)
+    except (SS.SecretsError, OSError) as exc:
+        return {"error": str(exc)}
+    return graphrag_env()
+
+
+def agent_env(subagent=False, **extra):
+    env = dict(os.environ)
+    env.update(extra)
+    env.setdefault("OPENCODE_CONFIG_CONTENT", json.dumps(AGENT_PERMISSIONS))
+    if DASH["url"]:
+        env.setdefault("JOBSQUIRREL_URL", DASH["url"])
+    env.setdefault("JOBSQUIRREL_TOKEN", SESSION_TOKEN)
+    cfg = load_agent_cfg()                        # user-configured agent/model/token
+    models = cfg.get("models") or {}
+    if subagent:
+        role_agent = (cfg.get("subagent_agent") or "").strip()
+        role_model = (cfg.get("subagent_model") or "").strip()
+        if role_agent:
+            # A different provider for subagents: use the model saved for it,
+            # never the main agent's model id (it may not exist there).
+            role_model = role_model or (models.get(role_agent) or "")
+            cfg = dict(cfg, agent=role_agent, model=role_model)
+        else:
+            cfg = dict(cfg, model=role_model or cfg.get("model"))
+    if cfg.get("agent"):
+        env["AGENT"] = cfg["agent"]               # the dashboard choice wins over a stray AGENT=1
+    model = cfg.get("model")
+    if model and not extra.get("MODEL"):
+        env["MODEL"] = model                      # subagents may use their own model
+    for k, v in cfg.get("env", {}).items():
+        env.setdefault(k, v)
+    try:
+        key = SS.key_b64()          # children may not share the desktop keyring
+        if key:
+            env.setdefault(SS.KEY_ENV, key)
+    except SS.SecretsError:
+        pass
+    try:
+        gr_key = SS.get("graphrag", "OPENCODE_API_KEY")
+        if gr_key:
+            env.setdefault("OPENCODE_API_KEY", gr_key)
+    except SS.SecretsError:
+        pass
+    return env
+
+
+# ---------------------------------------------------------------- updates
+VERSION_FILE = os.path.join(ROOT, "VERSION")
+GITHUB_REPO = os.environ.get("JOBSQUIRREL_REPO", "bongomanuk/jobsquirrel")
+_UPDATE = {"t": 0.0, "data": {}}
+
+
+def current_version():
+    try:
+        with open(VERSION_FILE, encoding="utf-8") as fh:
+            return fh.read().strip() or "0"
+    except OSError:
+        return "0"
+
+
+def _vtup(v):
+    return tuple(int(x) for x in re.findall(r"\d+", v or "")[:3]) or (0,)
+
+
+def check_update(refresh=False):
+    """Latest GitHub release vs the VERSION file (cached an hour)."""
+    if not refresh and _UPDATE["data"] and time.time() - _UPDATE["t"] < 3600:
+        return _UPDATE["data"]
+    cur = current_version()
+    d = {"current": cur, "latest": "", "available": False, "name": "", "notes": "", "error": "",
+         "url": f"https://github.com/{GITHUB_REPO}/releases"}
+    try:
+        req = urllib.request.Request(f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
+                                     headers={"Accept": "application/vnd.github+json",
+                                              "User-Agent": "jobsquirrel"})
+        with urllib.request.urlopen(req, timeout=12) as r:
+            rel = json.load(r)
+        tag = (rel.get("tag_name") or "").strip()
+        d.update(latest=tag, name=rel.get("name", ""), notes=(rel.get("body") or "")[:4000],
+                 url=rel.get("html_url") or d["url"], available=_vtup(tag) > _vtup(cur))
+    except Exception as e:
+        d["error"] = f"{type(e).__name__}: {e}"
+    _UPDATE.update(t=time.time(), data=d)
+    return d
+
+
+def apply_update(approval_token=""):
+    if approval_token != "APPROVE_UPDATE":
+        return {"error": "refused: confirm to update"}
+    _spawn("update (git pull)", ["git", "-C", ROOT, "pull", "--ff-only"])
+    return {"ok": "updating — watch the Activity pane, then restart the dashboard"}
+
+
+# ---------------------------------------------------------------- Google accounts (Gmail + Calendar)
+def google_info():
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import google_config as GC
+    st = GC.status()
+
+    def mask(v):
+        v = v or ""
+        return v if len(v) < 14 else v[:8] + "\u2026" + v[-6:]
+
+    return {"config_file": st["config_file"], "config_dir": st["config_dir"],
+            "credentials": st["credentials"], "token": st["token"],
+            "credentials_exists": st["credentials_exists"], "token_exists": st["token_exists"],
+            "client_id": mask(st["client_id"]), "has_client_secret": st["has_client_secret"],
+            "account": st["account"], "scopes": st["scopes"]}
+
+
+def google_save(data):
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import google_config as GC
+    upd = {}
+    for k in ("config_dir", "credentials", "token", "client_id", "client_secret"):
+        v = data.get(k)
+        if isinstance(v, str) and v.strip():
+            upd[k] = v.strip()
+    if not upd:
+        return {"error": "nothing to save"}
+    GC.save(upd)
+    msg = "saved Google settings"
+    if GC.load().get("client_id") and GC.load().get("client_secret"):
+        written = GC.write_credentials()
+        if written:
+            msg += f"; wrote {written}"
+    return {"ok": msg}
+
+
+# ---------------------------------------------------------------- secrets store
+SECRET_KNOWN = {
+    "agent": ["OPENROUTER_API_KEY", "OPENCODE_API_KEY", "ANTHROPIC_API_KEY",
+              "OPENAI_API_KEY", "LOCAL_LLM_API_KEY", "LLAMACPP_API_BASE",
+              "LOCAL_LLM_BASE_URL"],
+    "graphrag": ["GRAPHRAG_API_KEY", "GRAPHRAG_API_BASE", "GRAPHRAG_LLM_MODEL"],
+    "google": ["client_id", "client_secret"],
+}
+
+
+def secrets_info():
+    try:
+        st = SS.check()
+        data = SS.load()
+        mig = SS.migration_status()
+    except SS.SecretsError as exc:
+        return {"error": str(exc), "path": SS.path()}
+    out = {"path": st["path"], "exists": st["exists"], "mode": st["mode"],
+           "dir_mode": st["dir_mode"], "problems": st["problems"],
+           "encryption": st["encryption"], "key_source": st["key_source"],
+           "sections": {}, "known": SECRET_KNOWN, "migration": mig,
+           "google": {"credentials": False, "token": False, "token_modify": False}}
+    for section, values in data["sections"].items():
+        rows = []
+        if section == "accounts":
+            for name, entry in values.items():
+                entry = entry if isinstance(entry, dict) else {}
+                rows.append({"name": name, "set": bool(entry.get("password")),
+                             "value": "••••••" if entry.get("password") else "",
+                             "username": entry.get("username") or entry.get("email") or "",
+                             "email": entry.get("email") or "",
+                             "created": entry.get("created") or ""})
+        else:
+            for name, value in values.items():
+                rows.append({"name": name, "set": bool(value), "value": SS.mask(value),
+                             "username": "", "email": "", "created": ""})
+                if section == "google" and name in ("credentials", "token", "token_modify"):
+                    out["google"][name] = bool(value)
+        out["sections"][section] = rows
+    return out
+
+
+def secrets_set(section, name, value):
+    section = str(section or "").strip()
+    name = str(name or "").strip()
+    if not section or not name:
+        return {"error": "section and name are required"}
+    try:
+        if section == "accounts":
+            entry = SS.get("accounts", name)
+            entry = dict(entry) if isinstance(entry, dict) else {}
+            if isinstance(value, dict):
+                for k in ("username", "email", "password"):
+                    if value.get(k) not in (None, ""):
+                        entry[k] = str(value[k])[:8192]
+            elif value not in (None, ""):
+                entry["password"] = str(value)[:8192]
+            entry.setdefault("created", time.strftime("%Y-%m-%d"))
+            if not entry.get("password"):
+                return {"error": "a password is required"}
+            SS.put("accounts", name, entry)
+        else:
+            if section == "google" and name in ("credentials", "token", "token_modify") \
+                    and not isinstance(value, dict):
+                return {"error": "that entry must be a JSON object"}
+            SS.put(section, name, value)
+            if section == "google" and name in ("client_id", "client_secret"):
+                sec = SS.section("google")
+                if sec.get("client_id") and sec.get("client_secret"):
+                    sys.path.insert(0, os.path.join(ROOT, "tools"))
+                    import google_config as GC
+                    GC.write_credentials(str(sec.get("client_id")),
+                                         str(sec.get("client_secret")))
+            if section == "agent":
+                _MODEL_CACHE.update(t=0.0, key="", data={})
+    except SS.SecretsError as exc:
+        return {"error": str(exc)}
+    return {"ok": f"saved {section}/{name}", "info": secrets_info()}
+
+
+def secrets_delete(section, name):
+    try:
+        ok = SS.delete(str(section or ""), str(name or ""))
+    except SS.SecretsError as exc:
+        return {"error": str(exc)}
+    return {"ok": "deleted" if ok else "not found", "info": secrets_info()}
+
+
+def secrets_migrate():
+    try:
+        out = SS.migrate()
+    except (SS.SecretsError, OSError) as exc:
+        return {"error": str(exc)}
+    out["info"] = secrets_info()
+    return out
+
+
+def secrets_encrypt():
+    try:
+        st = SS.encrypt_store()
+    except (SS.SecretsError, OSError) as exc:
+        return {"error": str(exc)}
+    return {"ok": f"store is {st['encryption'] or 'empty'} (key: {st['key_source'] or 'none'})",
+            "info": secrets_info()}
+
+
+# ---------------------------------------------------------------- agent permissions
+PERMS_FILE = os.path.join(ROOT, "config", "agent-permissions.json")
+DEFAULT_PERMS = {
+    "read_repo": "allow", "write_repo": "allow",      # its normal work in this repo
+    "read_external": "ask", "write_external": "ask",  # outside the repo -> ask
+    "bash": "ask", "web": "allow", "task": "ask",
+}
+_PERM_LOCK = threading.Lock()
+_PERM = {}                  # request id -> {category, detail, event, decision, ts}
+_DRAFT_SEND_LOCK = threading.Lock()
+_DRAFT_SENDING = set()      # draft paths with a send waiting for approval
+
+
+def load_perms():
+    try:
+        with open(PERMS_FILE, encoding="utf-8") as fh:
+            return {**DEFAULT_PERMS, **json.load(fh)}
+    except (OSError, ValueError):
+        return dict(DEFAULT_PERMS)
+
+
+def save_perms(d):
+    d = {k: v for k, v in d.items() if k in DEFAULT_PERMS and v in ("allow", "ask", "deny")}
+    merged = {**DEFAULT_PERMS, **d}
+    os.makedirs(os.path.dirname(PERMS_FILE), exist_ok=True)
+    with open(PERMS_FILE, "w", encoding="utf-8") as fh:
+        json.dump(merged, fh, indent=2)
+    return merged
+
+
+def permission_request(category, detail, timeout=300):
+    """The agent asks to do something; honour allow/deny, or block until the operator answers."""
+    pol = load_perms().get(category, "ask")
+    if pol in ("allow", "deny"):
+        return {"decision": pol, "category": category}
+    rid = uuid.uuid4().hex
+    ev = threading.Event()
+    with _PERM_LOCK:
+        _PERM[rid] = {"id": rid, "category": category, "detail": detail, "event": ev, "decision": None, "ts": time.time()}
+    ev.wait(timeout)
+    with _PERM_LOCK:
+        rec = _PERM.pop(rid, {})
+    return {"decision": rec.get("decision") or "deny", "id": rid, "category": category}
+
+
+def ask_request(question, detail="", timeout=600, mode="code"):
+    """The agent needs something only the human can supply: a code, or an
+    approval they give in their own phone app ("was this you?" -> Yes).
+
+    Identical pending asks are SHARED, not duplicated: three workers that hit the
+    same sign-in checkpoint wait on one dialog, and the human answers once.
+    """
+    question = question[:80]
+    detail = detail[:400]
+    mode = "approve" if str(mode).lower().startswith("approv") else "code"
+    now = time.time()
+    with _PERM_LOCK:
+        for r in _PERM.values():
+            if (r.get("ask") and r.get("decision") is None
+                    and r["category"] == question and r["detail"] == detail
+                    and now - r["ts"] < timeout):
+                rid, ev = r["id"], r["event"]
+                break
+        else:
+            rid = uuid.uuid4().hex
+            ev = threading.Event()
+            _PERM[rid] = {"id": rid, "category": question, "detail": detail,
+                          "event": ev, "decision": None, "ts": now,
+                          "answer": None, "ask": True, "mode": mode,
+                          "rememberable": False}
+    ev.wait(timeout)
+    with _PERM_LOCK:
+        rec = _PERM.pop(rid, {})
+    answer = (rec.get("answer") or "").strip()
+    return {"answer": answer, "id": rid, "timeout": not answer,
+            "declined": rec.get("decision") == "deny" and not answer}
+
+
+def consent_request(purpose, token, timeout=300, email=None):
+    """A one-off approval (send mail, write the calendar): always asks, never remembered.
+
+    `email` (optional) is the full message shown in the approval dialog, where the
+    human can edit To/Cc/Subject/body. Edits come back only with their decision.
+    """
+    rid = uuid.uuid4().hex
+    ev = threading.Event()
+    with _PERM_LOCK:
+        _PERM[rid] = {"id": rid, "category": token, "detail": purpose, "event": ev,
+                      "decision": None, "ts": time.time(), "rememberable": False,
+                      "email": email, "edits": None, "save": False}
+    ev.wait(timeout)
+    with _PERM_LOCK:
+        rec = _PERM.pop(rid, {})
+    return {"decision": rec.get("decision") or "deny", "id": rid,
+            "edits": rec.get("edits") or {}, "save": bool(rec.get("save"))}
+
+
+def _log_approval(msg):
+    try:
+        os.makedirs(LOGS, exist_ok=True)
+        with open(os.path.join(LOGS, "approval.log"), "a", encoding="utf-8") as fh:
+            fh.write(time.strftime("%Y-%m-%d %H:%M:%S ") + msg + "\n")
+    except OSError:
+        pass
+
+
+def permission_pending():
+    with _PERM_LOCK:
+        return [{"id": r["id"], "category": r["category"], "detail": r["detail"],
+                 "rememberable": r.get("rememberable", True),
+                 "ask": bool(r.get("ask")),
+                 "mode": r.get("mode") or "code",
+                 "email": r.get("email")}
+                for r in _PERM.values() if r["decision"] is None]
+
+
+def permission_decide(rid, decision, remember=False, edits=None, save=False, answer=None):
+    with _PERM_LOCK:
+        r = _PERM.get(rid)
+    if not r:
+        return {"error": "unknown or expired request"}
+    if r.get("ask"):
+        # A typed answer (a code) is the whole decision; an empty one denies.
+        r["answer"] = str(answer or "").strip()
+        r["decision"] = "allow" if r["answer"] else "deny"
+        r["event"].set()
+        return {"ok": "answered" if r["answer"] else "left unanswered"}
+    r["decision"] = "allow" if decision == "allow" else "deny"
+    r["edits"] = edits
+    r["save"] = bool(save)
+    if remember and r.get("rememberable", True):
+        p = load_perms()
+        p[r["category"]] = r["decision"]
+        save_perms(p)
+    r["event"].set()
+    return {"ok": f"{r['decision']} {r['category']}"}
+
+
+def _chat_spawn(message):
+    """Run one turn for `message` (the echo is written by the caller)."""
+    sid = _chat_session()
+    if not os.path.exists(CHAT_LOG):
+        sid = ""                                    # transcript gone -> start fresh
+    base = message if sid else (CHAT_PREAMBLE + "\n\n---\n" + message)
+    prompt = GATE_NOTE + "\n\n" + base
+    f = open(CHAT_LOG, "a", encoding="utf-8")
+    env = agent_env(AGENT_JSON="1")
+    if sid:
+        env["AGENT_SESSION"] = sid                  # continue the same agent session
+    p = subprocess.Popen(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), prompt],
+                         cwd=ROOT, env=env, stdout=f, stderr=subprocess.STDOUT,
+                         start_new_session=True)
+    _CHAT["proc"] = p
+    _chat_pid_write(p.pid)
+
+
+def _chat_pump():
+    """Start the next queued message if the agent is free."""
+    if _chat_running():
+        return
+    q = _CHAT.get("queue") or []
+    if q:
+        _chat_spawn(q.pop(0))
+
+
+CHAT_ACTION = re.compile(
+    r"\b(prepare|submit|apply|run|reconcile|discover|scan|find|search|build|rebuild|"
+    r"fix|update|change|add|remove|delete|recapture|clean|prune|link|attach|import|"
+    r"sync|check|investigate|review|draft|record|book|schedule|send|make|create|"
+    r"write|edit|install|setup|set up|look at|look into|research|compare|verify|"
+    r"test|deploy|publish|release|document|refactor|improve|implement|migrate|"
+    r"move|rename|copy)\b", re.I)
+CHAT_QUESTION = re.compile(
+    r"^(why|what|how|when|where|who|which|whose|explain|tell me|is|are|was|were|"
+    r"does|do|did|should|would)\b", re.I)
+CHAT_REQUEST = re.compile(r"^(please\s+)?(can|could|would|will)\s+you\b", re.I)
+CHAT_IMPERATIVE = re.compile(
+    r"^(please\s+)?(prepare|submit|apply|run|reconcile|discover|scan|find|search|"
+    r"build|rebuild|fix|update|change|add|remove|delete|recapture|clean|prune|link|"
+    r"attach|import|sync|check|investigate|review|draft|record|book|schedule|send|"
+    r"make|create|write|edit|install|setup|set up|look at|look into|research|compare|"
+    r"verify|test|deploy|publish|release|document|refactor|improve|implement|migrate|"
+    r"move|rename|copy)\b", re.I)
+
+
+def _looks_like_action(message):
+    """True when the chat should hand the request to a background subagent.
+
+    Questions stay in the chat; anything that reads/writes/runs is delegated so
+    the conversation is never blocked by a long task.
+    """
+    msg = (message or "").strip()
+    if not msg:
+        return False
+    if CHAT_REQUEST.match(msg) or CHAT_IMPERATIVE.match(msg):
+        return bool(CHAT_ACTION.search(msg))
+    if CHAT_QUESTION.match(msg):
+        return False
+    return bool(CHAT_ACTION.search(msg))
+
+
+def _chat_status(text):
+    os.makedirs(LOGS, exist_ok=True)
+    with open(CHAT_LOG, "a", encoding="utf-8") as fh:
+        fh.write(f"\n> [run] {text}\n")
+
+
+def chat_start(message):
+    message = (message or "").strip()[:8000]
+    if not message:
+        return {"error": "empty message"}
+    if _looks_like_action(message):
+        title = " ".join(message.splitlines())[:80]
+        res = delegate_start(message, title=title)
+        _chat_echo(message)
+        if res.get("error"):
+            _chat_status("Could not start a background subagent: " + str(res["error"]))
+            return res
+        _chat_status(f"Handed to a background subagent: {res.get('title', title)} "
+                     f"(task {res.get('id', '')}). Watch the Activity pane.")
+        return {"status": "delegated", "delegated": True, "id": res.get("id", ""),
+                "title": res.get("title", title)}
+    if _chat_running():
+        _CHAT.setdefault("queue", []).append(message)      # queue it — never lose the message
+        _chat_echo(message)
+        return {"status": "queued", "queued": True, "pending": len(_CHAT["queue"])}
+    _chat_echo(message)
+    _chat_spawn(message)
+    return {"status": "queued", "run_id": "chat", "agent": chat_agent(), "pending": 0}
+
+
+CHAT_USER = re.compile(r"^>\s?(.*)$")
+CHAT_TOOL = re.compile(r"^\$\s?(.*)$")
+CHAT_STATUS = re.compile(r"^>\s*(build\b.*|\[run\].*)$", re.I)
+
+
+CHAT_TOOL_BODY_MAX = 900        # tool output kept per step (the UI collapses it; keep the payload small)
+CHAT_TOOL_CMD_MAX = 400
+
+
+def _compress_tool(seg):
+    """Keep tool segments small so the chat never fills with scripts and raw output."""
+    cmd = str(seg.get("cmd") or "")
+    if len(cmd) > CHAT_TOOL_CMD_MAX:
+        seg["cmd"] = cmd[:CHAT_TOOL_CMD_MAX].rstrip() + "\n… (command truncated)"
+    body = str(seg.get("body") or "")
+    if len(body) > CHAT_TOOL_BODY_MAX:
+        seg["body"] = body[:CHAT_TOOL_BODY_MAX].rstrip() + f"\n… ({len(body) - CHAT_TOOL_BODY_MAX} more chars)"
+    return seg
+
+
+def chat_parse(text):
+    """Split an agent transcript into typed segments so the UI can collapse tool noise."""
+    segs, cur, fence = [], None, False
+
+    def push(seg):
+        if seg and (seg.get("body", "").strip() or seg["t"] == "tool"):
+            segs.append(seg)
+
+    for ln in text.splitlines():
+        if ln.strip().startswith("```"):
+            fence = not fence
+            cur = cur or {"t": "text", "body": ""}
+            cur["body"] += ("\n" if cur["body"] else "") + ln
+            continue
+        if not fence:
+            if CHAT_STATUS.match(ln):
+                push(cur); cur = None
+                push({"t": "status", "body": ln.lstrip("> ").strip()}); continue
+            m_user = CHAT_USER.match(ln)
+            if m_user:
+                push(cur); cur = None
+                push({"t": "user", "body": m_user.group(1)}); continue
+            m_tool = CHAT_TOOL.match(ln)
+            if m_tool:
+                push(cur); cur = None
+                cur = {"t": "tool", "cmd": m_tool.group(1), "body": ""}
+                continue
+        cur = cur or {"t": "text", "body": ""}
+        cur["body"] += ("\n" if cur["body"] else "") + ln
+    push(cur)
+    for s in segs:
+        s["body"] = s.get("body", "").strip("\n")
+        if s["t"] == "tool":
+            _compress_tool(s)
+    return segs
+
+
+def chat_parse_json(text):
+    """Parse opencode `--format json` events into typed segments."""
+    segs, pending = [], None
+    local = (load_agent_cfg().get("agent") or "") == "local"
+
+    def flush_tokens():
+        nonlocal pending
+        if pending is None:
+            return
+        total, cost = pending
+        cost_txt = "" if local else (f" · ${cost:.4f}" if isinstance(cost, (int, float)) else "")
+        segs.append({"t": "status", "body": f"{total} tokens{cost_txt}"})
+        pending = None
+    for ln in text.splitlines():
+        s = ln.strip()
+        if CHAT_STATUS.match(s):
+            segs.append({"t": "status", "body": s[1:].strip()})
+            continue
+        if s.startswith(">"):
+            flush_tokens()                       # the previous turn is complete
+            segs.append({"t": "user", "body": s[1:].strip()})
+            continue
+        if not s.startswith("{"):
+            continue
+        try:
+            e = json.loads(s)
+        except ValueError:
+            continue
+        t, p = e.get("type"), (e.get("part") or {})
+        if t == "error":
+            err = e.get("error") or {}
+            msg = ((err.get("data") or {}).get("message") or err.get("message")
+                   or err.get("name") or "unknown agent error")
+            low = str(msg).lower()
+            if "context" in low or "exceed" in low:
+                try:
+                    os.remove(CHAT_SESSION)
+                except OSError:
+                    pass
+                segs.append({"t": "status",
+                             "body": "context limit hit — chat session reset; send the message again"})
+            else:
+                segs.append({"t": "status", "body": "agent error: " + str(msg)[:600]})
+        elif t == "text" and p.get("text"):
+            segs.append({"t": "text", "body": p["text"]})
+        elif t == "tool_use":
+            st = p.get("state") or {}
+            inp = st.get("input") or {}
+            cmd = inp.get("command") or inp.get("filePath") or inp.get("pattern") or st.get("title") or p.get("tool")
+            out = st.get("output")
+            if out in (None, ""):
+                out = st.get("metadata") or ""
+            if isinstance(out, (dict, list)):
+                out = json.dumps(out, indent=2)
+            segs.append({"t": "tool", "tool": p.get("tool", ""), "cmd": str(cmd), "body": str(out)})
+        elif t == "step_finish":
+            tk = p.get("tokens") or {}
+            total = tk.get("total")
+            if total is not None:
+                pending = (total, p.get("cost"))
+    flush_tokens()                               # the last turn's token count
+    for s in segs:
+        if s["t"] == "tool":
+            _compress_tool(s)
+    return segs
+
+
+def chat_parse_claude(text):
+    """Parse Claude Code `--output-format stream-json` events into typed segments."""
+    segs, pending = [], None
+
+    def flush_tokens():
+        nonlocal pending
+        if pending is None:
+            return
+        tokens, cost = pending
+        parts = ([f"{tokens} tokens"] if tokens else []) + ([f"${cost:.4f}"] if isinstance(cost, (int, float)) else [])
+        if parts:
+            segs.append({"t": "status", "body": " · ".join(parts)})
+        pending = None
+    for ln in text.splitlines():
+        s = ln.strip()
+        if CHAT_STATUS.match(s):
+            segs.append({"t": "status", "body": s[1:].strip()})
+            continue
+        if s.startswith(">"):
+            flush_tokens()                       # the previous turn is complete
+            segs.append({"t": "user", "body": s[1:].strip()})
+            continue
+        if not s.startswith("{"):
+            continue
+        try:
+            e = json.loads(s)
+        except ValueError:
+            continue
+        t = e.get("type")
+        blocks = ((e.get("message") or {}).get("content") or [])
+        if t == "assistant":
+            for blk in blocks:
+                if blk.get("type") == "text" and blk.get("text"):
+                    segs.append({"t": "text", "body": blk["text"]})
+                elif blk.get("type") == "tool_use":
+                    inp = blk.get("input") or {}
+                    cmd = inp.get("command") or inp.get("file_path") or inp.get("pattern") or blk.get("name", "")
+                    segs.append({"t": "tool", "tool": blk.get("name", ""), "cmd": str(cmd), "body": ""})
+        elif t == "user":
+            for blk in blocks:
+                if blk.get("type") == "tool_result":
+                    c = blk.get("content")
+                    if isinstance(c, list):
+                        c = "\n".join(x.get("text", "") for x in c if isinstance(x, dict))
+                    if segs and segs[-1]["t"] == "tool" and not segs[-1]["body"]:
+                        segs[-1]["body"] = str(c or "")
+        elif t == "result":
+            u = e.get("usage") or {}
+            tokens = None
+            if u.get("input_tokens") is not None or u.get("output_tokens") is not None:
+                tokens = (u.get("input_tokens") or 0) + (u.get("output_tokens") or 0)
+            cost = e.get("total_cost_usd")
+            if tokens is not None or cost is not None:
+                pending = (tokens, cost)
+    flush_tokens()                               # the last turn's token count
+    for s in segs:
+        if s["t"] == "tool":
+            _compress_tool(s)
+    return segs
+
+
+def _json_kind(text):
+    """Best-effort: is this an opencode or Claude Code JSON stream?
+
+    Skip runner diagnostics (e.g. "agent_run: ... falling back") instead of
+    treating them as proof of a plain-text transcript: otherwise the raw JSON
+    events leak into the chat as text.
+    """
+    for ln in text.splitlines()[:200]:
+        s = ln.strip()
+        if not s or s.startswith(">") or s.startswith("build "):
+            continue
+        if not s.startswith("{"):
+            continue
+        try:
+            e = json.loads(s)
+        except ValueError:
+            continue
+        if "part" in e:
+            return "opencode"
+        if "message" in e or e.get("type") in ("system", "assistant", "user", "result"):
+            return "claude"
+    return None
+
+
+def chat_stream(run_id, since):
+    _chat_pump()                                    # start the next queued message if the agent is free
+    try:
+        size = os.path.getsize(CHAT_LOG)
+        with open(CHAT_LOG, encoding="utf-8", errors="ignore") as fh:
+            text = ANSI.sub("", fh.read())
+    except OSError:
+        size, text = 0, ""                          # transcript cleared/not created yet
+    _record_chat_session(text)
+    running = _chat_running()
+    kind = _json_kind(text)
+    if kind == "opencode":
+        segs = chat_parse_json(text)
+    elif kind == "claude":
+        segs = chat_parse_claude(text)
+    else:
+        segs = chat_parse(text)
+    total = len(segs)
+    base = max(0, total - 400)
+    if total > 400:
+        segs = segs[-400:]
+    pending = len(_CHAT.get("queue") or [])
+    return {"segments": segs, "base": base, "total": total, "offset": size,
+            "running": running, "pending": pending,
+            "done": not running and not pending}
+
+
+# ---------------------------------------------------------------- actions
+ACTIONS = {
+    "prepare": {"argv": ["bash", "tools/run_queue.sh"], "env": {"REVIEW": "1", "PARALLEL": "1"},
+                "purpose": "prepare documents (review run)", "token": None},
+    "submit_queue": {"argv": ["bash", "tools/run_queue.sh"], "env": {},
+                     "purpose": "run the apply queue (submits applications)", "token": "APPROVE_RUN_QUEUE"},
+    "reconcile": {"argv": [sys.executable, "tools/gmail_reconcile.py"],
+                  "env": {"PYTHONUNBUFFERED": "1"},
+                  "purpose": "reconcile the register with Gmail", "token": None},
+    "reconcile_apply": {"argv": [sys.executable, "tools/gmail_reconcile.py", "--apply"],
+                        "env": {"PYTHONUNBUFFERED": "1"},
+                        "purpose": "reconcile the register with Gmail and write the changes",
+                        "token": None},
+    "build_archetypes": {"argv": [sys.executable, "tools/build_archetypes.py"], "env": {},
+                         "purpose": "regenerate archetype CVs", "token": None},
+    "kb_update": {"argv": ["bash", "tools/kb_update.sh"], "env": {},
+                  "purpose": "update the knowledge graph (incremental)", "token": None},
+}
+
+
+_ACT = {"name": "", "proc": None, "offset": 0, "t0": 0, "pid": 0}
+ACT_FILE = os.path.join(LOGS, "dashboard-activity.json")
+
+
+def _act_save():
+    try:
+        _ACT["pid"] = _ACT["proc"].pid if _ACT.get("proc") else _ACT.get("pid", 0)
+        json.dump({k: _ACT.get(k) for k in ("name", "offset", "t0", "pid", "roles")},
+                  open(ACT_FILE, "w"))
+    except OSError:
+        pass
+
+
+def _act_load():
+    """Restore the last action so the Activity pane survives a server restart."""
+    if _ACT.get("name") or _ACT.get("proc"):
+        return
+    try:
+        with open(ACT_FILE, encoding="utf-8") as fh:
+            d = json.load(fh)
+        for k in ("name", "offset", "t0", "pid", "roles"):
+            _ACT[k] = d.get(k, _ACT.get(k))
+    except (OSError, ValueError):
+        pass
+
+
+def action_alive():
+    """True if the action process is ours, including after a server restart
+    (the pid is restored from dashboard-activity.json)."""
+    p = _ACT.get("proc")
+    if p is not None:
+        return p.poll() is None
+    return _pid_alive(_ACT.get("pid")) if _ACT.get("pid") else False
+
+
+def action_log(n=100):
+    p = os.path.join(LOGS, "dashboard-action.log")
+    start = _ACT.get("offset", 0)
+    try:
+        with open(p, encoding="utf-8", errors="ignore") as fh:
+            fh.seek(min(start, os.path.getsize(p)))
+            txt = ANSI.sub("", fh.read())
+    except OSError:
+        txt = ""
+    lines = txt.splitlines()
+    # Successive actions share this file and it is capped by size, so after a
+    # roll the slice can start before the current action. Keep only the section
+    # after its last header; every run writes its own START/STATUS/DONE lines to
+    # stdout now, so nothing has to be reconstructed from run_queue.out.
+    for i in range(len(lines) - 1, -1, -1):
+        if re.match(r"^=== \d{4}-\d\d-\d\dT\d\d:\d\d:\d\d ", lines[i]):
+            lines = lines[i + 1:]
+            break
+    return lines[-int(n or 100):]
+
+
+LOG_CAP_BYTES = 2_000_000     # an append-only log is history after this much
+
+
+def _cap_log(path):
+    """Roll an oversized append-only log: older content becomes <stem>-<stamp>.log.gz.
+
+    These two logs are appended to while the dashboard runs, so they cannot be
+    packed like the rest of state/logs; capping keeps yesterday's transcript
+    (gzipped, readable in the log viewer) without an ever-growing plain file.
+    """
+    try:
+        if os.path.getsize(path) <= LOG_CAP_BYTES:
+            return False
+    except OSError:
+        return False
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    dst = f"{path[:-len('.log')]}-{stamp}.log.gz"
+    tmp = dst + ".tmp"
+    try:
+        with open(path, "rb") as src, gzip.open(tmp, "wb", compresslevel=9) as out:
+            while True:
+                chunk = src.read(1024 * 1024)
+                if not chunk:
+                    break
+                out.write(chunk)
+        os.replace(tmp, dst)
+        with open(path, "w", encoding="utf-8"):
+            pass          # truncate: the live log starts empty
+    except OSError:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        return False
+    return True
+
+
+def _spawn(purpose, argv, env=None, roles=None, role="main"):
+    """Run a command detached, logged to the activity pane (state/logs/dashboard-action.log)."""
+    os.makedirs(LOGS, exist_ok=True)
+    if _cap_log(os.path.join(LOGS, "dashboard-action.log")):
+        _ACT["offset"] = 0
+    _cap_log(CHAT_LOG)
+    logf = open(os.path.join(LOGS, "dashboard-action.log"), "a", encoding="utf-8")
+    logf.write(f"\n=== {time.strftime('%Y-%m-%dT%H:%M:%S')} {purpose} ===\n")
+    logf.flush()
+    proc = subprocess.Popen(argv, cwd=ROOT, env=agent_env(subagent=(role == "subagent"), ROOT=ROOT, **(env or {})),
+                            stdout=logf, stderr=subprocess.STDOUT, start_new_session=True)
+    _ACT.update(name=purpose, proc=proc, offset=logf.tell(), t0=time.time(),
+                roles=list(roles or []))
+    _act_save()
+    return proc
+
+
+DELEGATED_DIR = os.path.join(STATE, "delegated")
+DELEGATED_MAX = 4
+
+
+def _pid_alive(pid):
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def _delegated_done(log):
+    """True when the subagent has printed its final RESULT/EXIT line.
+
+    The opencode CLI can linger after the task itself is over. The log is the
+    authoritative completion signal, so a finished task must leave the Activity
+    pane even while its process is still winding down.
+    """
+    path = os.path.join(LOGS, (log or "") + ".log")
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - 16384))
+            tail = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return False
+    lines = [ln.strip() for ln in tail.splitlines() if ln.strip()]
+    if not lines:
+        return False
+    result_at = tool_at = -1
+    for i, raw in enumerate(lines):
+        ln = re.sub(r"\x1b\[[0-9;]*m", "", raw).strip()
+        if re.match(r"^(?:RESULT:|EXIT:)", ln):
+            result_at = i
+        if re.match(r"^(?:\$ |% |◈ )", ln):
+            tool_at = i
+    return result_at > tool_at
+
+
+def delegated_live():
+    """Background subagents that are still running, newest last."""
+    out = []
+    try:
+        names = sorted(os.listdir(DELEGATED_DIR))
+    except OSError:
+        return out
+    for f in names:
+        if not f.endswith(".json"):
+            continue
+        path = os.path.join(DELEGATED_DIR, f)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                rec = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        log = rec.get("log", "")
+        if _delegated_done(log):
+            continue
+        if not _pid_alive(rec.get("pid")):
+            continue
+        age = size = None
+        try:
+            st = os.stat(os.path.join(LOGS, log + ".log"))
+            age, size = int(time.time() - st.st_mtime), st.st_size
+        except OSError:
+            pass
+        out.append({"id": rec.get("id", ""), "title": rec.get("title", "subagent"),
+                    "log": log, "age": age, "size": size, "pid": rec.get("pid")})
+    return out
+
+
+def _delegated_result(log):
+    """The last RESULT: line from a subagent log, for the chat card."""
+    path = os.path.join(LOGS, (log or "") + ".log")
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - 32768))
+            text = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return ""
+    text = ANSI.sub("", text)
+    for line in reversed([l.strip() for l in text.splitlines() if l.strip()]):
+        m = re.match(r"^RESULT:\s*(.+)$", line)
+        if m:
+            return m.group(1)[:600]
+    return ""
+
+
+def _delegated_prose(line):
+    """True for a human-readable line, false for commands, JSON and tables."""
+    s = (line or "").strip()
+    if len(s) < 8 or not re.search(r"[A-Za-z]", s):
+        return False
+    if s.startswith(("$ ", "{", "[", "|", "==", "---", "```", ">", "<")):
+        return False
+    if re.match(r"^\d+\s*/\s*\d+", s) or re.match(r"^\d{4}-\d{2}-\d{2}", s):
+        return False
+    return s.count("|") < 2
+
+
+def _delegated_summary(log, max_lines=24, max_chars=2000):
+    """The final prose answer from a subagent log, for the Agent console.
+
+    The subagent's last tool output is followed by its answer and a RESULT line.
+    Keep that last contiguous prose block (allowing a blank between paragraphs)
+    and leave the tool transcript in the full-log view.
+    """
+    path = os.path.join(LOGS, (log or "") + ".log")
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - 65536))
+            text = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return ""
+    lines = ANSI.sub("", text).splitlines()
+    end = len(lines)
+    for i in range(len(lines) - 1, -1, -1):
+        if re.match(r"^RESULT:", lines[i].strip()):
+            end = i
+            break
+    block = []
+    i = end - 1
+    while i >= 0 and len(block) < max_lines:
+        s = lines[i].strip()
+        if not s:
+            if not block:            # trailing blank after RESULT: skip it
+                i -= 1
+                continue
+            j = i - 1
+            while j >= 0 and not lines[j].strip():
+                j -= 1
+            if block and j >= 0 and _delegated_prose(lines[j]):
+                block.append("")
+                i = j
+                continue
+            break
+        if not _delegated_prose(s):
+            break
+        block.append(s)
+        i -= 1
+    return "\n".join(reversed(block)).strip()[:max_chars]
+
+
+def _delegated_finished(limit=5):
+    """Recently finished subagents with their RESULT, for the chat."""
+    out = []
+    try:
+        names = sorted(os.listdir(DELEGATED_DIR), reverse=True)
+    except OSError:
+        return out
+    for f in names:
+        if not f.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(DELEGATED_DIR, f), encoding="utf-8") as fh:
+                rec = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        log = rec.get("log", "")
+        if not log:
+            continue
+        if not (_delegated_done(log) or not _pid_alive(rec.get("pid"))):
+            continue
+        out.append({"id": rec.get("id", ""), "title": rec.get("title", "subagent"),
+                    "log": log, "result": _delegated_result(log),
+                    "summary": _delegated_summary(log)})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def delegate_start(prompt, title=""):
+    """Spawn a detached agent task for the chat to hand work to."""
+    prompt = (prompt or "").strip()[:12000]
+    if not prompt:
+        return {"error": "empty task"}
+    live = delegated_live()
+    if len(live) >= DELEGATED_MAX:
+        return {"error": f"{len(live)} subagents are already running (max {DELEGATED_MAX}); wait for one to finish"}
+    sid = time.strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(2)
+    title = (title or prompt.splitlines()[0])[:80]
+    log = f"delegated-{sid}"
+    wrapped = (
+        "You are a background subagent started from the dashboard chat. "
+        f"Work autonomously in {ROOT} and follow AGENTS.md. Do not ask questions; "
+        "if something blocks you, say exactly what.\n"
+        f"Task: {prompt}\n"
+        "When finished, print one line: RESULT: <what you did or found>.")
+    try:
+        os.makedirs(DELEGATED_DIR, exist_ok=True)
+        os.makedirs(LOGS, exist_ok=True)
+        with open(os.path.join(LOGS, log + ".log"), "a", encoding="utf-8") as lf:
+            lf.write(f"=== {time.strftime('%Y-%m-%dT%H:%M:%S')} subagent: {title} ===\n")
+            lf.flush()
+            proc = subprocess.Popen(["bash", os.path.join(ROOT, "tools", "agent_run.sh"), wrapped],
+                                    cwd=ROOT, env=agent_env(subagent=True), stdout=lf,
+                                    stderr=subprocess.STDOUT, start_new_session=True)
+        rec = {"id": sid, "title": title, "log": log, "pid": proc.pid,
+               "started": time.time()}
+        tmp = os.path.join(DELEGATED_DIR, sid + ".json.tmp")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(rec, fh)
+        os.replace(tmp, os.path.join(DELEGATED_DIR, sid + ".json"))
+    except OSError as exc:
+        return {"error": f"could not start the subagent: {exc}"}
+    return {"ok": "started", "id": sid, "title": title, "log": log}
+
+
+STOP_FILE = os.path.join(STATE, "queue.stop")
+PAUSE_FILE = os.path.join(STATE, "queue.pause")
+
+
+def process_running():
+    return action_alive()
+
+
+def stop_action():
+    """Stop everything: no new tasks, and terminate the running action + queue runner."""
+    try:
+        os.makedirs(STATE, exist_ok=True)
+        with open(STOP_FILE, "w") as fh:
+            fh.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} stop requested via dashboard\n")
+    except OSError:
+        pass
+    stopped = False
+    p = _ACT.get("proc")
+    if p and p.poll() is None:
+        try:
+            os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+            stopped = True
+        except OSError:
+            pass
+    _ACT["proc"] = None
+    return {"ok": "stopped" + (" (terminated the running action)" if stopped else "") +
+            " — no new tasks will start. Pause stays off; re-run when ready."}
+
+
+def pause_action(on):
+    try:
+        os.makedirs(STATE, exist_ok=True)
+        if on:
+            with open(PAUSE_FILE, "w") as fh:
+                fh.write("paused via dashboard\n")
+        else:
+            try:
+                os.remove(PAUSE_FILE)
+            except OSError:
+                pass
+    except OSError as e:
+        return {"error": str(e)}
+    return {"ok": "paused — workers will finish the current task, then wait" if on else "resumed"}
+
+
+def _resolve_roles(keys):
+    """Resolve register/queue keys to complete queue rows (company, role, url, cv, ats, key).
+
+    Queued rows are taken from the queue files; other keys are rebuilt from the
+    register / submissions, so a role you opened (e.g. a prepared or blocked one)
+    can still be acted on."""
+    want = {str(k).strip() for k in (keys or []) if str(k).strip()}
+    rows, found = [], set()
+    for path in ("queue.tsv", "queue-human.tsv", "queue.retry"):
+        for r in _queue_rows(os.path.join(STATE, path)):
+            if r["key"] in want and r["key"] not in found:
+                rows.append(r)
+                found.add(r["key"])
+    if want - found:                                   # not in a queue -> rebuild from the register
+        km, _ = _key_maps()
+        for r in _rows(os.path.join(STATE, "applications.csv")):
+            co, role = r["company"], r["role"]
+            k = km.get((co.lower(), role.lower())) or _slug(f"{co}-{role}")
+            if k in (want - found) and k not in found:
+                url, cv, ats, _ = _queue_fields(co, role)
+                # A register row can carry the apply URL even when no queue row
+                # does. Without this fallback a prepared role with no queue entry
+                # looked as if it had no URL, so the submit action disappeared.
+                url = url or r.get("apply_url", "")
+                rows.append({"company": co, "role": role, "url": url, "cv": cv, "ats": ats, "key": k})
+                found.add(k)
+    return rows
+
+
+def _queue_only_roles(rows):
+    """Write rows to a private queue (and an empty DONE file) so a scoped run
+    processes exactly those roles and never skips them as already done."""
+    os.makedirs(LOGS, exist_ok=True)
+    tmp = os.path.join(LOGS, "queue-ui.tsv")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        for r in rows:
+            fh.write("\t".join([r["company"], r["role"], r.get("url", ""), r.get("cv", ""),
+                                r.get("ats", ""), r["key"]]) + "\n")
+    tmp_done = os.path.join(LOGS, "queue-ui.done")
+    with open(tmp_done, "w", encoding="utf-8"):
+        pass
+    return tmp, tmp_done
+
+
+def prepare_roles(keys):
+    """Run a REVIEW pass (generate + gate documents, never submit) over the given roles."""
+    if action_alive():
+        return {"error": "another run is active; wait for it to finish"}
+    if WQ and WQ.runner_active():
+        return {"error": "a queue run is already active"}
+    rows = _resolve_roles(keys)
+    if not rows:
+        return {"error": "couldn't resolve those roles to a company/role"}
+    tmp, tmp_done = _queue_only_roles(rows)
+    # Document preparation is the parallel case (one agent per role). Submissions
+    # stay at one worker: several browsers on one ATS account fight each other.
+    cfg = load_agent_cfg()
+    env = {"REVIEW": "1",
+           "PARALLEL": os.environ.get("PREPARE_PARALLEL") or str(cfg.get("parallel", 3)),
+           "QUEUE": tmp, "DONE": tmp_done}
+    sub = cfg.get("subagent_model")
+    if sub:
+        env["MODEL"] = sub
+    _spawn(f"prepare {len(rows)} role(s) (review)",
+           ["bash", os.path.join(ROOT, "tools", "run_queue.sh")], env,
+           roles=[{"company": r["company"], "role": r["role"], "key": r.get("key", "")} for r in rows],
+           role="subagent")
+    return {"ok": f"generating documents for {len(rows)} role(s) — watch the Activity pane (nothing is submitted)"}
+
+
+def _submission_parallel(rows):
+    """How many submit workers are safe for this batch.
+
+    run_queue.sh also locks per employer (and serialises all LinkedIn Easy
+    Apply), so this is an upper bound: different employers can run together,
+    the same employer cannot.
+
+    It is also capped by the machine: every worker drives its own Camoufox
+    browser, plus Python, the PDF render and the agent. Beyond ~half the cores
+    per-role time gets worse, not better, so a bigger batch does not finish
+    sooner - it just makes every role slower. One run at a time on the repo is
+    enforced by run_queue.sh itself (state/run.lock).
+    """
+    keys = set()
+    for r in rows:
+        ats = (r.get("ats") or "").lower()
+        if "linkedin" in ats:
+            keys.add("linkedin")
+        else:
+            co = re.sub(r"[^a-z0-9]+", "-", (r.get("company") or "").lower()).strip("-")
+            keys.add("company:" + (co or "unknown"))
+    cores = os.cpu_count() or 4
+    cap = max(1, min(3, cores // 2))
+    return max(1, min(cap, len(keys)))
+
+
+def prepare_submit_roles(keys, approval_token=""):
+    """Prepare and submit the selected roles in one apply run.
+
+    Unlike prepare_roles (REVIEW, documents only) and submit_roles (PREPARED
+    documents only) this runs the normal apply pass: generate the CSV, run the
+    gates, then submit through the employer's ATS. Irreversible, so it needs the
+    same approval token as submit_roles, and one worker at a time."""
+    rows = _resolve_roles(keys)
+    if not rows:
+        return {"error": "couldn't resolve those roles to a company/role"}
+    no_url = [r for r in rows if not (r.get("url") or "").strip()]
+    if no_url:
+        names = ", ".join(f"{r['company']} / {r['role']}" for r in no_url[:3])
+        return {"error": f"no apply URL for {names}: prepare documents only, or use the email route. "
+                         f"A browser submission needs a real URL."}
+    if action_alive():
+        return {"error": "another run is active; wait for it to finish"}
+    if WQ and WQ.runner_active():
+        return {"error": "a queue run is already active"}
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import approval
+    if approval_token != "APPROVE_RUN_QUEUE":
+        approval._record(f"prepare and submit {len(rows)} role(s) via dashboard", "REFUSED (no approval token)")
+        return {"error": "refused: preparing and submitting applications is irreversible; confirm to send APPROVE_RUN_QUEUE"}
+    approval._record(f"prepare and submit {len(rows)} role(s) via dashboard", "ui-token:APPROVE_RUN_QUEUE")
+    tmp, tmp_done = _queue_only_roles(rows)
+    try:
+        import register as REG
+        for r in rows:
+            REG.set_row(r["company"], r["role"], status="QUEUED",
+                        note="preparing and submitting via dashboard")
+    except Exception:
+        pass
+    _spawn(f"prepare and submit {len(rows)} role(s)",
+           ["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+           {"PARALLEL": str(_submission_parallel(rows)), "QUEUE": tmp, "DONE": tmp_done},
+           roles=[{"company": r["company"], "role": r["role"], "key": r.get("key", "")} for r in rows])
+    return {"ok": f"preparing and submitting {len(rows)} application(s) — watch the Activity pane (this sends them)"}
+
+
+def submit_roles(keys, approval_token=""):
+    """Submit the selected roles with the documents already prepared for them.
+
+    The runner reuses the existing artifacts (step 0d: job ad, keywords, grounding,
+    content pack, CV and letter), re-runs the gates and applies through the browser.
+    Irreversible: requires the APPROVE_RUN_QUEUE approval token."""
+    rows = _resolve_roles(keys)
+    if not rows:
+        return {"error": "couldn't resolve those roles to a company/role"}
+    no_url = [r for r in rows if not (r.get("url") or "").strip()]
+    if no_url:
+        names = ", ".join(f"{r['company']} / {r['role']}" for r in no_url[:3])
+        return {"error": f"no apply URL for {names}: this is an email-only or network row. "
+                         f"Use the drafted email, not a browser submission."}
+    if action_alive():
+        return {"error": "another run is active; wait for it to finish"}
+    if WQ and WQ.runner_active():
+        return {"error": "a queue run is already active"}
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import approval
+    if approval_token != "APPROVE_RUN_QUEUE":
+        approval._record(f"submit {len(rows)} prepared role(s) via dashboard", "REFUSED (no approval token)")
+        return {"error": "refused: submitting applications is irreversible; confirm to send APPROVE_RUN_QUEUE"}
+    approval._record(f"submit {len(rows)} prepared role(s) via dashboard", "ui-token:APPROVE_RUN_QUEUE")
+    tmp, tmp_done = _queue_only_roles(rows)
+    # The row stays PREPARED while the submission runs: the grid already shows a
+    # spinner for the running task. Resetting it to QUEUED made a prepared role
+    # look as if it were waiting to be applied to, and a crash could strand it
+    # there. The outcome sets SUBMITTED/BLOCKED/CLOSED directly.
+    _spawn(f"submit {len(rows)} prepared role(s)",
+           ["bash", os.path.join(ROOT, "tools", "run_queue.sh")],
+           {"PARALLEL": str(_submission_parallel(rows)), "QUEUE": tmp, "DONE": tmp_done, "PREPARED": "1"},
+           roles=[{"company": r["company"], "role": r["role"], "key": r.get("key", "")} for r in rows])
+    return {"ok": f"submitting {len(rows)} application(s) — watch the Activity pane (this sends them)"}
+
+
+
+def _ats_keywords_for(key):
+    """Make sure a role has an ATS keyword file, taking it from the saved ad.
+
+    A missing keyword file used to make "recompute match" a silent no-op: there
+    was nothing to score against, so the Fit column stayed blank. Extraction is
+    deterministic and local (no agent, no model), so it is safe to run here.
+    """
+    ats = os.path.join(STATE, "ats", key + ".txt")
+    if _present(ats):
+        return ats
+    jd = os.path.join(STATE, "job-descriptions", key + ".md")
+    if not _present(jd):
+        jdk = _jd_key_for(key, key)
+        jd = os.path.join(STATE, "job-descriptions", jdk + ".md")
+        if not _present(jd):
+            return ""
+    try:
+        subprocess.run([sys.executable, os.path.join(ROOT, "tools", "ats_keywords.py"),
+                        "--jd", jd, "--out", ats], cwd=ROOT,
+                       capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return ats if _present(ats) else ""
+
+
+def recompute_match(keys=None):
+    """Recompute the CV-to-job fit for named roles, or clear every cache.
+
+    Clearing a cache is not a recompute. The Fit column comes from the tailored
+    documents, and the alignment mark from match_score(), so both are computed
+    here and the caller gets an honest per-role answer.
+    """
+    keys = [str(k).strip() for k in (keys or []) if str(k).strip()]
+    if not keys:
+        _COV.clear()
+        _MATCH_CACHE.clear()
+        globals()["_cov_dirty"] = True
+        _save_cov()
+        return {"ok": "match caches cleared for every role"}
+    done, skipped = 0, []
+    for k in keys:
+        _COV.pop(k, None)
+        _MATCH_CACHE.pop(k, None)
+        if not _ats_keywords_for(k):
+            skipped.append(k)
+            continue
+        match_score(k, cache=False)
+        done += 1
+    globals()["_cov_dirty"] = True
+    _save_cov()
+    if not done:
+        return {"error": (f"nothing to score for {len(skipped)} role(s): no saved job ad, "
+                          "so no ATS keywords; save the ad first"),
+                "skipped": skipped}
+    msg = f"match recomputed for {done} role(s)"
+    if skipped:
+        msg += f"; {len(skipped)} skipped (no saved job ad or ATS keywords)"
+    return {"ok": msg, "skipped": skipped}
+
+
+def start_action(command, approval_token=""):
+    spec = ACTIONS.get(command)
+    if not spec:
+        return {"error": "unknown action"}
+    if WQ and WQ.runner_active() and command in ("prepare", "submit_queue"):
+        return {"error": "a queue run is already active"}
+    if spec["token"]:
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import approval
+        if approval_token != spec["token"]:
+            approval._record(spec["purpose"], "REFUSED (no approval token)")
+            return {"error": f"refused: this action is irreversible; confirm to send {spec['token']}"}
+        approval._record(spec["purpose"], f"ui-token:{spec['token']}")
+    _spawn(f"action={command} ({spec['purpose']})", spec["argv"], spec["env"])
+    return {"ok": f"started: {spec['purpose']}"}
+
+
+# ---------------------------------------------------------------- knowledge base + graph
+GRAPH_PY = os.path.join(ROOT, ".venv-graphrag", "bin", "python")
+GRAPH_TOOL = os.path.join(ROOT, "tools", "graph_explore.py")
+GRAPH_ENRICH = os.path.join(ROOT, "tools", "graph_enrich.py")
+GRAPH_EDITS = os.path.join(ROOT, "kb", "graphrag", "edits.json")
+GRAPH_ENRICH_FILE = os.path.join(ROOT, "kb", "graphrag", "enrichment.json")
+KB_SOURCES = os.path.join(ROOT, "kb", "sources")
+_gcache = {}
+_GCACHE_TTL = 120          # seconds; keeps the graph views fresh after a re-index
+
+
+def graph_query(*args):
+    key = "|".join(str(a) for a in args)
+    hit = _gcache.get(key)
+    if hit and time.time() - hit[0] < _GCACHE_TTL:
+        return hit[1]
+    py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)      # the GraphRAG venv has its own interpreter/deps
+    try:
+        r = subprocess.run([py, GRAPH_TOOL, *[str(a) for a in args]], cwd=ROOT,
+                           capture_output=True, text=True, timeout=90, env=env)
+        data = json.loads((r.stdout or "").strip() or "{}")
+        if r.returncode != 0 and "error" not in data:
+            data = {"error": (r.stderr or "graph read failed").strip()[-300:]}
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        data = {"error": f"{type(e).__name__}: {e}"}
+    _gcache[key] = (time.time(), data)
+    return data
+
+
+def _kg_sources_meta():
+    """key -> (company, role) from the register and the queue."""
+    meta = {}
+    try:
+        for r in _rows(os.path.join(STATE, "applications.csv")):
+            k = (r.get("key") or "").strip()
+            if k:
+                meta[k] = ((r.get("company") or "").strip(), (r.get("role") or "").strip())
+    except Exception:
+        pass
+    for name in ("queue.tsv", "queue.done"):
+        try:
+            for line in open(os.path.join(STATE, name), encoding="utf-8", errors="ignore"):
+                if not line.strip() or line.startswith("#"):
+                    continue
+                f = (line.rstrip("\n").split("\t") + [""] * 6)[:6]
+                if len(f) >= 6 and f[5].strip():
+                    meta.setdefault(f[5].strip(), (f[0].strip(), f[1].strip()))
+        except OSError:
+            pass
+    return meta
+
+
+def kg_play_sources(limit=140):
+    """Saved job descriptions the playground can build from."""
+    folder = os.path.join(STATE, "job-descriptions")
+    try:
+        names = [f for f in os.listdir(folder) if f.endswith(".md")]
+    except OSError:
+        names = []
+    meta = _kg_sources_meta()
+    out = []
+    for name in names:
+        key = name[:-3]
+        company, role = meta.get(key, ("", ""))
+        path = os.path.join(folder, name)
+        if not role:
+            try:
+                for line in open(path, encoding="utf-8", errors="ignore"):
+                    s = line.strip().lstrip("#").strip()
+                    if s and len(s) < 130:
+                        role = s
+                        break
+            except OSError:
+                pass
+        try:
+            updated = int(os.path.getmtime(path))
+        except OSError:
+            updated = 0
+        out.append({"key": key, "company": company, "role": role,
+                    "label": f"{company} — {role}" if company else (role or key),
+                    "updated": updated})
+    out.sort(key=lambda x: -x["updated"])
+    return {"sources": out[:int(limit or 140)]}
+
+
+_PLAY_CACHE = {}
+_PLAY_CACHE_TTL = 600
+
+
+def graph_play(key="", text="", hops=2, kind="cv"):
+    """Recursive evidence traversal + document build for the playground."""
+    key = str(key or "").strip()
+    text = str(text or "")
+    kind = "letter" if str(kind or "").lower() == "letter" else "cv"
+    # The tool's own mtime is part of the key: a cached build must never outlive a
+    # change to the generator (it did, and the UI kept showing the old document).
+    try:
+        tool_ver = os.path.getmtime(GRAPH_TOOL)
+    except OSError:
+        tool_ver = 0
+    cache_key = (key, hashlib.sha1(text.encode("utf-8", "ignore")).hexdigest(),
+                 str(hops or 2), kind, tool_ver)
+    hit = _PLAY_CACHE.get(cache_key)
+    if hit and time.time() - hit[0] < _PLAY_CACHE_TTL:
+        return hit[1]
+    if not text and key:
+        try:
+            text = open(os.path.join(STATE, "job-descriptions", key + ".md"),
+                        encoding="utf-8", errors="ignore").read()
+        except OSError:
+            return {"error": f"no saved job description for {key}"}
+    text = text.strip()[:24000]
+    if not text:
+        return {"error": "paste a job spec or choose a saved one"}
+    try:
+        hops = max(1, min(3, int(hops or 2)))
+    except (TypeError, ValueError):
+        hops = 2
+    py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    try:
+        r = subprocess.run([py, GRAPH_TOOL, "playground", key, str(hops), kind], cwd=ROOT,
+                           input=text, capture_output=True, text=True, timeout=90, env=env)
+        data = json.loads((r.stdout or "").strip() or "{}")
+        if r.returncode != 0 and "error" not in data:
+            data = {"error": (r.stderr or "playground failed").strip()[-300:]}
+        if not data.get("error"):
+            _PLAY_CACHE[cache_key] = (time.time(), data)
+        return data
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def graph_role_evidence(key):
+    py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    try:
+        r = subprocess.run([py, GRAPH_TOOL, "evidence", str(key)], cwd=ROOT,
+                           capture_output=True, text=True, timeout=90, env=env)
+        return json.loads((r.stdout or "").strip() or "{}")
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def graph_semantic(q, limit=14):
+    py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    try:
+        r = subprocess.run([py, GRAPH_TOOL, "semantic", str(q), str(limit)], cwd=ROOT,
+                           capture_output=True, text=True, timeout=90, env=env)
+        return json.loads((r.stdout or "").strip() or "{}")
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def graph_ask(question, method="local"):
+    question = str(question or "").strip()
+    if not question:
+        return {"error": "ask a question"}
+    method = method if method in ("local", "global", "basic", "drift") else "local"
+    try:
+        r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "kb_graphrag.py"),
+                            "--text", question, "--method", method],
+                           cwd=ROOT, capture_output=True, text=True, timeout=240)
+        out = (r.stdout or "").strip()
+        if not out:
+            return {"error": (r.stderr or "no answer").strip()[-600:]}
+        return {"answer": out, "method": method}
+    except (OSError, subprocess.SubprocessError) as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def graph_node(title):
+    py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    try:
+        r = subprocess.run([py, GRAPH_TOOL, "node", str(title)], cwd=ROOT,
+                           capture_output=True, text=True, timeout=90, env=env)
+        return json.loads((r.stdout or "").strip() or "{}")
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def graph_edit_node(data):
+    title = str((data or {}).get("title") or "").strip()
+    if not title:
+        return {"error": "missing node title"}
+    description = str(data.get("description") or "").strip()
+    gtype = str(data.get("type") or "").strip().upper()
+    try:
+        with open(GRAPH_EDITS, encoding="utf-8") as fh:
+            edits = json.load(fh)
+    except (OSError, ValueError):
+        edits = {}
+    nodes = edits.setdefault("nodes", {})
+    rec = nodes.setdefault(title, {})
+    if description:
+        rec["description"] = description[:4000]
+    if gtype:
+        rec["type"] = gtype[:40]
+    if not rec:
+        nodes.pop(title, None)
+    tmp = GRAPH_EDITS + ".tmp"
+    os.makedirs(os.path.dirname(GRAPH_EDITS), exist_ok=True)
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(edits, fh, indent=2)
+    os.replace(tmp, GRAPH_EDITS)
+
+    link = data.get("add_link") or {}
+    target = str(link.get("target") or "").strip()
+    if target:
+        try:
+            with open(GRAPH_ENRICH_FILE, encoding="utf-8") as fh:
+                env = json.load(fh)
+        except (OSError, ValueError):
+            env = {"nodes": [], "links": []}
+        links = env.setdefault("links", [])
+        already = any((l.get("source") or "").upper() == title.upper()
+                      and (l.get("target") or "").upper() == target.upper() for l in links)
+        if not already:
+            desc = str(link.get("description") or "").strip()[:600]
+            links.append({"id": __import__("hashlib").sha1(f"edit|{title}|{target}".encode()).hexdigest()[:12],
+                          "source": title, "target": target,
+                          "weight": float(link.get("weight") or 30),
+                          "description": desc or f"Operator-added connection from {title} to {target}.",
+                          "evidence": desc, "source_doc": "operator edit"})
+        tmp2 = GRAPH_ENRICH_FILE + ".tmp"
+        with open(tmp2, "w", encoding="utf-8") as fh:
+            json.dump(env, fh, indent=2)
+        os.replace(tmp2, GRAPH_ENRICH_FILE)
+    return {"ok": "node saved" + ("; connection added" if target else ""),
+            "title": title, "type": gtype or None, "description": bool(description),
+            "added_link": bool(target)}
+
+
+def graph_enrich_propose():
+    py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    try:
+        r = subprocess.run([py, GRAPH_ENRICH, "propose"], cwd=ROOT,
+                           capture_output=True, text=True, timeout=120, env=env)
+        return json.loads((r.stdout or "").strip() or "{}")
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def graph_enrich_apply(ids):
+    ids = [str(x) for x in (ids or []) if str(x).strip()]
+    if not ids:
+        return {"error": "select at least one proposal"}
+    py = GRAPH_PY if os.path.exists(GRAPH_PY) else sys.executable
+    env = dict(os.environ)
+    env.pop("PYTHONPATH", None)
+    try:
+        r = subprocess.run([py, GRAPH_ENRICH, "apply", "--ids", ",".join(ids)], cwd=ROOT,
+                           capture_output=True, text=True, timeout=120, env=env)
+        return json.loads((r.stdout or "").strip() or "{}")
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def kb_sources():
+    groups = {}
+    if os.path.isdir(KB_SOURCES):
+        for g in sorted(os.listdir(KB_SOURCES)):
+            d = os.path.join(KB_SOURCES, g)
+            if os.path.isdir(d):
+                groups[g] = sorted(({"name": f, "size": os.path.getsize(os.path.join(d, f))}
+                                    for f in os.listdir(d) if os.path.isfile(os.path.join(d, f))),
+                                   key=lambda x: x["name"])
+        groups["(root)"] = sorted(({"name": f, "size": os.path.getsize(os.path.join(KB_SOURCES, f))}
+                                   for f in os.listdir(KB_SOURCES) if os.path.isfile(os.path.join(KB_SOURCES, f))),
+                                  key=lambda x: x["name"])
+    return groups
+
+
+_kb_check = {"t": 0.0, "text": ""}
+
+
+def kb_info():
+    if time.time() - _kb_check["t"] > 30:
+        try:
+            r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "kb_graphrag.py"), "--check"],
+                               cwd=ROOT, capture_output=True, text=True, timeout=60)
+            _kb_check.update(t=time.time(), text=ANSI.sub("", (r.stdout or "") + (r.stderr or "")).strip())
+        except (OSError, subprocess.SubprocessError) as e:
+            _kb_check.update(t=time.time(), text=f"check failed: {e}")
+    return {"sources": kb_sources(), "stats": graph_query("stats"), "check": _kb_check["text"]}
+
+
+def kb_find_doc(name):
+    """Resolve a graph document title to a file under kb/sources/.
+
+    GraphRAG titles often carry a group prefix and a .txt extension even when
+    the source is the original .docx and the extracted text was transient, so
+    compare normalised stems as well as exact names.
+    """
+    import re
+    name = os.path.basename(str(name or "").strip())
+    if not name:
+        return {"error": "no document name"}
+    norm = lambda x: re.sub(r"[^a-z0-9]", "", str(x).lower())
+    want = norm(name)
+    exact, suffix, fuzzy = [], [], []
+    for root, _dirs, files in os.walk(KB_SOURCES):
+        for f in files:
+            rel = os.path.relpath(os.path.join(root, f), ROOT)
+            stem = norm(os.path.splitext(f)[0])
+            if f == name:
+                exact.append(rel)
+            elif stem and (want.endswith(stem) or stem.endswith(want)):
+                suffix.append(rel)
+            elif stem and (stem in want or want in stem):
+                fuzzy.append(rel)
+    found = exact or suffix or fuzzy
+    if not found:
+        return {"error": f"no source file matching {name}"}
+    return {"path": found[0], "matches": len(found)}
+
+
+def _safe_kb_path(rel):
+    base = os.path.realpath(KB_SOURCES)
+    p = os.path.realpath(os.path.join(ROOT, rel))
+    return p if p.startswith(base + os.sep) else None
+
+
+def kb_delete(rel):
+    p = _safe_kb_path(rel)
+    if not p or not os.path.isfile(p):
+        return {"error": "not found"}
+    try:
+        os.remove(p)
+        return {"ok": f"removed {os.path.relpath(p, ROOT)}"}
+    except OSError as e:
+        return {"error": str(e)}
+
+
+def kb_upload(group, files):
+    """files: list of (filename, bytes). Saves into kb/sources/<group>/."""
+    group = re.sub(r"[^a-zA-Z0-9._-]", "_", (group or "imported").strip()) or "imported"
+    if group.startswith("."):
+        group = "imported"
+    dest = os.path.join(KB_SOURCES, group)
+    os.makedirs(dest, exist_ok=True)
+    saved = []
+    for name, data in files:
+        name = os.path.basename(name or "").replace("/", "_").strip()
+        if not name or not data:
+            continue
+        with open(os.path.join(dest, name), "wb") as fh:
+            fh.write(data)
+        saved.append(f"{group}/{name}")
+    return {"ok": f"uploaded {len(saved)} file(s) to kb/sources/{group}/", "files": saved} if saved \
+        else {"error": "no files"}
+
+
+def kb_rebuild():
+    if WQ and WQ.runner_active():
+        return {"error": "a queue run is active"}
+    _spawn("rebuild knowledge graph (setup_kb.sh)", ["bash", os.path.join(ROOT, "tools", "setup_kb.sh")])
+    return {"ok": "rebuilding knowledge graph - watch the Activity pane"}
+
+
+def accounts():
+    try:
+        r = subprocess.run(["bash", os.path.join(ROOT, "tools", "setup_accounts.sh"), "--check"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=60)
+        text = ANSI.sub("", (r.stdout or "") + (r.stderr or "")).strip()
+    except (OSError, subprocess.SubprocessError) as e:
+        text = f"check failed: {e}"
+    try:
+        n = len(SS.section("accounts"))
+    except SS.SecretsError:
+        n = 0
+    return {"text": text, "sites": n}
+
+
+def account_auth(kind):
+    argv = {"gmail": [sys.executable, os.path.join(ROOT, "tools", "gmail_readonly.py"), "--auth"],
+            "calendar": [sys.executable, os.path.join(ROOT, "tools", "gmail_calendar_auth.py")]}.get(kind)
+    if not argv:
+        return {"error": "unknown account"}
+    _spawn(f"authorise {kind}",
+           argv, {"PYTHONUNBUFFERED": "1"})
+    return {"ok": f"started {kind} authorisation - finish it in the browser / Activity pane"}
+
+
+SKILLS_FILE = os.path.join(ROOT, "kb", "sources", "personal", "skills_evidence.md")
+
+
+def add_skill_evidence(skill, source="", detail="", key=""):
+    """Record evidence that the candidate has a skill (for a missing ATS keyword),
+    as a grounded knowledge-base source so it flows into future tailored documents."""
+    skill = (skill or "").strip()[:160]
+    source = (source or "").strip()[:200]
+    detail = (detail or "").strip()[:1000]
+    if not skill:
+        return {"error": "skill is required"}
+    os.makedirs(os.path.dirname(SKILLS_FILE), exist_ok=True)
+    if not os.path.isfile(SKILLS_FILE):
+        with open(SKILLS_FILE, "w", encoding="utf-8") as fh:
+            fh.write("# Skill evidence (added via the dashboard)\n\n"
+                     "Provenance: first-hand account provided by the candidate. Attribute each fact to the\n"
+                     "named employer/project; do not inflate level.\n")
+    where = f" — {source}" if source else ""
+    extra = f": {detail}" if detail else ""
+    role = f" [for {key}]" if key else ""
+    line = f"- **{skill}**{where}{extra} (added {time.strftime('%Y-%m-%d')}{role})"
+    with open(SKILLS_FILE, "a", encoding="utf-8") as fh:
+        fh.write(line + "\n")
+    return {"ok": f"evidence recorded for “{skill}”", "file": os.path.relpath(SKILLS_FILE, ROOT),
+            "hint": ("The graph view shows this immediately through the live skill overlay; "
+                     "re-prepare the role to fold it into the CV. No rebuild is needed.")}
+
+
+def role_grounding(key):
+    """The GraphRAG context pack for a role + the entities/sources it cites, resolved."""
+    key = os.path.basename(key)[:120]
+    pack = _read(os.path.join(STATE, "kb-context", key + ".md"))[:20000]
+    ents, docs = [], []
+    for m in re.finditer(r"Entities \(([^)]*)\)", pack):
+        ents += re.findall(r"\d+", m.group(1))
+    for m in re.finditer(r"Sources \(([^)]*)\)", pack):
+        docs += re.findall(r"\d+", m.group(1))
+    ents, docs = sorted(set(ents), key=int)[:60], sorted(set(docs), key=int)[:40]
+    resolved = graph_query("resolve", ",".join(ents), "--docs", ",".join(docs)) if (ents or docs) else {}
+    return {"key": key, "pack": pack, "entities": resolved.get("entities", []),
+            "documents": resolved.get("documents", []),
+            "cited_entities": len(ents), "cited_sources": len(docs)}
+
+
+# ---------------------------------------------------------------- backup / clear
+def _backup_module():
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import backup as BK
+    return BK
+
+
+def _runner_busy() -> bool:
+    """True while a queue or human-assist run is in progress."""
+    try:
+        return bool(WQ and WQ.runner_active())
+    except Exception:
+        return False
+
+
+def _reset_caches():
+    """Forget everything that was read from state before a restore or clear."""
+    _MATCH_CACHE.clear()
+    _EMP.clear()
+    globals()["_emp_loaded"] = False
+    try:
+        _norm_slug.cache_clear()
+    except Exception:
+        pass
+
+
+def backup_info():
+    info = _backup_module().summarise()
+    info["busy"] = _runner_busy()
+    return info
+
+
+def backup_make(include_documents=True):
+    """Build a backup zip in a temp file; the caller streams and deletes it."""
+    BK = _backup_module()
+    fd, path = tempfile.mkstemp(prefix="jobsquirrel-backup-", suffix=".zip")
+    os.close(fd)
+    os.unlink(path)                       # create() refuses to overwrite
+    try:
+        BK.create(out=path, include_documents=include_documents, quiet=True)
+    except OSError as exc:
+        return {"error": f"could not build the backup: {exc}"}
+    return {"path": path, "name": os.path.basename(path)}
+
+
+def backup_restore(data_parts, confirm):
+    """Restore an uploaded backup over the current state."""
+    if (confirm or "").strip().upper() != "RESTORE":
+        return {"error": 'type RESTORE to confirm — nothing was changed'}
+    if _runner_busy():
+        return {"error": "a queue run is in progress — stop it before restoring"}
+    BK = _backup_module()
+    result = BK.restore(data_parts, quiet=True)
+    if result.get("error"):
+        return result
+    _reset_caches()
+    _log_approval(f"backup restore from {os.path.basename(data_parts)} -> {result.get('restored')} files")
+    return {"ok": f"restored {result['restored']} file(s) — reloading",
+            "restored": result["restored"], "safety": result.get("safety", ""),
+            "reload": True}
+
+
+def backup_clear(scope, confirm):
+    if (confirm or "").strip().upper() != "CLEAR":
+        return {"error": 'type CLEAR to confirm — nothing was changed'}
+    if _runner_busy():
+        return {"error": "a queue run is in progress — stop it before clearing"}
+    BK = _backup_module()
+    result = BK.clear(scope or "data", quiet=True)
+    if result.get("error"):
+        return result
+    _reset_caches()
+    _log_approval(f"cleared {result.get('removed')} files (scope={scope or 'data'})")
+    return {"ok": f"cleared {result['removed']} file(s) — reloading",
+            "removed": result["removed"], "safety": result.get("safety", ""),
+            "reload": True}
+
+
+def _multipart(handler):
+    """(fields, files) from a multipart/form-data body; files is [(name, bytes)]."""
+    n = int(handler.headers.get("Content-Length", "0") or 0)
+    if n <= 0 or n > 2 * 1024 ** 3:
+        return {}, [], "missing or oversized upload"
+    raw = handler.rfile.read(n)
+    m = re.search(r"boundary=([^;]+)", handler.headers.get("Content-Type", ""))
+    if not m:
+        return {}, [], "expected multipart/form-data"
+    boundary = m.group(1).strip('"').encode()
+    fields, files = {}, []
+    for part in raw.split(b"--" + boundary):
+        if part.strip() in (b"", b"--", b"--\r\n"):
+            continue
+        head, _, body = part.partition(b"\r\n\r\n")
+        if body.endswith(b"\r\n"):
+            body = body[:-2]
+        hs = head.decode("utf-8", "ignore")
+        fm = re.search(r'filename="([^"]*)"', hs)
+        nm = re.search(r'name="([^"]*)"', hs)
+        if fm and fm.group(1):
+            files.append((fm.group(1), body))
+        elif nm and nm.group(1):
+            fields[nm.group(1)] = body.decode("utf-8", "ignore").strip()
+    return fields, files, ""
+
+
+# ---------------------------------------------------------------- change stream
+_REV = {"t": 0.0, "state": "", "live": ""}
+_STATE_FILES = (
+    os.path.join(STATE, "applications.csv"),
+    os.path.join(STATE, "queue.tsv"),
+    os.path.join(STATE, "queue.done"),
+    os.path.join(STATE, "queue-human.tsv"),
+    os.path.join(STATE, "queue.retry"),
+    os.path.join(STATE, "submissions.csv"),
+    os.path.join(STATE, "role-flags.json"),
+    os.path.join(STATE, "role-groups.json"),
+    os.path.join(STATE, "shelved.json"),
+    os.path.join(STATE, "gmail-review.json"),
+    os.path.join(LOGS, "dashboard-match.json"),
+    os.path.join(LOGS, "dashboard-role-meta.json"),
+    os.path.join(LOGS, "dashboard-employment.json"),
+    os.path.join(LOGS, "runs.jsonl"),
+)
+_STATE_DIRS = (
+    os.path.join(STATE, "job-descriptions"),
+    os.path.join(STATE, "ats"),
+    os.path.join(STATE, "kb-context"),
+    os.path.join(STATE, "cv-content"),
+    os.path.join(ROOT, "documents", "applications"),
+)
+_LIVE_FILES = (
+    os.path.join(STATE, "queue.pause"),
+    os.path.join(STATE, "queue.stop"),
+    os.path.join(LOGS, "runs.jsonl"),
+    os.path.join(LOGS, "dashboard-action.log"),
+)
+
+
+def _stat_sig(path):
+    try:
+        st = os.stat(path)
+        return f"{st.st_mtime_ns}:{st.st_size}"
+    except OSError:
+        return "0"
+
+
+def _dir_sig(path):
+    try:
+        return str(os.stat(path).st_mtime_ns)
+    except OSError:
+        return "0"
+
+
+_LIVE_TASKS = {"t": 0.0, "log": None, "keys": ()}
+
+
+def _live_task_keys():
+    """Keys of the tasks an agent is working on right now, cached.
+
+    Scanning every process for every SSE tick is wasteful, so the scan is
+    reused for a few seconds unless a log file changed (which is what happens
+    when a task starts or stops).
+    """
+    now = time.time()
+    try:
+        log_sig = max((os.stat(os.path.join(LOGS, f)).st_mtime_ns
+                       for f in os.listdir(LOGS) if f.endswith(".log")), default=0)
+    except OSError:
+        log_sig = 0
+    c = _LIVE_TASKS
+    if c["log"] is not None and log_sig == c["log"] and now - c["t"] < 6:
+        return c["keys"]
+    keys = ()
+    if WQ:
+        try:
+            # A live worker process is only "working now" while a run for this
+            # repo is actually active. A finished agent can linger for minutes
+            # after its task and keep its last log fresh, which used to leave a
+            # row spinning while the Activity pane already said idle.
+            if WQ.runner_active():
+                keys = tuple(sorted(WQ.live_tasks()))
+        except Exception:
+            keys = ()
+    c.update(t=now, log=log_sig, keys=keys)
+    return keys
+
+
+def _revision():
+    """Cheap fingerprints for the grid and the live strip.
+
+    The SSE stream sends these to the browser. The grid is only rebuilt when
+    its own state changes, not on every log line.
+    """
+    now = time.time()
+    if now - _REV["t"] < 0.5:
+        return dict(_REV)
+    sh = hashlib.blake2s(digest_size=10)
+    for path in _STATE_FILES:
+        sh.update((path + _stat_sig(path)).encode())
+    for path in _STATE_DIRS:
+        sh.update((path + _dir_sig(path)).encode())
+    for key in _live_task_keys():
+        sh.update(key.encode())
+    lh = hashlib.blake2s(digest_size=10)
+    for path in _LIVE_FILES:
+        lh.update((path + _stat_sig(path)).encode())
+    try:
+        latest = max((os.stat(os.path.join(LOGS, f)).st_mtime_ns
+                      for f in os.listdir(LOGS) if f.endswith(".log")), default=0)
+    except OSError:
+        latest = 0
+    lh.update(str(latest).encode())
+    _REV.update(t=now, state=sh.hexdigest(), live=lh.hexdigest())
+    return dict(_REV)
+
+
+# ---------------------------------------------------------------- HTTP
+class H(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *a):
+        pass
+
+    def _json(self, obj, code=200):
+        body = json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _events(self):
+        """Server-Sent Events: push a revision when the grid or live state changes."""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.end_headers()
+
+        def chunk(data):
+            self.wfile.write(f"{len(data):X}\r\n".encode() + data + b"\r\n")
+            self.wfile.flush()
+
+        try:
+            chunk(b"retry: 3000\n\n")
+            last = None
+            beat = time.time()
+            while True:
+                d = _revision()
+                key = (d["state"], d["live"])
+                if key != last:
+                    last = key
+                    payload = json.dumps({"state": d["state"], "live": d["live"]}).encode()
+                    chunk(b"data: " + payload + b"\n\n")
+                now = time.time()
+                if now - beat >= 15:
+                    beat = now
+                    chunk(b": keepalive\n\n")
+                time.sleep(1)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            try:
+                self.wfile.write(b"0\r\n\r\n")
+                self.wfile.flush()
+            except OSError:
+                pass
+            self.close_connection = True
+
+    def _file(self, path, ctype):
+        try:
+            body = open(path, "rb").read()
+        except OSError:
+            self.send_response(404); self.end_headers(); return
+        if path.endswith("index.html"):
+            body = body.replace(b"{{TOKEN}}", SESSION_TOKEN.encode())
+            body = body.replace(b"{{ASSET}}", quote(_web_build(), safe="").encode())
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _download(self, path, filename):
+        try:
+            st = os.stat(path)
+            fh = open(path, "rb")
+        except OSError as exc:
+            return self._json({"error": str(exc)}, 500)
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Length", str(st.st_size))
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            while True:
+                chunk = fh.read(1024 * 1024)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+        finally:
+            fh.close()
+            try:
+                os.unlink(path)          # the temp copy is not a saved backup
+            except OSError:
+                pass
+
+    def _page(self, title, body, refresh=0):
+        meta = f"<meta http-equiv='refresh' content='{int(refresh)}'>" if refresh else ""
+        html = ("<!doctype html><html><head><meta charset='utf-8'>" + meta +
+                "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                f"<title>{_html.escape(title)}</title>"
+                "<style>body{font:14px/1.5 system-ui,-apple-system,sans-serif;background:#0c0e12;color:#f3f4f6;margin:20px}"
+                "a{color:#f59e0b}pre{background:#07090c;border:1px solid #232838;border-radius:8px;padding:12px;"
+                "white-space:pre-wrap;overflow:auto;max-height:75vh;font:12px/1.5 ui-monospace,monospace}"
+                ".muted{color:#9ca3af}.bad{color:#ffb4b4}h2,h3{margin:.4em 0}li{margin:4px 0}</style></head><body>"
+                + body + "</body></html>")
+        data = html.encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _task_names(self):
+        out = {}
+        for k in _live_task_keys():
+            co, _, role = k.partition("|")
+            out[f"{co}-{role}".translate(str.maketrans(" /|", "___"))] = k.replace("|", " — ")
+        return out
+
+    def _logs_page(self):
+        running = self._task_names()
+        try:
+            files = [f for f in os.listdir(LOGS) if f.endswith(".log")]
+        except OSError:
+            files = []
+        files.sort(key=lambda f: os.path.getmtime(os.path.join(LOGS, f)), reverse=True)
+        rows = []
+        for f in files[:80]:
+            name = f[:-4]
+            try:
+                st = os.stat(os.path.join(LOGS, f))
+                age, size = int(time.time() - st.st_mtime), st.st_size
+            except OSError:
+                age, size = 0, 0
+            tag = ' <b class="bad">running</b>' if name in running else ''
+            rows.append(f"<li><a href='/tasklog?task={quote(name)}'>{_html.escape(name)}</a>{tag} "
+                        f"<span class='muted'>· {size} bytes · {age}s ago</span></li>")
+        body = (f"<h2>Task logs</h2><p class='muted'>{time.strftime('%Y-%m-%d %H:%M:%S')} · "
+                "auto-refresh 3s · <a href='/'>dashboard</a></p>")
+        if running:
+            body += "<h3>Running</h3><ul>" + "".join(
+                f"<li><a href='/tasklog?task={quote(n)}'>{_html.escape(n)}</a> "
+                f"<span class='muted'>· {_html.escape(label)}</span></li>" for n, label in running.items()) + "</ul>"
+        else:
+            body += "<p class='muted'>No task running.</p>"
+        body += "<h3>Recent</h3><ul>" + ("".join(rows) or "<li class='muted'>no logs yet</li>") + "</ul>"
+        return self._page("Jobsquirrel task logs", body, refresh=3)
+
+    def _tasklog_page(self, task):
+        name = os.path.basename(task or "")[:120]
+        if not name:
+            return self._logs_page()
+        path = os.path.join(LOGS, name + ".log")
+        try:
+            st = os.stat(path)
+            size, age = st.st_size, int(time.time() - st.st_mtime)
+        except OSError:
+            size, age = 0, None
+        raw = ANSI.sub("", _read(path, cap=400_000)).splitlines()[-400:]
+        running = name in self._task_names()
+        status = "running" if running else ("not running" if age is not None else "no log file")
+        meta = f"{size} bytes · " + (f"last output {age}s ago" if age is not None else "no output yet")
+        if age is not None and age > 90:
+            meta += f" · quiet for {age // 60}m — the model may be stalled"
+        text = "\n".join(raw) or "No output yet."
+        body = (f"<p><a href='/logs'>← all logs</a> · <a href='/'>dashboard</a></p>"
+                f"<h2>{_html.escape(name)}</h2><p class='muted'>{_html.escape(meta)} · {status}</p>"
+                f"<pre>{_html.escape(text)}</pre>")
+        return self._page(name + " · log", body, refresh=2)
+
+    def do_GET(self):
+        u = urlparse(self.path)
+        p, qs = u.path, parse_qs(u.query)
+        static = {"/": ("index.html", "text/html; charset=utf-8"),
+                  "/app.css": ("app.css", "text/css; charset=utf-8"),
+                  "/app.js": ("app.js", "application/javascript; charset=utf-8"),
+                  "/grid-stats.js": ("grid-stats.js", "application/javascript; charset=utf-8"),
+                  "/critters.js": ("critters.js", "application/javascript; charset=utf-8"),
+                  "/graph3d.js": ("graph3d.js", "application/javascript; charset=utf-8"),
+                  "/graph-universe.js": ("graph-universe.js", "application/javascript; charset=utf-8"),
+                  "/cascade-islands.js": ("cascade-islands.js", "application/javascript; charset=utf-8"),
+                  "/vendor/cascade.js": ("vendor/cascade.js", "application/javascript; charset=utf-8"),
+                  "/vendor/three.module.min.js": ("vendor/three.module.min.js",
+                                                    "application/javascript; charset=utf-8")}
+        if p == "/role" or p.startswith("/role/"):
+            # A role deep link is the dashboard itself; the app opens the role
+            # from the path (Cascade browserLocation).
+            return self._file(os.path.join(WEB, "index.html"), "text/html; charset=utf-8")
+        if p in static:
+            return self._file(os.path.join(WEB, static[p][0]), static[p][1])
+        if p == "/logs":
+            return self._logs_page()
+        if p == "/tasklog":
+            return self._tasklog_page(qs.get("task", [""])[0])
+        if p == "/api/events":
+            return self._events()
+        if p == "/api/revision":
+            d = _revision()
+            return self._json({"state": d["state"], "live": d["live"]})
+        if p == "/api/state":
+            return self._json(state())
+        if p == "/api/backup":
+            if not self._authed():
+                return
+            if qs.get("info", [""])[0]:
+                return self._json(backup_info())
+            if _runner_busy():
+                return self._json({"error": "a queue run is in progress — try again when it finishes"}, 409)
+            made = backup_make(qs.get("documents", ["1"])[0] not in ("0", "no", "false"))
+            if made.get("error"):
+                return self._json(made, 500)
+            return self._download(made["path"], made["name"])
+        if p == "/api/health":
+            if qs.get("full", [""])[0]:
+                return self._json(health_full(force=qs.get("refresh", [""])[0] == "1"))
+            return self._json(health())
+        if p == "/api/register":
+            return self._json(register_api(qs.get("q", [""])[0], qs.get("status", [""])[0],
+                                           qs.get("limit", ["200"])[0], qs.get("offset", ["0"])[0]))
+        if p == "/api/grid":
+            return self._json(grid())
+        if p == "/api/groups":
+            return self._json(groups_view())
+        if p == "/api/provenance":
+            return self._json(provenance(qs.get("company", [""])[0], qs.get("role", [""])[0]))
+        if p == "/api/queue":
+            return self._json(queue_files())
+        if p == "/api/roles":
+            return self._json(roles_list())
+        if p.startswith("/api/roles/"):
+            return self._json(role_detail(p[len("/api/roles/"):]))
+        if p == "/api/config":
+            return self._json(config_get(qs.get("target", ["profile"])[0]))
+        if p == "/api/accounts":
+            return self._json(accounts())
+        if p == "/api/google":
+            return self._json(google_info())
+        if p == "/api/secrets":
+            if not self._authed():
+                return
+            return self._json(secrets_info())
+        if p == "/api/drafts":
+            return self._json(drafts_list(qs.get("company", [""])[0], qs.get("role", [""])[0]))
+        if p == "/api/draft":
+            return self._json(draft_get(qs.get("path", [""])[0]))
+        if p == "/api/role-chat":
+            return self._json(role_chat_stream(qs.get("key", [""])[0]))
+        if p == "/api/permissions":
+            return self._json({"policy": load_perms(), "defaults": DEFAULT_PERMS})
+        if p == "/api/agent/config":
+            return self._json(agent_config())
+        if p == "/api/agent/models":
+            return self._json(agent_models(qs.get("agent", [""])[0]))
+        if p == "/api/graphrag/env":
+            return self._json(graphrag_env())
+        if p == "/api/agent/pending":
+            return self._json({"pending": permission_pending()})
+        if p == "/api/gmail/review":
+            return self._json(gmail_review_data())
+        if p == "/api/update":
+            return self._json(check_update(refresh=qs.get("refresh", ["0"])[0] in ("1", "true")))
+        if p == "/api/kb":
+            return self._json(kb_info())
+        if p == "/api/kb/find":
+            return self._json(kb_find_doc(qs.get("name", [""])[0]))
+        if p == "/api/graph":
+            return self._json(graph_query(qs.get("kind", ["entities"])[0], qs.get("q", [""])[0],
+                                          qs.get("limit", ["200"])[0]))
+        if p == "/api/graph/data":
+            return self._json(graph_query("graph", qs.get("q", [""])[0],
+                                          qs.get("limit", ["90"])[0]))
+        if p == "/api/graph/universe":
+            return self._json(graph_query("universe"))
+        if p == "/api/graph/enrich":
+            return self._json(graph_enrich_propose())
+        if p == "/api/graph/node":
+            return self._json(graph_node(qs.get("title", [""])[0]))
+        if p == "/api/graph/semantic":
+            return self._json(graph_semantic(qs.get("q", [""])[0],
+                                              qs.get("limit", ["14"])[0]))
+        if p == "/api/graph/role":
+            return self._json(graph_role_evidence(qs.get("key", [""])[0]))
+        if p == "/api/kg/play/sources":
+            return self._json(kg_play_sources())
+        if p == "/api/graph/ontology":
+            return self._json(graph_query("ontology"))
+        if p == "/api/graph/types":
+            return self._json(graph_query("types", qs.get("limit", ["24"])[0]))
+        if p == "/api/graph/type":
+            return self._json(graph_query("type", qs.get("type", [""])[0],
+                                          qs.get("limit", ["90"])[0]))
+        if p == "/api/graph/overview":
+            return self._json(graph_query("overview", qs.get("parent", [""])[0],
+                                          qs.get("limit", ["60"])[0]))
+        if p == "/api/graph/community":
+            return self._json(graph_query("community", qs.get("id", ["0"])[0],
+                                          qs.get("limit", ["90"])[0]))
+        if p == "/api/graph/search":
+            return self._json(graph_query("search", qs.get("q", [""])[0],
+                                          qs.get("limit", ["12"])[0]))
+        if p == "/api/graph/ego":
+            return self._json(graph_query("ego", qs.get("q", [""])[0],
+                                          qs.get("limit", ["50"])[0]))
+        if p == "/api/grounding":
+            return self._json(role_grounding(qs.get("key", [""])[0]))
+        if p == "/api/outcomes":
+            return self._json(outcomes())
+        if p == "/api/runs":
+            return self._json(runs())
+        if p == "/api/tasks":
+            return self._json(task_logs())
+        if p == "/api/logs":
+            return self._json(task_log_items(qs.get("limit", ["80"])[0]))
+        if p == "/api/log":
+            return self._json(read_task_log(qs.get("task", [""])[0]))
+        if p == "/api/live":
+            return self._json(live())
+        if p == "/api/logs/tail":
+            return self._json(logs_tail(qs.get("lines", ["100"])[0]))
+        if p == "/api/agent":
+            return self._json({"agent": chat_agent()})
+        if p == "/api/chat/stream":
+            return self._json(chat_stream(qs.get("run_id", ["chat"])[0], qs.get("since", ["0"])[0]))
+        if p == "/api/file":
+            return self._json(file_view(qs.get("path", [""])[0]))
+        if p == "/raw":
+            data, ctype, name = raw_file(qs.get("path", [""])[0])
+            if data is None:
+                return self._json({"error": "not found or not allowed"}, 404)
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Disposition", f'inline; filename="{name}"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            return self.wfile.write(data)
+        self._json({"error": "not found"}, 404)
+
+    def _body(self):
+        n = int(self.headers.get("Content-Length", "0") or 0)
+        try:
+            return json.loads(self.rfile.read(n).decode() or "{}")
+        except ValueError:
+            return {}
+
+    def _authed(self):
+        if self.headers.get("X-Session") == SESSION_TOKEN:
+            return True
+        self._json({"error": "bad session token"}, 403)
+        return False
+
+    def _upload(self):
+        n = int(self.headers.get("Content-Length", "0") or 0)
+        raw = self.rfile.read(n)
+        m = re.search(r"boundary=([^;]+)", self.headers.get("Content-Type", ""))
+        if not m:
+            return {"error": "expected multipart/form-data"}
+        b = m.group(1).strip('"').encode()
+        group, files = "imported", []
+        for part in raw.split(b"--" + b):
+            if part.strip() in (b"", b"--", b"--\r\n"):
+                continue
+            head, _, body = part.partition(b"\r\n\r\n")
+            if body.endswith(b"\r\n"):
+                body = body[:-2]
+            hs = head.decode("utf-8", "ignore")
+            fm = re.search(r'filename="([^"]*)"', hs)
+            nm = re.search(r'name="([^"]*)"', hs)
+            if fm and fm.group(1):
+                files.append((fm.group(1), body))
+            elif nm and nm.group(1) == "group":
+                group = body.decode("utf-8", "ignore").strip() or group
+        return kb_upload(group, files)
+
+    def do_POST(self):
+        p = urlparse(self.path).path
+        if p == "/api/agent/decide":
+            # The pending id is the one-time secret the approval dialog holds.
+            # Do not also require the session token: a tab opened before a
+            # dashboard restart must still be able to approve its pending mail.
+            # No Origin allow-list here: the dashboard may be opened by hostname
+            # or LAN name, and a 128-bit id is already the unguessable secret.
+            origin = self.headers.get("Origin") or ""
+            host = self.headers.get("Host") or ""
+            data = self._body()
+            rid = str(data.get("id", ""))
+            decision = str(data.get("decision", "deny"))
+            res = permission_decide(rid, decision, bool(data.get("remember")),
+                                    data.get("edits") or {}, bool(data.get("save")),
+                                    data.get("answer"))
+            _log_approval(f"id={rid[:8]}... decision={decision} origin={origin!r} host={host!r} -> {res}")
+            return self._json(res)
+        if not self._authed():
+            return
+        if p == "/api/kb/upload":
+            return self._json(self._upload())
+        if p == "/api/backup/restore":
+            fields, files, problem = _multipart(self)
+            if problem:
+                return self._json({"error": problem}, 400)
+            if not files:
+                return self._json({"error": "choose a backup .zip first"}, 400)
+            name, blob = files[0]
+            if not name.lower().endswith(".zip"):
+                return self._json({"error": "that is not a .zip file"}, 400)
+            fd, tmp = tempfile.mkstemp(prefix="restore-", suffix=".zip")
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(blob)
+            try:
+                return self._json(backup_restore(tmp, fields.get("confirm", "")))
+            finally:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+        if p == "/api/backup/clear":
+            data = self._body()
+            return self._json(backup_clear(data.get("scope", "data"), data.get("confirm", "")))
+        data = self._body()
+        if p == "/api/graph/enrich":
+            return self._json(graph_enrich_apply(data.get("selected") or []))
+        if p == "/api/graph/edit":
+            return self._json(graph_edit_node(data))
+        if p == "/api/graph/ask":
+            return self._json(graph_ask(data.get("question", ""), data.get("method", "local")))
+        if p == "/api/kg/play":
+            return self._json(graph_play(data.get("key", ""), data.get("text", ""),
+                                          data.get("hops", 2), data.get("kind", "cv")))
+        if p == "/api/secrets":
+            return self._json(secrets_set(data.get("section", ""), data.get("name", ""),
+                                          data.get("value", "")))
+        if p == "/api/secrets/delete":
+            return self._json(secrets_delete(data.get("section", ""), data.get("name", "")))
+        if p == "/api/secrets/migrate":
+            return self._json(secrets_migrate())
+        if p == "/api/secrets/encrypt":
+            return self._json(secrets_encrypt())
+        if p == "/api/scam/clear":
+            return self._json(scam_clear(data.get("company", ""), data.get("role", ""),
+                                         data.get("key", "")))
+        if p == "/api/register/row":
+            return self._json(update_row(data.get("company", ""), data.get("role", ""),
+                                         data.get("status", ""), data.get("notes", ""),
+                                         data.get("employment"), data.get("action"),
+                                         data.get("work_model"), data.get("salary"),
+                                         data.get("key", "")))
+        if p == "/api/queue/action":
+            return self._json(queue_action(data.get("action", ""), data.get("company", ""), data.get("role", "")))
+        if p == "/api/delegate":
+            return self._json(delegate_start(data.get("prompt", ""), data.get("title", "")))
+        if p == "/api/roles/shelve":
+            return self._json(set_shelved(data.get("key", ""), bool(data.get("on")),
+                                          data.get("note", "")))
+        if p == "/api/roles/flags":
+            return self._json(set_role_flags(data.get("key", ""),
+                                             pinned=data.get("pinned")))
+        if p == "/api/groups":
+            return self._json(group_action(data.get("op", ""), data.get("name", ""),
+                                           data.get("group", ""), data.get("key", ""),
+                                           data.get("on")))
+        if p == "/api/roles/discover":
+            return self._json(discover(data.get("url", "")))
+        if p == "/api/config":
+            return self._json(config_save(data.get("target", ""), data.get("content", "")))
+        if p == "/api/action/run":
+            return self._json(start_action(data.get("command", ""), data.get("approval_token", "")))
+        if p == "/api/chat":
+            return self._json(chat_start(data.get("message", "")))
+        if p == "/api/chat/stop":
+            return self._json(chat_stop())
+        if p == "/api/chat/new":
+            return self._json(chat_new())
+        if p == "/api/kb/delete":
+            return self._json(kb_delete(data.get("path", "")))
+        if p == "/api/kb/rebuild":
+            return self._json(kb_rebuild())
+        if p == "/api/accounts/auth":
+            return self._json(account_auth(data.get("kind", "")))
+        if p == "/api/google":
+            return self._json(google_save(data))
+        if p == "/api/draft/save":
+            return self._json(draft_save(data))
+        if p == "/api/draft/delete":
+            return self._json(draft_delete(data.get("path", "")))
+        if p == "/api/draft/send":
+            path = str(data.get("path", ""))
+            key = os.path.realpath(path) if path else ""
+            with _DRAFT_SEND_LOCK:
+                if key and key in _DRAFT_SENDING:
+                    return self._json({"error": "this draft is already waiting for approval — use the open approval dialog"})
+                if key:
+                    _DRAFT_SENDING.add(key)
+            try:
+                return self._json(draft_send(path, bool(data.get("clear_action"))))
+            finally:
+                if key:
+                    with _DRAFT_SEND_LOCK:
+                        _DRAFT_SENDING.discard(key)
+        if p == "/api/role-chat":
+            return self._json(role_chat_start(data.get("key", ""), data.get("company", ""),
+                                              data.get("role", ""), data.get("message", "")))
+        if p == "/api/role-chat/stop":
+            return self._json(role_chat_stop(data.get("key", "")))
+        if p == "/api/role-chat/new":
+            return self._json(role_chat_new(data.get("key", "")))
+        if p == "/api/permissions":
+            return self._json({"policy": save_perms(data.get("policy") or {})})
+        if p == "/api/gmail/review/ack":
+            return self._json(gmail_review_ack(data.get("id", "")))
+        if p == "/api/gmail/review/ask":
+            return self._json(gmail_review_ask(data.get("id", "")))
+        if p == "/api/gmail/review/config":
+            return self._json(gmail_review_config(data.get("enabled"), data.get("use_model"),
+                                                    data.get("auto_model")))
+        if p == "/api/agent/config":
+            return self._json({"ok": "saved", "config": save_agent_cfg(data)})
+        if p == "/api/graphrag/env":
+            return self._json({"ok": "saved", "env": save_graphrag_env(data.get("vars") or {})})
+        if p == "/api/approval/ask":
+            return self._json(consent_request(str(data.get("purpose", "risky action"))[:500],
+                                              str(data.get("token", "ACTION"))[:40],
+                                              email=data.get("email") or None))
+        if p == "/api/agent/permission":
+            return self._json(permission_request(str(data.get("category", "?"))[:60],
+                                                 str(data.get("detail", ""))[:400]))
+        if p == "/api/agent/ask":
+            # The agent needs something only the human can supply (a 2FA/SMS
+            # code). It blocks here; the answer comes back once, to the caller.
+            return self._json(ask_request(str(data.get("question", "Input needed"))[:120],
+                                          str(data.get("detail", ""))[:400],
+                                          float(data.get("timeout") or 600),
+                                          str(data.get("mode") or "code")))
+        if p == "/api/update/apply":
+            return self._json(apply_update(str(data.get("approval_token", ""))))
+        if p == "/api/prepare":
+            return self._json(prepare_roles(data.get("keys") or []))
+        if p == "/api/submit":
+            return self._json(submit_roles(data.get("keys") or [], data.get("approval_token", "")))
+        if p == "/api/prepare-submit":
+            return self._json(prepare_submit_roles(data.get("keys") or [], data.get("approval_token", "")))
+        if p == "/api/match/recompute":
+            return self._json(recompute_match(data.get("keys")))
+        if p == "/api/ats/add":
+            return self._json(ats_add(data.get("key", ""), data.get("term", "")))
+        if p == "/api/ats/refresh":
+            return self._json(ats_refresh(data.get("key", "")))
+        if p == "/api/role/skills":
+            return self._json(explain_missing_skills(data.get("key", "")))
+        if p == "/api/skill/explain":
+            return self._json(skill_context.explain(data.get("key", ""), data.get("term", "")))
+        if p == "/api/role/interview-stage":
+            return self._json(set_interview_stage(data.get("key", ""), data.get("stage", "")))
+        if p == "/api/open":
+            return self._json(open_apply(data.get("company", ""), data.get("role", "")))
+        if p == "/api/action/stop":
+            return self._json(stop_action())
+        if p == "/api/action/pause":
+            return self._json(pause_action(bool(data.get("on"))))
+        if p == "/api/skills/evidence":
+            return self._json(add_skill_evidence(data.get("skill", ""), data.get("source", ""),
+                                                 data.get("detail", ""), data.get("key", "")))
+        self._json({"error": "not found"}, 404)
+
+
+def _source_stamp():
+    """Fingerprint of the Python sources the server imports."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    out = []
+    for path in glob.glob(os.path.join(here, "*.py")):
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        out.append((path, st.st_mtime_ns, st.st_size))
+    return tuple(sorted(out))
+
+
+def _supervise(host, port, open_browser):
+    """Run the server in a child process; restart it when a source file changes."""
+    child = [sys.executable, os.path.abspath(__file__), "--serve",
+             "--host", host, "--port", str(port)]
+    url = f"http://{host}:{port}/"
+    print(f"🐿️  Jobsquirrel WebUI  ->  {url}   (Ctrl-C to stop · auto-reload on)", flush=True)
+    stamp = _source_stamp()
+    runs, proc = 0, None
+
+    def _stop(_signum, _frame):
+        raise KeyboardInterrupt                       # clean up the child on kill/TERM
+    try:
+        signal.signal(signal.SIGTERM, _stop)
+    except (ValueError, OSError):
+        pass
+    try:
+        while True:
+            proc = subprocess.Popen(child)
+            runs += 1
+            if runs == 1 and open_browser:
+                threading.Timer(0.8, lambda p=proc: p.poll() is None and webbrowser.open(url)).start()
+            changed = False
+            while proc.poll() is None:
+                time.sleep(0.7)
+                now = _source_stamp()
+                if now != stamp:
+                    changed = True
+                    time.sleep(0.25)                    # coalesce a multi-file save
+                    stamp = _source_stamp()
+                    print("↻ source changed — restarting the WebUI…", flush=True)
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait(timeout=3)
+                    break
+            if changed:
+                continue
+            if runs == 1:
+                return proc.returncode or 1             # e.g. port already in use
+            print("server exited — fix the error and save; waiting for the next change…", flush=True)
+            while _source_stamp() == stamp:
+                time.sleep(0.7)
+            stamp = _source_stamp()
+    except KeyboardInterrupt:
+        print("\nbye")
+    finally:
+        if proc and proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+    return 0
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Jobsquirrel WebUI server.")
+    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--open", action="store_true")
+    ap.add_argument("--serve", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--no-reload", action="store_true", help="run in-process (no auto-reload)")
+    args = ap.parse_args()
+    if not os.path.isfile(os.path.join(WEB, "index.html")):
+        print(f"missing frontend: {WEB}/index.html", file=sys.stderr)
+        return 2
+    if not args.serve and not args.no_reload and os.environ.get("JOBSQUIRREL_NO_RELOAD") != "1":
+        return _supervise(args.host, args.port, args.open)
+    try:
+        SS.migrate()          # idempotent: import legacy secrets once
+    except (SS.SecretsError, OSError) as exc:
+        print(f"warning: could not migrate secrets: {exc}", file=sys.stderr)
+    url = f"http://{args.host}:{args.port}/"
+    DASH["url"] = f"http://{args.host}:{args.port}"       # handed to the agent so it can ask for approval
+    srv = ThreadingHTTPServer((args.host, args.port), H)
+    srv.daemon_threads = True
+    if not args.serve:
+        print(f"🐿️  Jobsquirrel WebUI  ->  {url}   (Ctrl-C to stop)", flush=True)
+    if args.open:
+        threading.Timer(0.7, lambda: webbrowser.open(url)).start()
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        if not args.serve:
+            print("\nbye")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

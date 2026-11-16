@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""Portable stand-in for util-linux `setsid` (macOS ships without it).
+
+    setsid [-f] [-w] PROGRAM [ARG]...
+
+Runs PROGRAM in a new session, detached from the caller's process group, so a
+Ctrl-C or a timeout aimed at the runner does not take a background server down
+with it. Like the real one it forks first when it has to (we are already a
+process-group leader) or when asked to (-f); -w waits and returns its status.
+"""
+import os
+import sys
+
+USAGE = "usage: setsid [-f] [-w] PROGRAM [ARG]..."
+
+
+def main(argv):
+    fork, wait = False, False
+    while argv and argv[0].startswith("-"):
+        opt = argv.pop(0)
+        if opt == "--":
+            break
+        if opt in ("-f", "--fork"):
+            fork = True
+        elif opt in ("-w", "--wait"):
+            wait = True
+        elif opt in ("-c", "--ctty"):
+            pass
+        else:
+            print(f"setsid: unrecognized option {opt!r}\n{USAGE}", file=sys.stderr)
+            return 1
+    if not argv:
+        print(f"setsid: missing PROGRAM\n{USAGE}", file=sys.stderr)
+        return 1
+
+    if fork or wait or os.getpgrp() == os.getpid():
+        pid = os.fork()
+        if pid:
+            if not wait:
+                return 0
+            _, status = os.waitpid(pid, 0)
+            return os.waitstatus_to_exitcode(status) if hasattr(os, "waitstatus_to_exitcode") \
+                else (status >> 8)
+    os.setsid()
+    try:
+        os.execvp(argv[0], argv)
+    except OSError as exc:
+        print(f"setsid: failed to execute {argv[0]}: {exc.strerror}", file=sys.stderr)
+        return 127 if isinstance(exc, FileNotFoundError) else 126
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
