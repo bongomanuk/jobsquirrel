@@ -14,11 +14,14 @@ def test_archetype_prefix_comes_from_the_profile_not_the_code():
 
 
 def test_default_headline_is_the_configured_archetype_not_a_house_title():
+    # Works with the shipped example archetypes as well as a filled-in config.
     import cv_target as T
-    data = T._default_data("Senior_AI_Engineer")
+    archetypes = T.B.load_archetypes()
+    assert archetypes, "config/archetypes.example.json should ship with the build"
+    entry = next(a for a in archetypes if a.get("headline"))
+    data = T._default_data(entry["key"])
     assert data["headline"] != "Engineering Leader"
-    assert data["headline"] == next(
-        r["headline"] for r in T.B.load_archetypes() if r.get("key") == "Senior_AI_Engineer")
+    assert data["headline"] == entry["headline"]
 
 
 def test_empty_section_is_left_empty_instead_of_refilled():
