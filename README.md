@@ -125,7 +125,7 @@ ISC license. See [how Cascade is integrated](docs/CASCADE.md),
 
 **If it helps, give it a star.** It helps other people find it.
 
-Built by [Peter Hollas](https://hollas.net) · [hollas.net](https://hollas.net)
+Built by the [Jobsquirrel](https://github.com/bongomanuk/jobsquirrel) project
 
 Apache License 2.0 · [LICENSE](LICENSE)
 

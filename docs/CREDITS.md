@@ -20,4 +20,6 @@ Cascade's own documentation and demos are at
 
 ## Jobsquirrel
 
-Jobsquirrel is built by **Peter Hollas** ([hollas.net](https://hollas.net)).
+Jobsquirrel is built by the [Jobsquirrel](https://github.com/bongomanuk/jobsquirrel) project.
+
+Contributors are credited on GitHub.
