@@ -150,8 +150,8 @@ def check_text(text, facts, corpus):
     # often mentions a past employer and then a present-tense fact about today
     # ("... at Telia's R&D division, and I run two AI products of my own"). Only
     # a present-tense claim in the SAME clause as a past employer is a problem.
-    # A short leading phrase ("At Anaplan, ...") is kept with the clause that
-    # follows it, so "At Anaplan, I am leading ..." is still caught.
+    # A short leading phrase ("At Acme, ...") is kept with the clause that
+    # follows it, so "At Acme, I am leading ..." is still caught.
     for sent in re.split(r"(?<=[.!?;])\s+", text):
         clauses = [c.strip() for c in re.split(r"[,;]|\band\b|\bbut\b", sent) if c.strip()]
         merged, lead_buf = [], ""

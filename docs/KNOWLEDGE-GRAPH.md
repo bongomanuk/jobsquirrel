@@ -320,7 +320,7 @@ python3 tools/graph_attach_orphans.py --apply
 ## Duplicates
 
 GraphRAG can extract the same thing twice, or split an employer into its legal
-entities ("Anaplan", "Anaplan UK Ltd", "Anaplan Singapore Pte Ltd"). After a
+entities ("Acme", "Acme UK Ltd", "Acme Singapore Pte Ltd"). After a
 rebuild, run:
 
 ```bash

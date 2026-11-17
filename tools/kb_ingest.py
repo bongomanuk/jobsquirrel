@@ -20,6 +20,8 @@ import json
 import os
 import re
 import shutil
+
+import bins
 import subprocess
 import sys
 import tempfile
@@ -50,7 +52,7 @@ def _write(out_dir, src, text, ext=".txt"):
 
 
 def from_pdf(path):
-    if shutil.which("pdftotext"):
+    if bins.find("pdftotext"):
         tmp = path + ".pdftotext"
         try:
             subprocess.run(["pdftotext", "-layout", path, tmp], check=True,
@@ -76,11 +78,23 @@ def from_docx(path):
     except ImportError:
         raise RuntimeError("python-docx not installed (pip install python-docx)")
     doc = Document(path)
-    return "\n".join(p.text for p in doc.paragraphs)
+    # A CV laid out in a table has almost no top-level paragraphs, so reading
+    # only doc.paragraphs ingested those files nearly empty.
+    parts = [p.text for p in doc.paragraphs]
+
+    def walk(tables):
+        for table in tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    parts.extend(p.text for p in cell.paragraphs)
+                    walk(cell.tables)
+
+    walk(doc.tables)
+    return "\n".join(t for t in parts if t.strip())
 
 
 def from_office(path):
-    soffice = shutil.which("soffice") or shutil.which("libreoffice")
+    soffice = bins.find("soffice") or bins.find("libreoffice")
     if not soffice:
         raise RuntimeError("LibreOffice (soffice) not found")
     outdir = os.path.dirname(os.path.abspath(path))

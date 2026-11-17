@@ -32,6 +32,45 @@ except Exception:
     GIMP = None
 _IMP = None
 
+def _person_tokens():
+    """Name tokens of the configured candidate, for label cleanup and lookups."""
+    try:
+        import identity as ID
+        name = str(ID.parse().get("full name") or "").strip()
+    except Exception:
+        name = ""
+    return [t for t in re.findall(r"[A-Za-z][A-Za-z'\-]+", name) if len(t) > 2]
+
+
+_PERSON_TOKENS = _person_tokens()
+
+
+def _person_re():
+    if not _PERSON_TOKENS:
+        return None
+    return re.compile(r"\b(?:" + "|".join(re.escape(t) for t in _PERSON_TOKENS) + r")\b", re.I)
+
+_ROLE_PHRASE = None
+
+
+def _role_phrase() -> str:
+    """The candidate's configured role phrase, for summary prose.
+
+    Falls back to an empty string, so a user with no config gets a plain
+    sentence instead of someone else's job title.
+    """
+    global _ROLE_PHRASE
+    if _ROLE_PHRASE is None:
+        phrase = ""
+        try:
+            with open(os.path.join(ROOT, "config", "cv.json"), encoding="utf-8") as fh:
+                cv = json.load(fh)
+            phrase = str(cv.get("headline_default") or "").strip()
+        except (OSError, ValueError):
+            phrase = ""
+        _ROLE_PHRASE = phrase.split("  ·  ")[0].strip() or phrase.split("·")[0].strip()
+    return _ROLE_PHRASE
+
 
 def _importance():
     global _IMP
@@ -199,8 +238,9 @@ def relationships(q, limit):
     rows = [{"source": _s(r.source, 90), "target": _s(r.target, 90), "weight": round(float(r.weight), 1),
              "rel": (_s(getattr(r, "relation_type", ""), 40) if has_rel else ""),
              "description": _s(r.description, 400)} for r in df.itertuples()]
+    owner = " ".join(_PERSON_TOKENS) or "candidate"
     for r in _overlay_nodes(q, 20):
-        rows.append({"source": "Peter Hollas", "target": r["title"], "weight": 1,
+        rows.append({"source": owner, "target": r["title"], "weight": 1,
                      "description": r["description"][:400]})
     return {"rows": rows[:limit]}
 
@@ -244,8 +284,8 @@ def _doc_map():
 
 
 def _clean_label(title, entity_titles=()):
-    import re
-    t = re.sub(r"\bPeter\s+(Liam\s+)?Hollas\b", " ", title or "", flags=re.I)
+    pat = _person_re()
+    t = pat.sub(" ", title or "") if pat else (title or "")
     t = re.sub(r"\b(community|and)\b", " ", t, flags=re.I)
     t = re.sub(r"[,;:]+", " ", t)
     t = re.sub(r"\s+", " ", t).strip(" -.")
@@ -259,7 +299,8 @@ def _community_meta(comms, ents, docs, row):
     sub = ents[ents["id"].isin(uids)]
     if "degree" in sub.columns and len(sub):
         sub = sub.sort_values("degree", ascending=False)
-    names = [str(t) for t in sub["title"].tolist() if "HOLLAS" not in str(t).upper()]
+    pat = _person_re()
+    names = [str(t) for t in sub["title"].tolist() if not (pat and pat.search(str(t)))]
     sources = sorted({s for uid in uids for s in docs.get(uid, [])})[:10]
     return _clean_label(reports_title(int(row.community)), names[:3]), names[:3], sources
 
@@ -897,7 +938,8 @@ def playground(key="", text="", hops=2, kind="cv"):
     covered = [k for k in keywords if matched.get(k)]
     gaps = [k for k in keywords if not matched.get(k)]
     top_seed = seeds[0] if seeds else ""
-    person = next((t for t in by_title if "HOLLAS" in str(t).upper()
+    pat = _person_re()
+    person = next((t for t in by_title if pat and pat.search(str(t))
                    and str(getattr(by_title[t], "type", "")).upper() == "PERSON"), "")
     if not person:
         person = next((t for t in by_title
@@ -975,13 +1017,14 @@ def playground(key="", text="", hops=2, kind="cv"):
     if doc_orgs:
         orgs = doc_orgs
     profile_skills = skills[:6] or cap_titles[:6]
+    role = _role_phrase()
+    who = f"{display_name}, {role}," if role else display_name
     if orgs:
-        add_sentence(f"{display_name} is a senior engineering leader with experience at "
-                     + ", ".join(orgs[:3]) + ".",
+        add_sentence(f"{who} has experience at " + ", ".join(orgs[:3]) + ".",
                      [person] + orgs[:3], "Profile", "")
     else:
-        add_sentence(f"{display_name} is a senior engineering leader with a connected record "
-                     f"across engineering organisations.", [person], "Profile", "")
+        add_sentence(f"{who} has a connected record across engineering organisations.",
+                     [person], "Profile", "")
     add_sentence(f"Targeting {target}, with evidence in "
                  + (", ".join(profile_skills) if profile_skills else "the connected record") + ".",
                  seeds, "Profile", "")
@@ -1345,8 +1388,10 @@ def playground(key="", text="", hops=2, kind="cv"):
         top_skills = skill_titles[:5] or ["the connected record"]
         # Keep entity titles out of the prose: "strengths in Structural Causal
         # Inference" is a graph label, not a sentence a person would write.
-        summary1 = (f"{name_} is a senior engineering leader with experience at "
-                    f"{', '.join(org_names[:3])}.")
+        role = _role_phrase()
+        summary1 = ((f"{name_}, {role}, has experience at " if role
+                     else f"{name_} has experience at ")
+                    + f"{', '.join(org_names[:3])}.")
         # A CV summary is about the candidate, not about how the graph matched.
         # Use the profile the candidate wrote for themselves, and leave the
         # requirement-coverage numbers to the build rail.
@@ -2195,8 +2240,8 @@ def universe():
     comms = _load("communities")
     if ents is None or rels is None:
         return {"error": "no index"}
-    # Level 0 is the theme/employer level (Anaplan, Telia, Thomson Reuters,
-    # HAUD, EuroCompliant...). Using the deepest community fragmented the map
+    # Level 0 is the theme/employer level. Using the deepest community
+    # fragmented the map
     # into hundreds of tiny islands and hid that structure.
     cmap = _community_at_level(comms, 0) if comms is not None else {}
     nodes = []

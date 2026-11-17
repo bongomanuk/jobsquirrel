@@ -42,13 +42,13 @@ def test_the_context_menu_offers_prepare_and_submit():
 
 def test_prepare_and_submit_refuses_a_role_without_an_apply_url(monkeypatch):
     monkeypatch.setattr(D, "_resolve_roles",
-                        lambda keys: [{"company": "Toptal", "role": "Talent network",
-                                       "key": "toptal-talent-network", "url": ""}])
+                        lambda keys: [{"company": "Acme", "role": "Talent network",
+                                       "key": "acme-talent-network", "url": ""}])
     monkeypatch.setattr(D, "action_alive", lambda: False)
     monkeypatch.setattr(D, "WQ", None)
     called = {}
     monkeypatch.setattr(D, "_spawn", lambda *a, **k: called.update(args=a, kwargs=k))
-    out = D.prepare_submit_roles(["toptal-talent-network"], "APPROVE_RUN_QUEUE")
+    out = D.prepare_submit_roles(["acme-talent-network"], "APPROVE_RUN_QUEUE")
     assert "no apply URL" in out["error"]
     assert not called
 

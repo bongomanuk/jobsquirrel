@@ -97,7 +97,7 @@ def test_flow_fills_submits_and_confirms_in_one_call(server, page, tmp_path):
     out = _flow(server, [
         {"op": "nav", "url": page},
         {"op": "waitfor", "selector": "#name"},
-        {"op": "fill", "selector": "#name", "value": "Peter Hollas"},
+        {"op": "fill", "selector": "#name", "value": "Alex Doe"},
         {"op": "select", "selector": "#country", "value": "se"},
         {"op": "upload", "selector": "#cv", "path": str(cv)},
         {"op": "click", "target": "#go"},
@@ -111,7 +111,7 @@ def test_flow_fills_submits_and_confirms_in_one_call(server, page, tmp_path):
     # The confirmation is read in the same call: no second turn needed.
     assert "Thank you for applying" in out["text"]
     # values landed
-    assert _run(server, "value", "#name")["value"] == "Peter Hollas"
+    assert _run(server, "value", "#name")["value"] == "Alex Doe"
     assert _run(server, "eval", "document.getElementById('cv').files[0].name")["result"] == "cv.docx"
     # snap --match narrowed the refs but kept their real indices
     snap = out["steps"][-1]

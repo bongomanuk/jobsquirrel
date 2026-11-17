@@ -9,7 +9,7 @@ import gmail_reconcile as G  # noqa: E402
 
 ROWS = [
     {"company": "Customer First AB", "role": "DevOps Team Lead", "status": "SUBMITTED"},
-    {"company": "Spotify", "role": "Senior Backend Engineer - Subscriptions",
+    {"company": "Acme", "role": "Senior Backend Engineer - Subscriptions",
      "status": "SUBMITTED"},
 ]
 

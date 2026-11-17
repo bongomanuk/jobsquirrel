@@ -13,7 +13,7 @@ Source: https://example.test/job
 Fetched: 2026-11-11
 ---
 Head of Data
-Acme AB  Stockholm
+Acme AB  Example City
 
 You will lead our data platform with Python, dbt and LLMOps.
 Our other open positions

@@ -13,23 +13,25 @@ def main():
               "Builds the archetype CVs and motivation letters into documents/archetypes/\n"
               "(override with CV_OUT). Identity and archetypes come from config/.")
         return
+    # The tools line belongs to the owner: config/cv.json's "tools_line". It is
+    # added only when that line exists, so no one else's CV grows skills they
+    # never claimed (the project's own never-fabricate rule).
+    tools_line = str(B._CV.get("tools_line") or "").strip()
     for r in ROLES:
-        r["skills"].append(("Tools & technologies",
-            "Python, TypeScript, JavaScript, SQL, Java, Rust, C#, Bash; PyTorch, TensorFlow, scikit-learn, pandas, NumPy; "
-            "LLM, Generative AI, RAG, embeddings, vector databases, prompt engineering, evaluation, guardrails, AI agents, MCP; "
-            "Kubernetes, Docker, Terraform, CI/CD, Git, GitHub Actions, Azure DevOps; AWS, Azure, GCP; "
-            "PostgreSQL, ScyllaDB, MongoDB, Cassandra, Kafka, Redis; REST APIs, GraphQL, microservices, event-driven architecture, "
-            "observability, Prometheus, Grafana, SRE; ISO 27001, IAM, Okta, Keycloak, SSO/SAML, RBAC/ABAC, Zero Trust, GRC; "
-            "Claude Code, GitHub Copilot."))
+        if tools_line:
+            r["skills"].append(("Tools & technologies", tools_line))
         B.render_cv(r)
         B.render_motivation(r)
         try:
             import cv_target
-            cv_target.to_pdf(os.path.join(B.OUT, f"{B.CV_PREFIX}_CV_{r['key']}.docx"))
+            pdf = cv_target.to_pdf(os.path.join(B.OUT, f"{B.CV_PREFIX}_CV_{r['key']}.docx"))
         except Exception as exc:
             print(f"WARN: PDF not generated for {r['key']}: {exc}")
         else:
-            print(f"wrote {os.path.join(B.OUT, B.CV_PREFIX + '_CV_' + r['key'] + '.pdf')}")
+            if pdf:
+                print(f"wrote {pdf}")
+            else:
+                print(f"WARN: no PDF for {r['key']} (is LibreOffice installed?)")
     print("done")
 
 

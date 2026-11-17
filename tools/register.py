@@ -173,7 +173,7 @@ def jd_path(company, role, key=""):
 
     Lookup order: the exact key, the key with hyphens/underscores swapped, the
     generated company-role key, then an exact company-slug file (e.g.
-    redpine.md for a role keyed redpine-senior-knowledge-graph-engineer).
+    acme.md for a role keyed acme-senior-engineer).
     """
     def variants(k):
         k = (k or "").strip()

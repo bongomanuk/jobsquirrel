@@ -26,6 +26,6 @@ def test_review_prose_is_not_an_apply_run():
 
 def test_real_browser_commands_keep_their_labels():
     assert "Filling application form" in phases(
-        'python3 tools/camoufox_browser.py --server http://127.0.0.1:9872 fill "#first" "Peter"')
+        'python3 tools/camoufox_browser.py --server http://127.0.0.1:9872 fill "#first" "Alex"')
     assert "Uploading CV + cover letter" in phases(
         'python3 tools/camoufox_browser.py --server http://127.0.0.1:9872 upload "#cv" documents/cv.docx')

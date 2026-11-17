@@ -5934,8 +5934,7 @@ function setAbout(b) {
       <a class="pill" href="https://bongomanuk.github.io/jobsquirrel/" target="_blank" rel="noopener">Documentation ↗</a>
       <a class="pill" href="https://github.com/bongomanuk/jobsquirrel" target="_blank" rel="noopener">GitHub ↗</a>
     </div>
-    <div class="about-credit">Created by <a href="https://hollas.net" target="_blank" rel="noopener">Peter Hollas</a>
-      · <a href="https://hollas.net" target="_blank" rel="noopener">hollas.net</a></div>`;
+    <div class="about-credit">Created by the <a href="https://github.com/bongomanuk/jobsquirrel" target="_blank" rel="noopener">Jobsquirrel</a> project</div>`;
   renderAbout();
   if (HEALTH) renderHealth(HEALTH);
   loadAboutHealth();

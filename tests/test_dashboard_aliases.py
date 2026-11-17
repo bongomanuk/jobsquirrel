@@ -16,7 +16,7 @@ def test_company_token_ignores_alert_suffix_and_case():
     assert D._company_token("Neko Health starting at $405K/year") == "neko"
     assert D._company_token("Neko Health") == "neko"
     assert D._company_token("neko") == "neko"
-    assert D._company_token("Spotify AB") == "spotify"
+    assert D._company_token("Acme AB") == "acme"
 
 
 def test_company_token_keeps_different_employers_apart():
@@ -33,16 +33,16 @@ def test_alias_matches_register_role():
 def test_ats_key_resolves_short_employer_and_source_prefix(tmp_path, monkeypatch):
     ats = tmp_path / "ats"
     ats.mkdir()
-    (ats / "li_seb_engineering_manager_tech_its_distribution_investments_seb_.txt").write_text("banking\n")
-    (ats / "seb_team_mgr_cib_credit_ai.txt").write_text("credit\n")
+    (ats / "li_acme_engineering_manager_platform_acme_example_city.txt").write_text("widgets\n")
+    (ats / "globex_team_mgr_credit_ai.txt").write_text("credit\n")
     monkeypatch.setattr(D, "STATE", str(tmp_path))
-    key = "seb-engineering-manager-tech-its-distribution-investments-seb-solna"
+    key = "acme-engineering-manager-platform-acme-example-city"
     got = D._ats_key_for(
-        "SEB",
-        "Engineering Manager – Tech ITS Distribution & Investments | SEB, Solna",
+        "ACME",
+        "Engineering Manager – Platform | ACME, Example City",
         key,
     )
-    assert got == "li_seb_engineering_manager_tech_its_distribution_investments_seb_"
+    assert got == "li_acme_engineering_manager_platform_acme_example_city"
 
 
 def test_ats_key_ignores_company_suffix(tmp_path, monkeypatch):

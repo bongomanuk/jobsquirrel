@@ -39,9 +39,10 @@ try:
 except Exception:
     pass
 
-GRAPHRAG = os.environ.get("GRAPHRAG_BIN") or (
-    os.path.join(ROOT, ".venv-graphrag", "bin", "graphrag")
-    if os.path.exists(os.path.join(ROOT, ".venv-graphrag", "bin", "graphrag")) else "graphrag")
+import bins
+GRAPHRAG = (os.environ.get("GRAPHRAG_BIN")
+            or bins.venv_bin(os.path.join(ROOT, ".venv-graphrag"), "graphrag")
+            or "graphrag")
 CFG = os.path.join(ROOT, "kb", "graphrag")
 EMB_URL = os.environ.get("EMBEDDINGS_URL", "http://127.0.0.1:11435")
 
@@ -196,7 +197,7 @@ def check_backends() -> int:
     if not os.path.exists(os.path.join(CFG, "settings.yaml")):
         print("MISSING kb/graphrag/settings.yaml"); ok = False
     if not os.path.exists(os.path.join(CFG, "output", "entities.parquet")):
-        print("MISSING index (run: .venv-graphrag/bin/graphrag index --root kb/graphrag)"); ok = False
+        print("MISSING index (run: bash tools/setup_kb.sh)"); ok = False
     try:
         import urllib.request
         urllib.request.urlopen(EMB_URL + "/health", timeout=4)

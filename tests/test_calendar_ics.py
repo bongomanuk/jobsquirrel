@@ -19,16 +19,16 @@ def _event(tzid):
 
 
 def test_outlook_romance_standard_time_maps_to_cet():
-    ev = ce._parse_ics(_event("Romance Standard Time"), "Europe/Stockholm")
+    ev = ce._parse_ics(_event("Romance Standard Time"), "Europe/Berlin")
     assert ev["start"].isoformat() == "2026-11-18T14:30:00+01:00"
     assert ev["end"].isoformat() == "2026-11-18T15:15:00+01:00"
 
 
 def test_outlook_w_europe_standard_time_maps_to_cet():
-    ev = ce._parse_ics(_event("W. Europe Standard Time"), "Europe/Stockholm")
+    ev = ce._parse_ics(_event("W. Europe Standard Time"), "Europe/Berlin")
     assert ev["start"].isoformat() == "2026-11-18T14:30:00+01:00"
 
 
 def test_unknown_tzid_falls_back_to_the_default():
-    ev = ce._parse_ics(_event("Somewhere Standard Time"), "Europe/Stockholm")
+    ev = ce._parse_ics(_event("Somewhere Standard Time"), "Europe/Berlin")
     assert ev["start"].isoformat() == "2026-11-18T14:30:00+01:00"

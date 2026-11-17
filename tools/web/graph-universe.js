@@ -904,7 +904,6 @@ function updateLabels(force = false) {
 function islandTitle(c) {
   let t = String((c && (c.title || c.name)) || '');
   t = t.replace(/\s+Community$/i, '')
-       .replace(/^(Peter Liam Hollas|Peter Hollas)\s*(?:[:\-–,]\s*|\band\s+)?/i, '')
        .replace(/,?\s+and\s+/gi, ' & ')
        .replace(/\s+/g, ' ')
        .trim();

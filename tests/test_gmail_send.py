@@ -11,7 +11,7 @@ def test_draft_parses_video_and_document_attachments(tmp_path):
     p.write_text(
         "To: david@example.com\nCc:\nSubject: Re: hello\n"
         "Attachment: documents/assets/demo.mp4, documents/applications/cv.pdf\n"
-        "Company: Redpine\nRole: Senior Knowledge Graph Engineer\n---\nBody text\n",
+        "Company: Acme\nRole: Senior Example Engineer\n---\nBody text\n",
         encoding="utf-8")
     meta, body, att = G._parse_draft(str(p))
     assert meta["to"] == "david@example.com"

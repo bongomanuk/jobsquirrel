@@ -7,7 +7,7 @@ last page's text ends, so the generator (and the pre-submit gate) can tell the
 difference between "two pages" and "two full pages".
 
 Usage:
-  python3 tools/cv_fill.py documents/applications/Peter_Hollas_CV_<key>.pdf
+  python3 tools/cv_fill.py documents/applications/<PREFIX>_CV_<key>.pdf
   python3 tools/cv_fill.py <pdf> --min-fill 0.75 --quiet   # exit 2 when thin
 
 Exit codes: 0 full enough, 2 thin (or the wrong number of pages), 3 could not
@@ -18,6 +18,8 @@ from __future__ import annotations
 import argparse
 import re
 import shutil
+
+import bins
 import subprocess
 import sys
 
@@ -27,7 +29,7 @@ DEFAULT_MAX_PAGES = 2
 
 
 def available() -> bool:
-    return bool(shutil.which("pdftotext") and shutil.which("pdfinfo"))
+    return bool(bins.find("pdftotext") and bins.find("pdfinfo"))
 
 
 def _run(cmd):

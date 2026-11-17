@@ -229,22 +229,31 @@ def docx_paras(path):
 
 def framing(path):
     """CV text WITHOUT the shared 'Tools & technologies' line, which every archetype
-    carries and which would otherwise mask a wrong archetype."""
+    carries and which would otherwise mask a wrong archetype.
+
+    Only that line is dropped: filtering every line that mentions scikit-learn also
+    threw away real experience bullets that happen to name it.
+    """
     paras = docx_paras(path)
-    keep = [p for p in paras if "tools & technologies" not in p and "scikit-learn" not in p]
+    keep = [p for p in paras if "tools & technologies" not in p]
     return " ".join(keep)
 
 
 def _term_count(text, term):
-    """Substring count, except bare 'rest' which means the REST API style.
+    """Whole-word count for short tokens, prefix count for longer stems.
 
-    Counting 'rest' as a plain substring also matched 'interest', 'interested'
-    and 'restaurant', which silently inflated systems_backend scores for ads
-    that contain no systems terms at all (e.g. an analytics-engineering req).
+    Plain substring counting let 'rag' match 'average' and 'soc' match 'social',
+    which inflated a family score for an advert that never mentioned the term.
+    Short tokens (4 characters or fewer) need both boundaries; longer stems keep
+    a leading boundary only, so 'fine-tun' still matches 'fine-tuning'.
     """
-    if term == "rest":
+    t = term.strip()
+    if t == "rest":
         return len(re.findall(r"(?<![a-z])rest(?:ful)?(?![a-z])", text))
-    return text.count(term)
+    pattern = r"(?<![a-z0-9+#.])" + re.escape(t)
+    if len(t) <= 4:
+        pattern += r"(?![a-z0-9+#])"
+    return len(re.findall(pattern, text))
 
 
 def classify(text):

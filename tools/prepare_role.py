@@ -39,6 +39,44 @@ BRIEF_DIR = os.path.join(ROOT, "state", "briefs")
 LETTER_DIR = os.path.join(ROOT, "state", "letters")
 ARCH_DIR = os.path.join(ROOT, "documents", "archetypes")
 
+
+def _cv_prefix() -> str:
+    """The archetype file prefix for whoever owns this config.
+
+    Same rule as every other tool: cv_builder derives "First_Last" from the
+    profile's full name (or $CV_PREFIX). Hard-coding one owner's name meant no
+    other user's archetype could ever be found, so every role failed alignment.
+    """
+    if os.environ.get("CV_PREFIX"):
+        return os.environ["CV_PREFIX"]
+    try:
+        import cv_builder as B
+        return B.CV_PREFIX
+    except Exception:
+        return "CV"
+
+
+CV_PREFIX = _cv_prefix()
+CV_PREFIX_FILE = CV_PREFIX + "_CV_"
+
+
+def _probe_archetype() -> str:
+    """An archetype CV to classify the advert against.
+
+    Any existing archetype works: the alignment gate only needs a CV whose
+    content is the candidate's. Prefer the leadership one when it exists, but
+    never assume an archetype name the user may not have built.
+    """
+    preferred = os.path.join(ARCH_DIR, CV_PREFIX_FILE + "Engineering_Leadership.docx")
+    if os.path.exists(preferred):
+        return preferred
+    try:
+        names = sorted(f for f in os.listdir(ARCH_DIR)
+                       if f.startswith(CV_PREFIX_FILE) and f.endswith(".docx"))
+    except OSError:
+        names = []
+    return os.path.join(ARCH_DIR, names[0]) if names else preferred
+
 FAMILY_CV = {
     "ai_ml": "Senior_AI_Engineer",
     "data_science": "Senior_Data_Scientist",
@@ -119,7 +157,7 @@ def archetype_for(jd: str, cv_arg: str, role: str = ""):
     candidates = []
     if cv_arg:
         path = cv_arg if os.path.isabs(cv_arg) or cv_arg.endswith(".docx") else os.path.join(
-            ARCH_DIR, f"Peter_Hollas_CV_{cv_arg}.docx")
+            ARCH_DIR, f"{CV_PREFIX_FILE}{cv_arg}.docx")
         if not os.path.exists(path):
             raise SystemExit(f"no archetype CV at {path}")
         candidates = [path]
@@ -129,18 +167,18 @@ def archetype_for(jd: str, cv_arg: str, role: str = ""):
         # family classification.
         hinted = title_archetype(role)
         if hinted:
-            candidates = [os.path.join(ARCH_DIR, f"Peter_Hollas_CV_{hinted}.docx")]
-        probe = os.path.join(ARCH_DIR, "Peter_Hollas_CV_Engineering_Leadership.docx")
+            candidates = [os.path.join(ARCH_DIR, f"{CV_PREFIX_FILE}{hinted}.docx")]
+        probe = _probe_archetype()
         r = run([sys.executable, "tools/check_alignment.py", "--cv", probe, "--jd", jd])
         m = re.search(r"role family\s*:\s*([a-z_]+)", r.stdout + r.stderr)
         family = m.group(1) if m else ""
         key = FAMILY_CV.get(family)
         if key and not candidates:
-            candidates = [os.path.join(ARCH_DIR, f"Peter_Hollas_CV_{key}.docx")]
+            candidates = [os.path.join(ARCH_DIR, f"{CV_PREFIX_FILE}{key}.docx")]
         if not candidates:
             candidates = sorted(
                 os.path.join(ARCH_DIR, f) for f in os.listdir(ARCH_DIR)
-                if f.startswith("Peter_Hollas_CV_") and f.endswith(".docx"))
+                if f.startswith(CV_PREFIX_FILE) and f.endswith(".docx"))
     good = []
     for path in candidates:
         r = run([sys.executable, "tools/check_alignment.py", "--cv", path, "--jd", jd])
@@ -151,7 +189,7 @@ def archetype_for(jd: str, cv_arg: str, role: str = ""):
         if not cv_arg:
             for path in sorted(
                     os.path.join(ARCH_DIR, f) for f in os.listdir(ARCH_DIR)
-                    if f.startswith("Peter_Hollas_CV_") and f.endswith(".docx")):
+                    if f.startswith(CV_PREFIX_FILE) and f.endswith(".docx")):
                 r = run([sys.executable, "tools/check_alignment.py", "--cv", path, "--jd", jd])
                 if "RESULT: PASS" in (r.stdout + r.stderr):
                     good.append(path)
@@ -282,7 +320,7 @@ def main() -> int:
         mark(kb_path, kb_digest)
 
     cv_path = archetype_for(jd_path, args.cv, role)
-    cv_key = os.path.basename(cv_path).replace("Peter_Hollas_CV_", "").replace(".docx", "")
+    cv_key = os.path.basename(cv_path).replace(CV_PREFIX_FILE, "").replace(".docx", "")
 
     content_path = os.path.join(CV_DIR, f"{key}.json")
     source = ""

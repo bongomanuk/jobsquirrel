@@ -174,6 +174,16 @@ reports a clean config.
    Chromium and pinchtab are banned outright; a stray Chromium both breaks the
    browser profile and hogs memory. Parallel applying = one camoufox server per
    agent on its own port (see `state/pipeline-parallel.md`).
+13. **Write like a person: no em dashes, no AI slop.** Every word this pipeline
+   produces for a human (CVs, letters, emails, briefs, register notes, dashboard
+   replies) must be plain English: no em dashes, no "leverage/delve/robust" style
+   vocabulary, no "it's worth noting"/"not just X but Y"/"here's the thing",
+   no puffery ("a testament to", "pivotal moment"), no weasel attribution
+   ("studies show"). Vary sentence length and say the concrete thing. The rule
+   has one definition, `tools/writing_style.py`, and it is enforced: the
+   pre-submit gate fails a CV or letter that breaks it, and
+   `draft_email.py`/the dashboard refuse to save an email draft that breaks it.
+   Check any text with `python3 tools/writing_style.py --check <file>`.
 
 ---
 

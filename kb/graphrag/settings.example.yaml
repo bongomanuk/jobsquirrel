@@ -1,0 +1,58 @@
+### Example GraphRAG settings for Jobsquirrel.
+### Copy to kb/graphrag/settings.yaml (or run bash tools/setup_kb.sh, which does it).
+### Full reference: https://microsoft.github.io/graphrag/config/yaml/
+###
+### There is no house model here on purpose: point the completion model at
+### whatever you already pay for, and the embedding model at a local server
+### (see tools/embeddings.sh) or a hosted one.
+###
+### LLM settings ###
+concurrent_requests: 40
+async_mode: asyncio
+
+completion_models:
+  default_completion_model:
+    model_provider: openai
+    model: <your-completion-model>
+    auth_method: api_key
+    api_key: ${GRAPHRAG_API_KEY}
+    api_base: <https://your-llm-endpoint/v1>
+    retry:
+      type: exponential_backoff
+
+embedding_models:
+  default_embedding_model:
+    model_provider: openai
+    model: <your-embedding-model>
+    auth_method: api_key
+    api_key: ${GRAPHRAG_EMBEDDING_KEY}
+    api_base: <http://127.0.0.1:11435/v1>
+    retry:
+      type: exponential_backoff
+
+### Document processing settings ###
+input:
+  type: text # [csv, text, json, jsonl]
+  file_pattern: '.*\.(txt|md|markdown)'
+
+chunking:
+  type: tokens
+  size: 1200
+  overlap: 100
+  encoding_model: o200k_base
+
+input_storage:
+  type: file # [file, blob, cosmosdb]
+  base_dir: "input"
+
+output_storage:
+  type: file # [file, blob, cosmosdb]
+  base_dir: "output"
+
+update_output_storage:
+  type: file
+  base_dir: "update_output"
+
+reporting:
+  type: file # [file, blob]
+  base_dir: "logs"

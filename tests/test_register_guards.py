@@ -83,7 +83,7 @@ def test_audit_flags_prepared_that_was_emailed(reg, capsys):
     d = reg / "drafts" / "acme-engineer"
     d.mkdir()
     draft = d / "20261103-120000.txt"
-    draft.write_text("To: hr@acme.test\nSubject: Application\nAttachment: Peter_Hollas_CV_Acme.docx\n"
+    draft.write_text("To: hr@acme.test\nSubject: Application\nAttachment: TEST_CV_Acme.docx\n"
                      "Company: Acme\nRole: Engineer\n---\nHi\n")
     (reg / "drafts" / "sent.json").write_text(json.dumps({str(draft): {"at": "2026-11-03T12:00:00"}}))
     assert R.audit() == 1

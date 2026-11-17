@@ -72,7 +72,7 @@ def match_company(submitted, guess):
 def browser_nav(server, link):
     try:
         r = subprocess.run(
-            ["python3", os.path.join(ROOT, "tools", "camoufox_browser.py"),
+            [sys.executable, os.path.join(ROOT, "tools", "camoufox_browser.py"),
              "--server", server, "nav", link],
             capture_output=True, text=True, timeout=45)
         return (r.stdout or r.stderr).strip()[:160]

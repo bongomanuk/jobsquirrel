@@ -41,7 +41,7 @@ def open_link(link):
     except FileNotFoundError:
         pass
     try:
-        r = subprocess.run(["python3", "tools/camoufox_browser.py", "--server",
+        r = subprocess.run([sys.executable, "tools/camoufox_browser.py", "--server",
                             os.environ.get("CAMOUFOX_SERVER", "http://127.0.0.1:9872"),
                             "nav", link],
                            capture_output=True, text=True, timeout=45)

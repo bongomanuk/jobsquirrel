@@ -54,11 +54,11 @@ def test_every_class_has_a_weight():
 
 
 def test_edges_are_classified_from_their_endpoints():
-    ents = pd.DataFrame({"title": ["PETER HOLLAS", "HAUD AB", "PYTHON", "SMS FRAUD"],
+    ents = pd.DataFrame({"title": ["ALEX DOE", "ACME AB", "PYTHON", "SMS FRAUD"],
                          "type": ["PERSON", "ORGANIZATION", "TECHNOLOGY", "PROJECT"]})
     rels = pd.DataFrame({
-        "id": [1, 2, 3], "source": ["PETER HOLLAS", "HAUD AB", "SMS FRAUD"],
-        "target": ["HAUD AB", "PYTHON", "PYTHON"], "description": ["worked there", "", ""],
+        "id": [1, 2, 3], "source": ["ALEX DOE", "ACME AB", "SMS FRAUD"],
+        "target": ["ACME AB", "PYTHON", "PYTHON"], "description": ["worked there", "", ""],
         "weight": [1.0, 1.0, 1.0]})
     out = GR.classify(ents, rels)
     assert list(out["relation_type"]) == ["AT_ORGANIZATION", "USES", "USES"]

@@ -62,6 +62,14 @@ def _clean_attachments(attachments) -> list[str]:
     return list(dict.fromkeys(out))
 
 
+def style_problems(body: str, subject: str = "") -> list[str]:
+    """Plain-English rules for an outgoing email (see tools/writing_style.py)."""
+    import writing_style as WS
+    problems = WS.check(body or "", label="body")
+    problems += WS.check(subject or "", label="subject")
+    return problems
+
+
 def save_draft(company: str, role: str, to: str = "", cc: str = "", subject: str = "",
                body: str = "", attachments=None) -> str:
     folder = _folder(company, role)
@@ -216,6 +224,16 @@ def main() -> int:
             body = fh.read()
     if not body.strip():
         print("empty body (use --body or --body-file)", file=sys.stderr)
+        return 2
+    # Plain English only: no em dashes, no AI-slop vocabulary. The same check
+    # runs in the pre-submit gate, so a draft that reaches the human reads like
+    # a person wrote it.
+    style = style_problems(body, args.subject)
+    if style:
+        print("refused: rewrite the draft in plain English (see tools/writing_style.py)",
+              file=sys.stderr)
+        for problem in style:
+            print(f"  - {problem}", file=sys.stderr)
         return 2
     if args.update:
         path = update_draft(args.update, args.to, args.cc, args.subject, body, args.attach,

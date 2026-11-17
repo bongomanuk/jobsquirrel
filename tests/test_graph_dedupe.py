@@ -21,20 +21,20 @@ def frame(rows):
 
 
 def test_one_person_two_names_merges_into_the_full_name():
-    ents = frame([("PETER HOLLAS", "PERSON", 108, 14),
-                  ("PETER LIAM HOLLAS", "PERSON", 711, 15)])
+    ents = frame([("ALEX DOE", "PERSON", 108, 14),
+                  ("ALEX JOHN DOE", "PERSON", 711, 15)])
     merge = D.build_map(ents)
-    assert merge.get("PETER HOLLAS") == "PETER LIAM HOLLAS"
+    assert merge.get("ALEX DOE") == "ALEX JOHN DOE"
 
 
 def test_two_different_people_are_not_merged():
-    ents = frame([("ANNA SMITH", "PERSON", 10, 2), ("PETER SMITH", "PERSON", 9, 2)])
+    ents = frame([("ANNA SMITH", "PERSON", 10, 2), ("ALEX SMITH", "PERSON", 9, 2)])
     assert D.build_map(ents) == {}
 
 
 def test_an_employer_merges_into_its_busiest_node_not_its_abbreviation():
-    ents = frame([("HAUD", "ORGANIZATION", 26, 2), ("HAUD AB", "ORGANIZATION", 82, 12)])
-    assert D.build_map(ents).get("HAUD") == "HAUD AB"
+    ents = frame([("ACME", "ORGANIZATION", 26, 2), ("ACME AB", "ORGANIZATION", 82, 12)])
+    assert D.build_map(ents).get("ACME") == "ACME AB"
 
 
 def test_symbolic_names_are_never_merged():

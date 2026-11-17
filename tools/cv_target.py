@@ -29,6 +29,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import bins
 import canonical
 import json
 import os
@@ -96,10 +97,15 @@ def _default_data(key):
                     "dates": e["dates"].split("  |  ")[0].strip(),
                     "location": (e["dates"].split("  |  ")[1].strip() if "  |  " in e["dates"] else ""),
                     "bullets": list(e["core"])})
+    # Headline and tagline belong to the configured owner, not to the code:
+    # prefer the archetype for this key, then config/cv.json's defaults.
+    arch = next((r for r in B.load_archetypes() if r.get("key") == key), {})
+    headline = arch.get("headline") or B._CV.get("headline_default") or ""
+    tagline = arch.get("tagline") or B._CV.get("tagline_default") or ""
     return {
         "key": key, "company": "", "role": "",
-        "headline": "Engineering Leader",
-        "tagline": "Engineering leadership  ·  Platform architecture  ·  AI  ·  Security",
+        "headline": headline,
+        "tagline": tagline,
         "profile": "", "skills": [], "experience": exp,
         "selected_work": list(B.PROJECTS),
         "education": list(B.SIDEBAR["education"]),
@@ -129,11 +135,11 @@ def render_ats(data, path):
         bp = doc.add_paragraph(); bp.paragraph_format.left_indent = B.Cm(0.5); bp.paragraph_format.first_line_indent = B.Cm(-0.35)
         bp.paragraph_format.space_after = B.Pt(0.8)
         r0 = bp.add_run("\u2022  "); r0.font.size = B.Pt(8.5)
-        rr = bp.add_run(text); rr.font.size = B.Pt(8.5)
+        rr = bp.add_run(B.dedash(text)); rr.font.size = B.Pt(8.5)
 
     if data.get("profile"):
         h("Professional summary")
-        doc.add_paragraph(data["profile"]).runs[0].font.size = B.Pt(8.5)
+        doc.add_paragraph(B.dedash(data["profile"])).runs[0].font.size = B.Pt(8.5)
     if data.get("skills"):
         h("Core skills")
         for s in data["skills"]:
@@ -141,10 +147,10 @@ def render_ats(data, path):
     h("Experience")
     for e in data["experience"]:
         ep = doc.add_paragraph(); ep.paragraph_format.space_before = B.Pt(4); ep.paragraph_format.space_after = B.Pt(0)
-        r = ep.add_run(e.get("employer", "")); r.bold = True; r.font.size = B.Pt(9.5)
+        r = ep.add_run(B.dedash(e.get("employer", ""))); r.bold = True; r.font.size = B.Pt(9.5)
         meta = "  |  ".join(x for x in (e.get("title", ""), e.get("dates", ""), e.get("location", "")) if x)
         mp = doc.add_paragraph(); mp.paragraph_format.space_after = B.Pt(2)
-        rr = mp.add_run(meta); rr.italic = True; rr.font.size = B.Pt(8.0); rr.font.color.rgb = B.GREY
+        rr = mp.add_run(B.dedash(meta)); rr.italic = True; rr.font.size = B.Pt(8.0); rr.font.color.rgb = B.GREY
         for b in e.get("bullets", []):
             bullet(b)
         for g in e.get("groups", []):
@@ -152,7 +158,7 @@ def render_ats(data, path):
             if label:
                 gp = doc.add_paragraph(); gp.paragraph_format.space_before = B.Pt(2); gp.paragraph_format.space_after = B.Pt(0.5)
                 gp.paragraph_format.left_indent = B.Cm(0.1)
-                gr = gp.add_run(label); gr.bold = True; gr.italic = True; gr.font.size = B.Pt(8.5); gr.font.color.rgb = B.ACCENT
+                gr = gp.add_run(B.dedash(label)); gr.bold = True; gr.italic = True; gr.font.size = B.Pt(8.5); gr.font.color.rgb = B.ACCENT
             for b in g.get("bullets", []):
                 bullet(b)
     if data.get("selected_work"):
@@ -160,9 +166,9 @@ def render_ats(data, path):
         for b in data["selected_work"]:
             bullet(b)
     education = []
-    for item in ((data.get("education") or [])
-                 + (data.get("certifications") or B.SIDEBAR["certificates"])
-                 + (data.get("languages") or B.SIDEBAR["languages"])):
+    for item in ((data["education"] if "education" in data else B.SIDEBAR["education"])
+                 + (data["certifications"] if "certifications" in data else B.SIDEBAR["certificates"])
+                 + (data["languages"] if "languages" in data else B.SIDEBAR["languages"])):
         if item and item not in education:
             education.append(item)
     if education:
@@ -170,7 +176,7 @@ def render_ats(data, path):
         for b in education:
             bullet(b)
     doc.save(path)
-    scrub_metadata(path, title=f"{B.CVD_NAME} — {data.get('role','CV')}")
+    scrub_metadata(path, title=f"{B.CVD_NAME} - {data.get('role','CV')}")
 
 
 # ---------------- styled two-column ----------------
@@ -196,9 +202,9 @@ def render_styled(data, path):
         except Exception:
             pass
     contact = [x for x in (B._PHONE, B._EMAIL, B._LOCATION, B._WEBSITE, B._LINKEDIN, *B._OTHER_SITES) if x]
-    education = data.get("education") or B.SIDEBAR["education"]
-    certifications = data.get("certifications") or B.SIDEBAR["certificates"]
-    languages = data.get("languages") or B.SIDEBAR["languages"]
+    education = data["education"] if "education" in data else B.SIDEBAR["education"]
+    certifications = data["certifications"] if "certifications" in data else B.SIDEBAR["certificates"]
+    languages = data["languages"] if "languages" in data else B.SIDEBAR["languages"]
     # Never print a heading with nothing under it, and don't repeat a line twice.
     seen = set()
 
@@ -241,7 +247,7 @@ def render_styled(data, path):
     p = right.paragraphs[0]; p.paragraph_format.space_after = B.Pt(0)
     r = p.add_run(B.CVD_NAME.upper()); r.bold = True; r.font.size = B.Pt(24); r.font.color.rgb = B.NAVY; B._tracking(r, 20)
     p = right.add_paragraph(); p.paragraph_format.space_after = B.Pt(2)
-    r = p.add_run(data.get("tagline", "")); r.italic = True; r.font.size = B.Pt(10.5); r.font.color.rgb = B.GREY
+    r = p.add_run(B.dedash(data.get("tagline", ""))); r.italic = True; r.font.size = B.Pt(10.5); r.font.color.rgb = B.GREY
     if data.get("profile"):
         B.m_head(right, "Profile"); B.m_body(right, data["profile"], size=9.0)
     B.m_head(right, "Work experience")
@@ -252,14 +258,26 @@ def render_styled(data, path):
         for b in data["selected_work"]:
             B.m_bullet(right, b)
     doc.save(path)
-    scrub_metadata(path, title=f"{B.CVD_NAME} — {data.get('role','CV')}")
+    scrub_metadata(path, title=f"{B.CVD_NAME} - {data.get('role','CV')}")
 
 
 def to_pdf(docx_path):
+    """Convert to PDF and return the path, or "" when no PDF was produced."""
     out = os.path.dirname(docx_path) or "."
-    subprocess.run(["soffice", "--headless", "--convert-to", "pdf", "--outdir", out, docx_path],
-                   capture_output=True, text=True, timeout=180)
-    return os.path.splitext(docx_path)[0] + ".pdf"
+    pdf = os.path.splitext(docx_path)[0] + ".pdf"
+    if os.path.exists(pdf):
+        os.remove(pdf)          # never return a stale PDF from an earlier run
+    soffice = bins.find("soffice") or bins.find("libreoffice")
+    if not soffice:
+        print("WARN: LibreOffice (soffice) not found, so no PDF was made", file=sys.stderr)
+        return ""
+    try:
+        subprocess.run([soffice, "--headless", "--convert-to", "pdf", "--outdir", out, docx_path],
+                       capture_output=True, text=True, timeout=180)
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"WARN: PDF conversion failed: {exc}", file=sys.stderr)
+        return ""
+    return pdf if os.path.exists(pdf) else ""
 
 
 def content_stats(data):
@@ -311,7 +329,11 @@ def main() -> int:
     args = ap.parse_args()
     stateio.ensure_paths(args.content)
 
-    data = json.load(open(args.content)) if args.content else _default_data(args.key)
+    if args.content:
+        with open(args.content, encoding="utf-8") as fh:
+            data = json.load(fh)
+    else:
+        data = _default_data(args.key)
     data = canonical.normalize_data(data)          # canonical facts before rendering
     data.setdefault("key", args.key)
     st = content_stats(data)
@@ -340,8 +362,11 @@ def main() -> int:
         render_styled(data, styled)
         pdf = to_pdf(styled)
         final = os.path.join(args.out, f"{B.CV_PREFIX}_CV_{args.key}.pdf")
-        os.replace(pdf, final)
         os.remove(styled)
+        if not pdf:
+            print("WARN: no PDF was produced (install LibreOffice, or set SOFFICE_BIN)")
+            return 1
+        os.replace(pdf, final)
         print("wrote", final)
         ok, problems, m = cv_fill.assess(final, min_fill=args.min_fill)
         if m:

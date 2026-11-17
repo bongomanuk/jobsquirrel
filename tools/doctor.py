@@ -10,6 +10,7 @@ not placeholder), the knowledge base (index + embeddings backend), the browser
 otherwise (WARNs never fail the run).
 """
 import argparse
+import bins
 import importlib.util
 import json
 import os
@@ -104,9 +105,8 @@ def checks():
         add(f"python:{mod}", _has_module(mod), "" if _has_module(mod) else "pip install python-docx rich",
             warn=(mod == "rich"))
 
-    venv = os.path.join(ROOT, ".venv", "bin", "python3")
-    add("venv", os.path.exists(venv), ".venv/bin/python3" if os.path.exists(venv) else "run tools/install.sh",
-        warn=True)
+    venv = bins.venv_python(os.path.join(ROOT, ".venv"))
+    add("venv", bool(venv), venv or "run tools/install.sh", warn=True)
 
     for name in ("profile.md", "cv.json", "archetypes.json"):
         p = os.path.join(ROOT, "config", name)

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Merge duplicate entities in the knowledge graph index.
 
-GraphRAG extracts the same thing more than once: "ANA PLAN" and "ANAPLAN", or
-an employer and its legal entities ("ANAPLAN", "ANAPLAN UK", "ANAPLAN UK LTD",
-"ANAPLAN SINGAPORE PTE LTD", "ANAPLAN APAC HQ"). The graph then shows several
+GraphRAG extracts the same thing more than once: "ACME" and "ACME INC", or
+an employer and its legal entities ("ACME", "ACME UK", "ACME UK LTD",
+"ACME SINGAPORE PTE LTD", "ACME APAC HQ"). The graph then shows several
 nodes for one real thing, which reads as duplication.
 
 This tool merges, in the built index:
@@ -58,7 +58,7 @@ def symbolic(title: str) -> bool:
 
 
 def base_org(title: str) -> str:
-    """Strip legal suffixes and office qualifiers: 'ANAPLAN UK LTD' -> 'anaplan'."""
+    """Strip legal suffixes and office qualifiers: 'ACME UK LTD' -> 'acme'."""
     words = norm(title).split()
     changed = True
     while words and changed:
@@ -96,7 +96,7 @@ def load_aliases():
 
 
 def person_map(titles, types):
-    """PETER HOLLAS -> PETER LIAM HOLLAS: token-subset, same surname, PERSON only.
+    """A SHORT NAME -> A FULLER NAME: token-subset, same surname, PERSON only.
 
     GraphRAG emits the same person under a fuller and a shorter name. Merging into
     the *longer* name keeps the operative node (the one relationships and the UI
@@ -128,7 +128,7 @@ def build_map(ents, near=False):
     types = {str(r["title"]): str(r.get("type") or "") for _, r in ents.iterrows()}
     # Which node is the one the graph actually uses? Connections first, then
     # mentions, then the more descriptive title. Merging into the busiest node
-    # keeps the operative one (PETER LIAM HOLLAS, HAUD AB, TELIA COMPANY) instead
+    # keeps the operative one (the fullest, busiest node) instead
     # of an abbreviation that happens to normalise the same.
     rank = {}
     for _, r in ents.iterrows():

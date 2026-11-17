@@ -51,9 +51,12 @@ documents/archetypes/*
 !documents/archetypes/.gitkeep
 documents/assets/headshot.png
 
-# Knowledge base (personal sources + index)
+# Knowledge base (personal sources + index). The template files are public:
+# setup_kb.sh copies them, so a fresh clone needs them present.
 kb/sources/
-kb/graphrag/
+kb/graphrag/*
+!kb/graphrag/settings.example.yaml
+!kb/graphrag/.env.example
 
 # Office temp / outputs
 *.docx

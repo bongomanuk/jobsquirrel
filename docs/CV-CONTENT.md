@@ -117,7 +117,7 @@ the record supports it:
   building (budget, on-call, reliability, audit).
 
 Only write these when the evidence exists. "Delivered on time" is a claim; use it
-where the record says so (for example the Google hub at HAUD), not as decoration.
+where the record says so (for example a cloud hub at one employer), not as decoration.
 
 ## Honesty rules
 

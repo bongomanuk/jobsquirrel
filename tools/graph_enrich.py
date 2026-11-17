@@ -125,6 +125,20 @@ def propose():
             for y in x.values():
                 yield from strings(y)
     cv_text = " \n".join(strings(cv))
+
+    # Who owns this graph? Read it from the config, never from the code: a
+    # hard-coded name meant another user's CV skills linked to a stranger.
+    candidate = str(cv.get("name") or "").strip()
+    name_tokens = [t for t in re.findall(r"[A-Za-z][A-Za-z'\-]+", candidate) if len(t) > 2]
+    person = None
+    if name_tokens:
+        people = ents[ents["title"].astype(str).str.contains(
+            "|".join(re.escape(t) for t in name_tokens), case=False, na=False, regex=True)]
+        if len(people):
+            person = people.sort_values("degree", ascending=False).iloc[0]
+    person_title = str(person.title) if person is not None else ""
+    person_re = (r"\b(" + "|".join(re.escape(t) for t in name_tokens) + r"|candidate)\b"
+                 if name_tokens else r"\b(candidate)\b")
     for term in TECH_TERMS:
         if not re.search(r"(?<![A-Za-z0-9])" + re.escape(term) + r"(?![A-Za-z0-9])", cv_text, re.I):
             continue
@@ -134,7 +148,7 @@ def propose():
         ev = _article(cv_text[cv_text.lower().find(term.lower()):]) if term.lower() in cv_text.lower() else cv_text[:300]
         add({"id": _id("node", term), "kind": "node", "title": term.upper(),
              "type": "TECHNOLOGY", "description": f"{term} is listed in the candidate's ground-truth CV.",
-             "evidence": ev, "source": "config/cv.json", "related": "Peter Liam Hollas"})
+             "evidence": ev, "source": "config/cv.json", "related": person_title})
 
     # ---- 2. certifications
     for line in (cv.get("certifications") or []):
@@ -149,13 +163,9 @@ def propose():
                  "type": "CERTIFICATION",
                  "description": f"{name} is listed in the candidate's certifications.",
                  "evidence": str(line)[:400], "source": "config/cv.json",
-                 "related": "Peter Liam Hollas"})
+                 "related": person_title})
 
     # ---- 3. strong missing links from the candidate to high-impact work
-    person = None
-    people = ents[ents["title"].astype(str).str.contains("HOLLAS", case=False, na=False)]
-    if len(people):
-        person = people.sort_values("degree", ascending=False).iloc[0]
     if person is not None:
         ptitle = str(person.title)
         unit_text = {}
@@ -188,7 +198,7 @@ def propose():
             evidence, source = "", ""
             sentences = _sentences(str(r.description or ""))
             for s in sentences:
-                if re.search(r"\b(Peter|Hollas|candidate)\b", s, re.I) and t.lower() in s.lower():
+                if re.search(person_re, s, re.I) and t.lower() in s.lower():
                     evidence = s
                     break
             if not evidence and str(r.description or "") and t.lower() in str(r.description).lower():
@@ -197,7 +207,7 @@ def propose():
                 for uid in (r.text_unit_ids if r.text_unit_ids is not None else []):
                     text = unit_text.get(str(uid), "")
                     for s in _sentences(text):
-                        if t.lower() in s.lower() and re.search(r"\b(Peter|Hollas|candidate)\b", s, re.I):
+                        if t.lower() in s.lower() and re.search(person_re, s, re.I):
                             evidence = s
                             source = doc_title.get(unit_doc.get(str(uid), ""), "")
                             break

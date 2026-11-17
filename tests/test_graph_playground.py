@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 
 import graph_explore as G  # noqa: E402
 
-SPEC = "thomson-reuters-senior-manager-product-analytics-data-engineering"
+SPEC = "acme-senior-manager-product-analytics-data-engineering"
 
 
 def _interpreter_with_parquet():

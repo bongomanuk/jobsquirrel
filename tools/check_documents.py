@@ -42,24 +42,10 @@ NAME = PROFILE.get("full name", "")
 CITY = (PROFILE.get("location (city, country)", "").split(",")[0] or "").strip().lower()
 CONTRACT_RATE = PROFILE.get("contract rate (ex vat)", "")
 
-# Banned outright by the no-ai-slop skill (word-boundary matched).
-SLOP_WORDS = [
-    "delve", "foster", "leverage", "utilize", "utilise", "facilitate", "empower",
-    "streamline", "robust", "cutting-edge", "paradigm shift", "game changer",
-    "game-changer", "this is huge", "this changes everything", "tapestry", "realm",
-    "beacon", "multifaceted", "meticulous", "intricate", "paramount", "transformative",
-    "elevate", "embark", "supercharge", "ever-evolving",
-]
-# Empty phrases to avoid.
-SLOP_PHRASES = [
-    "it's worth noting", "it is worth noting", "it's important to note",
-    "at the end of the day", "when it comes to", "at its core", "in today's world",
-    "in the age of", "in the world of", "the reality is", "the truth is",
-    "with regard to", "going forward", "in conclusion", "let's dive in",
-    "here's the thing", "let me be clear", "i'll be honest",
-    "underneath sits", "underneath lies", "beneath the surface", "at its foundation",
-    "underpinned by", "a long engineering base", "sits a long", "testament to",
-]
+# Plain-English style rules live in writing_style.py so the gate, the draft saver
+# and the CLI share one definition of "slop" and cannot drift apart.
+import writing_style
+
 PLACEHOLDERS = ["your name", "test name", "<company>", "<role>", "<name>",
                 "todo", "tbd", "xxx", "lorem", "[insert", "placeholder", "x@y.com",
                 "you@example.com", "example.com", "yoursite.com", "linkedin.com/in/you",
@@ -119,9 +105,9 @@ def check_identity(paras, name, errors):
 
 
 def check_cv(cv_paras, name, facts, corpus, errors, warnings):
-    """Gate a CV on its own: whose it is, template leftovers, and present-tense
-    claims about past work. The letter's prose rules (salutation, slop words,
-    repetition, naturalness) are not applied to a CV."""
+    """Gate a CV on its own: whose it is, template leftovers, present-tense
+    claims about past work, and the same plain-English rules as a letter (a CV
+    full of slop vocabulary is just as bad as a sloppy letter)."""
     low = " ".join(cv_paras).lower()
     if not low.strip():
         errors.append("CV has no text")
@@ -153,28 +139,16 @@ def check_salutation(paras, expected, company, errors, warnings):
         errors.append(f"salutation {sal!r} does not match expected {expected!r}")
 
 
-def check_slop(paras, errors, warnings):
+def check_slop(paras, errors, warnings, label=""):
+    """Plain-English rules for prose (one definition, in writing_style.py).
+
+    Hard fails: em dashes, banned slop vocabulary, empty phrases, binary
+    contrasts, throat-clearing, faux-insight setups, puffery and weasel
+    attribution. A soft warning stays for a bare 'not just' that may be idiomatic.
+    """
     body = " ".join(paras)
-    low = body.lower()
-    for w in SLOP_WORDS:
-        if re.search(r"\b" + re.escape(w) + r"\b", body, re.IGNORECASE):
-            errors.append(f"banned AI-slop word: {w!r}")
-    # "harness" is legitimate as a noun (e.g. "agent harness", "LLM harness");
-    # only the slop *verb* usage is banned ("harness the power of ...").
-    if re.search(r"\bharness(?:es|ed|ing)?\s+(?:the\s+)?(?:power|potential|benefit|"
-                 r"value|opportunit\w*|synerg\w*|strength\w*|advantage\w*)", low) or \
-       re.search(r"\bharness(?:ing)?\s+\w+\s+to\s+\w+", low):
-        errors.append("banned AI-slop usage: 'harness' as a verb (use it only as a noun, e.g. 'agent harness')")
-    for ph in SLOP_PHRASES:
-        if ph in low:
-            errors.append(f"empty phrase: {ph!r}")
-    em = body.count("\u2014")
-    dh = body.count(" -- ")
-    if em:
-        errors.append(f"em dash (\u2014) used {em}x — never use em dashes; use a comma, colon or parentheses")
-    if dh:
-        errors.append(f"' -- ' used {dh}x — use a comma, colon or parentheses")
-    if re.search(r"\bisn't just\b|\bnot just\b|\bnot only\b", low):
+    errors += writing_style.check(body, label=label)
+    if re.search(r"\bisn't just\b|\bnot just\b|\bnot only\b", body, re.IGNORECASE):
         warnings.append("possible binary contrast ('not just X but Y')")
 
 
@@ -362,7 +336,7 @@ def main():
         letter_paras, _ = docx_text(args.letter)
         check_identity(letter_paras, NAME, errors)
         check_salutation(letter_paras, args.expected_salutation, args.company, errors, warnings)
-        check_slop(letter_paras, errors, warnings)
+        check_slop(letter_paras, errors, warnings, label="letter")
         check_claims(letter_paras, facts, corpus, errors, warnings)
         check_duplication(letter_paras, errors, warnings)
         check_naturalness(letter_paras, errors, warnings)
@@ -372,6 +346,8 @@ def main():
     else:
         check_cv(cv_paras, NAME, facts, corpus, errors, warnings)
     check_canonical(cv_text, " ".join(letter_paras), errors)
+    # Same plain-English rules for the CV whether or not a letter is gated with it.
+    check_slop(cv_paras, errors, warnings, label="CV")
     check_rate(letter_paras, cv_text, args.engagement, CONTRACT_RATE, errors)
 
     # A CV that renders to two half-empty pages reads as thin, whatever the
@@ -402,7 +378,7 @@ def main():
     if args.keywords:
         keywords = [k.strip() for k in args.keywords.split(",") if k.strip()]
     if args.ats_keywords and os.path.isfile(args.ats_keywords):
-        with open(args.ats_keywords) as fh:
+        with open(args.ats_keywords, encoding="utf-8") as fh:
             keywords += [l.strip() for l in fh if l.strip() and not l.startswith("#")]
     check_keywords(letter_paras, cv_text, keywords, args.min_coverage, errors, warnings)
 

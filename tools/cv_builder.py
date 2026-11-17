@@ -192,7 +192,9 @@ def _letter_date():
         return override
     location = _ANSWERS.get("location (city, country)", "")
     city = location.split(",")[0].strip() if location else ""
-    when = date.today().strftime("%-d %B %Y")
+    today = date.today()
+    # "%-d" is glibc-only: it raises ValueError on Windows at import time.
+    when = f"{today.day} {today.strftime('%B %Y')}"
     return (city + ", " + when) if city else when
 
 

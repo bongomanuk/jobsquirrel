@@ -493,6 +493,10 @@ def draft_save(data):
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import draft_email as DE
     path = data.get("path") or ""
+    problems = DE.style_problems(data.get("body", ""), data.get("subject", ""))
+    if problems:
+        return {"error": "plain English only (no em dashes, no AI slop): "
+                         + " | ".join(problems[:5])}
     try:
         if path:
             saved = DE.update_draft(path, data.get("to", ""), data.get("cc", ""),
@@ -1222,7 +1226,7 @@ def _doc_text(path):
             t = "\n".join(x for x in out if x and x.strip())
         elif ext == ".pdf":
             import shutil
-            exe = shutil.which("pdftotext")
+            exe = bins.find("pdftotext")
             if exe:
                 r = subprocess.run([exe, path, "-"], capture_output=True, text=True, timeout=30)
                 t = r.stdout or ""
@@ -1383,7 +1387,7 @@ def _content_key_for(cvrel, key):
 
 def _jd_key_for(ats_key, key, company="", role=""):
     """The stem of the saved job description, tolerating key-style drift
-    (hyphens vs underscores) and a file named for the employer (redpine.md)."""
+    (hyphens vs underscores) and a file named for the employer (acme.md)."""
     for cand in (ats_key, key):
         for v in (cand, cand.replace("_", "-"), cand.replace("-", "_")):
             if v and _present(os.path.join(STATE, "job-descriptions", v + ".md")):
