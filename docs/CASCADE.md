@@ -66,8 +66,8 @@ Cascade-owned pages, this is the first optimisation to take.
 | Activity run roster | `ActivityRoster` | component state, `flipAnimationContainer` | computes the roster from the live run and calls `CascadeIslands.activity.set(view)` |
 | Grid rows | `GridRows`, `RawRow` | custom `DOMNodeComponent`, keyed rows, `flipAnimationContainer` with `display: contents` so rows stay real `<tr>` elements | filters, sorts, groups and selection still compute the row models |
 | Grid aggregate model | `CascadeIslands.stats` (`observable`) | one reactive store over the pure `grid-stats.js` derivation | publishes `GRID` and the bucket classifier; reads counts for the chips, state map, tooltips and sub-state filter |
-| Role drawer | `DrawerTabs`, `DrawerBody`, `RawBlock` | state-driven tabs, raw block for the existing tab HTML | the seven tab renderers and their actions |
-| Grid toolbar | `ToolbarExtra` | `overflowContainer`, `elementSlot`, `elementBoundsProvider` | the original buttons stay hidden as the click handlers |
+| Role drawer | `DrawerTabs`, `DrawerBody`, `RawBlock` | state-driven tabs, raw block for the existing tab HTML | the five tab renderers (Summary, Chat, Ad, Docs, Grounding) and their actions |
+| Grid toolbar | `ToolbarExtra` | component state | a **More** menu for Groups, Export CSV, Match and Legend; the original buttons stay hidden as the click handlers |
 | Knowledge search results | `KgResults` | keyed result components, `flipAnimationContainer` | search and graph navigation |
 | Knowledge side tabs | `KgTabs` | state-driven tabs | the tab content |
 | Context menu | `CtxMenuRoot` | `overlayFrame`, `overlay`, nested submenus | `App.rowMenu` still builds the item model and actions |

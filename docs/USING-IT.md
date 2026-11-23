@@ -67,11 +67,12 @@ Everything is observable. Useful things to ask for, or run yourself:
   the same edge stack with a splitter between them. Want the grid on the right and Activity on the
   left, or the states map across the bottom? Drag them there; the layout is remembered.
   A dependency-free dashboard over the register, queue, specs and provenance:
-  - **One master grid** (no tabs): a row per application with Date · Company · Role · ATS ·
-    Status · **Match** (ATS-keyword coverage; `align✗` = the alignment gate failed) · Queue ·
-    Files · Job ad, plus search / status / queue / group filters, sortable columns, CSV export
-    and an **ⓘ Legend**. Right-click a row to add it to a named **group** (a campaign), or create
-    one; the **Groups** toolbar button opens the group manager to create, rename or delete
+  - **One master grid** (no tabs): a row per application with Company · Role · Level · ATS ·
+    Status · **Match** (ATS-keyword coverage; `align✗` = the alignment gate failed) · Pay ·
+    Work · Queue · **Docs** (CV provenance and a saved ad), plus search / status / queue / group
+    filters, sortable columns, a **Columns** chooser and CSV export (under **More**)
+    and an **ⓘ Legend** (also under **More**). Right-click a row to add it to a named **group** (a campaign), or create
+    one; the **Groups** item (under **More**) opens the group manager to create, rename or delete
     groups. Groups are independent of status and survive renames and queue runs. Select several rows
     with Ctrl/Cmd-click or Shift-click (Ctrl/Cmd+A for the whole view, Escape to clear) and
     right-click any of them: the menu is the single-row action menu applied to all selected roles,
@@ -87,7 +88,7 @@ Everything is observable. Useful things to ask for, or run yourself:
     reason. Each role has a real address (`/role/<key>`), so you can bookmark it, share it, and use
     the browser's Back and Forward to move between roles. Hover anything for
     what it means; click a row for the detail drawer
-    (Summary · Chat · Files · Job ad · ATS · **Evidence** · Docs). The page uses one live event
+    (Summary · Chat · Ad · Docs · **Grounding**). The page uses one live event
     stream: the grid only rebuilds when state changes, the live strip updates when logs or actions
     change, and polling pauses while the tab is hidden.
   - **Groups / campaigns.** A group is a named campaign that crosses status. Create one with the
@@ -245,7 +246,11 @@ It uses one toolbar for the title, the **Universe** / **Map** toggle, search,
 view controls and actions. **Universe** shows the whole graph as theme islands;
 **Map** drills through
 **Topics** (ontology classes), **Communities** (the generated hierarchy),
-**Entities** and **Ego** networks. Click an entity for its description, sources,
+**Entities** and **Ego** networks. **Universe** also has a quiet **flight demo** link in its bottom controls: an
+autopilot fighter flies the graph and fights TIE squadrons. The demo keeps flying
+while the mouse moves; click **Take controls** to steer with the mouse or WASD.
+A squirrel pilot flies the ship, and the R2 unit behind it pops job tips as speech
+bubbles. Click an entity for its description, sources,
 neighbours and strongest connections; double-click opens its ego network.
 Selecting an entity lights its neighbourhood and dims the rest, then fades back
 after a few seconds; clicking empty space restores the previous view. **Ask**

@@ -245,6 +245,10 @@ PYAFFPROF
 
 # A review run never opens the browser, so it does not need (or wait for) one.
 if [ "$REVIEW" != "1" ]; then
+  # Clear servers left behind by an earlier run (or started by hand) before
+  # touching the ports. A wedged server on a worker port makes every task fail,
+  # and each one is a whole browser holding memory.
+  python3 "$ROOT/tools/browser_reap.py" --apply --quiet || true
   for _u in "${SERVERS[@]}"; do
     ensure_server "$_u" "${_u##*:}" || runlog "WARN: camoufox server $_u did not come up"
   done

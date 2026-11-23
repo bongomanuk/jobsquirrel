@@ -45,7 +45,7 @@ discover  ->  queue  ->  per-role: JD + keywords + GraphRAG context
 Components:
 - **CLI tools** (`tools/*.py`, `tools/*.sh`): one concern each; the contract for the agent.
 - **Agent harness** (`tools/agent_run.sh`, `tools/run_queue.sh`): resolves the agent and runs one headless task per role.
-- **Browser** (`tools/camoufox_server.py` + `camoufox_browser.py`): Camoufox browser for real ATS forms.
+- **Browser** (`tools/camoufox_server.py` + `camoufox_browser.py`): Camoufox browser for real ATS forms. One server per worker port; `tools/browser_reap.py` stops the ones left behind (dead page, throwaway `/tmp` profile, or idle on `about:blank` for hours) and `run_queue.sh` reaps before it starts workers. A user timer runs it hourly.
 - **Knowledge base**: GraphRAG over `kb/sources/` (grounding for generated documents).
 - **State**: plain files under `state/` (the source of truth).
 - **Dashboard** (`tools/dashboard.py`): web UI (this spec, §9).
@@ -134,6 +134,7 @@ Components:
 | `calendar_event.py` | List/create/update events, import `.ics` invites, suggest free slots: writes **approval-gated**. |
 | `approval.py` | Reusable human-approval gate (interactive y/N or `APPROVE_<TOKEN>=1`). |
 | `camoufox_server.py` / `camoufox_browser.py` | Camoufox browser API + CLI. |
+| `browser_reap.py` | Stop leftover Camoufox servers (stale page, throwaway profile, idle too long). |
 | `agent_run.sh` | Resolve + run the configured agent for one task. |
 | `run_queue.sh` / `human_assist.sh` | Runners (queue / human). Automated LinkedIn Easy Apply is a private add-on, not in this build. |
 | `doctor.py` | Health check (config, KB, browser, register, git). |
@@ -203,10 +204,10 @@ same record is never duplicated across separate pages.
   **Prepare and submit**, which says **applies again** when the row is already applied to.
 - **Grid card:** the grid, its search/filter/view controls and its actions are one bordered
   card. The action bar sits directly above the table (not floating at the top of the page) with
-  consistently sized buttons: **Export CSV**, **Grouped**, **Groups**, **Review**,
+  a short set of consistently sized buttons: **Filters**, **Grouped**, **Columns**, **Review**,
   **Prepare** (generate documents for the rows currently shown; review-only),
-  **Submit** (submit the prepared rows in this view; approval-gated), **Match** (recompute
-  fit) and **ⓘ Legend**. Prepare, Submit, Match and Export CSV each show a plain-language
+  **Submit** (submit the prepared rows in this view; approval-gated), and **More**, which holds
+  **Groups**, **Export CSV**, **Match** (recompute fit) and **ⓘ Legend**. Prepare, Submit, Match and Export CSV each show a plain-language
   confirmation dialog with the scope and effect before they run. **Match** recomputes coverage and
   alignment for the rows it is given, takes ATS keywords from the saved ad when a role has none, and
   says plainly when there is nothing to score.
@@ -221,16 +222,17 @@ same record is never duplicated across separate pages.
   Backend: `POST /api/action/pause` + `/api/action/stop` (`state/queue.pause` / `state/queue.stop`).
 
 ### 9.3 Master grid (the one table)
-Columns: **Date · Company · Role · Level · ATS · Status · Fit · Pay · Work · Queue · Files · Job ad**
-(every header/cell/chip has a hover tooltip; **ⓘ Legend** explains them all).
+Columns: **Company · Role · Level · ATS · Status · Fit · Pay · Work · Queue · Docs**
+(Date is one click away in **Columns**; every header/cell/chip has a hover tooltip; **ⓘ Legend**
+under **More** explains them all).
 - Search / filter / sort: **click any column header** to sort the whole list (the grid switches to a flat
   view so the order is not hidden inside collapsed groups), click again to reverse, and **Grouped** in
   the toolbar returns to the bucket sections. The active sort carries an arrow. **Export CSV**.
 - **Level** = seniority read from the role title (word-boundary rules, so a Director is not mistaken for a C-level and a Senior Manager is a manager), falling back to the ad's own wording. Click the header to sort by grade; the **Level** filter narrows the grid independently of the buckets.
 - **Match** = ATS-keyword coverage % of the CV (computed for every role that has a saved ad;
   shown with an `align✗` badge when the alignment gate failed).
-- **Queue** = `pending | human | retry | done`; **Files** = provenance recorded (✓/-);
-  **Job ad** = a saved job description exists (✓/-).
+- **Queue** = `pending | human | retry | done`; **Docs** = two small marks: **CV** (provenance
+  recorded) and **Ad** (a saved job description exists).
 - **Live updates:** the page opens one SSE stream (`/api/events`) and receives cheap state/live
   revisions. It fetches the grid only when state changes and refreshes the live strip only when logs or
   actions change. Polling remains a fallback (10s grid, 5s live) and pauses while the tab is hidden;
@@ -287,23 +289,31 @@ Columns: **Date · Company · Role · Level · ATS · Status · Fit · Pay · Wo
 
 ### 9.4 Detail drawer (right-hand)
 Clicking a row opens a drawer with a single tab strip that never wraps:
-- **Summary**: structured sections rather than one long column. **Next action** flags, edits or
-  clears a follow-up. **Status** shows the status chip, sub-state, stage chips and a compact
-  metadata grid. **Actions** has Re-prepare documents, Graph evidence, Recompute match, **Submit this
+- **Summary**: structured sections rather than one long column. **Status** shows the status chip,
+  sub-state, stage chips, the interview stage when the row is at interview, and a compact metadata
+  grid (ATS, updated, interview time). The status, type, work-model and pay editors open in one
+  small **Role settings** dialog from a single button, so the same values are not repeated as
+  read-only text and no text box lives in the drawer. **Next action** shows the follow-up and
+  offers **Set**/**Edit** and **Clear**; the editor is a small dialog. **Actions** has Re-prepare documents,
+  Graph evidence, Recompute match, **Submit this
   application** when prepared, and **Prepare and submit** for an active role with a real apply
   URL (labelled **applies again** when the row is already applied to). A network or email-only
-  row has no URL and keeps **Re-prepare documents** and the email route. **Drafted replies** is a collapsible section. **Role settings** groups status, type,
-  work model and pay override behind one **Save changes**. **Match** shows alignment, coverage,
-  missing skills and keyword tools. **History and notes** is a collapsible section with past
-  updates and the editable notes.
+  row has no URL and keeps **Re-prepare documents** and the email route.
+  **Drafted replies** is a collapsible section. **Match** shows alignment, coverage,
+  missing skills and keyword tools; **Add keyword** opens a small dialog. **History and notes** is a
+  collapsible section with past updates and an **Edit notes** dialog.
 - **Chat**: a chat box scoped to this role. The first turn carries the row, status, follow-up action,
   notes, the saved job ad and CV pack; each role keeps its own agent session and transcript
   (`state/logs/role-chat/<key>.log`), with Stop and Clear. Tool calls stay collapsed like the main console.
-- **Files**: CV/letter paths + sha256 (click to copy), confidence, evidence, snapshot, screenshots.
-- **Job ad · ATS · Evidence**: the ad text, keywords, and the GraphRAG context pack
-  **plus the entities and source documents it cited** (resolved from the index).
+- **Ad**: the saved job-ad text, with the extracted **ATS keywords** folded underneath (the terms
+  the CV is scored against).
 - **Docs**: the **rendered** tailored CV (inline preview) and, when one was prepared, the cover letter, with buttons to
-  open either in the viewer and to open the CV PDF; the raw content pack is behind a toggle.
+  open either in the viewer and to open the CV PDF. When an application used the fixed archetype CV,
+  the exact file recorded in provenance is shown instead, so a provenance-backed CV never reads as
+  missing. The raw content pack is behind a toggle. A **Provenance** fold holds the exact CV/letter
+  paths, SHA-256 hashes, confidence, evidence, snapshot and screenshots recorded at submission.
+- **Grounding**: the GraphRAG context pack **plus the entities and source documents it cited**
+  (resolved from the index).
 
 ### 9.5 Settings panel
 - Sections: **Accounts** (status + Gmail/Calendar authorisation), **Secrets** (the encrypted
@@ -313,7 +323,7 @@ Clicking a row opens a drawer with a single tab strip that never wraps:
   toggles and advanced env), **Knowledge base** (list / upload / delete sources, rebuild the
   index), **GraphRAG** (graph status, the builder's model environment and a launcher for the
   full-page Knowledge workspace), **Agent permissions**
-  (per-category allow/ask/deny),
+  (per-category allow/ask/deny), **CAPTCHA/2FA handling** (stop and hand off, never evade),
   **Profile & CV** (edit files, regenerate), **Logs** (browse and tail task logs, or open the
   standalone page), **Backup & data**, and **About** (full health checks from `doctor.py`, the
   register audit, version, build/update status, the running instance's Python/platform/uptime/
@@ -472,6 +482,15 @@ interface contract.
 - **Universe.** The whole index: level-0 communities as islands, weighted
   importance, community nebulae, zoom-tiered labels, a 1 to 3 hop focus slider and
   the same point-star renderer as the Map.
+- **Flight demo.** A quiet **flight demo** link sits with the Universe controls
+  at the bottom of the view. It puts an X-wing style fighter in the graph on
+  autopilot, follows the CV's own relationships and fights TIE Fighters,
+  Interceptors, Bombers and Advanced ships. The demo keeps flying while the mouse
+  moves; click **Take controls** to steer with the mouse or WASD (Space or click
+  fires). Flying into a node or losing all hull ends the run; **Fly again**
+  restarts. Nearest star labels stay on screen while you fly. A squirrel pilot
+  sits in the cockpit, and an R2 unit rides behind it, popping job tips as speech
+  bubbles.
 - **Map.** The same renderer drilled down through **Topics** (ontology classes),
   **Communities** (the generated hierarchy), **Entities** and **Ego** networks.
   The same toolbar has a 1 to 3 hop focus selector; breadcrumbs appear below it.

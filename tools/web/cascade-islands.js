@@ -184,7 +184,7 @@ class GridRows extends Component {
         { key: 'rows', style: { display: 'contents' } },
         new RawRow({
           key: 'status',
-          html: `<td colspan="12" class="muted">${note}</td>`,
+          html: `<td data-span="all" colspan="11" class="muted">${note}</td>`,
           cls: this.error ? 'grid-status bad' : 'grid-status',
         }),
       );
@@ -273,34 +273,25 @@ class ToolbarExtra extends Component {
   }
 
   build() {
-    const slot = elementSlot({
-      key: 'slot',
-      style: { display: 'flex', flexDirection: 'column', gap: '2px' },
-    });
-    const click = (id) => () => { const el = document.getElementById(id); if (el) el.click(); };
+    const run = (id) => () => {
+      this.setState({ more: false });
+      const el = document.getElementById(id); if (el) el.click();
+    };
     const items = [
-      button({ key: 'export', className: 'small', onclick: click('export') }, text('Export CSV')),
-      button({ key: 'match', className: 'small', onclick: click('a-match') }, text('Match')),
-      button({ key: 'legend', className: 'small', onclick: click('legend') }, text('Legend')),
+      button({ key: 'groups', className: 'small', onclick: run('groups') }, text('Groups')),
+      button({ key: 'export', className: 'small', onclick: run('export') }, text('Export CSV')),
+      button({ key: 'match', className: 'small', onclick: run('a-match') }, text('Match')),
+      button({ key: 'legend', className: 'small', onclick: run('legend') }, text('Legend')),
     ];
-    const more = button(
-      { key: 'more', className: 'small', onclick: () => { this.more = !this.more; } },
-      text(this.overflow ? `More (${this.overflow})` : 'More'),
-    );
-    const row = overflowContainer({
-      key: 'row',
-      children: items,
-      ellipsis: this.overflow ? more : null,
-      overflowSlot: slot,
-      onOverflow: (n) => { if (n !== this.overflow) this.setState({ overflow: n }); },
-      style: { display: 'flex', gap: '4px', minWidth: 0, width: '100%', flex: '1 1 auto', alignItems: 'center' },
-    });
     return div(
-      { key: 'wrap', className: 'toolbar-extra', style: { position: 'relative', display: 'flex', minWidth: 0, width: '100%', flex: '1 1 auto' } },
-      elementBoundsProvider({ key: 'bounds', child: row, style: { display: 'flex', minWidth: 0, flex: '1 1 auto' } }),
+      { key: 'wrap', className: 'toolbar-extra', style: { position: 'relative', display: 'flex', minWidth: 0 } },
+      button(
+        { key: 'more', className: 'small', onclick: () => { this.setState({ more: !this.more }); } },
+        text(this.more ? 'More ▴' : 'More ▾'),
+      ),
       div(
-        { key: 'pop', className: 'toolbar-more', style: { display: this.more && this.overflow ? 'flex' : 'none' } },
-        slot,
+        { key: 'pop', className: 'toolbar-more', style: { display: this.more ? 'flex' : 'none' } },
+        ...items,
       ),
     );
   }
@@ -499,6 +490,14 @@ if (toolbarHost) {
   try {
     const tb = new ToolbarExtra({});
     tb.establish().renderOnto(DOMElementTarget.forElement(toolbarHost), new RenderContext({}));
+    // Clicking anywhere else closes the More menu (its items already close it).
+    document.addEventListener('click', (e) => {
+      if (toolbarHost.contains(e.target)) return;
+      const pop = toolbarHost.querySelector('.toolbar-more');
+      if (pop && getComputedStyle(pop).display !== 'none') {
+        try { tb.setState({ more: false }); } catch (_) {}
+      }
+    });
   } catch (e) {
     // If the island cannot render, keep the original buttons reachable instead
     // of leaving the toolbar without them.

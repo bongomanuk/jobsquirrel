@@ -135,6 +135,24 @@ def checks():
         "" if _has_module("camoufox") else "pip install camoufox && camoufox fetch", warn=True)
 
     try:
+        import browser_reap as BR
+        srvs = BR.servers()
+        ctx = {"protected": BR.protected_ports(), "runner_active": BR.runner_active(),
+               "max_age_h": 6.0, "min_ephemeral_h": 1.0}
+        stale = []
+        for s in srvs:
+            health_ok, page_alive, url = BR.probe(s["port"])
+            if BR.classify(s, page_alive, health_ok, url, ctx):
+                stale.append(f"{s['port']} ({s['age_h']:.0f}h)")
+        detail = f"{len(srvs)} running"
+        if stale:
+            detail += (f", {len(stale)} stale: {', '.join(stale)}"
+                       " - python3 tools/browser_reap.py --apply")
+        add("browser:servers", not stale, detail, warn=True)
+    except Exception as exc:  # noqa: BLE001
+        add("browser:servers", False, f"could not inspect: {exc}", warn=True)
+
+    try:
         sys.path.insert(0, os.path.join(ROOT, "tools"))
         import secrets_store as SS
         st = SS.check()

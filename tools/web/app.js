@@ -39,6 +39,7 @@ const QUEUE_HELP = {
   retry: 'Failed once: queued to retry',
   finished: 'Finished: the runner processed it (moved to queue.done)',
 };
+const workLabel = (w) => w === 'remote' ? 'Remote' : w === 'hybrid' ? 'Hybrid' : w === 'on-site' ? 'On-site' : 'unknown';
 /* Lifecycle buckets: the primary way to read the grid, no fine filtering needed.
    Each row lands in exactly one bucket, by urgency: done > needs > ongoing > pipeline. */
 const BUCKETS = [
@@ -190,6 +191,45 @@ function warn(text, title, okLabel, risky = true) {
     $('#warn-cancel').onclick = () => { $('#warn').classList.add('hide'); res(false); };
   });
 }
+
+/* One small form dialog for any text the drawer needs. The panel itself stays
+ * read-only; editing a field opens this, so a text box never lives in the drawer. */
+let FORM_SAVE = null;
+window.formClose = () => {
+  const m = $('#formm'); if (m) m.classList.add('hide');
+  FORM_SAVE = null;
+};
+function openForm({ title, body, saveLabel, onSave }) {
+  const m = $('#formm'); if (!m) return;
+  $('#formm-title').textContent = title || 'Edit';
+  $('#formm-body').innerHTML = body || '';
+  const btn = $('#formm-save');
+  btn.textContent = saveLabel || 'Save';
+  btn.disabled = false;
+  FORM_SAVE = onSave;
+  m.classList.remove('hide');
+  const first = $('#formm-body input, #formm-body textarea, #formm-body select');
+  if (first) setTimeout(() => first.focus(), 50);
+}
+const formSave = $('#formm-save');
+if (formSave) formSave.onclick = async () => {
+  if (!FORM_SAVE) return;
+  const fn = FORM_SAVE;
+  formSave.disabled = true;
+  try {
+    const ok = await fn();
+    if (ok !== false) window.formClose();
+  } finally {
+    formSave.disabled = false;
+  }
+};
+const formBody = $('#formm-body');
+if (formBody) formBody.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
+    e.preventDefault();
+    if (formSave) formSave.click();
+  }
+});
 const LONG = {
   rebuild: 'Rebuilding the knowledge graph re-indexes **every** source document with the LLM.\n\n' +
     '- It can take **20-30+ minutes** (longer for a big corpus).\n- It uses API tokens/quota.\n' +
@@ -210,7 +250,6 @@ async function api(path, body) {
   try { return await (await fetch(path, o)).json(); } catch (e) { return { error: String(e) }; }
 }
 let _toastTimer = null;
-let AUTOSAVE_T = 0;
 function toast(msg, bad, ms = 6000) {
   let t = document.getElementById('toast');
   if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
@@ -390,6 +429,7 @@ const App = {
     if (CF_SEC === 'kb') return setKB(b);
     if (CF_SEC === 'graph') return setGraph(b);
     if (CF_SEC === 'perms') return setPerms(b);
+    if (CF_SEC === 'captcha') return setCaptcha(b);
     if (CF_SEC === 'logs') return setLogs(b);
     if (CF_SEC === 'about') return setAbout(b);
     if (CF_SEC === 'data') return setData(b);
@@ -512,6 +552,27 @@ const App = {
   savePerms: async () => {
     const policy = {}; document.querySelectorAll('#set-body select[data-cat]').forEach(s => policy[s.dataset.cat] = s.value);
     const d = await api('/api/permissions', { policy }); toast(d.error ? d.error : 'permissions saved', !!d.error);
+  },
+  saveCaptcha: async () => {
+    const d = await api('/api/captcha', {
+      enabled: $('#captcha-enabled') && $('#captcha-enabled').checked,
+      provider: $('#captcha-provider') && $('#captcha-provider').value,
+      timeout: $('#captcha-timeout') && $('#captcha-timeout').value,
+      model: $('#captcha-model') && $('#captcha-model').value,
+      api_key: $('#captcha-key') && $('#captcha-key').value,
+      clear_key: $('#captcha-clear') && $('#captcha-clear').checked
+    });
+    toast(d.ok || d.error, !!d.error);
+    if (d.error) return;
+    const key = $('#captcha-key'); if (key) key.value = '';
+    const clear = $('#captcha-clear'); if (clear) clear.checked = false;
+    const pill = $('#captcha-on');
+    if (pill) { pill.textContent = (d.enabled === false) ? 'OFF' : 'ON'; }
+    const keyPill = $('#captcha-key-state');
+    if (keyPill) {
+      keyPill.textContent = d.key_set ? 'stored'
+        : (d.provider === 'vision' ? 'not needed' : 'not set');
+    }
   },
   logPick: async (name) => {
     if (!name) return;
@@ -1554,12 +1615,87 @@ const App = {
     if (CUR) openDetail(CUR);
     toast('saved: fit updated; re-prepare the role to fold it into the CV (no graph rebuild needed)');
   },
-  addKeyword: async () => {
+  addKeyword: () => {
     if (!CUR) return;
-    const t = ($('#dt-addkw') || {}).value || '';
-    const d = await api('/api/ats/add', { key: CUR.key, term: t });
-    toast(d.ok || d.error, !!d.error);
-    if (!d.error) { openDetail(CUR); loadGrid(); }
+    const r = CUR;
+    openForm({
+      title: 'Add a requirement',
+      saveLabel: 'Add keyword',
+      body: `<label class="dlabel">Requirement<input id="fm-kw" placeholder="e.g. Kubernetes" autocomplete="off"></label>`,
+      onSave: async () => {
+        const t = (($('#fm-kw') || {}).value || '').trim();
+        if (!t) return false;
+        const d = await api('/api/ats/add', { key: r.key, term: t });
+        if (d.error) { toast(d.error, true); return false; }
+        toast(d.ok || 'added', false, 1200);
+        await loadGrid();
+        openDetail(r);
+      },
+    });
+  },
+  editAction: () => {
+    if (!CUR) return;
+    const r = CUR;
+    openForm({
+      title: 'Follow-up for this role',
+      saveLabel: 'Save',
+      body: `<label class="dlabel">What needs doing<input id="fm-action" value="${esc(r.action || '')}" placeholder="e.g. reply to the recruiter about interview times" autocomplete="off"></label>`,
+      onSave: async () => {
+        const v = (($('#fm-action') || {}).value || '').trim();
+        const d = await api('/api/register/row', { company: r.company, role: r.role, action: v, key: r.key });
+        if (d.error) { toast(d.error, true); return false; }
+        r.action = v;
+        toast('saved', false, 1200);
+        await loadGrid();
+        if (DTAB === 0) dt(0);
+      },
+    });
+  },
+  editNotes: () => {
+    if (!CUR) return;
+    const r = CUR;
+    openForm({
+      title: 'Notes for this role',
+      saveLabel: 'Save notes',
+      body: `<label class="dlabel">Notes<textarea id="fm-notes" style="min-height:180px">${esc(r.notes || '')}</textarea></label>`,
+      onSave: async () => {
+        const v = ($('#fm-notes') || {}).value || '';
+        const d = await api('/api/register/row', { company: r.company, role: r.role, notes: v });
+        if (d.error) { toast(d.error, true); return false; }
+        r.notes = v;
+        toast('saved', false, 1200);
+        await loadGrid();
+        if (DTAB === 0) dt(0);
+      },
+    });
+  },
+  editRole: () => {
+    if (!CUR) return;
+    const r = CUR;
+    const reg = ['QUEUED', 'PREPARED', 'SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER', 'REJECTED', 'BLOCKED', 'MANUAL', 'CLOSED'];
+    const types = ['', 'full-time', 'part-time', 'contract', 'consultant', 'freelance', 'internship', 'temporary'];
+    openForm({
+      title: 'Role settings',
+      body: `<div class="dgrid2">
+        <label>Status<select id="fm-status">${reg.map(x => `<option ${x === r.status ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+        <label>Type<select id="fm-emp">${types.map(x => `<option value="${x}" ${x === (r.employment || '') ? 'selected' : ''}>${x || 'unknown'}</option>`).join('')}</select></label>
+        <label>Work model<select id="fm-work"><option value="">auto: ${esc(workLabel(r.work_detected))}</option>${['remote', 'hybrid', 'on-site'].map(x => `<option value="${x}" ${r.work_override && r.work_model === x ? 'selected' : ''}>${workLabel(x).toLowerCase()}</option>`).join('')}</select></label>
+        <label>Pay override<input id="fm-salary" value="${esc(r.salary_override ? (r.salary_raw || '') : '')}" placeholder="${esc(r.salary_raw && !r.salary_override ? 'auto: ' + r.salary_raw : 'e.g. EUR 90000/yr')}" autocomplete="off"></label>
+      </div>`,
+      onSave: async () => {
+        const d = await api('/api/register/row', {
+          company: r.company, role: r.role, key: r.key,
+          status: $('#fm-status').value,
+          employment: $('#fm-emp').value,
+          work_model: $('#fm-work').value,
+          salary: $('#fm-salary').value,
+        });
+        if (d.error) { toast(d.error, true); return false; }
+        toast('saved', false, 1200);
+        await loadGrid();
+        openDetail(r);
+      },
+    });
   },
   refreshKeywords: async () => {
     if (!CUR) return;
@@ -1582,45 +1718,6 @@ const App = {
       LOCAL_ACT = { label: 'Could not start: ' + d.error, names: [], at: Date.now(), done: true };
       LIVE_RUNNING = false; $('#peras').classList.add('hide'); liveTick();
     } else { openDock(true); }
-  },
-  saveRow: async (quiet = false) => {
-    if (!CUR) return;
-    const st = $('#dt-status'), notes = $('#dt-notes');
-    const d = await api('/api/register/row', {
-      company: CUR.company, role: CUR.role, key: CUR.key,
-      status: st ? st.value : undefined,
-      notes: notes ? notes.value : undefined,
-      employment: $('#dt-emp') ? $('#dt-emp').value : undefined,
-      work_model: $('#dt-work') ? $('#dt-work').value : undefined,
-      salary: $('#dt-salary') ? $('#dt-salary').value : undefined
-    });
-    if (d.error) { toast(d.error, true); return; }
-    if (quiet) {
-      toast('saved', false, 1200);
-      if (st) {
-        const chipEl = document.querySelector('.dstatus .chip');
-        if (chipEl) { chipEl.textContent = st.value; chipEl.className = 'chip ' + st.value; }
-        CUR.status = st.value;
-      }
-      loadGrid();
-    } else {
-      toast(d.ok || 'saved');
-      loadGrid();
-    }
-  },
-  queueSaveRow: () => {
-    clearTimeout(AUTOSAVE_T);
-    AUTOSAVE_T = setTimeout(() => App.saveRow(true), 900);
-  },
-  saveAction: async (quiet = false) => {
-    const v = ($('#dt-action') && $('#dt-action').value || '').trim();
-    if (!v) return App.clearAction(quiet);
-    const d = await api('/api/register/row', { company: CUR.company, role: CUR.role, action: v });
-    if (d.error) { toast(d.error, true); return; }
-    CUR.action = v;
-    if (quiet) toast('saved', false, 1200);
-    else { toast(d.ok || 'saved'); if (DTAB === 0) dt(0); }
-    loadGrid();
   },
   clearScam: async (key, company, role) => {
     if (!confirm(`Clear the scam warning for ${company}: ${role}?\n\nOnly do this after verifying the employer independently.`)) return;
@@ -1651,20 +1748,13 @@ const App = {
     const items = ((d && d.drafts) || []).filter(x => !x.sent_at);
     const box = $('#dt-drafts-details');
     const sum = $('#dt-drafts-sum');
-    const ready = $('#dt-drafts-ready');
     if (box) {
       box.classList.toggle('draft-ready', items.length > 0);
       if (items.length) box.open = true;      // a ready reply must not hide in a closed fold
     }
     if (sum) sum.innerHTML = items.length
       ? `<b style="color:var(--accent)">${items.length} ready to send</b>`
-      : 'review before sending';
-    if (ready) {
-      ready.classList.toggle('hide', !items.length);
-      ready.innerHTML = items.length
-        ? `A reply is drafted and waiting for approval. Open it, check the text, then <b>Send with approval</b>.`
-        : '';
-    }
+      : '';
     el.innerHTML = items.length ? items.map(x => {
       return `<div class="draftrow"><div class="row"><b>${esc(x.subject || '(no subject)')}</b><span style="flex:1"></span>
         <button class="mini" onclick='App.draftEdit(${JSON.stringify(x.path)})'>Edit</button>
@@ -2329,8 +2419,9 @@ function renderRows() {
       `<td data-col="queue"${T((QUEUE_HELP[r.queue] || 'Not in any queue') + (r.applied ? ' Already applied' + (r.date ? ' on ' + r.date : '') + '; a queued repost is a second application, not a first one.' : ''))}>${['pending', 'human', 'retry'].includes(r.queue)
         ? `<span class="badge ${r.queue === 'human' ? 'bad' : r.queue === 'retry' ? 'mid' : 'good'}">${esc(r.queue)}</span>`
         : ''}${r.applied ? `${['pending', 'human', 'retry'].includes(r.queue) ? ' ' : ''}<span class="badge good" title="Already applied${r.date ? ' on ' + esc(r.date) : ''}. A queued repost is a second application, not a first one.">applied</span>` : ''}${!['pending', 'human', 'retry'].includes(r.queue) && !r.applied ? '<span class="muted">-</span>' : ''}</td>` +
-      `<td data-col="files"${T(r.applied ? 'Provenance recorded: exact CV, letter and SHA-256 hashes on file' : 'No submission recorded (not applied, or not reconciled yet)')}>${r.applied ? '✓' : '<span class="muted">-</span>'}</td>` +
-      `<td data-col="ad"${T(r.spec ? 'A saved job description exists: open the row for the ad, ATS keywords and grounded context' : 'No saved job description')}>${r.spec ? '✓' : '<span class="muted">-</span>'}</td>`;
+      `<td data-col="docs"${T((r.applied ? 'CV and letter provenance on file' : 'No submission recorded') + ' · ' + (r.spec ? 'a saved job description exists' : 'no saved job description'))}>` +
+        `<span class="docmark ${r.applied ? 'on' : 'off'}" title="CV and letter provenance ${r.applied ? 'recorded' : 'not recorded'}">CV</span>` +
+        `<span class="docmark ${r.spec ? 'on' : 'off'}" title="Saved job description ${r.spec ? 'on file' : 'missing'}">Ad</span></td>`;
     return { key: r.key, id: selId(r), keyName: r.key, rowId: selId(r), cls: `click${sel}${SEL.has(selId(r)) ? ' multi' : ''}`, html, index: i };
   };
   const rowHTML = (r) => {
@@ -3016,16 +3107,19 @@ document.querySelectorAll('#grid th[data-s]').forEach(th => th.onclick = () => {
 
 /* ---------- resizable columns ---------- */
 const COL_DEFAULTS = { date: 90, company: 195, role: 300, level: 96, ats: 105, status: 160,
-                       match: 96, salary: 85, work: 95, queue: 90, files: 55, ad: 50 };
+                       match: 96, salary: 85, work: 95, queue: 90, docs: 84 };
 function initGridCols() {
   const table = $('#grid'); if (!table) return;
   const ths = [...table.querySelectorAll('thead th')];
   const cols = ths.map((th, i) => th.dataset.col || th.dataset.s || ('c' + i));
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem('grid.cols') || '{}') || {}; } catch (e) { saved = {}; }
-  let hidden = [];
-  try { hidden = JSON.parse(localStorage.getItem('grid.hidden') || '[]') || []; } catch (e) { hidden = []; }
-  const HIDDEN = new Set((Array.isArray(hidden) ? hidden : []).filter(k => cols.includes(k)));
+  let hidden = null;
+  try { hidden = JSON.parse(localStorage.getItem('grid.hidden')); } catch (e) { hidden = null; }
+  // A calmer first look: Date is secondary metadata, so start with it hidden.
+  // It stays in the Columns menu and in the row drawer, and a saved choice wins.
+  if (!Array.isArray(hidden)) hidden = ['date'];
+  const HIDDEN = new Set(hidden.filter(k => cols.includes(k)));
   const widths = {};
   const cg = document.createElement('colgroup');
   cols.forEach((k) => {
@@ -3150,6 +3244,15 @@ function columnMenu(ev) {
   el.querySelector('.ctx-item:not(.disabled)')?.focus();
 }
 
+// The visible way to the same menu the headers expose on right-click, so a
+// hidden column is never a lost feature: it is one click from coming back.
+const colsBtn = $('#a-cols');
+if (colsBtn) colsBtn.onclick = (ev) => {
+  ev.preventDefault(); ev.stopPropagation();
+  const r = colsBtn.getBoundingClientRect();
+  columnMenu({ preventDefault() {}, stopPropagation() {}, clientX: r.left, clientY: r.bottom + 2 });
+};
+
 /* ---------- detail drawer ---------- */
 // Deep links: /role/<key> opens that role; back closes it, forward reopens it.
 // The URL is Cascade's browserLocation; this is only the app side of the route.
@@ -3197,7 +3300,7 @@ async function openDetail(r) {
   if (router && !ROUTING && router.path()[1] !== r.key) {
     try { router.navigate(['role', r.key]); } catch (e) { /* the static page still works */ }
   }
-  const tabs = ['Summary', 'Chat', 'Files', 'Job ad', 'ATS', 'Evidence', 'Docs'];
+  const tabs = ['Summary', 'Chat', 'Ad', 'Docs', 'Grounding'];
   const drawer = window.CascadeIslands && window.CascadeIslands.drawer;
   if (drawer && drawer.ready()) drawer.open(tabs, DTAB, '<span class="muted">loading…</span>');
   else {
@@ -3211,7 +3314,7 @@ async function openDetail(r) {
   if (DTAB === 0) App.explainMissing(r);
 }
 window.dt = (i) => {
-  const r = CUR, map = [summary, discuss, prov, spec, ats, grounding, tailored];
+  const r = CUR, map = [summary, discuss, adTab, docsTab, grounding];
   DTAB = i;
   const html = map[i](r) || '<span class="muted">-</span>';
   const drawer = window.CascadeIslands && window.CascadeIslands.drawer;
@@ -3232,7 +3335,6 @@ function summary(r) {
   const m = (D.match) || {};
   const reg = ['QUEUED', 'PREPARED', 'SUBMITTED', 'IN_PROGRESS', 'INTERVIEW', 'OFFER', 'REJECTED', 'BLOCKED', 'MANUAL', 'CLOSED'];
   const known = reg.includes(r.status);
-  const wl = (w) => w === 'remote' ? 'Remote' : w === 'hybrid' ? 'Hybrid' : w === 'on-site' ? 'On-site' : 'unknown';
   const notes = (r.notes || '').trim();
   const hist = notes ? notes.split(/\s*\|\s*/).filter(Boolean).map(x => `<li>${md(x)}</li>`).join('') : '';
   const act = (r.action || '').trim();
@@ -3242,17 +3344,14 @@ function summary(r) {
     const on = !!(r.stages || {})[k];
     return `<span class="stage ${on ? 'on' : ''}" title="${on ? 'done' : 'not yet'}">${on ? '✓' : '○'} ${label}</span>`;
   };
+  // Only the facts the tabs and the grid do not already show. Status, type, pay
+  // and work model are edited in the fold below, so repeating them here was noise.
   const meta = [
     ['ATS', r.ats],
-    ['Type', r.employment],
-    ['Pay', r.salary_label ? `${r.salary_label}${r.salary_override ? ' (manual)' : ''}` : ''],
-    ['Work', r.work_model && r.work_model !== 'unknown' ? `${wl(r.work_model)}${r.work_override ? ' (manual)' : ''}` : ''],
-    ['Queue', r.queue && r.queue !== 'not queued' ? r.queue : ''],
     ['Updated', r.date],
     ['Interview', r.interview_at],
   ].filter(([, v]) => v);
-  const metaHTML = meta.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd title="${esc(v)}">${esc(v)}</dd></div>`).join('') +
-    `<div class="wide"><dt>Key</dt><dd class="mono">${esc(r.key)}</dd></div>`;
+  const metaHTML = meta.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd title="${esc(v)}">${esc(v)}</dd></div>`).join('');
   const matchBadges = (m.alignment ? `<span class="badge ${m.alignment === 'PASS' ? 'good' : 'bad'}">alignment ${m.alignment}</span>` : '') +
     (m.coverage != null ? `<span class="badge ${m.coverage >= 70 ? 'good' : 'mid'}">coverage ${m.coverage}%</span>` : '') ||
     '<span class="muted mini">no match data yet</span>';
@@ -3272,37 +3371,32 @@ function summary(r) {
   const IV_STAGES = [['', 'not recorded'], ['screen', 'Recruiter screen'], ['hiring-manager', 'Hiring manager'],
     ['technical', 'Technical interview'], ['panel', 'Panel / onsite'], ['final', 'Final round'], ['offer', 'Offer stage']];
   const interviewish = r.status === 'INTERVIEW' || ['SCHEDULED', 'INVITED'].includes(r.label || '');
-  const stageSection = interviewish ? `<section class="dsec">
-      <div class="dsec-h"><b>Interview stage</b><span class="muted mini" id="d-ivstage-label">${r.interview_stage_label && r.interview_stage ? esc(r.interview_stage_label) : 'not recorded'}</span></div>
-      <div class="dsec-b">
-        <div class="dform-row"><select id="d-ivstage" onchange="App.saveInterviewStage(true)">${IV_STAGES.map(([v, l]) =>
-          `<option value="${v}"${(r.interview_stage || '') === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></div>
-        <div class="muted mini">Which round you are at. Saves automatically; the status stays INTERVIEW/SCHEDULED.</div>
-      </div>
-    </section>` : '';
+  const ivStage = interviewish ? `<div class="dform-row" title="Which round you are at"><span class="muted mini" style="min-width:78px">Interview stage</span><select id="d-ivstage" onchange="App.saveInterviewStage(true)">${IV_STAGES.map(([v, l]) =>
+    `<option value="${v}"${(r.interview_stage || '') === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select><span class="muted mini" id="d-ivstage-label">${r.interview_stage_label && r.interview_stage ? esc(r.interview_stage_label) : 'not recorded'}</span></div>` : '';
   return scamBox(scam) +
     (scam && ['high', 'medium'].includes(scam.level)
       ? `<div class="dform-foot" style="justify-content:flex-start;margin:-2px 0 10px"><button class="small" onclick='App.clearScam(${JSON.stringify(r.jd_key || r.key)},${JSON.stringify(r.company)},${JSON.stringify(r.role)})' title="Only after you have verified the employer independently">Clear scam warning</button></div>`
       : '') +
-    `<section class="dsec">
-      <div class="dsec-h"><b>Next action</b>${act ? '' : '<span class="muted mini">optional</span>'}</div>
-      <div class="dsec-b">
-        ${act ? `<div class="daction">${esc(act)}</div>` : ''}
-        <div class="dform-row"><input id="dt-action" placeholder="Add a follow-up or a note for this role" value="${esc(act)}" onchange="App.saveAction(true)"></div>
-        <div class="dform-foot" style="justify-content:flex-start">
-          <span class="muted mini">Saves when you leave the field.${act ? '' : ' Optional.'}</span>
-          ${act ? '<button onclick="App.clearAction()">Clear</button>' : ''}
-        </div>
-      </div>
-    </section>` + stageSection +
     `<section class="dsec">
       <div class="dsec-h"><b>Status</b>${known ? '' : '<span class="muted mini">runner derived</span>'}</div>
       <div class="dsec-b">
         <div class="dstatus">${chip(r.label || r.status)}${r.hint ? `<span class="statehint">${esc(r.hint)}</span>` : ''}</div>
         ${r.repost ? `<div class="mini muted repostnote">Repost of ${esc(r.repost.role)} (${esc(r.repost.status || 'applied')}${r.repost.date ? ', ' + esc(r.repost.date) : ''}). You can apply again; this is not a blocker.</div>` : ''}
         <div class="stages">${stage('ad', 'Ad saved')}${stage('keywords', 'Keywords')}${stage('grounding', 'Grounded')}${stage('documents', 'Documents')}${stage('applied', 'Applied')}</div>
-        <dl class="dmeta">${metaHTML}</dl>
+        ${ivStage}
+        ${metaHTML ? `<dl class="dmeta">${metaHTML}</dl>` : ''}
         ${r.running ? `<div class="working"><a class="runlink" data-company="${esc(r.company)}" data-role="${esc(r.role)}" onclick="App.showTaskLogFor(this.dataset.company,this.dataset.role)" title="Show what this run is doing"><span class="spin" title="working">${ic('loader')}</span> Being worked on. Show the live log.</a></div>` : ''}
+        <div class="dform-row"><button class="small" onclick="App.editRole()">Edit role settings</button></div>
+      </div>
+    </section>` +
+    `<section class="dsec">
+      <div class="dsec-h"><b>Next action</b></div>
+      <div class="dsec-b">
+        <div class="dform-row">
+          <span class="${act ? 'daction' : 'muted mini'}" style="flex:1">${act ? esc(act) : 'None set'}</span>
+          <button class="small" onclick="App.editAction()">${act ? 'Edit' : 'Set'}</button>
+          ${act ? '<button class="small" onclick="App.clearAction()">Clear</button>' : ''}
+        </div>
       </div>
     </section>` +
     `<section class="dsec">
@@ -3316,9 +3410,8 @@ function summary(r) {
       </div></div>
     </section>` +
     `<details class="dsec" id="dt-drafts-details">
-      <summary><b>Drafted replies</b><span class="muted mini" id="dt-drafts-sum">review before sending</span></summary>
+      <summary><b>Drafted replies</b><span class="muted mini" id="dt-drafts-sum"></span></summary>
       <div class="dsec-b">
-        <div id="dt-drafts-ready" class="dnote ok hide"></div>
         <div class="dbtnrow">
           <button class="small" onclick="App.draftAsk()" title="Ask the agent to read the latest email and save a draft for this role">${ic('robot')} Draft with agent</button>
           <button class="small" onclick="App.draftNew()">＋ New</button>
@@ -3328,37 +3421,21 @@ function summary(r) {
       </div>
     </details>` +
     `<section class="dsec">
-      <div class="dsec-h"><b>Role settings</b><span class="muted mini">status, type, pay and work model</span></div>
-      <div class="dsec-b">
-        <div class="dgrid2">
-          <label>Status<select id="dt-status" onchange="App.saveRow(true)">${reg.map(x => `<option ${x === r.status ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
-          <label>Type<select id="dt-emp" onchange="App.saveRow(true)">${['', 'full-time', 'part-time', 'contract', 'consultant', 'freelance', 'internship', 'temporary'].map(x => `<option value="${x}" ${x === (r.employment || '') ? 'selected' : ''}>${x || 'unknown'}</option>`).join('')}</select></label>
-          <label>Work model<select id="dt-work" onchange="App.saveRow(true)"><option value="">auto: ${esc(wl(r.work_detected))}</option>${['remote', 'hybrid', 'on-site'].map(x => `<option value="${x}" ${r.work_override && r.work_model === x ? 'selected' : ''}>${wl(x).toLowerCase()}</option>`).join('')}</select></label>
-          <label>Pay override<input id="dt-salary" value="${esc(r.salary_override ? (r.salary_raw || '') : '')}" placeholder="${esc(r.salary_raw && !r.salary_override ? 'auto: ' + r.salary_raw : 'e.g. EUR 90000/yr')}" onchange="App.saveRow(true)"></label>
-        </div>
-        <div class="dform-foot" style="justify-content:flex-start"><span class="muted mini">Changes save automatically. Blank pay uses the ad figure.</span></div>
-      </div>
-    </section>` +
-    `<section class="dsec">
       <div class="dsec-h"><b>Match</b><span class="dsec-badges">${matchBadges}</span></div>
       <div class="dsec-b">
-        ${kbGap ? '<div class="dnote warn">The grounding report flags requirements with no direct evidence. Check the missing skills before treating this as a fit.</div>' : ''}
-        ${missing ? `<div class="dnote"><span class="muted mini">Missing skills. Click one to record where you have it.</span><div class="missk-wrap" id="missk-wrap">${missing}</div>${pending ? '<span class="muted mini" id="missk-loading">reading the advert…</span>' : ''}</div>` : ''}
-        ${(m.evidenced || []).length ? `<div class="dform-foot"><span class="muted mini">${m.evidenced.length} skill(s) have evidence. Re-prepare to fold them into the CV.</span><button class="small" onclick='App.prepareThis(${JSON.stringify(r.key)})'>${ic('refresh')} Re-prepare</button></div>` : ''}
-        <div class="dform-row"><input id="dt-addkw" placeholder="Add a requirement from the job ad"></div>
-        <div class="dform-foot" style="justify-content:flex-start">
-          <button class="small" onclick="App.addKeyword()">Add keyword</button>
+        ${kbGap ? '<div class="dnote warn">Some requirements have no evidence in the knowledge base.</div>' : ''}
+        ${missing ? `<div class="dnote"><div class="missk-wrap" id="missk-wrap" title="Click a skill to record where you have it">${missing}</div>${pending ? '<span class="muted mini" id="missk-loading">reading the advert…</span>' : ''}</div>` : ''}
+        <div class="dbtnrow">
+          <button class="small" onclick="App.addKeyword()">＋ Add keyword</button>
           <button class="small" onclick="App.refreshKeywords()" title="Re-extract keywords from the saved job ad">${ic('refresh')} Re-extract</button>
         </div>
       </div>
     </section>` +
     `<details class="dsec">
-      <summary><b>History and notes</b><span class="muted mini">what happened on this role</span></summary>
+      <summary><b>History and notes</b></summary>
       <div class="dsec-b">
-        ${P.evidence ? `<div class="dnote">Submission evidence: ${esc(String(P.evidence).slice(0, 240))}</div>` : ''}
         ${hist ? `<ul class="hist">${hist}</ul>` : '<div class="muted mini">No notes yet.</div>'}
-        <label class="dlabel">Your notes<textarea id="dt-notes" style="min-height:140px" oninput="App.queueSaveRow()">${esc(r.notes || '')}</textarea></label>
-        <div class="dform-foot" style="justify-content:flex-start"><span class="muted mini">Changes save automatically.</span></div>
+        <div class="dform-row"><button class="small" onclick="App.editNotes()">Edit notes</button></div>
       </div>
     </details>` +
     (['BLOCKED', 'MANUAL'].includes(r.status) ? `<section class="dsec dsec-block">
@@ -3404,7 +3481,36 @@ function prov(r) {
     `<tr><td class="muted">snapshot</td><td class="mini mono">${esc(P.snapshot_dir || '-')}</td></tr>` +
     `<tr><td class="muted">screenshots</td><td class="mini mono">${(P.screenshots || []).map(esc).join('<br>') || '-'}</td></tr></tbody></table>`;
 }
-const spec = () => sec(D.jd), ats = () => sec(D.ats, true), kb = () => sec(D.kb);
+const spec = () => sec(D.jd), ats = () => sec(D.ats, true);
+
+/* The advert and its keywords are one subject, so they share a tab: the ad text
+ * first, then the extracted ATS terms folded underneath. */
+function adTab() {
+  const terms = evKws().length;
+  return `<section class="dsec">
+      <div class="dsec-h"><b>Job ad</b></div>
+      <div class="dsec-b">${D.jd ? spec() : '<span class="muted">No saved job ad for this role yet.</span>'}</div>
+    </section>` +
+    (D.ats ? `<details class="dsec">
+      <summary><b>ATS keywords</b><span class="muted mini">${terms} term(s) the CV is scored against</span></summary>
+      <div class="dsec-b">${ats()}</div>
+    </details>` : '');
+}
+
+/* Rendered documents and the provenance of the exact files sent are the same
+ * question ("what did I send?"), so they share a tab: preview first, record below. */
+function docsTab(r) {
+  const d = D.docs || {};
+  const hasDocs = !!(d.cv || d.cv_pdf || d.letter || d.letter_pdf);
+  return `<section class="dsec">
+      <div class="dsec-h"><b>Documents</b></div>
+      <div class="dsec-b">${tailored()}</div>
+    </section>
+    <details class="dsec"${hasDocs ? '' : ' open'}>
+      <summary><b>Provenance</b><span class="muted mini">the exact files and hashes recorded at submission</span></summary>
+      <div class="dsec-b">${prov(r)}</div>
+    </details>`;
+}
 
 /* Evidence overlay: the generated CV, colour-coded by the evidence behind each line. */
 function evKws() {
@@ -3471,8 +3577,18 @@ function renderEvidence() {
 }
 function tailored() {
   const d = D.docs || {};
-  if (!d.cv && !d.cv_pdf && !d.letter && !d.letter_pdf) {
-    return '<span class="muted">No rendered documents yet. Run Prepare (review).</span>';
+  const p = P || {};
+  const isPdf = (f) => !!f && /\.pdf$/i.test(f);
+  // The per-role render is preferred, but an application that used an archetype
+  // CV has no per-role file: fall back to the exact files recorded in provenance.
+  const cvPdf = d.cv_pdf || (isPdf(p.cv_file) ? p.cv_file : '');
+  const cv = d.cv || p.cv_file || '';
+  const cvDoc = cv && cv !== cvPdf ? cv : '';
+  const letterPdf = d.letter_pdf || (isPdf(p.letter_file) ? p.letter_file : '');
+  const letter = d.letter || p.letter_file || '';
+  const letterDoc = letter && letter !== letterPdf ? letter : '';
+  if (!cvPdf && !cvDoc && !cv && !letterPdf && !letterDoc && !letter) {
+    return '<span class="muted">No documents on file for this role yet.</span>';
   }
   const raw = (p) => '/raw?path=' + encodeURIComponent(p);
   setTimeout(async () => {
@@ -3484,34 +3600,35 @@ function tailored() {
       btn.classList.toggle('on', shown);
     };
     const el = $('#tpre'); if (!el) return;
-    if (d.cv_pdf) {                                       // embedded PDF viewer (the real rendered CV)
-      el.innerHTML = `<embed src="${raw(d.cv_pdf)}#view=FitH" type="application/pdf"
+    if (cvPdf) {                                          // embedded PDF viewer (the real CV sent)
+      el.innerHTML = `<embed src="${raw(cvPdf)}#view=FitH" type="application/pdf"
         style="width:100%;height:74vh;border:1px solid var(--line);border-radius:8px">`;
       return;
     }
-    if (d.cv) {
-      const f = await api('/api/file?path=' + encodeURIComponent(d.cv));
+    if (cvDoc) {
+      const f = await api('/api/file?path=' + encodeURIComponent(cvDoc));
       el.innerHTML = (f && f.kind === 'docx') ? `<div class="md">${f.html}</div>`
         : `<span class="muted">${esc((f && f.error) || 'could not render')}</span>`;
       return;
     }
-    el.innerHTML = '<span class="muted">no CV file for this role</span>';
+    el.innerHTML = '<span class="muted">no CV on file for this role</span>';
   }, 0);
+  const pack = (D.tailored_cv || '') + (D.letter ? '\n\n---\n' + D.letter : '');
   return `<div class="row" style="margin-bottom:8px">
-      ${d.cv_pdf ? `<button onclick='viewDoc(${JSON.stringify(d.cv_pdf)},"CV (PDF)")'>Open CV PDF</button>` : ''}
-      ${d.cv ? `<button onclick='viewDoc(${JSON.stringify(d.cv)},"CV (Word)")'>CV (Word)</button>` : ''}
-      ${d.letter_pdf ? `<button onclick='viewDoc(${JSON.stringify(d.letter_pdf)},"Cover letter (PDF)")'>Open cover letter PDF</button>` : ''}
-      ${d.letter ? `<button onclick='viewDoc(${JSON.stringify(d.letter)},"Cover letter (Word)")'>Cover letter (Word)</button>` : ''}
-      ${d.cv_pdf ? `<a class="mini" style="align-self:center" href="${raw(d.cv_pdf)}" target="_blank">open in a tab ↗</a>` : ''}</div>` +
-    `<div class="evhead">
+      ${cvPdf ? `<button onclick='viewDoc(${JSON.stringify(cvPdf)},"CV (PDF)")'>Open CV PDF</button>` : ''}
+      ${cvDoc ? `<button onclick='viewDoc(${JSON.stringify(cvDoc)},"CV (Word)")'>CV (Word)</button>` : ''}
+      ${letterPdf ? `<button onclick='viewDoc(${JSON.stringify(letterPdf)},"Cover letter (PDF)")'>Open cover letter PDF</button>` : ''}
+      ${letterDoc ? `<button onclick='viewDoc(${JSON.stringify(letterDoc)},"Cover letter (Word)")'>Cover letter (Word)</button>` : ''}
+      ${cvPdf ? `<a class="mini" style="align-self:center" href="${raw(cvPdf)}" target="_blank">open in a tab ↗</a>` : ''}</div>` +
+    (D.tailored_cv ? `<div class="evhead">
       <button id="ev-toggle" class="small" title="Colour every line of the generated CV by the evidence behind it">${ic('grid')} Evidence overlay</button>
       <span class="muted mini" id="evsum"></span>
     </div>
     <span class="evbar" title="share of the job's ATS requirements named somewhere in the CV"><i id="evbar"></i></span>
-    <div id="evview" class="hide"></div>` +
-    `<div class="muted mini" style="margin:10px 0 4px">CV${d.cv_pdf ? ' (PDF)' : ''}</div><div id="tpre">loading…</div>` +
-    `<details style="margin-top:12px"><summary class="muted mini">content pack (JSON)</summary>` +
-    `<pre class="doc">${esc((D.tailored_cv || '') + (D.letter ? '\n\n---\n' + D.letter : ''))}</pre></details>`;
+    <div id="evview" class="hide"></div>` : '') +
+    `<div class="muted mini" style="margin:10px 0 4px">CV${cvPdf ? ' (PDF)' : ''}</div><div id="tpre">loading…</div>` +
+    (pack ? `<details style="margin-top:12px"><summary class="muted mini">content pack (JSON)</summary>` +
+      `<pre class="doc">${esc(pack)}</pre></details>` : '');
 }
 function grounding(r) {
   setTimeout(async () => {
@@ -5742,6 +5859,43 @@ async function setGraph(b) {
     <p class="muted mini" style="margin-top:10px">Search communities and entities, drill from the highest-level community down to
       individual entities, and open any entity's ego network. The graph fills the page and keeps the job grid out of the way.</p>`;
 }
+async function setCaptcha(b) {
+  const d = await api('/api/captcha');
+  if (CF_SEC !== 'captcha') return;
+  if (!d || d.error) { b.innerHTML = `<span class="bad">${esc((d && d.error) || 'could not read CAPTCHA settings')}</span>`; return; }
+  const on = d.enabled !== false;
+  const keyState = d.key_set ? 'stored' : (d.provider === 'vision' ? 'not needed' : 'not set');
+  b.innerHTML = `<p class="muted">Private build only. When enabled, the browser solves a reCAPTCHA visually
+      with the vision model above (or a solver service if one is selected), injects the token and continues the
+      application. The vision provider needs no key. The public build never does this. Solving a CAPTCHA can
+      breach a site's terms; use it only where you are authorised.</p>
+    <div class="row" style="margin:10px 0"><label class="row" style="gap:6px">
+      <input type="checkbox" id="captcha-enabled" onchange="App.saveCaptcha()" ${on ? 'checked' : ''}> Solve CAPTCHAs automatically</label>
+      <span id="captcha-on" class="pill">${on ? 'ON' : 'OFF'}</span></div>
+    <div class="row" style="margin:8px 0"><span class="muted" style="min-width:130px">Provider</span>
+      <select id="captcha-provider" style="min-width:220px" onchange="App.saveCaptcha()">
+        <option value="vision" ${d.provider === 'vision' ? 'selected' : ''}>Vision (agent model)</option>
+        <option value="2captcha" ${d.provider === '2captcha' ? 'selected' : ''}>2Captcha</option>
+        <option value="capsolver" ${d.provider === 'capsolver' ? 'selected' : ''}>CapSolver</option>
+      </select>
+      <span class="muted" style="min-width:100px;margin-left:10px">Timeout</span>
+      <input id="captcha-timeout" type="number" min="30" max="600" value="${esc(d.timeout || 180)}" style="max-width:90px" onchange="App.saveCaptcha()"> s</div>
+    <div class="row" style="margin:8px 0"><span class="muted" style="min-width:130px">Vision model</span>
+      <input id="captcha-model" style="flex:1" value="${esc(d.model || 'opencode-go/deepseek-v4.1-flash')}"
+        placeholder="opencode-go/deepseek-v4.1-flash" onchange="App.saveCaptcha()">
+      <span class="pill">${d.provider === 'vision' ? 'no key' : 'optional'}</span></div>
+    <div class="row" style="margin:8px 0"><span class="muted" style="min-width:130px">API key</span>
+      <input id="captcha-key" type="password" autocomplete="new-password" style="flex:1"
+        placeholder="${d.key_set ? '•••• stored: leave blank to keep' : 'only for 2Captcha / CapSolver'}"
+        onchange="App.saveCaptcha()">
+      <span id="captcha-key-state" class="pill">${keyState}</span></div>
+    <div class="row" style="margin:8px 0"><label class="mini"><input type="checkbox" id="captcha-clear" onchange="App.saveCaptcha()"> clear the stored key</label></div>
+    <div class="row" style="margin:10px 0">
+      <span class="muted mini">Changes save automatically.${d.key_name ? ` Key name: <code>${esc(d.key_name)}</code> · stored in the encrypted secrets store.` : ' Vision needs no key.'}</span></div>
+    <p class="muted mini">If solving fails, the role is recorded BLOCKED. The queue prompt only tells the agent to solve
+      when this setting is on.</p>`;
+}
+
 /* ---------- Settings: logs ---------- */
 let LOG_NAME = '', LOG_RUNNING = false, LOG_TIMER = null, LOG_ITEMS = [];
 function stopLogs() {
@@ -5934,7 +6088,8 @@ function setAbout(b) {
       <a class="pill" href="https://bongomanuk.github.io/jobsquirrel/" target="_blank" rel="noopener">Documentation ↗</a>
       <a class="pill" href="https://github.com/bongomanuk/jobsquirrel" target="_blank" rel="noopener">GitHub ↗</a>
     </div>
-    <div class="about-credit">Created by the <a href="https://github.com/bongomanuk/jobsquirrel" target="_blank" rel="noopener">Jobsquirrel</a> project</div>`;
+    <div class="about-credit">Created by <a href="https://hollas.net" target="_blank" rel="noopener">Peter Hollas</a>
+      · <a href="https://hollas.net" target="_blank" rel="noopener">hollas.net</a></div>`;
   renderAbout();
   if (HEALTH) renderHealth(HEALTH);
   loadAboutHealth();
@@ -6540,6 +6695,7 @@ document.addEventListener('dragstart', e => {
 
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
+  if ($('#formm') && !$('#formm').classList.contains('hide')) { window.formClose(); return; }
   if ($('#groupsm') && !$('#groupsm').classList.contains('hide')) { groupsClose(); return; }
   if (!$('#knowledge').classList.contains('hide')) {
     if (KGMODE === 'universe') App.setKGMode('map'); else App.closeKnowledge();

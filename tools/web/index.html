@@ -150,12 +150,13 @@
             </div>
           </details>
           <button id="grouping" title="Group rows by bucket (default) or show one flat sorted list. Clicking a column header switches to the flat view"><svg class="ic" aria-hidden="true"><use href="#i-list"></use></svg> Grouped</button>
-          <button id="groups" title="Create, rename or delete groups (campaigns)"><svg class="ic" aria-hidden="true"><use href="#i-tag"></use></svg> Groups</button>
+          <button id="a-cols" title="Choose which columns are shown. Right-clicking any column header opens the same menu."><svg class="ic" aria-hidden="true"><use href="#i-grid"></use></svg> Columns</button>
           <button id="a-gmail-review" title="Emails that could not be confidently classified or matched; review and mark Done"><svg class="ic" aria-hidden="true"><use href="#i-mail"></use></svg> Review <b id="review-count">0</b></button>
           <button id="a-prepare-shown" title="Generate documents for the rows currently shown (expanded groups). Runs the agent per role, a few minutes each. Nothing is submitted. You will be asked to confirm."><svg class="ic" aria-hidden="true"><use href="#i-bolt"></use></svg> Prepare</button>
           <button id="a-submit-shown" class="risky" title="Submit the PREPARED rows currently shown, with the documents already generated. Sends applications. You will be asked to confirm."><svg class="ic" aria-hidden="true"><use href="#i-send"></use></svg> Submit</button>
           <div id="toolbar-extra"></div>
           <div class="hide" aria-hidden="true">
+            <button id="groups" title="Create, rename or delete groups (campaigns)">Groups</button>
             <button id="export">Export CSV</button>
             <button id="a-match">Match</button>
             <button id="legend">Legend</button>
@@ -174,8 +175,7 @@
           <th data-s="salary_eur" data-col="salary" title="Estimated annual pay in EUR from the ad (hourly/day rates are annualised). Click to sort.">Pay</th>
           <th data-s="work_model" data-col="work" title="Work model detected from the ad (remote / hybrid / on-site). Click to sort.">Work</th>
           <th data-s="queue" data-col="queue" title="Where the role sits in the apply queue. Click to sort">Queue</th>
-          <th data-s="applied" data-col="files" title="Provenance on file: the exact CV + cover letter (and SHA-256 hashes) recorded for the submission. Click to sort">Files</th>
-          <th data-s="spec" data-col="ad" title="A saved job description exists for this role. Click to sort">Ad</th>
+          <th data-col="docs" title="What is on file for this role: CV and cover-letter provenance, and a saved job description. Both are also shown in the row's drawer.">Docs</th>
         </tr></thead>
             <tbody id="rows"></tbody>
           </table>
@@ -331,7 +331,7 @@
       <div id="uni-tip" class="uni-tip hide"></div>
       <aside id="uni-side" class="uni-side">
         <div id="uni-side-body">
-          <div class="uni-side-hint">Click a star to inspect it. Drag to orbit · scroll to zoom · right-drag to pan · WASD/QE to fly · double-click a star to travel there.</div>
+          <div class="uni-side-hint">Click a star to inspect it. Drag to orbit · scroll to zoom · right-drag to pan · WASD/QE to fly · double-click a star to travel there. Use the <b>flight demo</b> control at the bottom to fly the universe in a fighter.</div>
         </div>
         <section id="uni-legend" class="uni-legend hide" aria-label="Colour legend"></section>
       </aside>
@@ -355,6 +355,42 @@
         <span class="muted">warm glow = impact</span>
         <span class="uni-hud-sep">·</span>
         <span class="muted">gold label = grounded</span>
+        <span class="uni-hud-sep">·</span>
+        <button id="uni-flight" class="uni-hud-link" onclick="window.__uni && window.__uni.startFlight()" title="Fly through the CV universe in a fighter">flight demo</button>
+      </div>
+      <div id="uni-flight-hud" class="uni-flight-hud hide" aria-live="polite">
+        <div class="uf-top">
+          <span id="uf-mode" class="uf-mode">AUTOPILOT</span>
+          <span class="uf-sep">·</span>
+          <span><b id="uf-speed">0</b> u/s</span>
+          <span class="uf-sep">·</span>
+          <span>hull <b id="uf-hull">100</b></span>
+          <span class="uf-sep">·</span>
+          <span><b id="uf-kills">0</b> kills</span>
+          <span class="uf-sep">·</span>
+          <span id="uf-target" class="uf-target">no target</span>
+        </div>
+        <div id="uf-hit" class="uf-hit"></div>
+        <div id="uf-mouse" class="uf-mouse hide"></div>
+        <div id="uf-tip" class="uf-tip hide"><b>R2-JS</b><span id="uf-tip-text"></span></div>
+        <div class="uf-cross" aria-hidden="true"></div>
+        <div class="uf-bottom">
+          <span class="uf-hint"><b>Take controls</b> to fly · <b>W/S</b> throttle · <b>A/D</b> yaw · <b>↑/↓</b> pitch · <b>Q/E</b> roll · <b>Space</b> or click fire · <b>Esc</b> exit</span>
+          <button id="uf-take" class="small" onclick="window.__uni && window.__uni.flightTakeControls()">Take controls</button>
+          <button id="uf-auto" class="small hide" onclick="window.__uni && window.__uni.flightAutopilot()">Resume demo</button>
+          <button id="uf-exit" class="small" onclick="window.__uni && window.__uni.stopFlight()">Exit flight</button>
+        </div>
+        <div id="uf-death" class="uf-death hide">
+          <div class="uf-death-box">
+            <div class="uf-death-kicker">FLIGHT TERMINATED</div>
+            <b id="uf-death-title">You died</b>
+            <p id="uf-death-why"></p>
+            <div class="row" style="justify-content:center;gap:8px">
+              <button class="risky" onclick="window.__uni && window.__uni.flightRespawn()">Fly again</button>
+              <button onclick="window.__uni && window.__uni.stopFlight()">Exit flight</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <div id="kg-play-hud" class="kg-play-hud hide" aria-live="polite"></div>
@@ -421,6 +457,7 @@
       <a data-s="kb" onclick="App.settings('kb')">Knowledge base</a>
       <a data-s="graph" onclick="App.settings('graph')">GraphRAG</a>
       <a data-s="perms" onclick="App.settings('perms')">Agent permissions</a>
+      <a data-s="captcha" onclick="App.settings('captcha')">CAPTCHA</a>
       <a data-s="profile" onclick="App.settings('profile')">Profile &amp; CV</a>
       <a data-s="logs" onclick="App.settings('logs')">Logs</a>
       <a data-s="data" onclick="App.settings('data')">Backup &amp; data</a>
@@ -435,6 +472,18 @@
   <div id="warn-text" class="md muted"></div>
   <div class="row" style="justify-content:flex-end;margin-top:16px">
     <button id="warn-cancel">Cancel</button><button id="warn-ok" class="risky">Continue</button></div>
+</div></div>
+
+<div id="formm" class="modal hide"><div class="modal-box" style="width:min(560px,94vw)">
+  <div class="row" style="align-items:center">
+    <b style="flex:1;font-size:15px" id="formm-title">Edit</b>
+    <button class="mini" onclick="formClose()" title="Close"><svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg></button>
+  </div>
+  <div id="formm-body"></div>
+  <div class="row" style="justify-content:flex-end;margin-top:16px">
+    <button onclick="formClose()">Cancel</button>
+    <button id="formm-save">Save</button>
+  </div>
 </div></div>
 
 <div id="approve" class="modal hide"><div class="modal-box">
@@ -555,20 +604,19 @@
       <h4 style="margin-top:12px">Columns</h4>
       <p class="muted mini" style="margin:-4px 0 6px">Drag a header edge to resize; double-click it to reset.</p>
       <dl>
-        <dt>Date</dt><dd>When the register row was last updated.</dd>
+        <dt>Date</dt><dd>When the register row was last updated. Hidden by default; show it from <b>Columns</b>.</dd>
         <dt>ATS</dt><dd>The applicant-tracking system the application went through.</dd>
         <dt>Status</dt><dd>Where the application currently stands (list below).</dd>
         <dt>Follow-up flag</dt><dd>A reply or follow-up is needed (e.g. answer an interview email, complete an assessment). Tick the box under Filters to show only those; set or clear the flag in the row's drawer or from the right-click menu.</dd>
         <dt>Application states</dt><dd>The collapsible graph above the grid is the pipeline: each state shows how many live roles are in it, and clicking a state filters the grid to that status (Clear filters resets). CLOSED can follow any state.</dd>
         <dt>Sorting</dt><dd>Click a column header to sort the whole list (the grid switches to a flat view); click again to reverse. <b><svg class="ic" aria-hidden="true"><use href="#i-list"></use></svg> Grouped</b> in the toolbar returns to the bucket sections.</dd>
-        <dt>Right-click a row</dt><dd>Opens the row menu: open details/documents/the ad, prepare, submit prepared, recompute match, draft a reply, add to a group (campaign) or create one, manage groups from the <svg class="ic" aria-hidden="true"><use href="#i-tag"></use></svg> Groups button, set status, close the role (status CLOSED), flag a follow-up, pin to the top, re-queue, hand to you, or copy the company/role/link/key. <b><svg class="ic" aria-hidden="true"><use href="#i-pin"></use></svg></b> = pinned.</dd>
+        <dt>Right-click a row</dt><dd>Opens the row menu: open details/documents/the ad, prepare, submit prepared, recompute match, draft a reply, add to a group (campaign) or create one, manage groups from the <svg class="ic" aria-hidden="true"><use href="#i-tag"></use></svg> Groups item under <b>More</b>, set status, close the role (status CLOSED), flag a follow-up, pin to the top, re-queue, hand to you, or copy the company/role/link/key. <b><svg class="ic" aria-hidden="true"><use href="#i-pin"></use></svg></b> = pinned.</dd>
         <dt>Level</dt><dd>Seniority grade read from the role title (then the ad): Intern, Junior, Mid, Senior, Staff, Principal, Lead, Manager, Director, VP, C-level. Click the header to sort, or use <b>Level</b> in Filters to narrow the grid.</dd>
     <dt>Fit</dt><dd>How much of the ad's ATS keyword list the tailored CV covers. <b>align✗</b> = the pre-submit alignment gate failed. Click to sort.</dd>
         <dt>Pay</dt><dd>Estimated annual pay in EUR from the ad (hourly/day rates annualised at 1,600h/220d; approximate FX). Hover for the source text. <span class="muted">-</span> means no figure in the ad. Set one in the row's Summary. Click to sort.</dd>
         <dt>Work</dt><dd>Remote / hybrid / on-site detected from the ad. Set an override in the row's Summary. Click to sort.</dd>
         <dt>Queue</dt><dd>Where the role sits in the apply queue (list below).</dd>
-        <dt>Files (✓)</dt><dd>Provenance on file: the exact CV + letter and their SHA-256 hashes. <span class="muted">-</span> means none recorded.</dd>
-        <dt>Job ad (✓)</dt><dd>A saved job description exists for this role. <span class="muted">-</span> means none saved.</dd>
+        <dt>Docs</dt><dd>Two small marks: <b>CV</b> = provenance on file (the exact CV + letter and their SHA-256 hashes), <b>Ad</b> = a saved job description exists. A faded mark means the item is missing.</dd>
       </dl>
     </div>
     <div class="legend-col">

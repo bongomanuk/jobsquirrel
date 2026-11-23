@@ -198,6 +198,24 @@ def check_backends() -> int:
         print("MISSING kb/graphrag/settings.yaml"); ok = False
     if not os.path.exists(os.path.join(CFG, "output", "entities.parquet")):
         print("MISSING index (run: bash tools/setup_kb.sh)"); ok = False
+    else:
+        # The index is a build artifact: a test or a demo run can overwrite it
+        # with the synthetic corpus and leave the real one looking healthy
+        # (entities present, embeddings up). Say what is actually inside.
+        try:
+            import pandas as pd
+            docs = pd.read_parquet(os.path.join(CFG, "output", "documents.parquet"))
+            ents = pd.read_parquet(os.path.join(CFG, "output", "entities.parquet"))
+            titles = [str(t) for t in docs.get("title", [])]
+            demo = [t for t in titles
+                    if t.startswith("CV 2026 - ") or "Northwind Systems" in t]
+            print(f"corpus: {len(docs)} document(s), {len(ents)} entities")
+            if demo:
+                print("SYNTHETIC index: this is the demo/test corpus, not your sources "
+                      f"(e.g. {demo[0]!r}) - rebuild with: bash tools/setup_kb.sh")
+                ok = False
+        except Exception as exc:  # noqa: BLE001
+            print(f"index unreadable: {exc}"); ok = False
     try:
         import urllib.request
         urllib.request.urlopen(EMB_URL + "/health", timeout=4)
