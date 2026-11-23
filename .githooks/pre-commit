@@ -1,0 +1,3 @@
+#!/bin/sh
+# Refuse to commit private material into the public build.
+exec python3 "$(git rev-parse --show-toplevel)/tools/private_guard.py" --staged

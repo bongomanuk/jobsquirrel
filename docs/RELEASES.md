@@ -17,6 +17,17 @@ Describe features generically: "a role", "the candidate", "a configurable pay fl
 "a company name mentioned in passing". Use synthetic examples (`Acme`, `ExampleCorp`).
 Screenshots, logs and examples must be redacted or synthetic. If in doubt, leave it out.
 
+### The guard
+`tools/private_guard.py` runs from `.githooks/pre-commit` and `.githooks/pre-push`. It refuses a commit or a push that touches a path which exists only in the private pipeline (`state/`, `kb/sources/`, the stealth browser, the LinkedIn runner) or that contains a literal from `~/.config/job-search/github-private-terms.txt`. That file lives outside this repository, so the vocabulary of names and employers is never committed. A match is printed masked, so the terminal and CI logs stay clean.
+
+Install the hooks once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+If a term is a false positive, remove it from that file rather than bypassing the hook.
+
 ## Versioning
 - `vMAJOR.MINOR.PATCH`. Cut a release when a coherent feature set lands, not for every
   fix. Until the project has users, keep the history to milestones: one release per
