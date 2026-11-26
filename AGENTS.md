@@ -414,6 +414,14 @@ bash tools/reconcile_loop.sh                # continuous reconcile + counts
   recording a sent reply (`gmail_send.py` / `register.log_outbound`) clears a
   reply/follow-up flag automatically. Clear it yourself with `--action ""` when
   the human has done the thing by hand.
+  An action must also be **provable**: someone at that company asked something, in
+  a message newer than our own last reply, on a role that is not already
+  `CLOSED`/`REJECTED`. Your own follow-up idea ("decide whether to send the
+  draft"), a lead with no mail trail, or a thread quiet for three weeks is a
+  **note**, not an action. `python3 tools/action_audit.py` proves every flag
+  against Gmail and `--apply` clears the ones that fail;
+  `gmail_reconcile.py --apply` runs that pass automatically after every sync. The
+  column should only ever show people waiting for the candidate.
 - For interviews: `tools/gmail_calendar_auth.py --check --days N` lists upcoming
   events; `tools/calendar_event.py` creates/updates them (with the interviewer as
   an attendee), imports an `.ics` from a Gmail message and suggests free slots

@@ -623,6 +623,8 @@ def main():
     ap.add_argument("--max", type=int, default=3000, help="hard cap on messages inspected")
     ap.add_argument("--ack", help="substring of a verification link to mark as already handled")
     ap.add_argument("--no-cache", action="store_true", help="ignore the message cache and re-fetch everything")
+    ap.add_argument("--no-action-audit", action="store_true",
+                    help="skip the pass that clears action flags nobody is waiting on")
     args = ap.parse_args()
 
     if args.ack:
@@ -898,6 +900,19 @@ def main():
         print(f"\napplied {len(changes)} change(s); register regenerated")
     elif changes:
         print("\n(dry run - re-run with --apply to write these)")
+
+    # An action has to be provable: someone asked, recently, on a live role.
+    # Anything else is a note, so the column stops filling with our own ideas
+    # and with threads that have gone quiet.
+    if args.apply and not args.no_action_audit:
+        try:
+            import action_audit
+            got = action_audit.audit(service, R.load(), apply=True, quiet=True)
+            if got["cleared"]:
+                print(f"\naction audit: cleared {got['cleared']} stale flag(s), "
+                      f"{got['kept']} still need you")
+        except Exception as exc:                     # never fail the reconcile on this
+            print(f"  action audit skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
 
     mode = "applied" if args.apply else "dry run"
     print(f"\n== summary ({mode}): {len(messages)} inspected · {len(changes)} proposed · "
